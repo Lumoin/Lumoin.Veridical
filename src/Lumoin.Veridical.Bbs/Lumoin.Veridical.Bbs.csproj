@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Bbs</RootNamespace>
+    <Description>BBS+ signatures (multi-message with selective-disclosure proofs) per the IETF draft draft-irtf-cfrg-bbs-signatures, BLS12-381-SHA-256 ciphersuite.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lumoin.Veridical.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Core</RootNamespace>
+    <Description>Core primitives for Lumoin.Veridical: field arithmetic, group operations, polynomial primitives, transcripts, and base proof-system shapes.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The test project needs to reach the internal constructor of broad
+         leaf types like MultilinearExtension to exercise cross-curve
+         rejection paths whose inputs the public factories deliberately
+         refuse to construct. -->
+    <InternalsVisibleTo Include="Lumoin.Veridical.Tests" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Analysis" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Bbs" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Bbs.Tests" />
+  </ItemGroup>
+
+</Project>

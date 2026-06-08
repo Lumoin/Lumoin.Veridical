@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+
+    <!--
+      Directory.Build.props turns on EnableMSTestRunner and
+      TestingPlatformDotnetTestSupport for every project. That is correct
+      for the test project, but it makes the MSTest source generator emit
+      a MicrosoftTestingPlatformEntryPoint into every project it runs in.
+      The Benchmarks project has its own Program.Main (BenchmarkSwitcher
+      entry), and the duplicate entry point trips CS8892. Turn the runner
+      and the dotnet-test support off here so BDN is the sole entry point.
+    -->
+    <EnableMSTestRunner>false</EnableMSTestRunner>
+    <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
+    <IsTestApplication>false</IsTestApplication>
+
+    <!--
+      BenchmarkDotNet generates and compiles benchmark host code at runtime
+      and uses reflection to invoke benchmark methods, so it is fundamentally
+      incompatible with AOT and trimming. The repository inherits
+      IsAotCompatible=true and EnableTrimAnalyzer=true from
+      Directory.Build.props for every project; opt out here.
+    -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+
+    <!--
+      Benchmark methods must be public, instance, and parameterless to be
+      discovered by BenchmarkDotNet, which conflicts with several analyzers
+      under AnalysisMode=All and TreatWarningsAsErrors=true. Suppress the
+      ones that fire on the canonical benchmark shape.
+
+      CA1707: Identifiers should not contain underscores. BDN convention
+              uses underscored parameter names in [Params]-driven reports.
+      CA1812: Avoid uninstantiated internal classes. Benchmark classes are
+              instantiated by BDN at runtime via reflection; the analyzer
+              cannot see that.
+      CA1822: Mark members as static. Benchmark methods must be instance
+              methods to be discoverable by BDN.
+      CA1849: Call async methods when in an async method. The benchmark
+              host code synchronously waits on async paths to obtain wall
+              time over the whole operation.
+      CA1515: Types could be internal. BDN's BenchmarkSwitcher reflects
+              over public types by default; benchmarks are conventionally
+              public.
+      CA5394: Random is insecure. Benchmark inputs are not security
+              critical; deterministic seeding is the point.
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA1812;CA1822;CA1849;CA1515;CA5394</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <!-- xoofx Rust-FFI BLAKE3 binding kept here so the Blake3 head-to-head
+         benchmark can measure the managed implementation against it. The
+         src/ tree and Lumoin.Veridical.Tests do not reference this
+         package after batch O. -->
+    <PackageReference Include="Blake3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />
+    <!--
+      The scalar backends (BigInteger references and the per-ISA SIMD
+      backends + dispatch facade) live in Backends.Managed; reference it so
+      benchmarks can measure them side by side. InternalsVisibleTo to
+      Benchmarks is declared in Directory.Build.props.
+    -->
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
+    <!-- Tests still referenced for other test-support helpers used by benchmarks. -->
+    <ProjectReference Include="..\Lumoin.Veridical.Tests\Lumoin.Veridical.Tests.csproj" />
+  </ItemGroup>
+
+</Project>
