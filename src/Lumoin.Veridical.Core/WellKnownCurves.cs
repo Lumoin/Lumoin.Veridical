@@ -451,7 +451,11 @@ public static class WellKnownCurves
     public static int GetG1CompressedSizeBytes(CurveParameterSet curve) =>
         curve.Code == CurveParameterSet.Bls12Curve381.Code
             ? Bls12Curve381G1CompressedSizeBytes
-            : curve.Code == CurveParameterSet.Bn254.Code ? Bn254G1CompressedSizeBytes : throw new ArgumentException($"No G1 compressed size known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+            : curve.Code == CurveParameterSet.Bn254.Code
+                ? Bn254G1CompressedSizeBytes
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256CompressedSizeBytes
+                    : throw new ArgumentException($"No G1 compressed size known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
 
 
     /// <summary>
@@ -654,6 +658,18 @@ public static class WellKnownCurves
         "40" + new string('0', 126));
 
 
+    //P-256 (secp256r1) G1 distinguished constants in the SEC1 compressed
+    //convention (33 bytes): a 0x02/0x03 prefix carrying the y-parity followed
+    //by the 32-byte big-endian x, or a 0x00 prefix with zero padding for the
+    //point at infinity. The generator's y (SEC 2 v2.0 §2.4.2) is odd, so its
+    //prefix is 0x03; x is the standard P-256 Gx.
+    private static byte[] P256G1GeneratorCompressed { get; } = Convert.FromHexString(
+        "03" + "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
+
+    private static byte[] P256G1IdentityCompressed { get; } = Convert.FromHexString(
+        "00" + new string('0', 64));
+
+
     /// <summary>Returns the canonical compressed encoding of the G1 generator for the specified curve.</summary>
     /// <exception cref="ArgumentException">Thrown when the curve's generator is not wired.</exception>
     public static ReadOnlySpan<byte> GetG1GeneratorCompressed(CurveParameterSet curve) =>
@@ -661,7 +677,9 @@ public static class WellKnownCurves
             ? Bls12Curve381G1GeneratorCompressed
             : curve.Code == CurveParameterSet.Bn254.Code
                 ? Bn254G1GeneratorCompressed
-                : throw new ArgumentException($"No G1 generator wired for {curve}.", nameof(curve));
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256G1GeneratorCompressed
+                    : throw new ArgumentException($"No G1 generator wired for {curve}.", nameof(curve));
 
 
     /// <summary>Returns the canonical compressed encoding of the G1 identity (point at infinity) for the specified curve.</summary>
@@ -671,7 +689,9 @@ public static class WellKnownCurves
             ? Bls12Curve381G1IdentityCompressed
             : curve.Code == CurveParameterSet.Bn254.Code
                 ? Bn254G1IdentityCompressed
-                : throw new ArgumentException($"No G1 identity wired for {curve}.", nameof(curve));
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256G1IdentityCompressed
+                    : throw new ArgumentException($"No G1 identity wired for {curve}.", nameof(curve));
 
 
     /// <summary>Returns the canonical compressed encoding of the G2 generator for the specified curve.</summary>
@@ -713,7 +733,11 @@ public static class WellKnownCurves
     public static int GetBaseFieldSizeBytes(CurveParameterSet curve) =>
         curve.Code == CurveParameterSet.Bls12Curve381.Code
             ? Bls12Curve381BaseFieldSizeBytes
-            : curve.Code == CurveParameterSet.Bn254.Code ? Bn254BaseFieldSizeBytes : throw new ArgumentException($"No base field size known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+            : curve.Code == CurveParameterSet.Bn254.Code
+                ? Bn254BaseFieldSizeBytes
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256BaseFieldSizeBytes
+                    : throw new ArgumentException($"No base field size known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
 
 
     /// <summary>Returns the Fp2 element byte size for the specified curve.</summary>
