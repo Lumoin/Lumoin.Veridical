@@ -29,6 +29,12 @@ internal sealed class MdocCredentialMintTests
     private const int SerializationScratch = 512;
     private const string NonceHex = "1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00";
 
+    //ISO 18013-5 age-attestation element values: a single byte carrying the
+    //boolean, and the birth year as a big-endian 16-bit value (0x07C5 = 1989).
+    private static byte[] AgeOverThresholdAsserted { get; } = [0x01];
+    private static byte[] AgeOverThresholdDenied { get; } = [0x00];
+    private static byte[] BirthYear1989 { get; } = [0x07, 0xC5];
+
 
     [TestMethod]
     public void AMintedCredentialVerifiesUnderTheIssuerKey()
@@ -63,7 +69,7 @@ internal sealed class MdocCredentialMintTests
         {
             Claims =
             [
-                new MdocClaim("age_over_18", new byte[] { 0x00 }),
+                new MdocClaim("age_over_18", AgeOverThresholdDenied),
                 new MdocClaim("birth_year", credential.Claims[1].ElementValue),
             ],
         };
@@ -77,8 +83,8 @@ internal sealed class MdocCredentialMintTests
         DocType: "org.iso.18013.5.1.mDL",
         Claims:
         [
-            new MdocClaim("age_over_18", new byte[] { 0x01 }),
-            new MdocClaim("birth_year", new byte[] { 0x07, 0xC5 }),
+            new MdocClaim("age_over_18", AgeOverThresholdAsserted),
+            new MdocClaim("birth_year", BirthYear1989),
         ]);
 
 
