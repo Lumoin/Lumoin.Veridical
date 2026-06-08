@@ -482,6 +482,19 @@ public static class WellKnownCurves
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// NIST P-256 (secp256r1) group order
+    /// <c>n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551</c>.
+    /// The leading <c>"0"</c> keeps the <c>0xff</c> top byte from parsing as a
+    /// negative two's-complement value. Source: NIST SP 800-186 (2023) Curve
+    /// P-256, value <c>n</c>; SEC 2 v2.0 §2.4.2 secp256r1; FIPS 186-4 Appendix
+    /// D.1.2.3.
+    /// </summary>
+    private static readonly BigInteger P256ScalarFieldOrderValue = BigInteger.Parse(
+        "0ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+        NumberStyles.HexNumber,
+        CultureInfo.InvariantCulture);
+
 
     /// <summary>
     /// Returns the scalar field order (the prime modulus <c>r</c> the witness
@@ -495,7 +508,9 @@ public static class WellKnownCurves
             ? Bls12Curve381ScalarFieldOrderValue
             : curve.Code == CurveParameterSet.Bn254.Code
                 ? Bn254ScalarFieldOrderValue
-                : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256ScalarFieldOrderValue
+                    : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
 
 
     /// <summary>
