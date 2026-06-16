@@ -1,0 +1,51 @@
+Wire-format-conformant Ligero proof BYTE SERIALIZATION ground truth from google/longfellow-zk (C.6).
+
+Produced by serialize_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
+reference implementation in its own build environment via development tooling outside this repository:
+
+  docker run --rm \
+    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
+    -v "<repo>/test/Lumoin.Veridical.Tests/TestMaterial/Longfellow:/anchor" \
+    longfellow-ref bash -c \
+    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/serialize_anchor.cc /src/lib/util/log.cc -lcrypto -o /tmp/a && /tmp/a"
+
+The harness re-runs the same deterministic LigeroProver::commit()+prove() the prove anchor uses (the
+counter RandomEngine, the fixed seed "c4", the fixed witnesses W[i]=of_scalar(i+1) with W[2]=W[0]*W[1],
+nl=nw=8 linear constraints, one quadratic constraint (0,1,2), the 0x10..0x2f theorem statement,
+nw=8 nq=1 rateinv=4 nreq=2), producing a real LigeroProof. It then serializes that proof through the REAL
+reference serializer ZkProof<Field>::write_com_proof (lib/zk/zk_proof.h) — the lowest real serialization
+boundary the reference exposes for the Ligero layer. (ZkProof::write lays down three segments: the
+commitment root via write_com, the GKR/sumcheck transcript via write_sc_proof, and the Ligero proof via
+write_com_proof. The first two are the zk envelope above the Ligero layer; this dump is the third.)
+
+The Ligero byte layout, in order (write_com_proof):
+  1. y_ldt    : block   full-field elements, each 16 little-endian to_bytes_field bytes.
+  2. y_dot    : dblock  full-field elements.
+  3. y_quad_0 : r       full-field elements.
+  4. y_quad_2 : dblock-block full-field elements.
+  5. nonces   : nreq * 32 bytes, one per opened column.
+  6. req      : the nrow*nreq opened-column matrix (row-major), run-length encoded. Runs alternate
+                full-field / subfield, the first run full-field. Each run is a 4-byte little-endian
+                length followed by its elements: full-field runs write 16 bytes per element, subfield
+                runs write kSubFieldBytes per element via to_bytes_subfield (the GF(2^128) basis solve).
+                The run boundary is the change of the in_subfield predicate.
+  7. path     : a 4-byte little-endian digest count, then that many 32-byte Merkle digests.
+
+Fields per prefix (q16 = production GF(2^16), q32 = test-parity GF(2^32)):
+  *_ligero_bytes   : the full write_com_proof output, hex.
+  *_ligero_len     : the byte length of write_com_proof output (q16 856, q32 768 for this tuple).
+  *_ref_roundtrip  : 1 if the reference read_com_proof parses *_ligero_bytes back and re-serializing
+                     reproduces them exactly (the reference's own serializer round-trip).
+  *_reverse_verify : 1 if OUR C# prover's proof bytes (our-ligero-proof-<prefix>.bin, written by the
+                     C# helper test into this folder, read by the harness, wrapped in the reference
+                     envelope prefix, parsed by the reference read()) verify in the REAL
+                     LigeroVerifier::verify — ours accepted by theirs. why=ok confirms the verdict.
+
+q16_ligero_bytes=d364ee8fd332ef13291b6577c763997f28fb7ca810ece58a2d7cd2e589789c0bbce1e67780a71a193653647fdee4e30c5773a0b520b2dc945dd432c7727e024344b45bc606c099a22711b48edfc99fe4505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f29cf396ab950625fde3b817014560bb9bae7a93a1f0caf8e6a0ffb2861e62f14d004e7bc6ac6703c45259528a00f29c20c4302f802a4e245044fe1ab45e4b23917c54d2f5c1f8b34f0e8a511ac35ecf5894060a59c8c2aa074e4876eb8d34d4faaaf670b34fd11e562351babe138a01c7a8c6bc173a01a15926aad381a047b4c72d182375dd938035a704e454feb20d032a335db64046eadb77d27a5d5e8136a1d71b618ad556ce3883d71897e1410bd63d622809c99e4d420c9dd54a931b7508cbfc63b7cadda40ccf2d20335d402ee38393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f5051525354555657d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f706000000562be8841fe69efdad627e9318654fa5661bd8b42fd6aecd9d524ea328557f952f368b20bce15886c6e9a5c5c3b0de3f64a2a05c9fb68714dcfe590bc5c88f968d3e351ab5232597ab40da1aabf781ea8b7e0251607dc8fc28a90e59e6b3ce4e040000004bb53c17bf21a38608000000f62c6f97d7ed135d86a7fe82ee0250597f5fc94027bd1a72d1fe65ca9595467836e5bec282e3e6e194c4fb91db2600a92558292b496082d64d67b88b4b8c14d3aa0a581f018e809ef4640feb360767c30f8442a6c9095f1933ee9e5d87ea25cc35a0532864935386ee8d0e1723b5bd47fe949c48260605df2c005ab9e6dd536d0700000081f69029d21d0d03bebb6dd53faf73684387739fcb9c3415810f467a0ad58d30d478c1684bf49b661bc07e28ac84dc0a1f5f22712edf30616b803913b79ccb051348c40a5c83d6b65853541b4d08da5d973ba23ab39bdead4f7734ae3dd5e2ad5cb7f10df584b071253919e2ea63329b59414160092fef7ec8d07c0f088aa5d16bc0b52c7f5d30567e1f825b40215acac02a253b5079b57be939fc0c7237c4307951b545628c0f04cfd96018e39dc78f6acf370aa7f40a5f440d5b2cfb8869a289fdbbb1505760d2039fdadd9df1446cff26d584c95b16138850bee288d896a7
+q16_ligero_len=856
+q16_ref_roundtrip=1
+q16_reverse_verify=1 q16_reverse_verify_why=ok
+q32_ligero_bytes=51f67dbaa544bbf6b23fb0438bc7e8f457917c10e9183ebc56c6f283ba09655f4353f625179011eddbb54d34cf0ae3feb09367b0314e4379fc55ddc14d1352fb1284f82b0268217d673282b0b09fdf4d505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f32b214569f148511fbe4f7a5524336175ad83ff03ba2323de64251d8435376f9d744c36041e0cdce9f925143252ffbb6b359c68a666cd5f48d29a2c8a7e3e8048a54e90a37325f5fd52c6795d70dfe35c1bc363b1a038827460d06a520994dfe0954d9c9a82bfec640ace638e54e9920d3cc027a6da58298d612fae21452194d852d46c4aea895e617b4094c5913c3b8ab794bd5229e8ecd4d46db4101482ea7e04422661804112013be32d7e324f583fabdc22723a94cc41146713d34ef3a7cf3ce4e8c2d4aec0b052f4daa10b318d0000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1fe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff06000000241a7258181c60f4f1c8cf74ef170f06340a6248080c70e4e1d8df64ff071f16bfda855231e09465825f3c3c0492e4f4bea65c6161b6f02c7e327b3dd0dfe6227ddf20411d2c7ab533ea426af00d46750a6d1d21235c4b12ddc434db00aa387304000000e238ffa60f8e270cf90cc1acdcba190608000000ee5f6458f6cdcaf3b234a4855f98caa02cceef231ec487032958f22a93671454c870f1143cbf61ff89d87f5af2ff08ee8374f48cf99ed7818473f10434faf1e5f45df91648dccb3c924114b1e8678049642f7e9bc8ccd8d52e426bcbf46ed1fd8e42360c55de7eb686c8cb73184aeb5e1e30b181d5ce6d5f3acbb4090443baea040000008fb9ac0ae01b88e4ed35cc2e759c6fc7d7ef816b3225961092e26d4d0fab81bedc22bd5a9f53352a67530a776e3382a6067b6373d561b95a906dda77345eb751d6e6c027b21dcda0e0c43d30c864aa7c99e1170d9658d279b91d60c0455b9878c356f18f8945091416ce98fc269005fa775fe78679f254c579e0ac5fcc35f83c
+q32_ligero_len=768
+q32_ref_roundtrip=1
+q32_reverse_verify=1 q32_reverse_verify_why=ok

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Secdsa</RootNamespace>
+    <Description>Split-ECDSA (SECDSA) over NIST P-256: the signing primitive for an HSM-based EUDI wallet per Verheul's SECDSA construction. A standard ECDSA signature (r, s) under the composite key P*u is produced from a PIN-key P and a hardware key u without ever forming P*u, with the deterministic nonce sourced from RFC 6979 and a pluggable raw-sign seam that keeps the hardware key inside a TPM/HSM. Also includes full-format signatures, a Schnorr/Chaum-Pedersen discrete-log-equality NIZK, and the blind-signing and publicly-verifiable transaction-evidence zero-knowledge proofs. All field/group arithmetic is delegate-injected, so the package carries no concrete backend dependency.</Description>
+    <PackageTags>cryptography secdsa split-ecdsa ecdsa p-256 eudi-wallet zero-knowledge</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lumoin.Veridical.Tests" />
+  </ItemGroup>
+
+</Project>

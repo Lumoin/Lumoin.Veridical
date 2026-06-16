@@ -1,0 +1,260 @@
+Wire-format-conformant FULL ZK PROOF ground truth from google/longfellow-zk (conformance step C.8).
+
+Produced by zk_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
+reference implementation in its own build environment via development tooling outside this repository:
+
+  docker run --rm \
+    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
+    -v "<repo>/tempdocs/longfellow-anchors:/anchor" \
+    longfellow-ref bash -c \
+    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/zk_anchor.cc /src/lib/util/log.cc -lcrypto -o /tmp/a && /tmp/a"
+
+The harness compiles the same small GF2_128<4> circuit C.7 used through the real compiler. The full
+field is 16-byte GF(2^128) (matching the C.2-C.7 Ligero stack); the subfield is GF(2^16). The circuit
+is the field-satisfiable relation w == (x + y) * (x + z) * x (x public, y/z/w private), chosen so
+logc = 0 (no copies) and nl = 3 (a genuine multi-layer walk with per-layer logw of 2, 3, 3). The fixed
+witnesses are x = of_scalar(3), y = of_scalar(5), z = of_scalar(7), w = the field product; W[0] is the
+constant-one wire. The deterministic Fiat-Shamir seed is "zk8" (ASCII), the pad/commitment randomness
+the counter RandomEngine (k-th byte = k & 0xFF), the Ligero rate (rateinv) 4 and nreq 2.
+
+The harness runs the real ZkProver (commit + prove), serializes the whole ZkProof envelope
+(write_com || write_sc_proof || write_com_proof), then runs the reference ZkVerifier::verify over the
+parsed bytes. It dumps:
+
+  - the circuit shape (nv, logv, nc, logc, nl, ninputs, npub_in, subfield_boundary; per-layer
+    nw/logw/nterms; id);
+  - the Quad wiring terms per layer (L<ly>_t<i>_g / _h0 / _h1 / _v): the (g, h0, h1, v) corners
+    Quad::bind_gh_all iterates, in iteration order. v is to_bytes_field; g/h0/h1 are decimal indices;
+  - the input element bytes (input0..input4, to_bytes_field) = the witness column W;
+  - the derived LigeroParam (param_*): nw = (ninputs - npub_in) + pad_size(c), nq = nl, plus the full
+    layout (block_enc, block, dblock, block_ext, r, w, nwrow, nqtriples, nwqrow, nrow); pad_size,
+    n_witness;
+  - the commitment root (com_root) and proved flag;
+  - the full proof bytes (proof_bytes, proof_len) and the segment lengths (seg_com_len, seg_sc_len);
+    com_proof_len = proof_len - seg_com_len - seg_sc_len;
+  - the verifier_constraints output: cn (constraint count), the A sparse term count (vc_a_size /
+    vc_a_terms), the b vector (vc_b<i>), and every A term (vc_a<i>_c, vc_a<i>_w, vc_a<i>_k);
+  - the per-layer alpha/beta and hand challenges (vc_L<ly>_alpha / _beta / _hb0_<r> / _hb1_<r>) and the
+    per-layer bind_quad / eqv / eqq (vc_L<ly>_bindquad / _eqv / _eqq); and
+  - the reference ZkVerifier accept over the parsed full proof (ref_parsed, ref_zk_verify).
+
+The verifier_constraints / bind_quad dumps are computed on a transcript that FIRST absorbs the
+commitment root (LigeroVerifier::receive_commitment) THEN performs the Fiat-Shamir setup, exactly as the
+real ZkVerifier orders recv_commitment before verify. The root absorb is what makes the dumped A/b match
+the verifier's; a transcript without it derives a different (inconsistent) challenge stream.
+
+verifier_constraints (lib/zk/zk_common.h) turns the sumcheck claims into the Ligero linear-constraint
+system A*w = b over the committed witness (the private inputs followed by the proof pad). Per layer it
+builds a symbolic Expression for the running sumcheck claim through ConstraintBuilder.first/next, then
+finalize emits one constraint: the quadratic relation claim = eqq * W[R,C] * W[L,C] rearranged into
+A*w = b form, where eqq = Eq[Q,C] * QUAD[R,L] = eqv * bind_quad. bind_quad (Quad::bind_gh_all) binds
+the layer's Quad at the output point (g0, g1, alpha, beta) and the hand challenges (hb[0], hb[1]); eqv
+(Eq::eval over logc copy variables) is 1 here since logc = 0. The pad layout (PadLayout) places each
+layer's claim/poly pads at consecutive witness indices starting at n_witness (the first pad index pi);
+adjacent layers' claim pads overlap. After the layers, input_constraint adds one more constraint
+binding the witness inputs: <eq0 + alpha.eq1, witness> = (wc[0] + alpha*wc[1]) - public_binding, with
+the public binding folded out using the public inputs.
+
+The composition order the ZK verifier runs (lib/zk/zk_verifier.h):
+  1. ZkCommon::initialize_sumcheck_fiat_shamir (id, public inputs, zero, nterms zero bytes);
+  2. verifier_constraints: replay the sumcheck (begin_circuit Q/G; per layer begin_layer alpha/beta,
+     the round-polynomial/challenge walk, the wc claims) building A/b, ending with input_alpha and the
+     input constraint; returns cn;
+  3. LigeroVerifier::verify with the circuit-derived LigeroParam, hash_of_A = {de,ad,be,ef}, the lqc
+     (the per-layer claim-pad product triples setup_lqc lays out), the A/b system, and b.
+
+The commitment root is absorbed (recv_commitment) BEFORE verify, exactly as the Ligero layer's
+receive_commitment does its write_commitment; the sc segment and com_proof segment follow the C.6/C.7
+wire layouts. The lqc quadratic constraints come from setup_lqc: per layer the claim pad triple
+(x = claim_pad(0), y = claim_pad(1), z = claim_pad(2)) at consecutive pad indices, asserting the
+product dWC[0]*dWC[1] = dWC[0]*dWC[1] over the committed pad.
+
+The ZK PROVER side (our engine emitting this wire) and the mdoc envelope are above this segment and out
+of scope for C.8.
+
+nv=1 logv=0 nc=1 logc=0 nl=3 ninputs=5 npub_in=2 subfield_boundary=0
+layer0_nw=4 layer0_logw=2 layer0_nterms=2
+layer1_nw=5 layer1_logw=3 layer1_nterms=4
+layer2_nw=5 layer2_logw=3 layer2_nterms=7
+id=30ea65d3e0c3fb365de8b26e4b21f460629d786042f151ee2e5815fb3bd3b19e
+L0_t0_g=0 L0_t0_h0=0 L0_t0_h1=2
+L0_t0_v=01000000000000000000000000000000
+L0_t1_g=0 L0_t1_h0=1 L0_t1_h1=3
+L0_t1_v=01000000000000000000000000000000
+L1_t0_g=0 L1_t0_h0=0 L1_t0_h1=0
+L1_t0_v=01000000000000000000000000000000
+L1_t1_g=1 L1_t1_h0=0 L1_t1_h1=1
+L1_t1_v=01000000000000000000000000000000
+L1_t2_g=3 L1_t2_h0=2 L1_t2_h1=3
+L1_t2_v=01000000000000000000000000000000
+L1_t3_g=2 L1_t3_h0=0 L1_t3_h1=4
+L1_t3_v=01000000000000000000000000000000
+L2_t0_g=0 L2_t0_h0=0 L2_t0_h1=0
+L2_t0_v=01000000000000000000000000000000
+L2_t1_g=1 L2_t1_h0=0 L2_t1_h1=1
+L2_t1_v=01000000000000000000000000000000
+L2_t2_g=2 L2_t2_h0=0 L2_t2_h1=1
+L2_t2_v=01000000000000000000000000000000
+L2_t3_g=3 L2_t3_h0=0 L2_t3_h1=1
+L2_t3_v=01000000000000000000000000000000
+L2_t4_g=2 L2_t4_h0=0 L2_t4_h1=2
+L2_t4_v=01000000000000000000000000000000
+L2_t5_g=3 L2_t5_h0=0 L2_t5_h1=3
+L2_t5_v=01000000000000000000000000000000
+L2_t6_g=4 L2_t6_h0=0 L2_t6_h1=4
+L2_t6_v=01000000000000000000000000000000
+input0=01000000000000000000000000000000
+input1=4dda4fb6011e87f1b8d401758771595c
+input2=a96e176efb10e3a6e0caf2ea5896b98b
+input3=e5b458d8fa0e6457581ef39fdfe7e0d7
+input4=7316609b31a622c8b1fadfb72e478ae2
+param_nw=44 param_nq=3 param_rateinv=4 param_nreq=2 param_block_enc=32 param_block=5 param_dblock=9 param_block_ext=23 param_r=2 param_w=3 param_nwrow=15 param_nqtriples=1 param_nwqrow=18 param_nrow=21
+pad_size=41 n_witness=3
+com_root=2c4e260895d661e0647d18521f184065ada2cc020849b204741fd2f57fe85497
+proved=1
+proof_bytes=2c4e260895d661e0647d18521f184065ada2cc020849b204741fd2f57fe85497f0054483299c1205a608c43ab01319ebbaee17166fb1fec4f2c477f9d92f81d870a9d9f55b462f8258d77879ae06a466eb3e27116b6db070a17421a37defe519eab1a0c87dd6ca9f1e9135d28c20285d606162636465666768696a6b6c6d6e6fddd8118530f8b99dff75acc86afba229ba6a967c17ccb0650d5f2f5473ffd213ee99d24eab1013cbc3dd902de3e4e25cb52fce6b7b813d804e8ab2922f251b05941afb15f9b151bd9e93cc6b23741f69333e2f063dd684d27ddb3bcca429100ccc3341fc67d21da6b6b65037f8ad85df1ef711cdd41c35cdd9c4d2174403ad8f01454383ff5dabce83ab6d1f4073b72d935b62d3820a4cca641215f150a98a7d8a9e0c656deda890732be503a3d62baf0233c8a8f51dbb900ce855bc4947ac5a8bb828cb7049f6fd35aa8b66aa9f9a13a96a0a4ba476df09579c3da83b3766847997dbffced7b08e3ed5839987ae1b6c8aef312d4de17fbb25c53f8872dd90e4464ab9940f576779e7f6e78240ba3b8b5c9bc73523a567ad50c17248165c1d0b928064d0fe670bfe858a47f84f4e434947094edae3e295dbb0ee0e7e34da4ed1abbf8a353d3ae1a0717b3b9bae974473f0253f960dd299912ecffcc9d0fbb7bc37c4a0e564e777850988b7ec934b16b56a889ec7d74f49635e4556b3dbc1e214afba8c240f4f6043cc6fed3890b553f579a2a583bd91328accb779d8afd6a2eebec2fda50cb7090cfb2772d882d552bedac04d97360dd1b6c8780a97de4646cc50e5dfdca6856cadf32ff3d242c06d1c95139709bb97094c8e95f269335d87e362b4a7445bcf62969a8919c6f98274e0c5a7623b9186f0c2fc1cfe0f5934df084579f30a2bcd97d327b1f2def0f9debc0f3ce6f0a9636b696e898cefee3308a2257b65672caeaa442c86a1e154d3fd217807ba6e374381b94d3fe6819c2af834c36006944c8c2a8027061e162a9fa0ebb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfb8dc6846d07fe8d2ab4cff5a8131ffd29aaeb83426310f0cc4afe48034be1011ce7c5192e88417ce919165f260f2b50d005ab43d24c358173fcd1f80a70a312a9a8f52cb2b9e250539f4f3debc9f1b9cb3c8431ccf65d0100daf26713324c1707fe1271752c387e0c006f44b1baa4bafc13099d01a261de0b88035c88ab4aab7086d182aa550335298f5ddfa761ea11ea019b880712a962da703418daa5a929d1607b2839eff93ae5b78b35aee9509727b08e51692f612e3482d62b05b77cfc4c5b4f5cb6b7810690acec6a7a8f6aa3d909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef2a0000000ef02a1ad9bc93c2b9cf9ce04c4b3883ee10cafa395c7322592f7c00acabd8639a60800c53ee065a05fa6aaec96474fffe03c1246bc6c00087408b6707cc48d5df206289627f4f57499b3088d7f5ef1c4749fe4b4a7927c0292b20914416b6c5b9f70ce0406c9dce5691a95744e683eac0a2af80bfa71b1840b74f6deba8a281f6469cbb0fa7eaeb478dee546d6324885088c1e9473ca901760eb49002da3b135411dbf9cbf16552db0f66f499acb8b1229588754d4d521516b837acb0d1b160ef15992869c084c0135697fc14d23c70c2338382ccc24844585a8e68c971d1a91832345956fe2e560c84799e724f9a384bbb75c085e00a7f8b31da056eedbb7ed101653270d3530b9420c02ea69caa0e3a8942aafd2abc058ecfe31e74e6382ccc7f9afc7c0ac9968029059fed02194697ddd3da5fb4325506924d5319dcfd4ec7a0ee928d37ebd50c861bebcfd6226031a43d9e8b0b5c1241b1ca33662bab31d4395806f038fdd033cc9931a7d38b136f7bf1c03366e6f35597311db3ed8ffb3751e6e5811c70537ae7901dc0430816a8757b922991477b2b3f2ef8457e77f4e4caed4698fda6839ff9898836060756644a6dc6187d26031f790908b68687d607040689274cc057dd6483ed44a390d78a82bc8322eeac7336c83ad939a0ddae6a81a586a2503146a24682b20318ff21b7cd91d2e955a94f355eb09ab85f249279f14e89cc5f0755c45ac424cd13bcbc7f9fb37b2464e41f55793e40020a038755996379eea59b0e5c2da088bb40240443dd6f1859a8fd885342ecd0c3aa74fa4c383fe81587284f79c8a975cb76c35601a9f42b4169f2e868b266ebababeb38f3c02661e24cd92cd8c5c196be3ec73e9885ee7e604e649c54580f00a7ceb6d143e7dbe7dbfc4bfa0a6920d92ee4f556af1df66cab4a40162ddaa2084fef1703050000009c6c3fadffa423cc929ef0f54f9fec0dfd1281e9c10a7afc2b99f2e91ee36b5aa5226a2bb22124f8ff4a36dc29b3405fe92af792b8a8b01e794f41c5b4a4896acec8fc7c60f29fa46cb4500a2cadc761b5df92dfded382043d5e6404f98baceaa6823574f546191342b69c1af3c7018cf11ff69d3c997fef3a4e9f0ae608f6b5defb8727a11b2be77f80d7a4b4c37c4d6829c7f1104980c2f79041dd29a91ec4
+proof_len=1864
+seg_com_len=32 seg_sc_len=608
+vc_cn=4 vc_a_size=52 vc_b_size=4
+vc_b0=654fff4ab1058a60a4cf29315719f1e2
+vc_b1=0e2c22941d4091e366dc3dab7c12e430
+vc_b2=0a34a58fe975a2f8c3efa565cf102672
+vc_b3=3e3e580b08008e9cf051355346ceed53
+vc_a_terms=52
+vc_a0_c=0 vc_a0_w=3
+vc_a0_k=c981389455237076fec36809b48498ea
+vc_a1_c=0 vc_a1_w=4
+vc_a1_k=07391afb8fc7a8684f3c73db57d89bf9
+vc_a2_c=0 vc_a2_w=5
+vc_a2_k=24ee91c4ac3260ebeb636a92e52bd272
+vc_a3_c=0 vc_a3_w=6
+vc_a3_k=70bdbce6cb60be7a4f1d41d3e645f2a3
+vc_a4_c=0 vc_a4_w=7
+vc_a4_k=a63bc83f8505a14228a199aacc2ad623
+vc_a5_c=0 vc_a5_w=8
+vc_a5_k=463f66bcbfcdee3747310da680933411
+vc_a6_c=0 vc_a6_w=9
+vc_a6_k=bf1584e01478d842071056d8ba255b31
+vc_a7_c=0 vc_a7_w=10
+vc_a7_k=be1584e01478d842071056d8ba255b31
+vc_a8_c=0 vc_a8_w=11
+vc_a8_k=dcb1fdfc83deda1de9b6d46e78dda86b
+vc_a9_c=0 vc_a9_w=12
+vc_a9_k=0dc3989a141c4cd68d56511121ec6474
+vc_a10_c=0 vc_a10_w=13
+vc_a10_k=f1c4919171ecb74ac41abc43dce3c32b
+vc_a11_c=1 vc_a11_w=11
+vc_a11_k=8020b493647c54cea25a94bc45cefb73
+vc_a12_c=1 vc_a12_w=12
+vc_a12_k=39830ca12f940195e0e5d112874f8903
+vc_a13_c=1 vc_a13_w=13
+vc_a13_k=00000000000000000000000000000000
+vc_a14_c=1 vc_a14_w=14
+vc_a14_k=200b74f4e9e9a90cde993e43df239746
+vc_a15_c=1 vc_a15_w=15
+vc_a15_k=101edfdc427172420f4e7df14632e876
+vc_a16_c=1 vc_a16_w=16
+vc_a16_k=d6cdb8e70531021673a74a2258d460f4
+vc_a17_c=1 vc_a17_w=17
+vc_a17_k=1a4bd3a95403c48d5025f826bed3cc02
+vc_a18_c=1 vc_a18_w=18
+vc_a18_k=4b978856b80fae8a97b2ad431bac4d05
+vc_a19_c=1 vc_a19_w=19
+vc_a19_k=dc1163ee98bebf470230725013bf81a2
+vc_a20_c=1 vc_a20_w=20
+vc_a20_k=1d413249a46b55d3e73095b1f2a6434c
+vc_a21_c=1 vc_a21_w=21
+vc_a21_k=4d281985a5ad3cf5c0abf1ab79133949
+vc_a22_c=1 vc_a22_w=22
+vc_a22_k=0be2ea9fe781f0f8d20d713313116442
+vc_a23_c=1 vc_a23_w=23
+vc_a23_k=f57a37685e0302f621897684689d4c8a
+vc_a24_c=1 vc_a24_w=24
+vc_a24_k=7854959efb783dcba3789a663257d8bf
+vc_a25_c=1 vc_a25_w=25
+vc_a25_k=7954959efb783dcba3789a663257d8bf
+vc_a26_c=1 vc_a26_w=26
+vc_a26_k=dedb10e9f362fc6a37b566728fe33102
+vc_a27_c=1 vc_a27_w=27
+vc_a27_k=33107a298261704e4841ca63946b835d
+vc_a28_c=1 vc_a28_w=28
+vc_a28_k=ae2547ea898713fccfce1df006e88591
+vc_a29_c=2 vc_a29_w=26
+vc_a29_k=9355da25fb3e7d8fda151370d985245a
+vc_a30_c=2 vc_a30_w=27
+vc_a30_k=c53a97384f8130496b558dca455603ea
+vc_a31_c=2 vc_a31_w=28
+vc_a31_k=00000000000000000000000000000000
+vc_a32_c=2 vc_a32_w=29
+vc_a32_k=b6d28a0260337975792fc447c1e0f0d5
+vc_a33_c=2 vc_a33_w=30
+vc_a33_k=3e5366b616b79088db92baa448bd959b
+vc_a34_c=2 vc_a34_w=31
+vc_a34_k=cc3071a4e98c5df179f106a6cf1656a1
+vc_a35_c=2 vc_a35_w=32
+vc_a35_k=72d3bb5129b6bb33f1c298868ea38000
+vc_a36_c=2 vc_a36_w=33
+vc_a36_k=040d94e92f1c1e39c8dd654645fb0a5a
+vc_a37_c=2 vc_a37_w=34
+vc_a37_k=279b0c2c5d4adf617a04241d309db781
+vc_a38_c=2 vc_a38_w=35
+vc_a38_k=6bc1a11a6f43d96a27fc91ddf0c3876c
+vc_a39_c=2 vc_a39_w=36
+vc_a39_k=23272fbe4b47c7eb373ab8f5497e9484
+vc_a40_c=2 vc_a40_w=37
+vc_a40_k=69afeb8d9f507722fdfe170d2ae40191
+vc_a41_c=2 vc_a41_w=38
+vc_a41_k=9fe9e038076bfa65cc85e84af7f091ed
+vc_a42_c=2 vc_a42_w=39
+vc_a42_k=70619ab11cbebe52b0dd8a01914f0104
+vc_a43_c=2 vc_a43_w=40
+vc_a43_k=71619ab11cbebe52b0dd8a01914f0104
+vc_a44_c=2 vc_a44_w=41
+vc_a44_k=9fa18a2ce0c79035179ca443329682f4
+vc_a45_c=2 vc_a45_w=42
+vc_a45_k=7071a3e25c2c303e6e7da1881314baa2
+vc_a46_c=2 vc_a46_w=43
+vc_a46_k=3f352cd5078542d527b1122e6dca576a
+vc_a47_c=3 vc_a47_w=0
+vc_a47_k=5949b6abf6eb7fff852dcec3f4d7d51b
+vc_a48_c=3 vc_a48_w=1
+vc_a48_k=fb540604718f2b3fb6080c32ae83bd85
+vc_a49_c=3 vc_a49_w=2
+vc_a49_k=3f32a7929fbe929ee3994f2564cbede0
+vc_a50_c=3 vc_a50_w=41
+vc_a50_k=01000000000000000000000000000000
+vc_a51_c=3 vc_a51_w=42
+vc_a51_k=49569e460d652cf93140328500ea3814
+vc_L0_alpha=c7ec89591e6b1b0eebc21e52e32f59bc
+vc_L0_beta=233a76794a4498a2deb02b16aabc03fc
+vc_L0_hb0_0=aa70e73d2e6da7cc644082c89f31b16c
+vc_L0_hb1_0=0ee3653081c6a0310350e68a9c6539c5
+vc_L0_hb0_1=4a75212c58c96f7c4ec5451e0766a9a4
+vc_L0_hb1_1=f8d22011d16726bcf0c6f8e8af87a507
+vc_L0_bindquad=f1c4919171ecb74ac41abc43dce3c32b
+vc_L0_eqv=01000000000000000000000000000000
+vc_L0_eqq=f1c4919171ecb74ac41abc43dce3c32b
+vc_L1_alpha=fc9dffa17edd28ba497b1f8bd7bff1ae
+vc_L1_beta=cc2b243fe0368d3d23680d081ac811e0
+vc_L1_hb0_0=83531b9abdcfc53a697dda9643d517b8
+vc_L1_hb1_0=a2e45820b58ff2291cad5e77ec02ba1a
+vc_L1_hb0_1=e26ea221ae2666fc1c405ba7c0c2ae41
+vc_L1_hb1_1=1469fdd1321e1c85e97ff78b6bb3b98b
+vc_L1_hb0_2=7a2f013ba8642537cbd776a96b33e8a3
+vc_L1_hb1_2=3c0ea73aafa2c164b1df0b990c02cb47
+vc_L1_bindquad=ae2547ea898713fccfce1df006e88591
+vc_L1_eqv=01000000000000000000000000000000
+vc_L1_eqq=ae2547ea898713fccfce1df006e88591
+vc_L2_alpha=9d5ad86e0af1516d4300d4b702c8a32a
+vc_L2_beta=5649067ecd2adb52f986bb7b6adc9307
+vc_L2_hb0_0=8a5aaec3f05e4c2aae2eae0661dd2441
+vc_L2_hb1_0=7b9b074ac11082c1b046eb8ad104e734
+vc_L2_hb0_1=3012c17bca6d3dac72a4119a88b00ca1
+vc_L2_hb1_1=5878b8eed0b4f401dcfbb763258a544e
+vc_L2_hb0_2=83800195e2da9cfdcff591dbc64e65d5
+vc_L2_hb1_2=145b123f5cdc6237465a8758cffa01ce
+vc_L2_bindquad=3f352cd5078542d527b1122e6dca576a
+vc_L2_eqv=01000000000000000000000000000000
+vc_L2_eqq=3f352cd5078542d527b1122e6dca576a
+ref_parsed=1
+ref_zk_verify=1

@@ -1,0 +1,145 @@
+Wire-format-conformant zk SUMCHECK-SEGMENT ground truth from google/longfellow-zk (conformance step C.7).
+
+Produced by sc_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
+reference implementation in its own build environment via development tooling outside this repository:
+
+  docker run --rm \
+    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
+    -v "<repo>/tempdocs/longfellow-anchors:/anchor" \
+    longfellow-ref bash -c \
+    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/sc_anchor.cc /src/lib/util/log.cc -lcrypto -o /tmp/a && /tmp/a"
+
+The harness compiles a small GF2_128<4> circuit through the real compiler. The full field is 16-byte
+GF(2^128) (matching the existing C.2-C.6 Ligero stack); the subfield is GF(2^16). The circuit is the
+field-satisfiable relation w == (x + y) * (x + z) * x (x public, y/z/w private), chosen so logc = 0 (no
+copies; the reference's write_sc_proof requires logc == 0) and nl = 3 (a genuine multi-layer walk with
+per-layer logw of 2, 3, 3). The fixed witnesses are x = of_scalar(3), y = of_scalar(5), z = of_scalar(7),
+w = the field product; W[0] is the constant-one wire. The deterministic Fiat-Shamir seed is "sc7" (ASCII).
+The harness runs the genuine (non-ZK) sumcheck Prover, then dumps:
+
+  - the circuit shape (nv, logv, nc, logc, nl, ninputs, npub_in, per-layer nw/logw/nterms, id);
+  - the input element bytes the verifier's write_input absorbs (input0..input4, to_bytes_field);
+  - the sc segment bytes through the REAL ZkProof::write_sc_proof (sc_bytes, sc_len);
+  - every Fiat-Shamir challenge the sumcheck verifier replays (Q, G, per-layer alpha/beta, per-round
+    per-hand challenge), with the per-round sum01 = p(0)+p(1) and folded claim, and the per-layer wc
+    claims; plus the input-binding challenge input_alpha squeezed after the last wc (the hand-off point
+    into the Ligero layer);
+  - the reference's full sumcheck Verifier accept (ref_sumcheck_verify).
+
+The sc byte layout, per layer (write_sc_proof, gated on logc == 0):
+  for wi in 0..logw:                  // one binding round per hand variable
+    for k in {0, 2}:                  // the k != 1 optimization: p(1) is implied and not sent
+      write hp[0][wi].t_[k]           // left hand, then
+      write hp[1][wi].t_[k]           // right hand   (k outer, hand inner)
+  write wc[0]                         // the two claims on W[L,C], W[R,C] for the next layer
+  write wc[1]
+Each element is 16 little-endian to_bytes_field bytes. Per-layer byte size = (logw*(3-1)*2 + 2)*16; the
+total here is (2*4+2 + 3*4+2 + 3*4+2)*16 = (10 + 14 + 14)*16 = 608 bytes. read_sc_proof derives the same
+needed-bytes formula (logw*(3-1)*2 + 2)*kBytes per layer and rejects on underflow; the unsent p(1) slots
+read back as F.zero().
+
+The transcript flow the replay reproduces (the plain non-ZK sumcheck Prover/Verifier path):
+  1. initialize_sumcheck_fiat_shamir: write(id, 32) [tag 0], then each of npub_in public inputs as a
+     field element [tag 1], then write(F.zero()) [tag 1], then write0(nterms()) [tag 0, nterms zero
+     bytes]. nterms() = sum of per-layer nterms = 2 + 4 + 7 = 13.
+  2. write_input: the input column as a field-element array of ninputs elements [tag 2, count, elements].
+  3. begin_circuit: squeeze Q (kMaxBindings elts, logc used) then G (logv used).
+  4. per layer: begin_layer squeezes alpha then beta; the claim enters as cl0 + alpha*cl1; for each of
+     logw rounds, for each hand, the round absorbs the round polynomial (p(0), p(2); p(1) omitted) then
+     squeezes the challenge, and the claim folds to eval_lagrange(p, challenge); then wc[0], wc[1] are
+     absorbed [tag 2, count 2] as the next layer's two claims.
+  5. after the last layer: input_alpha = ts.elt(F), the post-wc challenge the ZK verifier uses for the
+     input-binding (the hand-off into the Ligero layer).
+
+The GF(2^128) round-polynomial arithmetic: WPoly is degree-3 (N = 3), evaluated at points {0, 1, g} where
+g is the subfield generator (poly_evaluation_point(0) = 0, point(i) = g^(i-1)); eval_lagrange converts the
+Lagrange values to Newton forward differences (newton_of_lagrange) and evaluates (eval_newton) using the
+field's newton_denominator(k, i) = (X[k] - X[k-i])^(-1).
+
+nl, logc and the per-layer logw drive every size; the ZK PROVER side (our engine emitting this wire) and
+the full ZK verifier composition (ZkCommon::verifier_constraints building the Ligero A/b system, then
+LigeroVerifier) are above this segment and out of scope for C.7's sc-segment gate.
+
+nv=1 logv=0 nc=1 logc=0 nl=3 ninputs=5 npub_in=2
+layer0_nw=4 layer0_logw=2 layer0_nterms=2
+layer1_nw=5 layer1_logw=3 layer1_nterms=4
+layer2_nw=5 layer2_logw=3 layer2_nterms=7
+id=30ea65d3e0c3fb365de8b26e4b21f460629d786042f151ee2e5815fb3bd3b19e
+input0=01000000000000000000000000000000
+input1=4dda4fb6011e87f1b8d401758771595c
+input2=a96e176efb10e3a6e0caf2ea5896b98b
+input3=e5b458d8fa0e6457581ef39fdfe7e0d7
+input4=7316609b31a622c8b1fadfb72e478ae2
+eval_nonnull=1
+outputs_zero=1
+sc_bytes=b460051c10e10f599ba0121885fefeed24de5c237181e9e09339c1836494f6af5f78e55d4c53cea669ec91653dd1ead569d95fb676669b6516bdfb047c426dbfac4d9800c793012fbddbd40dc4f9206a000000000000000000000000000000006240b5c965fdc5b47a1551fd61931f57c845ac71c2a3ddb56fafdb1b2106bb5b066170431aee16549fa7f09547fc9dd3b41b9bf50e91d08d7c368c3f77e752d66b04fb7914cdfa875b4e769dd8eef76b15ef3ad9c251ea159ef5e466935a8e8db81b620dc0b59e754facedef4e9777474d192b157c40e669ab759716279cd8ea121f38467bdad201f991b4c22374c4a7a11da3dbccf6d56ac6e87ba9fc3d0e27ce8ff4eb9192a101278a5c6657cfb8301d843b76dcdc983bc406d84f54a2094515605617089de01f28d4b7df91407858ed523ed4f39c9e0a7192b3fe22f45e4807b84c4908f2826576c4b7347b32441b83de30c15c0dc73d6051d6d08ed209c4373be2e016d847c6b97621444f0acf68f2257cdd3a9c7e358591536c9f20fafaf075d4450bfe7624d3d9c7a455751fa8cd45c0530c5b0572a9c51c3a5f5830b172435be47cac6b902157eede340ed3350866a35904d133943d686c98f8751287ebaaa463747b5f211f983162f310247dbfd0fbc1c89a16ae11ed35dddbb48f49d0f801e983424f6243fdf57a7fb62fe39dc3f17438b2125285c1750a4e8a1e5d46defaa58d31718b83c1a86bdf58c5357523a58829ea56ba63b9d0524713e06d1b566254da93e55e50a34ca085e4b8d24ee822f167f98c909372438368c8bb2661aa74e44ffe798a95bc004f8bf24724efcd5fa382d071574fcce4a2555ef056
+sc_len=608
+q0=baad47bada3a90bf4d6943d238dea3c2
+q1=d89512b8d82940ca5b18cd01f871bf2e
+g0=998e016e148994fb8f05e26ba92f7522
+g1=48db2efd8c670a08dce9c12bfb24a4b3
+L0_alpha=b64f3977be1106c88561eef0795a03e9
+L0_beta=5af24126dd2fd2485a1bdcccf8996383
+L0_claim_in=00000000000000000000000000000000
+L0_r0_h0_sum01=00000000000000000000000000000000
+L0_r0_h0_chal=de396f84b1afe552564c7f2aaae83a33
+L0_r0_h0_claim=7844a70f35e1121043107cbb485b8b14
+L0_r0_h1_sum01=7844a70f35e1121043107cbb485b8b14
+L0_r0_h1_chal=f783526c99da4bc902e46cd9d7c3fff2
+L0_r0_h1_claim=ac4d9800c793012fbddbd40dc4f9206a
+L0_r1_h0_sum01=ac4d9800c793012fbddbd40dc4f9206a
+L0_r1_h0_chal=89317b826bc99b4086409f5608daa195
+L0_r1_h0_claim=389321cea461a249f6cc0fd9bef9cb80
+L0_r1_h1_sum01=389321cea461a249f6cc0fd9bef9cb80
+L0_r1_h1_chal=55c0d2858d244c122e26226f134b0ae3
+L0_r1_h1_claim=a48748f1f97fd1b6f9c809b0faa576b0
+L0_wc0=066170431aee16549fa7f09547fc9dd3
+L0_wc1=b41b9bf50e91d08d7c368c3f77e752d6
+L1_alpha=7e15316e7a228ffac542adb32569abb7
+L1_beta=82a4dd4a37a385c09b331f34c784953a
+L1_claim_in=6b04fb7914cdfa875b4e769dd8eef76b
+L1_r0_h0_sum01=6b04fb7914cdfa875b4e769dd8eef76b
+L1_r0_h0_chal=6d6494fc8c2cd1b97dfe24df5b82f22d
+L1_r0_h0_claim=de6437b280469b9bf336cfb256a1eeef
+L1_r0_h1_sum01=de6437b280469b9bf336cfb256a1eeef
+L1_r0_h1_chal=ab844e1a60267e99e3bf0e5a70df89f9
+L1_r0_h1_claim=e3501c4b663bc37cfa8e72f6c05ad79b
+L1_r1_h0_sum01=e3501c4b663bc37cfa8e72f6c05ad79b
+L1_r1_h0_chal=0259b0b618ba284cee0cbce67b3356be
+L1_r1_h0_claim=441a50dbbce57da784755001f3c438aa
+L1_r1_h1_sum01=441a50dbbce57da784755001f3c438aa
+L1_r1_h1_chal=7fc3afb2ba749e889d09475ca503aa93
+L1_r1_h1_claim=15605617089de01f28d4b7df91407858
+L1_r2_h0_sum01=15605617089de01f28d4b7df91407858
+L1_r2_h0_chal=f99d0872ade0adcc6aa8c731783951e6
+L1_r2_h0_claim=5ff60da5f25d407393a17387c3dffd0f
+L1_r2_h1_sum01=5ff60da5f25d407393a17387c3dffd0f
+L1_r2_h1_chal=22f2f3eb082271e066b8a9c8b3de13cd
+L1_r2_h1_claim=47ed5c159d0a9ce51b39da34f08804a8
+L1_wc0=373be2e016d847c6b97621444f0acf68
+L1_wc1=f2257cdd3a9c7e358591536c9f20fafa
+L2_alpha=5ee2556559fae52eb504e7b9875ff4a0
+L2_beta=1fdc8511ab941eb36fff160e2dd37e48
+L2_claim_in=f075d4450bfe7624d3d9c7a455751fa8
+L2_r0_h0_sum01=f075d4450bfe7624d3d9c7a455751fa8
+L2_r0_h0_chal=9028d66224872ad1d5e0e2ab484a8f61
+L2_r0_h0_claim=91aa44d7220998079f64948841b905c6
+L2_r0_h1_sum01=91aa44d7220998079f64948841b905c6
+L2_r0_h1_chal=817a6e6ff935a42ff582c66841aa49d2
+L2_r0_h1_claim=ebaaa463747b5f211f983162f310247d
+L2_r1_h0_sum01=ebaaa463747b5f211f983162f310247d
+L2_r1_h0_chal=11db36ab5d2646b799c3962836bf17fe
+L2_r1_h0_claim=634395272c798bac28c3d11f8fef418d
+L2_r1_h1_sum01=634395272c798bac28c3d11f8fef418d
+L2_r1_h1_chal=b225706d0f266027d23cd5703752a319
+L2_r1_h1_claim=46defaa58d31718b83c1a86bdf58c535
+L2_r2_h0_sum01=46defaa58d31718b83c1a86bdf58c535
+L2_r2_h0_chal=59b11133af71a8b442e3d754cef22001
+L2_r2_h0_claim=e031baefabb8a429d897b20df11b03bc
+L2_r2_h1_sum01=e031baefabb8a429d897b20df11b03bc
+L2_r2_h1_chal=9a14385f1b227b28ea73f6bd55718439
+L2_r2_h1_claim=7f0f0a297133c63de12390c246ef1f88
+L2_wc0=61aa74e44ffe798a95bc004f8bf24724
+L2_wc1=efcd5fa382d071574fcce4a2555ef056
+input_alpha=2454ea044ee27545320da310d6151436
+ref_sumcheck_verify=1 ref_sumcheck_why=ok

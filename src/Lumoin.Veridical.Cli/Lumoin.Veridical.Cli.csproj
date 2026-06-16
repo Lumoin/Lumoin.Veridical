@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>veridical</ToolCommandName>
+
+    <Title>A command line and MCP tool for Lumoin.Veridical</Title>
+    <Description>A command line and Model Context Protocol (MCP) tool for Lumoin.Veridical: BLAKE3 hashing, platform/backend information, and a self-test that runs known-answer conformance vectors (field arithmetic, the SIMD batch multiply, and hashing). The same operations are exposed as MCP tools.</Description>
+    <PackageTags>zero-knowledge basefold spartan bls12-381 bn254 bbs blake3 simd aot mcp cli</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Tool packages ship no symbol packages: the pointer package carries only the
+         RID map and the native RID packages carry an AOT binary, so their snupkgs
+         would be empty and dotnet pack fails them with NU5017 (the repo-wide
+         IncludeSymbols=true comes from Directory.Build.props and fits libraries). -->
+    <IncludeSymbols>false</IncludeSymbols>
+
+    <!--
+      The tool ships as RID-specific native-AOT packages plus a framework-dependent `any`
+      fallback (the .NET 10 hybrid tool-packaging model, mirroring Lumoin.Veritas):
+      ToolPackageRuntimeIdentifiers names the RID sub-packages the top-level pointer
+      package lists, and the CI legs pack each native package on its matching OS with
+      `dotnet pack -r <rid> -p:PublishAot=true` — including the arm64 legs that validate
+      the NEON paths under native AOT. Platforms not listed (for example osx-x64) resolve
+      to the `any` fallback. PublishAot stays off the project so the ordinary build/test
+      legs do not pull the per-RID ILCompiler into the locked restore.
+    -->
+    <ToolPackageRuntimeIdentifiers>linux-x64;linux-arm64;win-x64;win-arm64;osx-arm64;any</ToolPackageRuntimeIdentifiers>
+  </PropertyGroup>
+
+  <!-- A console tool cannot run on the browser; drop the browser support claim the
+       root Directory.Build.props adds to non-test projects so the platform-compatibility
+       analyzer does not flag Console/file/process APIs. -->
+  <ItemGroup>
+    <SupportedPlatform Remove="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include=".mcp\server.json" Pack="true" PackagePath=".mcp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+    <ProjectReference Include="..\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />
+    <ProjectReference Include="..\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
+  </ItemGroup>
+
+</Project>

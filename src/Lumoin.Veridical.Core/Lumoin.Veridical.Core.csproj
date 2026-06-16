@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Core</RootNamespace>
+    <Description>Core primitives for Lumoin.Veridical: field arithmetic, group operations, polynomial primitives, transcripts, and base proof-system shapes.</Description>
+    <PackageTags>cryptography zero-knowledge zk spartan ligero basefold hyrax bls12-381 bn254 p-256</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The shared Lumoin bedrock: Tag and the secure byte memory pool. Core is the single definition site
+         for the tagged, pooled leaf types, so referencing it here aligns every downstream package. -->
+    <PackageReference Include="Lumoin.Base" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The test project needs to reach the internal constructor of broad
+         leaf types like MultilinearExtension to exercise cross-curve
+         rejection paths whose inputs the public factories deliberately
+         refuse to construct. -->
+    <InternalsVisibleTo Include="Lumoin.Veridical.Tests" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Analysis" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Bbs" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Bbs.Tests" />
+  </ItemGroup>
+
+</Project>

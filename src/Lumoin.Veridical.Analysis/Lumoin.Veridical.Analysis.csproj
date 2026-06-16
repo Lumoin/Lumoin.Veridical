@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Analysis</RootNamespace>
+    <Description>Statistical-investigation tooling for Lumoin.Veridical: distribution tests (Kolmogorov-Smirnov, chi-squared) as reusable functions, and concrete investigations such as the BaseFold-masked zero-knowledge leakage demonstration.</Description>
+    <PackageTags>cryptography statistics leakage-analysis kolmogorov-smirnov chi-squared</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+  </ItemGroup>
+
+</Project>
