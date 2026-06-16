@@ -1,0 +1,30 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="BannedSymbols.Serialization.txt" />
+    <File Path="BannedSymbols.txt" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="NuGet.config" />
+    <File Path="README.md" />
+    <File Path="spellcheckerexclusion.dic" />
+    <File Path="verify-packages.sh" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Lumoin.Veridical.Core/Lumoin.Veridical.Core.csproj" />
+    <Project Path="src/Lumoin.Veridical.Bbs/Lumoin.Veridical.Bbs.csproj" />
+    <Project Path="src/Lumoin.Veridical.Hashing/Lumoin.Veridical.Hashing.csproj" />
+    <Project Path="src/Lumoin.Veridical.Analysis/Lumoin.Veridical.Analysis.csproj" />
+    <Project Path="src/Lumoin.Veridical.Backends.Managed/Lumoin.Veridical.Backends.Managed.csproj" />
+    <Project Path="src/Lumoin.Veridical.Secdsa/Lumoin.Veridical.Secdsa.csproj" />
+    <Project Path="src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Lumoin.Veridical.Benchmarks/Lumoin.Veridical.Benchmarks.csproj" />
+    <Project Path="test/Lumoin.Veridical.Tests/Lumoin.Veridical.Tests.csproj" />
+  </Folder>
+</Solution>

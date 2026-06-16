@@ -1,0 +1,548 @@
+name: Lumoin.Veridical .NET build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    paths-ignore:
+      - "**.md"
+  release:
+    types:
+      - published
+
+  schedule:
+    # A daily build to check all is still functioning.
+    - cron: "0 0 * * *"
+
+env:
+  DOTNET_ENVIRONMENT: CI
+  BUILD_CONFIGURATION: Release
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+  NUGET_XMLDOC_MODE: skip
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  NUGET_FEED: https://api.nuget.org/v3/index.json
+  GITHUB_USER: ${{ github.repository_owner }}
+  GITHUB_FEED: https://nuget.pkg.github.com/lumoin/
+
+  # Library NuGet packages that will be packed and uploaded. Each is a
+  # shippable library (carries a NuGet <Description> and packs by default),
+  # and each gets a `dotnet pack` in the canonical pack step below. The
+  # downstream libraries reference only Core, so their packed packages
+  # depend on the Lumoin.Veridical.Core package published in the same run.
+  # As the project grows this list grows alongside (future hash, backend,
+  # or protocol packages); add the project name here.
+  LIBRARY_PROJECTS: >
+    Lumoin.Veridical.Analysis
+    Lumoin.Veridical.Backends.Managed
+    Lumoin.Veridical.Bbs
+    Lumoin.Veridical.Core
+    Lumoin.Veridical.Hashing
+    Lumoin.Veridical.Secdsa
+
+  # Single test project — its compiled executable is the input to
+  # dotnet-coverage. Adding a second test project later means adding
+  # another collect step rather than reusing this variable.
+  VERIDICAL_TESTS: Lumoin.Veridical.Tests
+
+  # Endpoints harden-runner is permitted to reach. The set covers
+  # NuGet feed access, dotnet tool downloads, .NET SDK installation,
+  # Sigstore attestation, certificate revocation, and the standard
+  # api.github.com call surface. Add to this list when adding new
+  # actions or external dependencies.
+  COMMON_ALLOWED_ENDPOINTS: >
+    aka.ms:443
+    api.github.com:443
+    *.actions.githubusercontent.com:443
+    api.nuget.org:443
+    www.nuget.org:443
+    builds.dotnet.microsoft.com:443
+    ci.dot.net:443
+    pkgs.dev.azure.com:443
+    github.com:443
+    nuget.pkg.github.com:443
+    fulcio.sigstore.dev:443
+    rekor.sigstore.dev:443
+    cacerts.digicert.com:80
+    ts-crl.ws.symantec.com:80
+    crl3.digicert.com:80
+    crl4.digicert.com:80
+    s.symcb.com:80
+    ocsp.digicert.com:80
+    www.microsoft.com:80
+    azure.archive.ubuntu.com:80
+    azure.ports.ubuntu.com:80
+    archive.ubuntu.com:80
+    ports.ubuntu.com:80
+    security.ubuntu.com:80
+    security.ubuntu.com:443
+
+jobs:
+  build:
+    name: Build Lumoin.Veridical packages
+    permissions:
+      # Most legs need only contents:read. The ubuntu-latest leg
+      # additionally writes checks/pull-request comments (test summary,
+      # coverage) and produces signed artifact attestations via
+      # Sigstore (id-token, attestations). GitHub does not support
+      # per-matrix-leg permissions, so all legs carry the elevated set
+      # — the step `if: matrix.os == 'ubuntu-latest'` guards keep the
+      # elevated capabilities from being exercised on the other runners.
+      checks: write
+      pull-requests: write
+      id-token: write
+      attestations: write
+      contents: read
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # x64: ubuntu-latest, windows-latest exercise the AVX2 scalar
+        # backend via the SIMD dispatch facade.
+        # ARM64: ubuntu-24.04-arm and macos-latest (Apple Silicon)
+        # exercise the AArch64 NEON scalar backend through the same
+        # dispatch facade. Adding new ARM coverage means appending to
+        # this list; the existing agreement tests automatically
+        # exercise whichever SIMD path the host CPU supports.
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+          - ubuntu-24.04-arm
+
+    steps:
+    - name: Harden Runner
+      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm' }}
+      uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176
+      with:
+        disable-sudo: true
+        egress-policy: block
+        allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
+
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Set up .NET SDK
+      uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7
+      with:
+        cache: true
+        cache-dependency-path: '**/packages.lock.json'
+        global-json-file: global.json
+
+    - name: Install dependencies
+      run: dotnet restore --locked-mode
+
+    # Local tools (the .config/dotnet-tools.json manifest) restore into the global NuGet
+    # package cache, which setup-dotnet already caches via packages.lock.json — there is
+    # no ~/.dotnet/tools directory to cache separately (that location is for `-g` tools,
+    # and caching its non-existent path fails the post-job tar on Windows).
+    - name: Restore local .NET tools
+      run: dotnet tool restore
+
+    - name: Add Problem Matcher for dotnet-format
+      uses: xt0rted/dotnet-format-problem-matcher@b90c4f18e3daa4f8fd266e41eba4f351b2e00b75
+
+    # Compute the package version once per leg. The rules mirror the
+    # Verifiable convention so consumers comparing the two see one
+    # version-numbering style:
+    #   release         -> "<tag>+<sha7>"        (e.g. 1.2.0+ab12cd3)
+    #   develop branch  -> "<tag>-develop.<run>+<sha7>"
+    #   anything else   -> "<tag>-build.<run>+<sha7>"
+    - name: Set NuGet package and suffix version
+      run: |
+        latestTag=$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.1)
+        if [[ $GITHUB_EVENT_NAME == 'release' ]]; then
+          arrTag=(${GITHUB_REF//\// })
+          VERSION="${arrTag[2]}"
+          VERSION="${VERSION//v}"
+          echo "PACKAGE_VERSION=${VERSION}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=${VERSION}" >> "$GITHUB_ENV"
+        elif [[ $GITHUB_REF == 'refs/heads/develop' ]]; then
+          echo "PACKAGE_VERSION=${latestTag//v}-develop.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "VERSION=${latestTag//v}-develop.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=${latestTag//v}" >> "$GITHUB_ENV"
+        else
+          echo "PACKAGE_VERSION=${latestTag//v}-build.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "VERSION=${latestTag//v}-build.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=${latestTag//v}" >> "$GITHUB_ENV"
+        fi
+      shell: bash
+
+    # graphBuild + MessageUponIsolationViolation are required for the
+    # downstream coverage collector to see assembly boundaries
+    # correctly. ContinuousIntegrationBuild flips SourceLink and
+    # deterministic-build behaviour on.
+    - name: Build
+      run: dotnet build --binaryLogger --tl --graphBuild -isolate:MessageUponIsolationViolation --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore --property:ContinuousIntegrationBuild=true --property:Version=${{ env.VERSION }} --property:InformationalVersion=${{ env.PACKAGE_VERSION }} --property:AssemblyVersion=${{ env.TAG_VERSION }} --property:FileVersion=${{ env.TAG_VERSION }}
+      timeout-minutes: 5
+
+    # dotnet-coverage runs the test binary as a child process and
+    # records cobertura coverage + a TRX report. The test executable
+    # has no extension on Linux/macOS, so the same command works
+    # everywhere — the host shell finds the right binary by name.
+    # The multi-minute proof gates carry [TestCategory("Slow")] and are
+    # excluded here — they run on demand via the slow-tests workflow.
+    - name: Test
+      run: dotnet tool run dotnet-coverage collect --output '${{ github.workspace }}/reports/coverage.cobertura.xml' --output-format cobertura '${{ github.workspace }}/test/${{ env.VERIDICAL_TESTS }}/bin/${{ env.BUILD_CONFIGURATION }}/net10.0/${{ env.VERIDICAL_TESTS }}' --filter "TestCategory!=Slow" --report-trx --report-trx-filename testresults.trx --results-directory '${{ github.workspace }}/reports'
+      timeout-minutes: 20
+
+    # ReportGenerator and the coverage PR comment depend on the
+    # `dotnet-reportgenerator-globaltool` tool, which is signed by
+    # Palmmedia rather than one of the owners NuGet.config currently
+    # trusts (signatureValidationMode=require). Enabling this step
+    # means either adding Palmmedia to the trustedSigners list in
+    # NuGet.config or relaxing signatureValidationMode for tool
+    # restoration. Both are deliberate decisions; leaving the step
+    # commented until then.
+    #
+    # - name: ReportGenerator
+    #   if: ${{ matrix.os == 'ubuntu-latest' }}
+    #   run: dotnet reportgenerator -filefilters:'-**/obj/**;-**/*.g.cs' -assemblyfilters:'+Lumoin.Veridical*' -reports:'${{ github.workspace }}/reports/coverage.cobertura.xml' -targetdir:'${{ github.workspace }}/reports/coverage/' -reporttypes:'HtmlInline;Cobertura;MarkdownSummary'
+    #
+    # - name: Publish coverage summary
+    #   if: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
+    #   uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0
+    #   with:
+    #     header: Report
+    #     path: '${{ github.workspace }}/reports/coverage/Summary.md'
+    #     recreate: true
+
+    - name: Create test summary
+      if: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
+      uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040
+      with:
+        trx_files: '${{ github.workspace }}/reports/**/*.trx'
+
+    # Pack runs on ubuntu-latest only. The other legs are there to
+    # prove the code builds and tests pass on x64 Windows, macOS, and
+    # ARM64 Linux — packing is canonical, one canonical package per
+    # release rather than one per matrix leg.
+    - name: Pack library NuGet packages
+      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' }}
+      run: |
+        for project in $LIBRARY_PROJECTS; do
+          path="src/$project/$project.csproj"
+          echo "Packing $path"
+          dotnet pack --verbosity normal \
+            --configuration "$BUILD_CONFIGURATION" \
+            --no-build \
+            --output nupkgs \
+            --property:PackageVersion="${PACKAGE_VERSION%%+*}" \
+            "$path"
+        done
+
+    # Pack the veridical tool's top-level pointer package and its framework-dependent
+    # `any` fallback, proving the fallback payload in the same step by running the
+    # conformance self-test through it. The native per-RID tool packages are packed and
+    # proven on the matching aot-conformance legs. A platform listed in the pointer
+    # resolves ONLY to its RID package (no fallback), so the deploy jobs push the
+    # pointer last, after every sub-package. The MCP server manifest version is stamped
+    # to the package version. Mirrors the Lumoin.Veritas tool-packaging model.
+    - name: Pack and verify the veridical tool packages (pointer + any)
+      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' }}
+      run: |
+        TOOL_VERSION="${PACKAGE_VERSION%%+*}"
+        sed -i 's/"version": "[^"]*"/"version": "'"$TOOL_VERSION"'"/' src/Lumoin.Veridical.Cli/.mcp/server.json
+        dotnet pack --verbosity normal \
+          --configuration "$BUILD_CONFIGURATION" \
+          --output nupkgs \
+          --property:PackageVersion="$TOOL_VERSION" \
+          --property:ContinuousIntegrationBuild=true --property:Version=$VERSION --property:InformationalVersion=$PACKAGE_VERSION --property:AssemblyVersion=$TAG_VERSION --property:FileVersion=$TAG_VERSION \
+          -p:PublishAot=true \
+          src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
+        dotnet pack --verbosity normal \
+          --configuration "$BUILD_CONFIGURATION" \
+          --output nupkgs \
+          --property:PackageVersion="$TOOL_VERSION" \
+          --property:ContinuousIntegrationBuild=true --property:Version=$VERSION --property:InformationalVersion=$PACKAGE_VERSION --property:AssemblyVersion=$TAG_VERSION --property:FileVersion=$TAG_VERSION \
+          -r any -p:PublishAot=false \
+          src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
+        mkdir anycheck
+        unzip -q "nupkgs/Lumoin.Veridical.Cli.any.$TOOL_VERSION.nupkg" -d anycheck
+        OUT="$(dotnet anycheck/tools/net10.0/any/Lumoin.Veridical.Cli.dll selftest)"
+        echo "$OUT"
+        echo "$OUT" | grep -q 'All conformance vectors passed.'
+        rm -rf anycheck
+
+    # dotnet-validate (PackageValidation) is signed by an owner not
+    # currently in NuGet.config's trustedSigners list, so the tool
+    # restore would fail with NU3034. Add the owner to trustedSigners
+    # to enable this validation step.
+    #
+    # - name: Validate generated NuGet files
+    #   if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' }}
+    #   run: |
+    #     for file in ./nupkgs/*.nupkg; do
+    #       dotnet dotnet-validate package local "$file"
+    #     done
+
+    # Sigstore artifact attestation needs the public-good Fulcio/Rekor
+    # transparency log, which is unavailable while the repository is
+    # private — the step errors with the current plan. Gate it on
+    # repository visibility so it is skipped while private and turns on
+    # automatically once the repository is made public; no edit needed
+    # then. (A null repository.private on some event payloads evaluates
+    # to "not false", so the step stays safely skipped by default.)
+    - name: Generate artifact attestation
+      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' && github.event.repository.private == false }}
+      uses: lumoin/trusted-devsecops/.github/actions/sign-artifact@bd2b7f91e73d758f3126562d6a569fc0f31814ee
+      with:
+        subject-path: './nupkgs/*.nupkg'
+
+    - name: Upload library NuGet packages
+      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: nupkg-libraries
+        path: ./nupkgs/*.*
+
+  # ---------------------------------------------------------------------------
+  # Native AOT conformance
+  #
+  # The veridical CLI is packed as its native-AOT RID-specific tool package on a
+  # matching-OS runner, installed from a throwaway local source, and its
+  # `selftest` is RUN through the installed command — the self-test's exit code
+  # is the conformance gate. This validates that the AOT-compiled, trimmed
+  # SHIPPED ARTIFACT computes correct results (BLAKE3, field arithmetic, and the
+  # lane-interleaved batch multiply) on each platform, including the SIMD/NEON
+  # paths on the arm64 legs — the runtime signal the managed build's
+  # IsAotCompatible analysis cannot give.
+  #
+  # Each runner packs and runs only its NATIVE RID (no cross-arch execution), so
+  # the produced binary actually runs. The managed build/test job already
+  # exercises the suite (including the tool's tests) on every leg; this job adds
+  # the native-AOT runtime check and produces the per-RID tool packages the
+  # deploy jobs ship. Gated to main/develop/release/dispatch/schedule so
+  # pull-request feedback stays fast — native AOT compilation is expensive.
+  # Mirrors the Lumoin.Veritas tool-packaging model.
+  # ---------------------------------------------------------------------------
+  aot-conformance:
+    name: AOT conformance (native selftest, ${{ matrix.rid }})
+    needs: build
+    if: |
+      github.event_name == 'release' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/develop'
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+          - os: macos-latest
+            rid: osx-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+
+    steps:
+    - name: Harden Runner
+      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm' }}
+      # disable-sudo is omitted: the native AOT toolchain prerequisites below need
+      # apt-get + sudo. clang is NOT pre-present on the runner image, so apt fetches it
+      # from the Ubuntu mirrors (azure.archive/ports.ubuntu.com, security.ubuntu.com) —
+      # those are allow-listed in COMMON_ALLOWED_ENDPOINTS so the egress block permits them.
+      uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176
+      with:
+        egress-policy: block
+        allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
+
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Set up .NET SDK
+      uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7
+      with:
+        cache: true
+        cache-dependency-path: '**/packages.lock.json'
+        global-json-file: global.json
+
+    # Native AOT on Linux needs clang and zlib headers. Each runner compiles only
+    # its native RID, so no cross-compilation toolchain is required.
+    - name: Install native AOT prerequisites (Linux)
+      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm' }}
+      run: sudo apt-get install -y clang zlib1g-dev
+
+    # The same version rules as the build job; one run produces one coherent version
+    # across the libraries, the tool pointer, and every RID-specific tool package.
+    - name: Set NuGet package and suffix version
+      run: |
+        latestTag=$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.1)
+        if [[ $GITHUB_EVENT_NAME == 'release' ]]; then
+          arrTag=(${GITHUB_REF//\// })
+          VERSION="${arrTag[2]}"
+          VERSION="${VERSION//v}"
+          echo "PACKAGE_VERSION=${VERSION}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=${VERSION}" >> "$GITHUB_ENV"
+        elif [[ $GITHUB_REF == 'refs/heads/develop' ]]; then
+          echo "PACKAGE_VERSION=${latestTag//v}-develop.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "VERSION=${latestTag//v}-develop.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=${latestTag//v}" >> "$GITHUB_ENV"
+        else
+          echo "PACKAGE_VERSION=${latestTag//v}-build.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "VERSION=${latestTag//v}-build.${GITHUB_RUN_ID}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=${latestTag//v}" >> "$GITHUB_ENV"
+        fi
+      shell: bash
+
+    # Pack the native-AOT RID-specific tool package on its matching OS and prove it in
+    # the same step: a throwaway local pointer package is packed beside it, the tool is
+    # installed from that local source — which resolves to this RID's native package —
+    # and the installed command must pass the conformance self-test. Only the RID
+    # package is uploaded; the canonical pointer ships from the build job. The
+    # RID-specific restore pulls the ILCompiler runtime package, so it is not run in
+    # --locked-mode here.
+    - name: Pack and verify the native tool package (${{ matrix.rid }})
+      shell: bash
+      timeout-minutes: 25
+      run: |
+        TOOL_VERSION="${PACKAGE_VERSION%%+*}"
+        sed -i.bak 's/"version": "[^"]*"/"version": "'"$TOOL_VERSION"'"/' src/Lumoin.Veridical.Cli/.mcp/server.json && rm -f src/Lumoin.Veridical.Cli/.mcp/server.json.bak
+        dotnet pack --verbosity normal \
+          --configuration "$BUILD_CONFIGURATION" \
+          --output nupkgs \
+          --property:PackageVersion="$TOOL_VERSION" \
+          --property:ContinuousIntegrationBuild=true --property:Version=$VERSION --property:InformationalVersion=$PACKAGE_VERSION --property:AssemblyVersion=$TAG_VERSION --property:FileVersion=$TAG_VERSION \
+          -r ${{ matrix.rid }} -p:PublishAot=true \
+          src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
+        dotnet pack --verbosity quiet \
+          --configuration "$BUILD_CONFIGURATION" \
+          --output toolcheck-src \
+          --property:PackageVersion="$TOOL_VERSION" \
+          -p:PublishAot=true \
+          src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
+        cp nupkgs/Lumoin.Veridical.Cli.${{ matrix.rid }}.$TOOL_VERSION.nupkg toolcheck-src/
+        dotnet tool install Lumoin.Veridical.Cli --tool-path toolcheck --add-source toolcheck-src --version "$TOOL_VERSION"
+        TOOLBIN="toolcheck/veridical"
+        if [ -f "$TOOLBIN.cmd" ]; then TOOLBIN="$TOOLBIN.cmd"; fi
+        "$TOOLBIN" info
+        "$TOOLBIN" selftest
+        rm -rf toolcheck toolcheck-src
+
+    - name: Upload native tool package (${{ matrix.rid }})
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: nupkg-tool-${{ matrix.rid }}
+        path: ./nupkgs/*.nupkg
+        retention-days: 14
+
+  # Pre-release goes to GitHub Packages on the develop branch. The
+  # release deploy goes to NuGet.org on tagged GitHub releases via
+  # NuGet trusted publishing (OIDC) — no API key needed beyond a
+  # registered nuget.org profile.
+  prerelease:
+    name: Create and upload Lumoin.Veridical pre-release packages to GitHub
+    permissions:
+      packages: write
+    needs: [ build, aot-conformance ]
+    if: ${{ github.ref == 'refs/heads/develop' && github.repository_owner == 'lumoin' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
+
+      - name: Download NuGet packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: nupkg-*
+          merge-multiple: true
+          path: ./nupkgs
+
+      # The tool pointer package goes last: a platform listed in it resolves only to its
+      # RID-specific package, so every sub-package must be on the feed before the pointer.
+      - name: Push packages to GitHub feed
+        run: |
+          for file in ./nupkgs/*.nupkg; do
+            case "$(basename "$file")" in Lumoin.Veridical.Cli.[0-9]*) continue;; esac
+            dotnet nuget push "$file" --source "$GITHUB_FEED" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+          done
+          for file in ./nupkgs/Lumoin.Veridical.Cli.[0-9]*.nupkg; do
+            [ -f "$file" ] || continue
+            dotnet nuget push "$file" --source "$GITHUB_FEED" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+          done
+
+  deploy:
+    name: Create and upload Lumoin.Veridical release packages to NuGet.org
+    permissions:
+      packages: write
+      # id-token is required for NuGet trusted publishing (OIDC).
+      id-token: write
+    needs: [ build, aot-conformance ]
+    if: ${{ github.event_name == 'release' && github.repository_owner == 'lumoin' }}
+    runs-on: ubuntu-latest
+    # Bind publishing to the "Release" deployment environment so the OIDC token carries the
+    # environment claim and deployments are recorded against it.
+    environment: Release
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
+
+      - name: Download NuGet packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: nupkg-*
+          merge-multiple: true
+          path: ./nupkgs
+
+      # The tool pointer package goes last in every push: a platform listed in it
+      # resolves only to its RID-specific package, so every sub-package must be on the
+      # feed before the pointer.
+      - name: Push packages to GitHub feed
+        run: |
+          for file in ./nupkgs/*.nupkg; do
+            case "$(basename "$file")" in Lumoin.Veridical.Cli.[0-9]*) continue;; esac
+            dotnet nuget push "$file" --source "$GITHUB_FEED" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+          done
+          for file in ./nupkgs/Lumoin.Veridical.Cli.[0-9]*.nupkg; do
+            [ -f "$file" ] || continue
+            dotnet nuget push "$file" --source "$GITHUB_FEED" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+          done
+
+      # NuGet trusted publishing: exchange the GitHub OIDC token for a
+      # short-lived API key. Requires the repository to be registered
+      # as a trusted publisher in the nuget.org profile owner's
+      # account (see secrets.NUGET_USER).
+      - name: NuGet trusted publishing login (OIDC)
+        id: nuget_login
+        uses: NuGet/login@d22cc5f58ff5b88bf9bd452535b4335137e24544
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push packages to NuGet.org
+        run: |
+          for file in ./nupkgs/*.nupkg; do
+            case "$(basename "$file")" in Lumoin.Veridical.Cli.[0-9]*) continue;; esac
+            dotnet nuget push "$file" --source "$NUGET_FEED" --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" --skip-duplicate
+          done
+          for file in ./nupkgs/Lumoin.Veridical.Cli.[0-9]*.nupkg; do
+            [ -f "$file" ] || continue
+            dotnet nuget push "$file" --source "$NUGET_FEED" --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" --skip-duplicate
+          done

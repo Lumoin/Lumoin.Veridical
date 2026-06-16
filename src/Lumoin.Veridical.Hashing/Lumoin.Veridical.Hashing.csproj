@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Hashing</RootNamespace>
+    <Description>Managed hash implementations for Lumoin.Veridical. Currently ships BLAKE3 with per-ISA backends; additional hash functions land here as use cases arise.</Description>
+    <PackageTags>cryptography blake3 hash simd</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lumoin.Veridical.Tests" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Benchmarks" />
+  </ItemGroup>
+
+</Project>

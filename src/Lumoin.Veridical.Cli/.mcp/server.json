@@ -1,0 +1,26 @@
+{
+    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+    "name": "io.github.lumoin/veridical",
+    "description": "Tools for Lumoin.Veridical: BLAKE3 hashing, platform/backend information, and a known-answer self-test.",
+    "version": "1.0.0",
+    "repository": {
+        "url": "https://github.com/lumoin/Veridical",
+        "source": "github"
+    },
+    "packages": [
+        {
+            "registryType": "nuget",
+            "identifier": "Lumoin.Veridical.Cli",
+            "transport": {
+                "type": "stdio"
+            },
+            "packageArguments": [
+                {
+                    "type": "positional",
+                    "value": "-mcp",
+                    "valueHint": "mcp_flag"
+                }
+            ]
+        }
+    ]
+}

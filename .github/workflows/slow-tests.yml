@@ -1,0 +1,74 @@
+name: Lumoin.Veridical slow proof gates
+
+# The multi-minute end-to-end proof gates ([TestCategory("Slow")]: full-width Ligero
+# proves, the GKR SHA-256 preimage capstones, the cross-field MAC pair, the real-mdoc
+# capstones) are excluded from the regular build's test step — the longest runs on
+# the order of an hour or two, hardware-dependent, so the whole category may not fit
+# one hosted job (the 6-hour job ceiling); narrow the filter below if it does not.
+# This workflow runs them on demand only (manual dispatch) to keep CI minutes in
+# check. Dispatch it before a release or after changes to the provers/verifiers.
+
+on:
+  workflow_dispatch:
+
+env:
+  DOTNET_ENVIRONMENT: CI
+  BUILD_CONFIGURATION: Release
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+  NUGET_XMLDOC_MODE: skip
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  VERIDICAL_TESTS: Lumoin.Veridical.Tests
+
+  # The same egress allow-list as the main build: SDK installation, NuGet
+  # restore, and the standard api.github.com surface.
+  COMMON_ALLOWED_ENDPOINTS: >
+    aka.ms:443
+    api.github.com:443
+    *.actions.githubusercontent.com:443
+    api.nuget.org:443
+    www.nuget.org:443
+    builds.dotnet.microsoft.com:443
+    ci.dot.net:443
+    pkgs.dev.azure.com:443
+    github.com:443
+    nuget.pkg.github.com:443
+
+jobs:
+  slow-tests:
+    name: Run the slow proof gates
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+    - name: Harden Runner
+      uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176
+      with:
+        disable-sudo: true
+        egress-policy: block
+        allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
+
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+    - name: Set up .NET SDK
+      uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7
+      with:
+        cache: true
+        cache-dependency-path: '**/packages.lock.json'
+        global-json-file: global.json
+
+    - name: Install dependencies
+      run: dotnet restore --locked-mode
+
+    - name: Build
+      run: dotnet build --tl --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+      timeout-minutes: 15
+
+    # The Slow category only; the regular build already runs everything else on
+    # every push. Hosted runners have fewer cores than the dev machine these
+    # timings come from, hence the generous timeout.
+    - name: Run the slow proof gates
+      run: '${{ github.workspace }}/test/${{ env.VERIDICAL_TESTS }}/bin/${{ env.BUILD_CONFIGURATION }}/net10.0/${{ env.VERIDICAL_TESTS }} --filter "TestCategory=Slow"'
+      timeout-minutes: 350

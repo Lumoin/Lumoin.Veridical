@@ -1,0 +1,114 @@
+Wire-format-conformant Ligero PROVE ground truth from google/longfellow-zk (C.4 oracle).
+
+Produced by prove_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
+reference implementation in its own build environment via development tooling outside this repository:
+
+  docker run --rm \
+    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
+    -v "<repo>/test/Lumoin.Veridical.Tests/TestMaterial/Longfellow:/anchor" \
+    longfellow-ref bash -c \
+    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/prove_anchor.cc -lcrypto -o /tmp/a && /tmp/a"
+
+The harness runs the REAL LigeroProver::commit()+prove() and the REAL LigeroProof, then cross-checks
+with LigeroVerifier::verify(); _verify=1 why=ok confirms the dumped fields are a verifying proof.
+
+Determinism: the harness injects a CounterRandomEngine whose k-th byte ever produced is (k & 0xFF),
+identical to the commit anchor. The transcript is the Fiat-Shamir PRF, seeded with the fixed string
+"c4". The linear constraints are nl = nw constraints, one term each: constraint c selects witness c
+with coefficient of_scalar(c+1), and b[c] = coefficient * W[c] so the system is satisfiable. The
+theorem statement hash_of_llterm is the fixed 32-byte pattern 0x10, 0x11, ..., 0x2f. The witnesses
+are W[i] = of_scalar(i+1) with W[2] = W[0]*W[1] for the one quadratic constraint, nw=8 nq=1
+rateinv=4 nreq=2.
+
+The prove flow, in the order the transcript interleaves absorbs (P->V) and squeezes (V->P):
+  1. commit: absorb the commitment root (write_commitment).
+  2. absorb hash_of_llterm (the theorem statement).
+  3. squeeze u_ldt (nwqrow elts), then the low-degree response y_ldt (block elts).
+  4. squeeze alphal (nl elts), alphaq (3*nq elts), then the dot response y_dot (dblock elts).
+  5. squeeze u_quad (nqtriples elts), then the quadratic response y_quad_0 (r elts) and y_quad_2
+     (dblock-block elts). The middle w elts of y_quad are zero and not transmitted.
+  6. absorb the four response rows (y_ldt, y_dot, y_quad_0, y_quad_2 as field-element arrays).
+  7. squeeze idx (nreq distinct columns in [0, block_ext)), gather the opened columns req[nrow, nreq],
+     open the Merkle proof (one nonce per opened column + the compressed multi-proof path).
+
+Fields per prefix (q16 = production GF(2^16), q32 = test-parity GF(2^32)):
+  *_param      : the derived LigeroParam dimensions.
+  *_hashllterm : the 32-byte theorem statement absorbed before any challenge.
+  *_b          : the linear-constraint targets b[c] = coefficient * W[c], the public inputs the
+                 verifier's dot value-check compares (want_dot = sum_c b[c]*alphal[c]) against the
+                 prover's response (proof_dot = sum_k y_dot[r+k]).
+  *_root       : the commitment Merkle root (identical to the C.2 commit anchor's c16/c32 root).
+  *_uldt/_alphal/_alphaq/_uquad : the challenge arrays exactly as squeezed, comma-separated, each
+                 element 16 little-endian to_bytes_field bytes.
+  *_yldt/_ydot/_yquad0/_yquad2  : the response rows, same element framing.
+  *_idx        : the opened columns (decimal, in [0, block_ext)).
+  *_reqI       : row I's nreq opened elements (the gathered column values at idx).
+  *_nonceI     : the per-leaf nonce of opened column I (32 bytes).
+  *_pathlen    : the number of digests in the compressed Merkle multi-proof.
+  *_pathI      : the I-th multi-proof digest, in generate_compressed_proof selection order
+                 (i = n-1 down to 1: for each tree node, the child NOT on a path to an opened leaf).
+  *_verify     : 1 if LigeroVerifier::verify() accepts the proof.
+
+q16_param nw=8 nq=1 rateinv=4 nreq=2 block_enc=32 block=5 dblock=9 block_ext=23 r=2 w=3 nwrow=3 nqtriples=1 nwqrow=6 nrow=9
+q16_hashllterm=101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f
+q16_b=01000000000000000000000000000000,a86e176efb10e3a6e0caf2ea5896b98b,e4b458d8fa0e6457581ef39fdfe7e0d7,27f8a3872028a39bae83644c632e6ca7,26f8a3872028a39bae83644c632e6ca7,8f96b4e9db38403d4e4996a63bb8d52c,8e96b4e9db38403d4e4996a63bb8d52c,889b3073185f76d0d850a975fdec3954
+q16_root=894ee3d5c0926fc02d935bbf5857d6256407f290a267afc3ec72831992186bf4
+q16_uldt=1bd9099e89172c035233090028849e44,729f6be56ac3686706fb729d166a8980,bdad41f32a15964a7734a4421bb58e7f,6999a94baeb71260bff48cc231a629c1,0a952c040d7577d6cfc6968aa246efd8,9bd2dcedafb366c2536b024d68ba8b1d
+q16_alphal=439152cea913a57578ecedd28b00ae6d,bd59cf81d83f7544f29cec97739bef5c,ec3aa337ca3b95cb90138e878b4064c4,f74f8380b477e43f283ee13167ce77dc,01d8422abb3ce25b2f19d0438c499456,03adebdb06a76f955d2feb76dc697a2f,42bc669216961f67d7b963b7d46e27d9,b9478dfe17fea8ee612c8c3212b77598
+q16_alphaq=519711f76fdb66491ecbe64b1e6b7f26,1ee35adebdc0f0337980bbe3c51fb786,a67bf0772f377dfad6c677bd0717f020
+q16_uquad=1ff96ade64a17a90dc5e0410b412433a
+q16_yldt=d364ee8fd332ef13291b6577c763997f,28fb7ca810ece58a2d7cd2e589789c0b,bce1e67780a71a193653647fdee4e30c,5773a0b520b2dc945dd432c7727e0243,44b45bc606c099a22711b48edfc99fe4
+q16_ydot=505152535455565758595a5b5c5d5e5f,606162636465666768696a6b6c6d6e6f,29cf396ab950625fde3b817014560bb9,bae7a93a1f0caf8e6a0ffb2861e62f14,d004e7bc6ac6703c45259528a00f29c2,0c4302f802a4e245044fe1ab45e4b239,17c54d2f5c1f8b34f0e8a511ac35ecf5,894060a59c8c2aa074e4876eb8d34d4f,aaaf670b34fd11e562351babe138a01c
+q16_yquad0=7a8c6bc173a01a15926aad381a047b4c,72d182375dd938035a704e454feb20d0
+q16_yquad2=32a335db64046eadb77d27a5d5e8136a,1d71b618ad556ce3883d71897e1410bd,63d622809c99e4d420c9dd54a931b750,8cbfc63b7cadda40ccf2d20335d402ee
+q16_idx=18,15
+q16_req0=562be8841fe69efdad627e9318654fa5,661bd8b42fd6aecd9d524ea328557f95
+q16_req1=2f368b20bce15886c6e9a5c5c3b0de3f,64a2a05c9fb68714dcfe590bc5c88f96
+q16_req2=8d3e351ab5232597ab40da1aabf781ea,8b7e0251607dc8fc28a90e59e6b3ce4e
+q16_req3=7892f8616b6989cdb7e7c5fe23adcae3,db88ecc035ca09ba7fead2c18e8d5225
+q16_req4=f36a2a38b317d5b20d220dd24c76bc9a,6d05022a8924d8f5d159df222f862e8b
+q16_req5=f62c6f97d7ed135d86a7fe82ee025059,7f5fc94027bd1a72d1fe65ca95954678
+q16_req6=36e5bec282e3e6e194c4fb91db2600a9,2558292b496082d64d67b88b4b8c14d3
+q16_req7=aa0a581f018e809ef4640feb360767c3,0f8442a6c9095f1933ee9e5d87ea25cc
+q16_req8=35a0532864935386ee8d0e1723b5bd47,fe949c48260605df2c005ab9e6dd536d
+q16_nonce0=38393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f5051525354555657
+q16_nonce1=d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7
+q16_pathlen=7
+q16_path0=81f69029d21d0d03bebb6dd53faf73684387739fcb9c3415810f467a0ad58d30
+q16_path1=d478c1684bf49b661bc07e28ac84dc0a1f5f22712edf30616b803913b79ccb05
+q16_path2=1348c40a5c83d6b65853541b4d08da5d973ba23ab39bdead4f7734ae3dd5e2ad
+q16_path3=5cb7f10df584b071253919e2ea63329b59414160092fef7ec8d07c0f088aa5d1
+q16_path4=6bc0b52c7f5d30567e1f825b40215acac02a253b5079b57be939fc0c7237c430
+q16_path5=7951b545628c0f04cfd96018e39dc78f6acf370aa7f40a5f440d5b2cfb8869a2
+q16_path6=89fdbbb1505760d2039fdadd9df1446cff26d584c95b16138850bee288d896a7
+q16_verify=1 why=ok
+q32_param nw=8 nq=1 rateinv=4 nreq=2 block_enc=32 block=5 dblock=9 block_ext=23 r=2 w=3 nwrow=3 nqtriples=1 nwqrow=6 nrow=9
+q32_hashllterm=101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f
+q32_b=01000000000000000000000000000000,684e21fda21065f0d342bc3493ab2645,369e0ec12ab455f5b85d99996feac5d7,e3256162b97602c69d017afe5e02f52d,e2256162b97602c69d017afe5e02f52d,8b6b409f1b6667364e43c6cacda9d368,8a6b409f1b6667364e43c6cacda9d368,b69325d04b0224adcaec973284252859
+q32_root=d3a94f1ccc73da7c73baf233683c82d4276d35ca7c4c03a8cfc51412dd596bf8
+q32_uldt=0bbfc290cdbd2341482cf31bd0a739b5,e042b9b669d6a5fd05b1dfac8c92f643,981bdffd207ba4803e1ecce16a64c6f0,61137cecea8048e2de3083488733630a,7cb5b52b058efef2b9ed48a656306cb8,c3298e785e9094923b3738269ed64225
+q32_alphal=1600d27d9d9ed6da70c481a17d19a634,110bb315340dd5bfbfb1db612640869e,fcd4f9957caf5a72d99ecdc6e17d82b6,6e9dda46658cc12173b6f7a9ac4117ea,91bd3d8fe20a55f1651dd4fc77b5ef23,3c66c4c2d2f6e5202dfaea4d3f55c6bb,321a9e4bbf26c23f9412c539b5c6f439,164d5651e7a26d51661c469e36f651db
+q32_alphaq=ad020e043b75fda687a859ca431d28c1,80d931cce2cbba700966247cf0db2bb1,fd00bdcb48d7949ca51615c333d6b921
+q32_uquad=879c82013db93f238fab7b90ec03300c
+q32_yldt=51f67dbaa544bbf6b23fb0438bc7e8f4,57917c10e9183ebc56c6f283ba09655f,4353f625179011eddbb54d34cf0ae3fe,b09367b0314e4379fc55ddc14d1352fb,1284f82b0268217d673282b0b09fdf4d
+q32_ydot=505152535455565758595a5b5c5d5e5f,606162636465666768696a6b6c6d6e6f,32b214569f148511fbe4f7a552433617,5ad83ff03ba2323de64251d8435376f9,d744c36041e0cdce9f925143252ffbb6,b359c68a666cd5f48d29a2c8a7e3e804,8a54e90a37325f5fd52c6795d70dfe35,c1bc363b1a038827460d06a520994dfe,0954d9c9a82bfec640ace638e54e9920
+q32_yquad0=d3cc027a6da58298d612fae21452194d,852d46c4aea895e617b4094c5913c3b8
+q32_yquad2=ab794bd5229e8ecd4d46db4101482ea7,e04422661804112013be32d7e324f583,fabdc22723a94cc41146713d34ef3a7c,f3ce4e8c2d4aec0b052f4daa10b318d0
+q32_idx=16,15
+q32_req0=241a7258181c60f4f1c8cf74ef170f06,340a6248080c70e4e1d8df64ff071f16
+q32_req1=bfda855231e09465825f3c3c0492e4f4,bea65c6161b6f02c7e327b3dd0dfe622
+q32_req2=7ddf20411d2c7ab533ea426af00d4675,0a6d1d21235c4b12ddc434db00aa3873
+q32_req3=056b12d0d588bbd7a8983bac7f82c56d,ccad3ac13822edbd9320e52b8ffaddc2
+q32_req4=4e19bcda22f95da7dd6c503e5ffa37ff,09096b2341999d74b56d22847b11087c
+q32_req5=ee5f6458f6cdcaf3b234a4855f98caa0,2cceef231ec487032958f22a93671454
+q32_req6=c870f1143cbf61ff89d87f5af2ff08ee,8374f48cf99ed7818473f10434faf1e5
+q32_req7=f45df91648dccb3c924114b1e8678049,642f7e9bc8ccd8d52e426bcbf46ed1fd
+q32_req8=8e42360c55de7eb686c8cb73184aeb5e,1e30b181d5ce6d5f3acbb4090443baea
+q32_nonce0=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+q32_nonce1=e0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff
+q32_pathlen=4
+q32_path0=8fb9ac0ae01b88e4ed35cc2e759c6fc7d7ef816b3225961092e26d4d0fab81be
+q32_path1=dc22bd5a9f53352a67530a776e3382a6067b6373d561b95a906dda77345eb751
+q32_path2=d6e6c027b21dcda0e0c43d30c864aa7c99e1170d9658d279b91d60c0455b9878
+q32_path3=c356f18f8945091416ce98fc269005fa775fe78679f254c579e0ac5fcc35f83c
+q32_verify=1 why=ok

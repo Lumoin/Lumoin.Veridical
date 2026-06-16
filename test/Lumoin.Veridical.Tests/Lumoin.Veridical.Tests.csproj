@@ -1,0 +1,107 @@
+<Project Sdk="MSTest.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <!--
+      Displays error on console in addition to the log file. Note that this feature comes with a performance impact.
+      For more information, visit https://learn.microsoft.com/dotnet/core/testing/unit-testing-platform-integration-dotnet-test#show-failure-per-test
+      -->
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+    <RunSettingsFilePath>$(MSBuildProjectDirectory)\config.runsettings</RunSettingsFilePath>
+    <TestingExtensionsProfile>AllMicrosoft</TestingExtensionsProfile>
+    <IsTestApplication>true</IsTestApplication>
+    <MSTestAnalysisMode>Recommended</MSTestAnalysisMode>
+    <!--
+      The tests mimic an application consuming real credentials, so they use the real
+      serialization libraries (System.Formats.Cbor to parse mdoc DeviceResponses). The
+      library itself stays serialization-free and is fed parsed bytes/offsets (or a parse
+      delegate) by its caller, so only this test project opts out of the serialization ban.
+      -->
+    <EnableSerializationBan>false</EnableSerializationBan>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsCheck" />
+    <PackageReference Include="System.Formats.Cbor" />
+    <PackageReference Include="LiquidTestReports.Markdown" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Update="Microsoft.Testing.Extensions.CodeCoverage">
+      <VersionOverride>18.7.0</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Bbs\Lumoin.Veridical.Bbs.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Analysis\Lumoin.Veridical.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Secdsa\Lumoin.Veridical.Secdsa.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Cli\Lumoin.Veridical.Cli.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Spartan\Fixtures\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ConstraintSystems\Interop\Circom\Fixtures\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ConstraintSystems\Interop\ZkInterface\Fixtures\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Testing.Extensions.AzureDevOpsReport">
+      <VersionOverride>2.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Testing.Extensions.CrashDump">
+      <VersionOverride>2.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Testing.Extensions.HangDump">
+      <VersionOverride>2.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Testing.Extensions.HotReload">
+      <VersionOverride>2.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Testing.Extensions.Retry">
+      <VersionOverride>2.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Testing.Extensions.TrxReport">
+      <VersionOverride>2.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="MSTest.TestAdapter">
+      <VersionOverride>4.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="MSTest.TestFramework">
+      <VersionOverride>4.2.3</VersionOverride>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

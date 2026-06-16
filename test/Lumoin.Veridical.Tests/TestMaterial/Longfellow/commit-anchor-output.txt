@@ -1,0 +1,44 @@
+Wire-format-conformant Ligero COMMITMENT ground truth from google/longfellow-zk (C.2 oracle).
+
+Produced by commit_anchor.cc in this directory, run inside the longfellow-ref Docker image:
+
+  docker run --rm \
+    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
+    -v "<repo>/test/Lumoin.Veridical.Tests/TestMaterial/Longfellow:/anchor" \
+    longfellow-ref bash -c \
+    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/commit_anchor.cc -lcrypto -o /tmp/a && /tmp/a"
+
+Determinism: the harness injects a CounterRandomEngine whose k-th byte ever produced is (k & 0xFF).
+The reference draws randomness in order: blinding rows (ILDT block, IDOT dblock, IQUAD dblock),
+witness rows (r subfield padding per row, subfield_boundary = nw), quadratic triples (3*r per
+triple), then the Merkle nonces (one 32-byte nonce per leaf). The same stream is replayed in C#.
+
+The "p16 ..." / "p32 ..." lines are LigeroParam derivations (GF(2^16) and GF(2^32) subfields). The
+"c16_*" / "c32_*" lines are a deterministic commit over W[i] = of_scalar(i+1), one quadratic
+constraint W[2] = W[0]*W[1], nw=8 nq=1 rateinv=4 nreq=2. The *_root is the Merkle root; *_leafN are
+SHA256(nonce_N || to_bytes_field of column (dblock+N) over all nrow rows); the 16-byte little-endian
+to_bytes_field framing is the wire format. *_prover_root_matches=1 confirms the self-contained
+harness replica reproduces the real LigeroProver::commit() root.
+
+p16 nw=300000 nq=30000 rateinv=4 nreq=189 block_enc=8192 block=1365 dblock=2729 block_ext=5463 r=189 w=1176 nwrow=256 nqtriples=26 nwqrow=334 nrow=337
+p16 nw=1000 nq=100 rateinv=4 nreq=16 block_enc=256 block=42 dblock=83 block_ext=173 r=16 w=26 nwrow=39 nqtriples=4 nwqrow=51 nrow=54
+p16 nw=64 nq=8 rateinv=4 nreq=4 block_enc=64 block=10 dblock=19 block_ext=45 r=4 w=6 nwrow=11 nqtriples=2 nwqrow=17 nrow=20
+p16 nw=256 nq=32 rateinv=2 nreq=8 block_enc=64 block=16 dblock=31 block_ext=33 r=8 w=8 nwrow=32 nqtriples=4 nwqrow=44 nrow=47
+p16 nw=5000 nq=500 rateinv=8 nreq=32 block_enc=1024 block=102 dblock=203 block_ext=821 r=32 w=70 nwrow=72 nqtriples=8 nwqrow=96 nrow=99
+p32 nw=300000 nq=30000 rateinv=4 nreq=189 block_enc=16384 block=2730 dblock=5459 block_ext=10925 r=189 w=2541 nwrow=119 nqtriples=12 nwqrow=155 nrow=158
+p32 nw=1000 nq=100 rateinv=4 nreq=16 block_enc=256 block=42 dblock=83 block_ext=173 r=16 w=26 nwrow=39 nqtriples=4 nwqrow=51 nrow=54
+p32 nw=64 nq=8 rateinv=4 nreq=4 block_enc=64 block=10 dblock=19 block_ext=45 r=4 w=6 nwrow=11 nqtriples=2 nwqrow=17 nrow=20
+c16_param nw=8 nq=1 rateinv=4 nreq=2 block_enc=32 block=5 dblock=9 block_ext=23 r=2 w=3 nwrow=3 nqtriples=1 nrow=9
+c16_leaf0=566d0ae76af2382daea0c1636526043b5b74175496e1254783b36b28127f8bbe
+c16_leaf1=ea9e1df336ddf113d099d5e3d1d3295d7dd42cccf45cd945cb1475ba66a1ac98
+c16_leaf2=48aab26e9cfea10bf930026e8bf7ae96ac7193e484d9f623865d7fc03d2bb6f4
+c16_leaf22=7e0e2b1be403580c8ad098a1153b6b6097fefccfba8aab7df4cc1e4a83c43af6
+c16_root=894ee3d5c0926fc02d935bbf5857d6256407f290a267afc3ec72831992186bf4
+c16_prover_root_matches=1
+c32_param nw=8 nq=1 rateinv=4 nreq=2 block_enc=32 block=5 dblock=9 block_ext=23 r=2 w=3 nwrow=3 nqtriples=1 nrow=9
+c32_leaf0=9d3f8dd667af4307ec6214db5a255652746be1bb5cb7e6cb373b75c9f6739a2a
+c32_leaf1=cec35b31cd856ddcd44cd85a96be62138c2e3ed8bc020cc81a36c456a8b12632
+c32_leaf2=dca0b6deddfff0f262b2d940780f2f73c75e698129e31a5e14aeb3c9841e99c5
+c32_leaf22=821890834800d9915d1bcbfc76d5c2ebd9d7421503d34de9b269d3eab2d37ce5
+c32_root=d3a94f1ccc73da7c73baf233683c82d4276d35ca7c4c03a8cfc51412dd596bf8
+c32_prover_root_matches=1
