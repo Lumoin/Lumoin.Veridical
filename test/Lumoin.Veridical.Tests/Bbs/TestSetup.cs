@@ -1,3 +1,4 @@
+using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Bbs;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Memory;

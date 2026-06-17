@@ -3,7 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Allocation-free Montgomery arithmetic for the P-256 base field Fp256

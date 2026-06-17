@@ -4,7 +4,7 @@ using Lumoin.Veridical.Core.Telemetry;
 using System;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// The Pippenger (bucket-method) BLS12-381 G1 multi-scalar multiplication —

@@ -230,6 +230,7 @@ internal sealed class BbsIetfTestVectorsTests
                 seed,
                 ciphersuite,
                 randomScalarCount,
+                expandMessage,
                 TestSetup.ScalarReduce);
 
             using BbsProof actualProof = signature.GenerateProof(

@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// A second-implementation reference for BLS12-381 scalar-field

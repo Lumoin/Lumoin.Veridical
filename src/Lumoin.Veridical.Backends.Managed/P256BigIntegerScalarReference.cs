@@ -6,7 +6,7 @@ using System;
 using System.Globalization;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the NIST P-256 (secp256r1) <em>scalar</em>
@@ -71,8 +71,8 @@ internal static class P256BigIntegerScalarReference
 
 
     private static readonly ProviderLibrary ProviderLibraryIdentity = new(
-        Name: "Lumoin.Veridical.Tests",
-        Version: "0.0.0");
+        Name: "Lumoin.Veridical.Backends.Managed",
+        Version: typeof(P256BigIntegerScalarReference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
     private static readonly CryptoLibrary CryptoLibraryIdentity = new(
         Name: "System.Numerics.BigInteger",

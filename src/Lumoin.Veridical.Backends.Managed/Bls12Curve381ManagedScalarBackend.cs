@@ -1,6 +1,5 @@
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
-using Lumoin.Veridical.Tests.Algebraic;
 
 namespace Lumoin.Veridical.Backends.Managed;
 
@@ -88,5 +87,24 @@ public static class Bls12Curve381ManagedScalarBackend
             batchMultiply,
             Bls12Curve381BigIntegerScalarReference.GetHashToScalar(),
             isHardwareAccelerated: simd);
+    }
+
+
+    /// <summary>
+    /// The hash-to-scalar for the BLS12-381-SHA-256 ciphersuite — the variant
+    /// <see cref="Create"/> bakes into the bundle's <see cref="ScalarArithmeticBackend.HashToScalar"/>.
+    /// Exposed explicitly so the ciphersuite-keyed operation is reachable alongside
+    /// the SHAKE-256 variant.
+    /// </summary>
+    public static ScalarHashToScalarDelegate GetHashToScalarSha256()
+    {
+        return Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    }
+
+
+    /// <summary>The hash-to-scalar for the BLS12-381-SHAKE-256 ciphersuite (RFC 9380 XOF-SHAKE-256).</summary>
+    public static ScalarHashToScalarDelegate GetHashToScalarShake256()
+    {
+        return Bls12Curve381BigIntegerScalarReference.GetHashToScalarShake256();
     }
 }

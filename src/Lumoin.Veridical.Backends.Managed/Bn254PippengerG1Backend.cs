@@ -4,7 +4,7 @@ using Lumoin.Veridical.Core.Telemetry;
 using System;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// The Pippenger (bucket-method) BN254 G1 multi-scalar multiplication —
@@ -55,7 +55,7 @@ internal static class Bn254PippengerG1Backend
     /// Returns a Pippenger delegate that caches decoded point sets,
     /// content-addressed by a BLAKE3 digest of the compressed points buffer.
     /// Decoding a compressed G1 point costs one base-field square root
-    /// (a 381-bit modular exponentiation in this substrate); commitment keys
+    /// (a 254-bit modular exponentiation in this substrate); commitment keys
     /// pass the same generator set on every call, so the second and later
     /// MSMs over a set pay one ~microsecond hash instead of <c>n</c> square
     /// roots. A mutated buffer hashes to a different digest, so the cache can

@@ -2,65 +2,72 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Telemetry;
 using System;
-using System.Globalization;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
-/// Reference implementation of the BLS12-381 G2 group delegates using
-/// <see cref="BigInteger"/> arithmetic over the Fp2 quadratic
-/// extension field. Serves as ground truth for cross-implementation
-/// tests.
+/// Reference implementation of the BN254 (alt_bn128) G2 group delegates using
+/// <see cref="BigInteger"/> arithmetic over the Fp2 quadratic extension.
+/// Parallel in shape to <see cref="Bls12Curve381BigIntegerG2Reference"/>;
+/// serves as ground truth for cross-implementation tests.
 /// </summary>
 /// <remarks>
 /// <para>
-/// G2 is the twisted curve <c>y² = x³ + 4·(1 + u)</c> defined over Fp2,
-/// where Fp2 = Fp[u]/(u² + 1). The prime-order subgroup has the same
-/// order <c>r</c> as G1 (the scalar field), but the full curve has a
-/// non-trivial cofactor (~512 bits). Decode + on-curve does not
-/// verify subgroup membership; <see cref="IsInPrimeOrderSubgroup"/>
-/// does so by computing <c>[r]·P</c> and checking for the identity.
+/// <b>Twist convention — BN254 uses a D-twist; BLS12-381 uses an M-twist.</b>
+/// G2 is the twisted curve <c>y² = x³ + b'</c> over Fp2, where the twist
+/// coefficient is <c>b' = b / ξ = 3 / (9 + u)</c> — the base curve's
+/// <c>b = 3</c> <em>divided</em> by the Fp6 non-residue <c>ξ = 9 + u</c>. That
+/// division is what makes it a D-twist; an M-twist (BLS12-381) would
+/// <em>multiply</em> (<c>b · ξ</c>). The two conventions are numerically
+/// different curves and, more importantly, embed into Fp12 differently during
+/// the pairing: a D-twist maps the G2 line through <c>w⁻¹</c>, an M-twist
+/// through <c>w</c>. The G2 group arithmetic here is unaffected by that — it is
+/// ordinary elliptic-curve arithmetic over Fp2 with this curve's <c>b'</c> —
+/// but the line-evaluation step of the pairing (U.6/U.7) reads the twist
+/// convention precisely, so the pairing reference repeats this note.
 /// </para>
 /// <para>
-/// Compressed serialization (96 bytes total) follows the
-/// ZCash / EIP-2537 convention: the imaginary component of x
-/// (<c>x.c1</c>) is serialised first as 48 bytes big-endian, then
-/// the real component (<c>x.c0</c>). Flag bits live in the most-
-/// significant byte (offset 0, the high byte of <c>x.c1</c>): bit 7
-/// = compression flag, bit 6 = infinity flag, bit 5 = y-parity flag
-/// per the Fp2 <c>sgn0</c> rule in RFC 9380 §4.1.
+/// The prime-order subgroup has the same order <c>r</c> as G1, but the full
+/// twist has a non-trivial cofactor, so on-curve membership does not imply
+/// subgroup membership; <see cref="IsInPrimeOrderSubgroup"/> checks
+/// <c>[r]·P = O</c>.
 /// </para>
 /// <para>
-/// Hash-to-curve to G2 is intentionally not implemented in this
-/// reference; it ships in a follow-up sub-batch alongside its own
-/// RFC 9380 §8.8.2 KAT vectors. BBS+ over BLS12-381 only uses G2 via
-/// scalar multiplication of the canonical generator, so the BBS+
-/// path does not require hash-to-G2.
+/// Compressed serialization (64 bytes) uses the gnark big-endian convention
+/// matching the BN254 G1 backend: the imaginary component <c>x.c1</c> is
+/// serialised first (32 bytes big-endian), then the real component <c>x.c0</c>,
+/// and the most-significant two bits of byte 0 tag the point — <c>0b10</c>
+/// (<c>0x80</c>) compressed with the lexicographically smaller <c>y</c>,
+/// <c>0b11</c> (<c>0xC0</c>) the larger, <c>0b01</c> (<c>0x40</c>) the point at
+/// infinity. "Larger" compares Fp2 with <c>c1</c> as the more-significant
+/// component (<c>2·y.c1 &gt; q</c>, falling back to <c>2·y.c0 &gt; q</c> when
+/// <c>y.c1 = 0</c>). Hash-to-G2 is intentionally absent (D3).
 /// </para>
 /// </remarks>
-internal static class Bls12Curve381BigIntegerG2Reference
+internal static class Bn254BigIntegerG2Reference
 {
-    /// <summary>The BLS12-381 base field prime — shared with the G1 reference.</summary>
-    public static BigInteger BaseFieldPrime { get; } = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
+    /// <summary>The BN254 base field prime — shared with the G1 reference.</summary>
+    public static BigInteger BaseFieldPrime { get; } = Bn254BigIntegerG1Reference.BaseFieldPrime;
 
-    /// <summary>The BLS12-381 prime-order subgroup order <c>r</c>.</summary>
-    public static BigInteger ScalarFieldOrder { get; } = Bls12Curve381BigIntegerG1Reference.ScalarFieldOrder;
-
-    /// <summary>The constant term of the G2 curve equation <c>y² = x³ + 4·(1 + u)</c>, expressed as Fp2 element <c>(4, 4)</c>.</summary>
-    public static (BigInteger C0, BigInteger C1) CurveB { get; } = (new(4), new(4));
-
-    /// <summary>The BLS12-381 G2 cofactor <c>h2 = (x⁴ − x² + 1)/3</c> per the standard parameterisation, a ~512-bit integer.</summary>
-    public static BigInteger Cofactor { get; } = BigInteger.Parse(
-        "05d543a95414e7f1091d50792876a202cd91de4547085abaa68a205b2e5a7ddfa628f1cb4d9e82ef21537e293a6691ae1616ec6e786f0c70cf1c38e31c7238e5",
-        NumberStyles.HexNumber,
-        CultureInfo.InvariantCulture);
+    /// <summary>The BN254 prime-order subgroup order <c>r</c>.</summary>
+    public static BigInteger ScalarFieldOrder { get; } = Bn254BigIntegerG1Reference.ScalarFieldOrder;
 
 
+    //Declared before CurveB because CurveB's initializer calls Fp2Invert, which
+    //reads this exponent; static initializers run in textual order.
     private static readonly BigInteger ModInverseExponent = BaseFieldPrime - 2;
 
-    private const int ComponentSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
-    private const int CompressedSize = WellKnownCurves.Bls12Curve381G2CompressedSizeBytes;
+    /// <summary>
+    /// The D-twist coefficient <c>b' = 3 / (9 + u)</c>, computed from the base
+    /// <c>b = 3</c> and the non-residue <c>ξ = 9 + u</c> so the D-twist
+    /// derivation is explicit rather than transcribed.
+    /// </summary>
+    public static Fp2Value CurveB { get; } = Fp2Mul(new Fp2Value(new(3), BigInteger.Zero), Fp2Invert(new Fp2Value(new(9), BigInteger.One)));
+
+
+    private const int ComponentSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
+    private const int CompressedSize = WellKnownCurves.Bn254G2CompressedSizeBytes;
 
 
     /// <summary>Returns the reference G2-add delegate.</summary>
@@ -139,7 +146,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>An Fp2 element represented as a (c0, c1) BigInteger pair.</summary>
-    private readonly record struct Fp2Value(BigInteger C0, BigInteger C1)
+    internal readonly record struct Fp2Value(BigInteger C0, BigInteger C1)
     {
         public static Fp2Value Zero { get; } = new(BigInteger.Zero, BigInteger.Zero);
         public static Fp2Value One { get; } = new(BigInteger.One, BigInteger.Zero);
@@ -176,16 +183,12 @@ internal static class Bls12Curve381BigIntegerG2Reference
             return PointDouble(a);
         }
 
-        //lambda = (b.Y − a.Y) / (b.X − a.X)
         Fp2Value dx = Fp2Sub(b.X, a.X);
         Fp2Value dy = Fp2Sub(b.Y, a.Y);
         Fp2Value lambda = Fp2Mul(dy, Fp2Invert(dx));
 
-        //x_r = lambda² − a.X − b.X
         Fp2Value lambdaSquared = Fp2Mul(lambda, lambda);
         Fp2Value xResult = Fp2Sub(Fp2Sub(lambdaSquared, a.X), b.X);
-
-        //y_r = lambda · (a.X − x_r) − a.Y
         Fp2Value yResult = Fp2Sub(Fp2Mul(lambda, Fp2Sub(a.X, xResult)), a.Y);
 
         return new AffinePoint(xResult, yResult, IsInfinity: false);
@@ -199,7 +202,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
             return AffinePoint.Identity;
         }
 
-        //lambda = 3·a.X² / (2·a.Y)
+        //lambda = 3·a.X² / (2·a.Y); curve parameter A = 0 on the twist.
         Fp2Value xSquared = Fp2Mul(a.X, a.X);
         Fp2Value three = new(new(3), BigInteger.Zero);
         Fp2Value numerator = Fp2Mul(three, xSquared);
@@ -207,12 +210,9 @@ internal static class Bls12Curve381BigIntegerG2Reference
         Fp2Value denominator = Fp2Mul(two, a.Y);
         Fp2Value lambda = Fp2Mul(numerator, Fp2Invert(denominator));
 
-        //x_r = lambda² − 2·a.X
         Fp2Value lambdaSquared = Fp2Mul(lambda, lambda);
         Fp2Value twoX = Fp2Mul(two, a.X);
         Fp2Value xResult = Fp2Sub(lambdaSquared, twoX);
-
-        //y_r = lambda · (a.X − x_r) − a.Y
         Fp2Value yResult = Fp2Sub(Fp2Mul(lambda, Fp2Sub(a.X, xResult)), a.Y);
 
         return new AffinePoint(xResult, yResult, IsInfinity: false);
@@ -246,9 +246,8 @@ internal static class Bls12Curve381BigIntegerG2Reference
             basePoint = PointNegate(basePoint);
         }
 
-        //Double-and-add in affine form. Each iteration costs one Fp2 inversion (via
-        //ModPow on each component's inverse path), tolerable for the reference's
-        //correctness-over-speed posture.
+        //Double-and-add in affine form, paying one Fp2 inversion per step. The
+        //reference favours correctness and readability over speed.
         AffinePoint result = AffinePoint.Identity;
         byte[] bytes = k.ToByteArray(isUnsigned: true, isBigEndian: true);
         for(int byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
@@ -269,9 +268,8 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
-    //Fp2 arithmetic helpers — inlined here over (c0, c1) BigInteger pairs for
-    //compactness with the G2 group law. Mirrors the Fp2 reference's algebra; not
-    //performance-tuned.
+    //Fp2 arithmetic over (c0, c1) BigInteger pairs, inlined for compactness with
+    //the G2 group law (mirrors the BLS12-381 G2 reference's posture).
 
     private static Fp2Value Fp2Add(Fp2Value a, Fp2Value b)
     {
@@ -324,24 +322,12 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>
-    /// Tries to compute the Fp2 square root of <paramref name="a"/>
-    /// via the standard "complex sqrt" formula. Returns
-    /// <see langword="false"/> when <paramref name="a"/> is not a
-    /// quadratic residue in Fp2.
+    /// Tries to compute the Fp2 square root of <paramref name="a"/> via the
+    /// complex-sqrt reduction to Fp sqrt. BN254's base prime satisfies
+    /// <c>q ≡ 3 (mod 4)</c>, so <c>q² ≡ 1 (mod 4)</c> and the naive
+    /// <c>a^((q²+1)/4)</c> form does not apply; the norm-trick is used, exactly
+    /// as in the BLS12-381 G2 reference.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// BLS12-381's base prime satisfies <c>p ≡ 3 (mod 4)</c>, so
-    /// <c>q = p² ≡ 1 (mod 4)</c>. The naive Fp2 formula
-    /// <c>candidate = a^((q + 1) / 4)</c> does not apply at q ≡ 1
-    /// mod 4; instead we reduce Fp2 sqrt to Fp sqrt using the
-    /// complex-conjugate norm trick:
-    /// </para>
-    /// <list type="number">
-    ///   <item><description>If <c>a.c1 == 0</c>, sqrt reduces to an Fp sqrt of <c>a.c0</c> (or of <c>−a.c0</c> if <c>a.c0</c> is a non-residue, with the result placed on the imaginary axis).</description></item>
-    ///   <item><description>Otherwise compute <c>α = sqrt(a.c0² + a.c1²)</c> in Fp; then <c>x0 = sqrt((a.c0 + α) / 2)</c> or <c>sqrt((a.c0 − α) / 2)</c> (whichever is an Fp residue); then <c>x1 = a.c1 / (2·x0)</c>.</description></item>
-    /// </list>
-    /// </remarks>
     private static bool Fp2TrySqrt(Fp2Value a, out Fp2Value root)
     {
         if(a.IsZero)
@@ -352,8 +338,6 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
         if(a.C1.IsZero)
         {
-            //Pure-real case. y² = a.c0. Either a.c0 is an Fp residue (y on the real axis)
-            //or −a.c0 is (y on the imaginary axis, since (i·c)² = −c² in Fp2 with u² = −1).
             if(TryFpSqrt(a.C0, out BigInteger c0Root))
             {
                 root = new(c0Root, BigInteger.Zero);
@@ -382,8 +366,6 @@ internal static class Bls12Curve381BigIntegerG2Reference
         BigInteger x0;
         if(!TryFpSqrt(deltaPlus, out x0))
         {
-            //Fall back to the other branch; exactly one of (a.c0 ± α)/2 is an Fp residue
-            //for p ≡ 3 mod 4 (because their product is (−a.c1²)/4, a non-residue).
             BigInteger deltaMinus = Mod((a.C0 - alpha) * twoInverse);
             if(!TryFpSqrt(deltaMinus, out x0))
             {
@@ -400,7 +382,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
-    /// <summary>Fp sqrt for BLS12-381's base prime (p ≡ 3 mod 4): <c>candidate = a^((p+1)/4) mod p</c>; verify by squaring.</summary>
+    /// <summary>Fp sqrt for BN254's base prime (q ≡ 3 mod 4): <c>candidate = a^((q+1)/4) mod q</c>; verify by squaring.</summary>
     private static bool TryFpSqrt(BigInteger a, out BigInteger root)
     {
         if(a.IsZero)
@@ -422,51 +404,33 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>
-    /// Computes the y-parity flag bit per the ZCash / EIP-2537 G2
-    /// compressed serialisation convention: <c>y</c> is "larger" than
-    /// <c>−y</c> by lexicographic comparison on Fp2 components with
-    /// <c>c1</c> as the more-significant component. Equivalently, the
-    /// flag is set when <c>2·y.c1 &gt; p</c>, falling back to
-    /// <c>2·y.c0 &gt; p</c> when <c>y.c1 == 0</c>.
+    /// Whether <paramref name="y"/> is the lexicographically larger of
+    /// <c>(y, −y)</c> in Fp2, comparing <c>c1</c> as the more-significant
+    /// component: <c>2·y.c1 &gt; q</c>, falling back to <c>2·y.c0 &gt; q</c>
+    /// when <c>y.c1 = 0</c>. Selects the gnark compressed tag (smaller vs larger).
     /// </summary>
-    /// <remarks>
-    /// This is distinct from the RFC 9380 §4.1 <c>sgn0</c> definition
-    /// (which uses <c>x mod 2</c> on each component); ZCash's
-    /// compressed form predates RFC 9380 and uses the lex rule. The
-    /// existing G1 reference uses the analogous <c>2y &gt; p</c> rule
-    /// for its parity flag, so this G2 convention matches the
-    /// codebase's overall encoding posture. The RFC 9380 sgn0 will
-    /// land separately in the hash-to-curve sub-batch.
-    /// </remarks>
-    private static int Fp2YParityZcash(Fp2Value a)
+    private static bool Fp2IsLarger(Fp2Value y)
     {
-        if(a.C1.IsZero)
+        if(y.C1.IsZero)
         {
-            return (a.C0 << 1) > BaseFieldPrime ? 1 : 0;
+            return (y.C0 << 1) > BaseFieldPrime;
         }
 
-        return (a.C1 << 1) > BaseFieldPrime ? 1 : 0;
+        return (y.C1 << 1) > BaseFieldPrime;
     }
 
 
-    /// <summary>Decodes the canonical compressed bytes into an affine point; throws on malformed input.</summary>
     private static AffinePoint Decode(ReadOnlySpan<byte> bytes)
     {
         if(!TryDecode(bytes, out AffinePoint result))
         {
-            throw new InvalidOperationException("Input bytes do not encode a valid BLS12-381 G2 point.");
+            throw new InvalidOperationException("Input bytes do not encode a valid BN254 G2 point.");
         }
 
         return result;
     }
 
 
-    /// <summary>
-    /// Tries to decode <paramref name="bytes"/> into an affine point on
-    /// the G2 twist curve. Verifies length, flag-bit consistency, base-
-    /// field range, and on-curve membership; does NOT verify subgroup
-    /// membership (that is <see cref="IsInPrimeOrderSubgroup"/>'s job).
-    /// </summary>
     private static bool TryDecode(ReadOnlySpan<byte> bytes, out AffinePoint result)
     {
         result = default;
@@ -475,25 +439,26 @@ internal static class Bls12Curve381BigIntegerG2Reference
             return false;
         }
 
-        byte flagByte = bytes[0];
-        bool isCompressed = (flagByte & 0x80) != 0;
-        bool isInfinity = (flagByte & 0x40) != 0;
-        bool yParityFlag = (flagByte & 0x20) != 0;
-
-        if(!isCompressed)
-        {
-            return false;
-        }
-        if(isInfinity)
+        //gnark big-endian tag in the most-significant two bits of byte 0 (the
+        //high byte of the imaginary component x.c1).
+        int tag = bytes[0] & 0xC0;
+        if(tag == 0x40)
         {
             result = AffinePoint.Identity;
             return true;
         }
 
-        //Read x.c1 (imaginary part) from offset 0..47 with flags masked, then x.c0 from 48..95.
+        if(tag == 0x00)
+        {
+            return false;
+        }
+
+        bool wantLarger = tag == 0xC0;
+
+        //x.c1 (imaginary) from offset 0..31 with tag bits masked, then x.c0 from 32..63.
         Span<byte> c1Bytes = stackalloc byte[ComponentSize];
         bytes[..ComponentSize].CopyTo(c1Bytes);
-        c1Bytes[0] &= 0x1f;
+        c1Bytes[0] &= 0x3f;
 
         BigInteger xC1 = new(c1Bytes, isUnsigned: true, isBigEndian: true);
         if(xC1 >= BaseFieldPrime)
@@ -509,20 +474,17 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
         Fp2Value x = new(xC0, xC1);
 
-        //Compute y² = x³ + 4·(1+u) in Fp2 and take the square root.
+        //y² = x³ + b' on the D-twist.
         Fp2Value xSquared = Fp2Mul(x, x);
         Fp2Value xCubed = Fp2Mul(xSquared, x);
-        Fp2Value rhs = Fp2Add(xCubed, new(CurveB.C0, CurveB.C1));
+        Fp2Value rhs = Fp2Add(xCubed, CurveB);
 
         if(!Fp2TrySqrt(rhs, out Fp2Value y))
         {
             return false;
         }
 
-        //Pick the y matching the parity flag per Fp2 sgn0.
-        int sgn = Fp2YParityZcash(y);
-        bool sgnFlag = sgn == 1;
-        if(sgnFlag != yParityFlag)
+        if(Fp2IsLarger(y) != wantLarger)
         {
             y = Fp2Negate(y);
         }
@@ -532,7 +494,6 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
-    /// <summary>Encodes an affine point in the canonical 96-byte compressed form.</summary>
     private static void Encode(AffinePoint point, Span<byte> destination)
     {
         if(destination.Length != CompressedSize)
@@ -545,20 +506,18 @@ internal static class Bls12Curve381BigIntegerG2Reference
         destination.Clear();
         if(point.IsInfinity)
         {
-            destination[0] = 0xc0; //compression + infinity flags
+            destination[0] = 0x40; //gnark compressed-infinity tag
             return;
         }
 
-        //Write x.c1 to offset 0..47, x.c0 to 48..95.
+        //x.c1 (imaginary) to offset 0..31, x.c0 (real) to 32..63.
         WriteBigEndianFixed(point.X.C1, destination[..ComponentSize]);
         WriteBigEndianFixed(point.X.C0, destination.Slice(ComponentSize, ComponentSize));
 
-        destination[0] |= 0x80; //compression flag
-
-        //y-parity flag from sgn0(y).
-        if(Fp2YParityZcash(point.Y) == 1)
+        destination[0] |= 0x80; //compressed (smaller root)
+        if(Fp2IsLarger(point.Y))
         {
-            destination[0] |= 0x20;
+            destination[0] |= 0x40; //promote to 0xC0 (larger root)
         }
     }
 
@@ -579,7 +538,6 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
-    /// <summary>Reduces a possibly-negative or possibly-large value to the canonical residue in [0, p).</summary>
     private static BigInteger Mod(BigInteger value)
     {
         BigInteger result = value % BaseFieldPrime;

@@ -3,7 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference ECDSA over NIST P-256 (FIPS 186-4 §6, SEC 1 v2.0 §4.1), built on

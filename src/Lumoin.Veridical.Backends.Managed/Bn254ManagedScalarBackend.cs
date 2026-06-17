@@ -1,6 +1,5 @@
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
-using Lumoin.Veridical.Tests.Algebraic;
 
 namespace Lumoin.Veridical.Backends.Managed;
 

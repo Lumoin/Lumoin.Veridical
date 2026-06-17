@@ -7,7 +7,7 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the BLS12-381 G1 point delegates using
@@ -136,8 +136,8 @@ internal static class Bls12Curve381BigIntegerG1Reference
 
 
     private static readonly ProviderLibrary ProviderLibraryIdentity = new(
-        Name: "Lumoin.Veridical.Tests",
-        Version: "0.0.0");
+        Name: "Lumoin.Veridical.Backends.Managed",
+        Version: typeof(Bls12Curve381BigIntegerG1Reference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
     private static readonly CryptoLibrary CryptoLibraryIdentity = new(
         Name: "System.Numerics.BigInteger",
