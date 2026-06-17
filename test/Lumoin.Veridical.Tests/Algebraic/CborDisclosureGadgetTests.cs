@@ -1,3 +1,4 @@
+using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Commitments.Ligero.Gadgets;

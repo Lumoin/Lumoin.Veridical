@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Wasm;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// WebAssembly PackedSimd implementation of BN254 scalar arithmetic.

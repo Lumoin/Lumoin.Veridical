@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// NEON (ARM AArch64 Advanced SIMD) implementation of BLS12-381 scalar

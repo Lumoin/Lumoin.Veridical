@@ -34,6 +34,7 @@ internal sealed class Sha256BbsDeterministicScalarsTests
             seed,
             BbsCiphersuite.Bls12Curve381Sha256,
             vector.Count,
+            Rfc9380ExpandMessage.ExpandMessageXmdSha256,
             TestSetup.ScalarReduce);
 
         Assert.AreEqual(expected.Length, vector.Count, $"Vector self-consistency: count must equal ExpectedScalars.Count for '{vector.Id}'.");

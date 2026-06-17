@@ -1,5 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Engines;
+using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Telemetry;

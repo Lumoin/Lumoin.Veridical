@@ -4,7 +4,7 @@ using Lumoin.Veridical.Core.Telemetry;
 using System;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the BN254 (alt_bn128) Fp2 extension-field

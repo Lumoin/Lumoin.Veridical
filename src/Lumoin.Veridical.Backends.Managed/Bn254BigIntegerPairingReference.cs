@@ -3,11 +3,11 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Telemetry;
 using System;
 using System.Numerics;
-using Fp2 = Lumoin.Veridical.Tests.Algebraic.Bn254Fp2BigInt.Value;
-using Fp6 = Lumoin.Veridical.Tests.Algebraic.Bn254BigIntegerFp6Reference.Fp6Value;
-using Fp12 = Lumoin.Veridical.Tests.Algebraic.Bn254BigIntegerFp12Reference.Fp12Value;
+using Fp2 = Lumoin.Veridical.Backends.Managed.Bn254Fp2BigInt.Value;
+using Fp6 = Lumoin.Veridical.Backends.Managed.Bn254BigIntegerFp6Reference.Fp6Value;
+using Fp12 = Lumoin.Veridical.Backends.Managed.Bn254BigIntegerFp12Reference.Fp12Value;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the BN254 (alt_bn128) optimal-ate pairing

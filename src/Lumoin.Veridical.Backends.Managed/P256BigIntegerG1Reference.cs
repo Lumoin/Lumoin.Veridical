@@ -5,7 +5,7 @@ using System;
 using System.Globalization;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the NIST P-256 (secp256r1) group delegates

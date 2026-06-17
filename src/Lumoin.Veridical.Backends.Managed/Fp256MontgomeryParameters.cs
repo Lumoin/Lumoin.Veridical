@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Montgomery-form constants for the P-256 base field Fp256
