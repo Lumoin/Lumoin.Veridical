@@ -4,9 +4,9 @@ using Lumoin.Veridical.Core.Telemetry;
 using System;
 using System.Globalization;
 using System.Numerics;
-using Fp12Value = Lumoin.Veridical.Tests.Algebraic.Bls12Curve381BigIntegerFp12Reference.Fp12Value;
+using Fp12Value = Lumoin.Veridical.Backends.Managed.Bls12Curve381BigIntegerFp12Reference.Fp12Value;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the BLS12-381 optimal-Ate pairing

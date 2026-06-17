@@ -61,10 +61,10 @@ public static class CircomR1csReader
     /// <summary>
     /// BLS12-381 scalar field modulus
     /// <c>r = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001</c>.
-    /// Declared locally so the production-side reader does not depend
-    /// on the test-only Bls12Curve381BigIntegerScalarReference, which
-    /// lives in the Lumoin.Veridical.Tests.Algebraic namespace despite
-    /// being physically in the Core source tree.
+    /// Declared locally because Core cannot depend on the
+    /// Bls12Curve381BigIntegerScalarReference backend: that type lives in
+    /// Lumoin.Veridical.Backends.Managed, which references Core, not the
+    /// other way round.
     /// </summary>
     private static readonly BigInteger Bls12Curve381ScalarFieldModulus = BigInteger.Parse(
         "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",

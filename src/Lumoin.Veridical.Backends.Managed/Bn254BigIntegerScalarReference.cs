@@ -6,7 +6,7 @@ using System;
 using System.Globalization;
 using System.Numerics;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the BN254 (alt_bn128) scalar delegates using
@@ -66,8 +66,8 @@ internal static class Bn254BigIntegerScalarReference
 
 
     private static readonly ProviderLibrary ProviderLibraryIdentity = new(
-        Name: "Lumoin.Veridical.Tests",
-        Version: "0.0.0");
+        Name: "Lumoin.Veridical.Backends.Managed",
+        Version: typeof(Bn254BigIntegerScalarReference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
     private static readonly CryptoLibrary CryptoLibraryIdentity = new(
         Name: "System.Numerics.BigInteger",

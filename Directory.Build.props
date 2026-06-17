@@ -98,6 +98,15 @@ See full changelog at https://github.com/lumoin/Lumoin.Veridical/blob/main/CHANG
     </None>
   </ItemGroup>
 
+  <!-- Pack the repository README as the NuGet package readme for the libraries; the
+       CLI ships its own README (set in its csproj), so it is excluded here. -->
+  <PropertyGroup Condition="!$(MSBuildProjectName.EndsWith('Tests')) AND !$(MSBuildProjectName.EndsWith('Benchmarks')) AND !$(MSBuildProjectName.EndsWith('.Cli'))">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('Tests')) AND !$(MSBuildProjectName.EndsWith('Benchmarks')) AND !$(MSBuildProjectName.EndsWith('.Cli'))">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="True" PackagePath="\" />
+  </ItemGroup>
+
   <!-- SBOM for all projects. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Sbom.Targets" PrivateAssets="All" />

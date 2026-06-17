@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// AVX-512 (Intel/AMD x86_64) implementation of BLS12-381 scalar

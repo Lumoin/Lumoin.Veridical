@@ -2,7 +2,7 @@ using Lumoin.Veridical.Core;
 using System;
 using System.Buffers.Binary;
 
-namespace Lumoin.Veridical.Tests.Algebraic;
+namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// ISA-independent single-element modular multiplication and inversion for the
