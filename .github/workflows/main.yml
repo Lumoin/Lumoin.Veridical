@@ -432,12 +432,16 @@ jobs:
           -p:PublishAot=true \
           src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
         cp nupkgs/Lumoin.Veridical.Cli.${{ matrix.rid }}.$TOOL_VERSION.nupkg toolcheck-src/
-        dotnet tool install Lumoin.Veridical.Cli --tool-path toolcheck --add-source toolcheck-src --version "$TOOL_VERSION"
+        # The repository NuGet.config enables package source mapping, which the NuGet client refuses to
+        # combine with --add-source. Install the freshly built tool through a dedicated config that maps the
+        # local pack folder for the tool package and nuget.org for everything else.
+        printf '%s' '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear /><add key="toolcheck-local" value="toolcheck-src" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" /></packageSources><packageSourceMapping><packageSource key="toolcheck-local"><package pattern="Lumoin.Veridical.Cli*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping></configuration>' > toolcheck-nuget.config
+        dotnet tool install Lumoin.Veridical.Cli --tool-path toolcheck --configfile toolcheck-nuget.config --version "$TOOL_VERSION"
         TOOLBIN="toolcheck/veridical"
         if [ -f "$TOOLBIN.cmd" ]; then TOOLBIN="$TOOLBIN.cmd"; fi
         "$TOOLBIN" info
         "$TOOLBIN" selftest
-        rm -rf toolcheck toolcheck-src
+        rm -rf toolcheck toolcheck-src toolcheck-nuget.config
 
     - name: Upload native tool package (${{ matrix.rid }})
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
