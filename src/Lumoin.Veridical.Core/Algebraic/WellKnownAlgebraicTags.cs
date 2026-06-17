@@ -34,6 +34,10 @@ public static class WellKnownAlgebraicTags
         (typeof(AlgebraicRole), (object)AlgebraicRole.Scalar),
         (typeof(CurveParameterSet), (object)CurveParameterSet.Bn254));
 
+    private static Tag ScalarP256 { get; } = Tag.Create(
+        (typeof(AlgebraicRole), (object)AlgebraicRole.Scalar),
+        (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
+
     private static Tag G1PointBls12Curve381 { get; } = Tag.Create(
         (typeof(AlgebraicRole), (object)AlgebraicRole.G1Point),
         (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381));
@@ -41,6 +45,10 @@ public static class WellKnownAlgebraicTags
     private static Tag G1PointBn254 { get; } = Tag.Create(
         (typeof(AlgebraicRole), (object)AlgebraicRole.G1Point),
         (typeof(CurveParameterSet), (object)CurveParameterSet.Bn254));
+
+    private static Tag G1PointP256 { get; } = Tag.Create(
+        (typeof(AlgebraicRole), (object)AlgebraicRole.G1Point),
+        (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
 
     private static Tag G2PointBls12Curve381 { get; } = Tag.Create(
         (typeof(AlgebraicRole), (object)AlgebraicRole.G2Point),
@@ -79,6 +87,11 @@ public static class WellKnownAlgebraicTags
             return ScalarBn254;
         }
 
+        if(curve.Code == CurveParameterSet.P256.Code)
+        {
+            return ScalarP256;
+        }
+
         throw new ArgumentException(
             $"No cached scalar tag for {curve}; add a WellKnownAlgebraicTags entry when wiring this curve.",
             nameof(curve));
@@ -102,6 +115,11 @@ public static class WellKnownAlgebraicTags
         if(curve.Code == CurveParameterSet.Bn254.Code)
         {
             return G1PointBn254;
+        }
+
+        if(curve.Code == CurveParameterSet.P256.Code)
+        {
+            return G1PointP256;
         }
 
         throw new ArgumentException(
