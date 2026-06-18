@@ -19,10 +19,122 @@ namespace Lumoin.Veridical.Tests.Secdsa;
 /// path for P-256, which the raw-span gates never did — the omission that let a missing P-256 tag entry ship.
 /// </summary>
 /// <remarks>
-/// The flow mirrors the wallet-provider WSCA application path: activation blinds the SECDSA public key, signing
-/// produces a split-ECDSA signature, and the wallet-provider control evidence binds <c>R' = aU·R</c> to the
-/// transaction record. The mod-<c>n</c> scalar and group arithmetic is wired from the BigInteger references, the
-/// same reuse-by-injection the other SECDSA gates use.
+/// <para>
+/// This gate carries the full EUDI Wallet SECDSA flow narrative (Verheul, "SECDSA: Mobile signing and
+/// authentication under classical sole control"), so the cryptographic steps below read against the protocol they
+/// implement. Every value crosses the WSCA surface as a tagged broad carrier; the mod-<c>n</c> scalar and group
+/// arithmetic is wired from the BigInteger references, the same reuse-by-injection the other SECDSA gates use.
+/// This library implements the WSCA-side cryptography only; the device raw-sign of <c>u</c>, the relying-party
+/// exchange (OID4VP), and the application orchestration are out of scope (the boundary is stated in
+/// <see cref="SecdsaEvidence"/>).
+/// </para>
+/// <code>
+///  -- KEY TERMS -------------------------------------------------------------
+///
+///   SCI  = Secure Cryptographic Interface: the authenticated channel between the Wallet APP and the WSCA.
+///   WSCA = Wallet Secure Cryptographic Application: the wallet provider's server-side trusted process that
+///          authenticates signing instructions and gates the WSCD. A software container; no bespoke HSM firmware.
+///   WSCD = Wallet Secure Cryptographic Device: the hardware holding the user blinding key aU (a PKCS#11 HSM or
+///          a TPM with wrapped keys).
+///   NCH  = Native Cryptographic Hardware: the on-device key store holding the user's signing key u (TPM on
+///          Windows/Linux, Secure Enclave on iOS, StrongBox on Android).
+///   PID  = Person Identification Data: the foundational identity credential a national authority issues to the
+///          user, stored as a Verifiable Credential on the phone.
+///   OID4VP = OpenID for Verifiable Presentations: how a relying party requests credentials from a wallet.
+///   DCQL = Digital Credentials Query Language: the query inside an OID4VP request naming the wanted attributes.
+///   KYC  = Know Your Customer: the regulatory duty to verify a customer's identity.
+///
+///  -- SYSTEM ARCHITECTURE ---------------------------------------------------
+///
+///   +---------------------------+              +--------------------------------+
+///   |       Wallet APP          |     SCI      |        Wallet Provider         |
+///   |                           |==============|  +----------+   +-----------+  |
+///   |  PID credential           |              |  |  WSCA    |   |   WSCD    |  |
+///   |  Internal Certificate     |              |  | (server, |   | (hardware)|  |
+///   |  Transaction Log          |              |  | this lib)|   |  holds aU |  |
+///   |  NCH holds u (possession) |              |  +----------+   +-----------+  |
+///   |  PIN -> P     (knowledge) |              |  Transaction Log               |
+///   +---------------------------+              +--------------------------------+
+///
+///   The wallet provider may be a government body (issues PID and runs the WSCA) or a private company (the state
+///   issues PID, the company runs the WSCA). This library provides the WSCA-side implementation; a provider wires
+///   its own device delegates and transport.
+///
+///  -- PARTIES IN THE SCENARIO ----------------------------------------------
+///
+///   +------------------+   issues PID    +------------------+
+///   | National PID     | --------------- | Alice's wallet   |
+///   | issuer (state)   |   (one-time,    | (Wallet APP +    |
+///   | signs credential |    at issuance) |  NCH on phone)   |
+///   +------------------+                 +--------+---------+
+///                                                 | SCI (signing instruction)
+///                                        +--------+---------+
+///                                        | Wallet Provider  |
+///                                        | (WSCA + WSCD)    |
+///                                        +--------+---------+
+///                                                 | InstructionTranscript
+///                                                 v
+///   +------------------+  OID4VP req     +------------------+   OID4VP VP    +-----------+
+///   | Relying party    | --------------- | Alice's wallet   | -------------- | Relying   |
+///   | (e.g. EudiBank,  |  (DCQL query    | assembles VP:    |               | party     |
+///   |  KYC onboarding) |   for PID)      | PID + holder sig |               | verifies  |
+///   +------------------+                 +------------------+               +-----------+
+///
+///  -- eIDAS HIGH: TWO-FACTOR AUTHENTICATION (factors must be independent) ---
+///
+///   Possession (required) : NCH-bound key u. Never leaves the NCH; proven by key attestation (EK/AK chain).
+///                           TPM, Secure Enclave, HBK, StrongBox all qualify.
+///   Knowledge (option A)  : PIN-key P, derived from the user's PIN + an NCH-bound binder key KP (Annex B
+///                           Algorithms 24/25/27). One NCH call per attempt enforces lockout. Independent: the
+///                           PIN alone cannot produce P without the NCH. (Spec 3.1)
+///   Inherence (option B)  : P stored under biometric access control (Face ID / Touch ID / BiometricPrompt); the
+///                           biometric unlocks P, the SECDSA math is identical. (Spec 3.2)
+///
+///  -- FLOW (what this gate exercises) --------------------------------------
+///
+///   SETUP step 1  PID issuance (state to wallet, one-time): NCH generates (u, U=u*G); wallet sends U plus a key
+///                 attestation; the state signs { name, dob, nationality, holderPublicKey: U }. Wallet stores it.
+///   SETUP step 2  WSCA activation (Protocol 4): wallet derives P and Y = P*U = P*u*G, blinds it (Ybl=t*Y), the
+///                 WSCD blinds with aU (Y'bl=aU*Ybl), the wallet removes t (Y'=t^-1*Y'bl=aU*Y). The WSCA issues
+///                 the Internal Certificate { AliceId, U, G'=aU*G, Y'=aU*Y }. The raw Y is never stored.
+///   SIGNING       (Algorithm 2) e=H(I); e'=P^-1*e; NCH raw-signs e' with u -> (r,s0); s=P*s0. The result (r,s)
+///                 is ordinary ECDSA under Y though the NCH never saw P (Proposition 3.1). Recover R=k*G; from the
+///                 certificate G''=s^-1*G', Y''=s^-1*Y'; a DL-equality proof shows they share s^-1 (Alg 3/4).
+///   WSCA VERIFY   R' = e*G'' + r*Y'' = e*s^-1*aU*G + r*s^-1*aU*Y = aU*(e*s^-1*G + r*s^-1*Y) = aU*R
+///                 (Proposition 3.3). Equality holds exactly when the correct PIN was used: the AES-GCM key is
+///                 derived from R', so a wrong PIN gives a wrong R', a wrong key, a failed tag, and the
+///                 instruction is rejected without the WSCA ever learning the PIN.
+///   CONTROL       A control DL-equality proof binds G'=aU*G and R'=aU*R to the transaction-record context
+///                 N=H(T_I) (Equation 7, Algorithms 9/10): the irrefutable evidence of sole control.
+///   TRANSCRIPT    The WSCA returns a signed InstructionTranscript (Algorithm 37) whose sequence number matches
+///                 the originating BlindedSecdsaInstruction (Algorithm 36; challenge Chal(SN) per Algorithm 21).
+///
+///   WHAT THE TRANSCRIPT PROVES: anyone holding the transcript and the Internal Certificate can verify, without
+///   WSCD access, the WSCA signature, the ZKP that G''/Y'' are honest, and R'=e*G''+r*Y''=aU*R -- establishing
+///   sole control and non-repudiation at eIDAS High.
+///
+///  -- TRANSACTION-LOG INTEGRITY (pluggable, beyond this gate) ----------------
+///
+///   The transcript has the shape of a signed append-only log entry. The chain-integrity backend is a delegate:
+///     hash-chain  : each entry stores H(previous canonical bytes); replay verifies linearly (DID event logs).
+///     Merkle tree : a batch commits to one root; inclusion proofs verify one entry (RFC 9162 CT).
+///     TPM quote   : the chain head is extended into a PCR and TPM_Quote signs it (TCG firmware event logs).
+///   All three share one fold structure; only the integrity-proof delegate differs.
+///
+///  -- VERHEUL SECDSA PAPER MAP ----------------------------------------------
+///
+///   Algorithm 1             Y = (P*u)*G                        DeriveSplitPublicKey
+///   Algorithm 2 / Prop 3.1  split-sign is valid ECDSA under Y  SplitSign + Verify
+///   Protocol 4              Internal Certificate issuance       activation (G', Y')
+///   Algorithms 3 / 4        blind-signing relation ZKP          ProveBlindingRelation
+///   Proposition 3.3         R' = e*G'' + r*Y'' = aU*R           ComputeVerificationPoint
+///   Equation 7 / Alg 9-10   control relation evidence           ProveControlRelation
+///   Algorithm 36 / 37       instruction / signed transcript     carriers (application layer)
+///   Algorithm 21            Schnorr challenge Chal(SN)          instruction authenticity
+///   Section 4 / Alg 11      split-key architecture              separate gate (SplitKey...)
+///
+///   Scalars:  P = PIN-key,  u = NCH hardware key,  t = wallet one-time blinding,  aU = HSM/WSCD blinding key.
+/// </code>
 /// </remarks>
 [TestClass]
 internal sealed class SecdsaCarrierFlowTests
