@@ -113,7 +113,9 @@ internal static class EcdsaVerificationGadgetExtensions
 
         //Public inputs pinned by AddConstant — their targets are the claimed statement
         //the verifier supplies and checks. One 1-wire serves every base point's Z.
-        int oneWire = builder.AddConstant(One());
+        Span<byte> oneValue = stackalloc byte[ScalarSize];
+        LigeroConstraintSystemBuilder.EncodeConstant(1, oneValue);
+        int oneWire = builder.AddConstant(oneValue);
         int gx = builder.AddConstant(ecdsa.GeneratorX.Span);
         int gy = builder.AddConstant(ecdsa.GeneratorY.Span);
         int qx = builder.AddConstant(publicInputs.PublicKeyX.Span);
@@ -129,9 +131,9 @@ internal static class EcdsaVerificationGadgetExtensions
 
         //Public scalars: e and s pinned and proven < n; r bound to R.x mod n. The
         //returned bits are canonical and most-significant first for the ladder.
-        (int _, int[] eBits) = builder.AddPublicScalarBits(publicInputs.MessageHash.Span, ecdsa.Order.Span);
-        (int sWire, int[] sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
-        (int rWire, int[] rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
+        (int _, WireWord eBits) = builder.AddPublicScalarBits(publicInputs.MessageHash.Span, ecdsa.Order.Span);
+        (int sWire, WireWord sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
+        (int rWire, WireWord rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
 
         //r, s ∈ [1, n−1]: nonzero on top of the < n range proof.
         builder.AddNonzeroCheck(rWire);
@@ -165,8 +167,8 @@ internal static class EcdsaVerificationGadgetExtensions
         //then the shared verification over those bits. The digest bits are pinned to {0,1} by
         //the SHA gadget's own boolean constraints, so the bits-only entry needs none added.
         var sha = new Sha256Gadget(builder);
-        int[][] digest = sha.Hash(witness.Message.Span);
-        int[] eBits = DigestBitsMostSignificantFirst(digest);
+        WireWord[] digest = sha.Hash(witness.Message.Span);
+        WireWord eBits = DigestBitsMostSignificantFirst(builder, digest);
 
         return builder.AssertVerifiesDigestBits(ecdsa, publicInputs, new EcdsaWitness(witness.NonceX, witness.NonceY), eBits);
     }
@@ -188,7 +190,9 @@ internal static class EcdsaVerificationGadgetExtensions
             throw new ArgumentException($"Digest bit wires must be {DigestBits} bits; received {digestBitsMostSignificantFirst.Length}.", nameof(digestBitsMostSignificantFirst));
         }
 
-        int oneWire = builder.AddConstant(One());
+        Span<byte> oneValue = stackalloc byte[ScalarSize];
+        LigeroConstraintSystemBuilder.EncodeConstant(1, oneValue);
+        int oneWire = builder.AddConstant(oneValue);
         int gx = builder.AddConstant(ecdsa.GeneratorX.Span);
         int gy = builder.AddConstant(ecdsa.GeneratorY.Span);
         int qx = builder.AddConstant(publicInputs.PublicKeyX.Span);
@@ -200,17 +204,15 @@ internal static class EcdsaVerificationGadgetExtensions
         int ryWire = builder.AddWire(witness.NonceY.Span);
         builder.AddOnCurveCheck(ecdsa.Curve, rxWire, ryWire);
 
-        int[] eBits = digestBitsMostSignificantFirst.ToArray();
-
-        (int sWire, int[] sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
-        (int rWire, int[] rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
+        (int sWire, WireWord sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
+        (int rWire, WireWord rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
         builder.AddNonzeroCheck(rWire);
         builder.AddNonzeroCheck(sWire);
 
         int negativeRy = builder.AddNegateY(ecdsa.Curve, ryWire);
         (int X, int Y, int Z) sum = builder.AddThreeScalarMultiScalarMultiply(ecdsa.Curve,
             (gx, gy, oneWire), (qx, qy, oneWire), (rxWire, negativeRy, oneWire),
-            eBits, rBits, sBits);
+            digestBitsMostSignificantFirst, rBits, sBits);
 
         builder.AddAssertZero(sum.Z);
 
@@ -234,7 +236,9 @@ internal static class EcdsaVerificationGadgetExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(ecdsa);
 
-        int oneWire = builder.AddConstant(One());
+        Span<byte> oneValue = stackalloc byte[ScalarSize];
+        LigeroConstraintSystemBuilder.EncodeConstant(1, oneValue);
+        int oneWire = builder.AddConstant(oneValue);
         int gx = builder.AddConstant(ecdsa.GeneratorX.Span);
         int gy = builder.AddConstant(ecdsa.GeneratorY.Span);
         int qx = builder.AddConstant(publicInputs.PublicKeyX.Span);
@@ -247,14 +251,14 @@ internal static class EcdsaVerificationGadgetExtensions
         builder.AddOnCurveCheck(ecdsa.Curve, rxWire, ryWire);
 
         //Witness the message once, then both hash it and search it over the same byte wires.
-        int[] messageBytes = builder.WitnessMessage(witness.Message.Span);
+        WireWord messageBytes = builder.WitnessMessage(witness.Message.Span);
 
         var sha = new Sha256Gadget(builder);
-        int[][] digest = sha.Hash(messageBytes);
-        int[] eBits = DigestBitsMostSignificantFirst(digest);
+        WireWord[] digest = sha.Hash(messageBytes);
+        WireWord eBits = DigestBitsMostSignificantFirst(builder, digest);
 
-        (int sWire, int[] sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
-        (int rWire, int[] rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
+        (int sWire, WireWord sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
+        (int rWire, WireWord rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
         builder.AddNonzeroCheck(rWire);
         builder.AddNonzeroCheck(sWire);
 
@@ -290,7 +294,9 @@ internal static class EcdsaVerificationGadgetExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(ecdsa);
 
-        int oneWire = builder.AddConstant(One());
+        Span<byte> oneValue = stackalloc byte[ScalarSize];
+        LigeroConstraintSystemBuilder.EncodeConstant(1, oneValue);
+        int oneWire = builder.AddConstant(oneValue);
         int gx = builder.AddConstant(ecdsa.GeneratorX.Span);
         int gy = builder.AddConstant(ecdsa.GeneratorY.Span);
         int qx = builder.AddConstant(publicInputs.PublicKeyX.Span);
@@ -305,11 +311,11 @@ internal static class EcdsaVerificationGadgetExtensions
         var sha = new Sha256Gadget(builder);
 
         //Outer level: the signature is over e = SHA-256(MSO).
-        int[] msoBytes = builder.WitnessMessage(witness.MobileSecurityObject.Span);
-        int[] eBits = DigestBitsMostSignificantFirst(sha.Hash(msoBytes));
+        WireWord msoBytes = builder.WitnessMessage(witness.MobileSecurityObject.Span);
+        WireWord eBits = DigestBitsMostSignificantFirst(builder, sha.Hash(msoBytes));
 
-        (int sWire, int[] sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
-        (int rWire, int[] rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
+        (int sWire, WireWord sBits) = builder.AddPublicScalarBits(publicInputs.SignatureS.Span, ecdsa.Order.Span);
+        (int rWire, WireWord rBits) = builder.AddReduceModOrder(rxWire, publicInputs.SignatureR.Span, ecdsa.Order.Span);
         builder.AddNonzeroCheck(rWire);
         builder.AddNonzeroCheck(sWire);
 
@@ -321,8 +327,8 @@ internal static class EcdsaVerificationGadgetExtensions
         builder.AddAssertZero(sum.Z);
 
         //Inner level: the MSO holds SHA-256(item), and the item holds the attribute.
-        int[] itemBytes = builder.WitnessMessage(witness.IssuerSignedItem.Span);
-        int[] itemDigestBytes = sha.DigestByteWires(sha.Hash(itemBytes));
+        WireWord itemBytes = builder.WitnessMessage(witness.IssuerSignedItem.Span);
+        WireWord itemDigestBytes = sha.DigestByteWires(sha.Hash(itemBytes));
         builder.AssertContainsBytesAt(msoBytes, itemDigestOffset, itemDigestBytes);
         builder.AssertContainsAt(itemBytes, attributeOffset, attribute);
 
@@ -362,10 +368,10 @@ internal static class EcdsaVerificationGadgetExtensions
     //The 256 bits of a SHA-256 digest, most-significant first, for use as a ladder scalar.
     //The eight words are most-significant first; each word's bit wires are least-significant
     //first, so they are emitted high-to-low.
-    private static int[] DigestBitsMostSignificantFirst(int[][] digestWords)
+    private static WireWord DigestBitsMostSignificantFirst(LigeroConstraintSystemBuilder builder, WireWord[] digestWords)
     {
         const int wordBits = 32;
-        int[] bits = new int[DigestBits];
+        WireWord bits = builder.RentWireWord(DigestBits);
         int index = 0;
         for(int word = 0; word < 8; word++)
         {
@@ -376,14 +382,5 @@ internal static class EcdsaVerificationGadgetExtensions
         }
 
         return bits;
-    }
-
-
-    private static byte[] One()
-    {
-        byte[] one = new byte[ScalarSize];
-        LigeroConstraintSystemBuilder.EncodeConstant(1, one);
-
-        return one;
     }
 }

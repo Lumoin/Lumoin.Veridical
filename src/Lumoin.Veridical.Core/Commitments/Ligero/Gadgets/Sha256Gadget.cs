@@ -39,10 +39,10 @@ internal sealed class Sha256Gadget
     private const int ScalarSize = Scalar.SizeBytes;
 
     private readonly LigeroConstraintSystemBuilder builder;
-    private readonly byte[][] powerOfTwo;
-    private readonly byte[] one;
-    private readonly byte[] negativeOne;
-    private readonly byte[] negativeTwo;
+    private readonly ReadOnlyMemory<byte>[] powerOfTwo;
+    private readonly ReadOnlyMemory<byte> one;
+    private readonly ReadOnlyMemory<byte> negativeOne;
+    private readonly ReadOnlyMemory<byte> negativeTwo;
     private readonly int zeroBit;
     private readonly int oneBit;
 
@@ -54,27 +54,28 @@ internal sealed class Sha256Gadget
         this.builder = builder;
 
         one = Encode(1);
-        negativeOne = Negate(one);
-        negativeTwo = Negate(Encode(2));
+        negativeOne = Negate(one.Span);
+        negativeTwo = Negate(Encode(2).Span);
 
-        powerOfTwo = new byte[WordBits][];
+        powerOfTwo = new ReadOnlyMemory<byte>[WordBits];
         for(int i = 0; i < WordBits; i++)
         {
-            byte[] power = new byte[ScalarSize];
-            power[ScalarSize - 1 - (i >> 3)] = (byte)(1 << (i & 7));
+            Memory<byte> power = builder.RentScalar();
+            power.Span.Clear();
+            power.Span[ScalarSize - 1 - (i >> 3)] = (byte)(1 << (i & 7));
             powerOfTwo[i] = power;
         }
 
-        zeroBit = builder.AddConstant(Encode(0));
-        oneBit = builder.AddConstant(one);
+        zeroBit = builder.AddConstant(Encode(0).Span);
+        oneBit = builder.AddConstant(one.Span);
     }
 
 
     //A witnessed 32-bit word: 32 boolean bit wires (least-significant first) holding
     //the bits of value.
-    public int[] WitnessWord(uint value)
+    public WireWord WitnessWord(uint value)
     {
-        int[] bits = new int[WordBits];
+        WireWord bits = builder.RentWireWord(WordBits);
         Span<byte> bit = stackalloc byte[ScalarSize];
         for(int i = 0; i < WordBits; i++)
         {
@@ -89,9 +90,9 @@ internal sealed class Sha256Gadget
 
     //A pinned constant 32-bit word (each bit fixed by a public target), for the round
     //constants and initial hash values.
-    public int[] ConstantWord(uint value)
+    public WireWord ConstantWord(uint value)
     {
-        int[] bits = new int[WordBits];
+        WireWord bits = builder.RentWireWord(WordBits);
         Span<byte> bit = stackalloc byte[ScalarSize];
         for(int i = 0; i < WordBits; i++)
         {
@@ -105,9 +106,9 @@ internal sealed class Sha256Gadget
 
 
     //Bitwise XOR: a ⊕ b = a + b − 2·(a·b) per bit (∈ {0,1} for boolean a, b).
-    public int[] Xor(int[] a, int[] b)
+    public WireWord Xor(WireWord a, WireWord b)
     {
-        int[] result = new int[WordBits];
+        WireWord result = builder.RentWireWord(WordBits);
         for(int i = 0; i < WordBits; i++)
         {
             int product = builder.Multiply(a[i], b[i]);
@@ -119,9 +120,9 @@ internal sealed class Sha256Gadget
 
 
     //Bitwise AND: a · b per bit.
-    public int[] And(int[] a, int[] b)
+    public WireWord And(WireWord a, WireWord b)
     {
-        int[] result = new int[WordBits];
+        WireWord result = builder.RentWireWord(WordBits);
         for(int i = 0; i < WordBits; i++)
         {
             result[i] = builder.Multiply(a[i], b[i]);
@@ -132,9 +133,9 @@ internal sealed class Sha256Gadget
 
 
     //Bitwise NOT: 1 − a per bit.
-    public int[] Not(int[] a)
+    public WireWord Not(WireWord a)
     {
-        int[] result = new int[WordBits];
+        WireWord result = builder.RentWireWord(WordBits);
         for(int i = 0; i < WordBits; i++)
         {
             result[i] = builder.Combine([Term(oneBit, one), Term(a[i], negativeOne)]);
@@ -145,9 +146,9 @@ internal sealed class Sha256Gadget
 
 
     //Bitwise OR: a + b − a·b per bit.
-    public int[] Or(int[] a, int[] b)
+    public WireWord Or(WireWord a, WireWord b)
     {
-        int[] result = new int[WordBits];
+        WireWord result = builder.RentWireWord(WordBits);
         for(int i = 0; i < WordBits; i++)
         {
             int product = builder.Multiply(a[i], b[i]);
@@ -159,9 +160,9 @@ internal sealed class Sha256Gadget
 
 
     //Right rotation by n (SHA-256 ROTR): result bit j is input bit (j + n) mod 32.
-    public static int[] RotateRight(int[] a, int n)
+    public WireWord RotateRight(WireWord a, int n)
     {
-        int[] result = new int[WordBits];
+        WireWord result = builder.RentWireWord(WordBits);
         for(int j = 0; j < WordBits; j++)
         {
             result[j] = a[(j + n) % WordBits];
@@ -173,9 +174,9 @@ internal sealed class Sha256Gadget
 
     //Logical right shift by n (SHA-256 SHR): result bit j is input bit j + n, or 0 once
     //that runs off the top.
-    public int[] ShiftRight(int[] a, int n)
+    public WireWord ShiftRight(WireWord a, int n)
     {
-        int[] result = new int[WordBits];
+        WireWord result = builder.RentWireWord(WordBits);
         for(int j = 0; j < WordBits; j++)
         {
             result[j] = (j + n) < WordBits ? a[j + n] : zeroBit;
@@ -187,13 +188,13 @@ internal sealed class Sha256Gadget
 
     //Addition modulo 2^32: recompose every operand to the field, sum, and keep the low
     //32 bits of the decomposition (the overflow bits are dropped).
-    public int[] AddMod32(params int[][] words)
+    public WireWord AddMod32(params WireWord[] words)
     {
         ArgumentNullException.ThrowIfNull(words);
 
         var terms = new LinearTerm[words.Length * WordBits];
         int t = 0;
-        foreach(int[] word in words)
+        foreach(WireWord word in words)
         {
             for(int i = 0; i < WordBits; i++)
             {
@@ -210,14 +211,14 @@ internal sealed class Sha256Gadget
             extra++;
         }
 
-        int[] sumBits = builder.AddBits(sum, WordBits + extra);
+        WireWord sumBits = builder.AddBits(sum, WordBits + extra);
 
-        return sumBits[..WordBits];
+        return sumBits.Slice(0, WordBits);
     }
 
 
     //Reads a word's integer value from its bit wires (for gating against a reference).
-    public uint WordValue(int[] word)
+    public uint WordValue(WireWord word)
     {
         uint value = 0;
         for(int i = 0; i < WordBits; i++)
@@ -257,13 +258,13 @@ internal sealed class Sha256Gadget
     //SHA-256 of an arbitrary-length message: pads (message ‖ 0x80 ‖ zeros ‖ 64-bit big-endian
     //bit length) to a multiple of 512 bits and chains the compression across the blocks. The
     //message bytes are witnessed; returns the eight digest words.
-    public int[][] Hash(ReadOnlySpan<byte> message)
+    public WireWord[] Hash(ReadOnlySpan<byte> message)
     {
         //Smallest multiple of 64 with room for the message, the 0x80 terminator, and 8 length bytes.
         int paddedLength = ((message.Length + 72) / 64) * 64;
         int blockCount = paddedLength / 64;
 
-        int[][] hash = InitialHashState();
+        WireWord[] hash = InitialHashState();
         Span<byte> block = stackalloc byte[64];
         for(int b = 0; b < blockCount; b++)
         {
@@ -286,7 +287,7 @@ internal sealed class Sha256Gadget
                 BinaryPrimitives.WriteUInt64BigEndian(block[56..], (ulong)message.Length * 8);
             }
 
-            int[][] words = new int[16][];
+            WireWord[] words = new WireWord[16];
             for(int t = 0; t < 16; t++)
             {
                 words[t] = WitnessWord(BinaryPrimitives.ReadUInt32BigEndian(block.Slice(t * 4, 4)));
@@ -303,10 +304,8 @@ internal sealed class Sha256Gadget
     //can then be shared with another gadget (e.g. CBOR disclosure), so a disclosed attribute is
     //provably in the hashed bytes. The padding (0x80, zeros, the 64-bit length) is added as
     //constants; assembling the words bit-decomposes each byte, which also pins it to [0,255].
-    public int[][] Hash(int[] messageByteWires)
+    public WireWord[] Hash(ReadOnlySpan<int> messageByteWires)
     {
-        ArgumentNullException.ThrowIfNull(messageByteWires);
-
         int n = messageByteWires.Length;
         int paddedLength = ((n + 72) / 64) * 64;
         int blockCount = paddedLength / 64;
@@ -314,7 +313,7 @@ internal sealed class Sha256Gadget
         Span<byte> lengthBytes = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64BigEndian(lengthBytes, (ulong)n * 8);
 
-        int[] padded = new int[paddedLength];
+        WireWord padded = builder.RentWireWord(paddedLength);
         Span<byte> value = stackalloc byte[ScalarSize];
         for(int p = 0; p < paddedLength; p++)
         {
@@ -329,10 +328,10 @@ internal sealed class Sha256Gadget
             padded[p] = builder.AddConstant(value);
         }
 
-        int[][] hash = InitialHashState();
+        WireWord[] hash = InitialHashState();
         for(int b = 0; b < blockCount; b++)
         {
-            int[][] words = new int[16][];
+            WireWord[] words = new WireWord[16];
             for(int t = 0; t < 16; t++)
             {
                 int baseIndex = (b * 64) + (t * 4);
@@ -347,9 +346,9 @@ internal sealed class Sha256Gadget
 
 
     //The eight initial hash words as pinned constants.
-    private int[][] InitialHashState()
+    private WireWord[] InitialHashState()
     {
-        int[][] hash = new int[8][];
+        WireWord[] hash = new WireWord[8];
         for(int i = 0; i < 8; i++)
         {
             hash[i] = ConstantWord(InitialHash[i]);
@@ -361,14 +360,14 @@ internal sealed class Sha256Gadget
 
     //Assembles a big-endian 32-bit word from four byte wires (byte0 most significant). Bit-
     //decomposing each byte also constrains it to [0,255].
-    private int[] WordFromBytes(int byte0, int byte1, int byte2, int byte3)
+    private WireWord WordFromBytes(int byte0, int byte1, int byte2, int byte3)
     {
-        int[] bits3 = builder.AddBits(byte3, 8);
-        int[] bits2 = builder.AddBits(byte2, 8);
-        int[] bits1 = builder.AddBits(byte1, 8);
-        int[] bits0 = builder.AddBits(byte0, 8);
+        WireWord bits3 = builder.AddBits(byte3, 8);
+        WireWord bits2 = builder.AddBits(byte2, 8);
+        WireWord bits1 = builder.AddBits(byte1, 8);
+        WireWord bits0 = builder.AddBits(byte0, 8);
 
-        int[] word = new int[WordBits];
+        WireWord word = builder.RentWireWord(WordBits);
         for(int i = 0; i < 8; i++)
         {
             word[i] = bits3[i];
@@ -383,9 +382,9 @@ internal sealed class Sha256Gadget
 
     //One SHA-256 compression: the message schedule (extending the first 16 words to 64), the 64
     //rounds, and the add-back of the input state.
-    private int[][] CompressBlock(int[][] hashState, int[][] first16Words)
+    private WireWord[] CompressBlock(WireWord[] hashState, WireWord[] first16Words)
     {
-        int[][] w = new int[64][];
+        WireWord[] w = new WireWord[64];
         for(int t = 0; t < 16; t++)
         {
             w[t] = first16Words[t];
@@ -396,11 +395,11 @@ internal sealed class Sha256Gadget
             w[t] = AddMod32(w[t - 16], LowerSigma0(w[t - 15]), w[t - 7], LowerSigma1(w[t - 2]));
         }
 
-        int[] a = hashState[0], b = hashState[1], c = hashState[2], d = hashState[3], e = hashState[4], f = hashState[5], g = hashState[6], h = hashState[7];
+        WireWord a = hashState[0], b = hashState[1], c = hashState[2], d = hashState[3], e = hashState[4], f = hashState[5], g = hashState[6], h = hashState[7];
         for(int t = 0; t < 64; t++)
         {
-            int[] t1 = AddMod32(h, BigSigma1(e), Choose(e, f, g), ConstantWord(RoundConstants[t]), w[t]);
-            int[] t2 = AddMod32(BigSigma0(a), Majority(a, b, c));
+            WireWord t1 = AddMod32(h, BigSigma1(e), Choose(e, f, g), ConstantWord(RoundConstants[t]), w[t]);
+            WireWord t2 = AddMod32(BigSigma0(a), Majority(a, b, c));
             h = g;
             g = f;
             f = e;
@@ -411,7 +410,7 @@ internal sealed class Sha256Gadget
             a = AddMod32(t1, t2);
         }
 
-        int[][] result = new int[8][];
+        WireWord[] result = new WireWord[8];
         result[0] = AddMod32(hashState[0], a);
         result[1] = AddMod32(hashState[1], b);
         result[2] = AddMod32(hashState[2], c);
@@ -426,7 +425,7 @@ internal sealed class Sha256Gadget
 
 
     //Writes the 32-byte big-endian digest from the eight hash words (for gating).
-    public void DigestBytes(int[][] hashWords, Span<byte> destination)
+    public void DigestBytes(WireWord[] hashWords, Span<byte> destination)
     {
         ArgumentNullException.ThrowIfNull(hashWords);
         for(int i = 0; i < 8; i++)
@@ -438,11 +437,11 @@ internal sealed class Sha256Gadget
 
     //The 32 digest bytes as wires (each in [0,255]), big-endian, for use as a derived match
     //pattern — e.g. proving an outer message (an MSO) contains this digest of an inner item.
-    public int[] DigestByteWires(int[][] hashWords)
+    public WireWord DigestByteWires(WireWord[] hashWords)
     {
         ArgumentNullException.ThrowIfNull(hashWords);
 
-        int[] digestBytes = new int[32];
+        WireWord digestBytes = builder.RentWireWord(32);
         int index = 0;
         for(int word = 0; word < 8; word++)
         {
@@ -450,8 +449,7 @@ internal sealed class Sha256Gadget
             {
                 //Big-endian: the most significant byte (word bits 24..31) comes first.
                 int baseBit = (3 - byteIndex) * 8;
-                int[] eightBits = hashWords[word][baseBit..(baseBit + 8)];
-                digestBytes[index++] = builder.AddRecomposedScalar(eightBits);
+                digestBytes[index++] = builder.AddRecomposedScalar(hashWords[word].Slice(baseBit, 8));
             }
         }
 
@@ -460,40 +458,43 @@ internal sealed class Sha256Gadget
 
 
     //Σ0(a) = ROTR(a,2) ⊕ ROTR(a,13) ⊕ ROTR(a,22).
-    private int[] BigSigma0(int[] a) => Xor(Xor(RotateRight(a, 2), RotateRight(a, 13)), RotateRight(a, 22));
+    private WireWord BigSigma0(WireWord a) => Xor(Xor(RotateRight(a, 2), RotateRight(a, 13)), RotateRight(a, 22));
 
     //Σ1(e) = ROTR(e,6) ⊕ ROTR(e,11) ⊕ ROTR(e,25).
-    private int[] BigSigma1(int[] e) => Xor(Xor(RotateRight(e, 6), RotateRight(e, 11)), RotateRight(e, 25));
+    private WireWord BigSigma1(WireWord e) => Xor(Xor(RotateRight(e, 6), RotateRight(e, 11)), RotateRight(e, 25));
 
     //σ0(x) = ROTR(x,7) ⊕ ROTR(x,18) ⊕ SHR(x,3).
-    private int[] LowerSigma0(int[] x) => Xor(Xor(RotateRight(x, 7), RotateRight(x, 18)), ShiftRight(x, 3));
+    private WireWord LowerSigma0(WireWord x) => Xor(Xor(RotateRight(x, 7), RotateRight(x, 18)), ShiftRight(x, 3));
 
     //σ1(x) = ROTR(x,17) ⊕ ROTR(x,19) ⊕ SHR(x,10).
-    private int[] LowerSigma1(int[] x) => Xor(Xor(RotateRight(x, 17), RotateRight(x, 19)), ShiftRight(x, 10));
+    private WireWord LowerSigma1(WireWord x) => Xor(Xor(RotateRight(x, 17), RotateRight(x, 19)), ShiftRight(x, 10));
 
     //Ch(e,f,g) = (e ∧ f) ⊕ (¬e ∧ g).
-    private int[] Choose(int[] e, int[] f, int[] g) => Xor(And(e, f), And(Not(e), g));
+    private WireWord Choose(WireWord e, WireWord f, WireWord g) => Xor(And(e, f), And(Not(e), g));
 
     //Maj(a,b,c) = (a ∧ b) ⊕ (a ∧ c) ⊕ (b ∧ c).
-    private int[] Majority(int[] a, int[] b, int[] c) => Xor(Xor(And(a, b), And(a, c)), And(b, c));
+    private WireWord Majority(WireWord a, WireWord b, WireWord c) => Xor(Xor(And(a, b), And(a, c)), And(b, c));
 
 
     private static LinearTerm Term(int wire, ReadOnlyMemory<byte> coefficient) => new(wire, coefficient);
 
 
-    private byte[] Negate(ReadOnlySpan<byte> value)
+    //A pooled scalar holding −value, rented from the builder's arena (build-lifetime, cleared on
+    //Dispose) rather than a naked byte[].
+    private ReadOnlyMemory<byte> Negate(ReadOnlySpan<byte> value)
     {
-        byte[] negated = new byte[ScalarSize];
-        builder.Negate(value, negated);
+        Memory<byte> negated = builder.RentScalar();
+        builder.Negate(value, negated.Span);
 
         return negated;
     }
 
 
-    private static byte[] Encode(uint value)
+    //A pooled scalar holding the canonical encoding of value, rented from the builder's arena.
+    private ReadOnlyMemory<byte> Encode(uint value)
     {
-        byte[] bytes = new byte[ScalarSize];
-        LigeroConstraintSystemBuilder.EncodeConstant(value, bytes);
+        Memory<byte> bytes = builder.RentScalar();
+        LigeroConstraintSystemBuilder.EncodeConstant(value, bytes.Span);
 
         return bytes;
     }
