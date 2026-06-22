@@ -60,51 +60,59 @@ internal sealed class WeierstrassCurve
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        byte[] one = Encode(1);
-        byte[] negativeOne = Negate(builder, one);
-        byte[] negativeTwo = Negate(builder, Encode(2));
-        byte[] three = Encode(3);
-        byte[] negativeThree = Negate(builder, three);
+        //All constants are build-lifetime and rented from the builder's pooled arena (cleared on its
+        //Dispose), so the curve carries no naked byte[].
+        ReadOnlyMemory<byte> one = Encode(builder, 1);
+        ReadOnlyMemory<byte> negativeOne = Negate(builder, one.Span);
+        ReadOnlyMemory<byte> negativeTwo = Negate(builder, Encode(builder, 2).Span);
+        ReadOnlyMemory<byte> three = Encode(builder, 3);
+        ReadOnlyMemory<byte> negativeThree = Negate(builder, three.Span);
 
-        byte[] a = Canonical(curveA);
-        byte[] negativeA = Negate(builder, a);
-        byte[] b = Canonical(curveB);
+        ReadOnlyMemory<byte> a = Canonical(builder, curveA);
+        ReadOnlyMemory<byte> negativeA = Negate(builder, a.Span);
+        ReadOnlyMemory<byte> b = Canonical(builder, curveB);
 
         //3·b, derived once for the complete addition's k3b term.
         Span<byte> twoB = stackalloc byte[ScalarSize];
-        builder.AddValues(b, b, twoB);
-        byte[] threeB = new byte[ScalarSize];
-        builder.AddValues(twoB, b, threeB);
+        builder.AddValues(b.Span, b.Span, twoB);
+        Memory<byte> threeB = builder.RentScalar();
+        builder.AddValues(twoB, b.Span, threeB.Span);
 
-        return new WeierstrassCurve(a, b, threeB, negativeA, new byte[ScalarSize], one, negativeOne, negativeTwo, three, negativeThree);
+        Memory<byte> zero = builder.RentScalar();
+        zero.Span.Clear();
+
+        return new WeierstrassCurve(a, b, threeB, negativeA, zero, one, negativeOne, negativeTwo, three, negativeThree);
     }
 
 
-    private static byte[] Encode(uint value)
+    private static ReadOnlyMemory<byte> Encode(LigeroConstraintSystemBuilder builder, uint value)
     {
-        byte[] bytes = new byte[ScalarSize];
-        LigeroConstraintSystemBuilder.EncodeConstant(value, bytes);
+        Memory<byte> bytes = builder.RentScalar();
+        LigeroConstraintSystemBuilder.EncodeConstant(value, bytes.Span);
 
         return bytes;
     }
 
 
-    private static byte[] Negate(LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> value)
+    private static ReadOnlyMemory<byte> Negate(LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> value)
     {
-        byte[] negated = new byte[ScalarSize];
-        builder.Negate(value, negated);
+        Memory<byte> negated = builder.RentScalar();
+        builder.Negate(value, negated.Span);
 
         return negated;
     }
 
 
-    private static byte[] Canonical(ReadOnlyMemory<byte> value)
+    private static ReadOnlyMemory<byte> Canonical(LigeroConstraintSystemBuilder builder, ReadOnlyMemory<byte> value)
     {
         if(value.Length != ScalarSize)
         {
             throw new ArgumentException($"Curve constant must be {ScalarSize} canonical bytes; received {value.Length}.", nameof(value));
         }
 
-        return value.ToArray();
+        Memory<byte> canonical = builder.RentScalar();
+        value.Span.CopyTo(canonical.Span);
+
+        return canonical;
     }
 }

@@ -31,16 +31,30 @@ namespace Lumoin.Veridical.Core.Commitments.Ligero;
 /// its defining constraint, so a witness cannot satisfy the system unless each
 /// intermediate equals the value its constraint names. The persistent scalars (the
 /// witness, the linear-constraint targets, and the coefficients) are sub-allocated
-/// from pooled arena slabs rented from the caller's <see cref="MemoryPool{T}"/>,
+/// from pooled arena slabs rented from the caller's <see cref="BaseMemoryPool"/>,
 /// threaded in from the top, and zeroed back to the pool on <see cref="Dispose"/>;
-/// transient per-call value buffers are stack-allocated. (A remaining cleanup sweep
-/// pools the few transient coefficient buffers and the witness/target marshalling.)
+/// transient per-call value buffers are stack-allocated.
+/// </para>
+/// <para>
+/// The backing tier follows one reviewable rule: <em>a pooled region is
+/// <see cref="AllocationKind.Pinned"/> exactly when it can hold a secret.</em> The scalar
+/// arena (<see cref="RentScalar"/>) is Pinned because the wires include the witness — the
+/// ECDSA nonce coordinates enter as wire values — so its zeroize-on-return wipe lands on the
+/// exact bytes with no GC-relocation copy, matching how <see cref="LigeroProver"/> retains
+/// its witness. The wire-index arena (<see cref="RentWireWord"/>) and the fixed public
+/// constant basis stay Managed: indices and coefficients are public circuit structure, never
+/// a secret. Pinned is the portable floor (pure managed pinned-object-heap, identical on
+/// every platform including WASM), so the guarantee needs no native backing.
 /// </para>
 /// </remarks>
 internal sealed class LigeroConstraintSystemBuilder: IDisposable
 {
     private const int ScalarSize = Scalar.SizeBytes;
     private const int ScalarsPerSlab = 512;
+
+    //Wire-index words are byte-granular (count * sizeof(int)); a 64 KiB slab amortizes the many small
+    //words a circuit build produces, parallel to the scalar arena.
+    private const int WireSlabBytes = 64 * 1024;
 
     private readonly ScalarAddDelegate add;
     private readonly ScalarSubtractDelegate subtract;
@@ -57,10 +71,14 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     private readonly List<Memory<byte>> targets = [];
     private readonly List<LigeroQuadraticConstraint> quadratics = [];
 
-    private readonly MemoryPool<byte> memoryPool;
+    private readonly BaseMemoryPool memoryPool;
     private readonly List<IMemoryOwner<byte>> slabs = [];
     private Memory<byte> currentSlab;
     private int slabOffset;
+
+    private readonly List<IMemoryOwner<byte>> wireSlabs = [];
+    private Memory<byte> currentWireSlab;
+    private int wireSlabByteOffset;
     private bool disposed;
 
     private readonly byte[] zero = new byte[ScalarSize];
@@ -92,7 +110,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         int inverseRate,
         int openedColumnCount,
         int block,
-        MemoryPool<byte> memoryPool)
+        BaseMemoryPool memoryPool)
     {
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(subtract);
@@ -250,10 +268,26 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
 
         var constraintTerms = new LinearTerm[terms.Length + 1];
         constraintTerms[0] = new LinearTerm(w, one);
+
+        //An empty combination is the constant-zero wire (w = 0): no coefficients to negate, and a
+        //zero-length pooled rent would throw — so emit its single defining term directly.
+        if(terms.Length == 0)
+        {
+            AddLinear(zero, constraintTerms);
+
+            return w;
+        }
+
+        //The negated coefficients are public constraint constants (never a witness value — the secret lives
+        //in the wires they reference). They live only until AddLinear copies them into its own arena scalars,
+        //so they are rented as one Managed block and returned (cleared) on scope exit — pooled, not
+        //GC-reclaimed, but unpinned: there is no secret here to keep off a relocated heap block.
+        using IMemoryOwner<byte> negatedOwner = memoryPool.Rent(terms.Length * ScalarSize);
+        Memory<byte> negatedBlock = negatedOwner.Memory[..(terms.Length * ScalarSize)];
         for(int i = 0; i < terms.Length; i++)
         {
-            byte[] negated = new byte[ScalarSize];
-            Negate(terms[i].Coefficient.Span, negated);
+            Memory<byte> negated = negatedBlock.Slice(i * ScalarSize, ScalarSize);
+            Negate(terms[i].Coefficient.Span, negated.Span);
             constraintTerms[i + 1] = new LinearTerm(terms[i].Wire, negated);
         }
 
@@ -277,10 +311,8 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //Scalar recomposition: a wire constrained to equal Σ bit_i·2^i (bits least-
     //significant first) by one linear constraint. The 2^i coefficients are reduced
     //mod the field; below the field order the residue equals the integer value.
-    public int AddRecomposedScalar(int[] bitsLeastSignificantFirst)
+    public int AddRecomposedScalar(ReadOnlySpan<int> bitsLeastSignificantFirst)
     {
-        ArgumentNullException.ThrowIfNull(bitsLeastSignificantFirst);
-
         EnsurePowersOfTwo(bitsLeastSignificantFirst.Length);
 
         Span<byte> accumulator = stackalloc byte[ScalarSize];
@@ -315,9 +347,9 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //bit patterns recomposing to the same residue (v and v + p); the < p chain pins
     //the canonical one, so a malicious non-canonical representative is rejected.
     //Returns the bits least-significant first.
-    public int[] AddCanonicalBits(int wire, int bitCount = 256)
+    public WireWord AddCanonicalBits(int wire, int bitCount = 256)
     {
-        int[] bits = DecomposeAndBind(wire, bitCount);
+        WireWord bits = DecomposeAndBind(wire, bitCount);
         AddAssertLessThanConstant(bits, modulus);
 
         return bits;
@@ -328,9 +360,9 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //< 2^bitCount). Built on canonical bits — so the bits are the true integer, not
     //an aliased representative — then a second lexicographic chain against the
     //limit. Returns the canonical bits least-significant first.
-    public int[] AddRangeBelow(int wire, ReadOnlySpan<byte> limit, int bitCount = 256)
+    public WireWord AddRangeBelow(int wire, ReadOnlySpan<byte> limit, int bitCount = 256)
     {
-        int[] bits = AddCanonicalBits(wire, bitCount);
+        WireWord bits = AddCanonicalBits(wire, bitCount);
         AddAssertLessThanConstant(bits, limit);
 
         return bits;
@@ -362,7 +394,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //bound to the wire by recomposition. Sound for narrow widths with no canonicity
     //chain — the value + p alias exceeds 2^bitCount — so it serves the 32-bit word
     //arithmetic of the hash gadgets. A wire whose value is ≥ 2^bitCount is unprovable.
-    public int[] AddBits(int wire, int bitCount) => DecomposeAndBind(wire, bitCount);
+    public WireWord AddBits(int wire, int bitCount) => DecomposeAndBind(wire, bitCount);
 
 
     //Asserts the value Σ bit_i·2^i (bits least-significant first, each already pinned
@@ -374,9 +406,8 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //the top differing position. Every gate is on {0,1} operands, so no sum that could
     //wrap mod p is ever formed — that is what makes the bound sound over Fp. The
     //constant must be < 2^bitCount.
-    public void AddAssertLessThanConstant(int[] bitsLeastSignificantFirst, ReadOnlySpan<byte> constant)
+    public void AddAssertLessThanConstant(ReadOnlySpan<int> bitsLeastSignificantFirst, ReadOnlySpan<byte> constant)
     {
-        ArgumentNullException.ThrowIfNull(bitsLeastSignificantFirst);
         if(constant.Length != ScalarSize)
         {
             throw new ArgumentException($"Constant must be {ScalarSize} canonical bytes; received {constant.Length}.", nameof(constant));
@@ -411,9 +442,9 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //{0,1}, and ties Σ bit_i·2^i to the wire by one linear constraint. NOT canonical
     //on its own (see AddCanonicalBits); the building block both it and the range
     //gadget compose from.
-    private int[] DecomposeAndBind(int wire, int bitCount)
+    private WireWord DecomposeAndBind(int wire, int bitCount)
     {
-        int[] bits = new int[bitCount];
+        WireWord bits = RentWireWord(bitCount);
         Span<byte> bitValue = stackalloc byte[ScalarSize];
         for(int i = 0; i < bitCount; i++)
         {
@@ -446,12 +477,11 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //canonical, the integer the ladder consumes is exactly the pinned public scalar —
     //a non-canonical representative (scalar + p) cannot be substituted to change the
     //scalar the curve operation sees.
-    public (int Wire, int[] BitsMostSignificantFirst) AddPublicScalarBits(ReadOnlySpan<byte> scalar, ReadOnlySpan<byte> limit, int bitCount = 256)
+    public (int Wire, WireWord BitsMostSignificantFirst) AddPublicScalarBits(ReadOnlySpan<byte> scalar, ReadOnlySpan<byte> limit, int bitCount = 256)
     {
         int wire = AddConstant(scalar);
-        int[] leastSignificantFirst = AddRangeBelow(wire, limit, bitCount);
-        int[] mostSignificantFirst = (int[])leastSignificantFirst.Clone();
-        Array.Reverse(mostSignificantFirst);
+        WireWord leastSignificantFirst = AddRangeBelow(wire, limit, bitCount);
+        WireWord mostSignificantFirst = ReverseInto(leastSignificantFirst);
 
         return (wire, mostSignificantFirst);
     }
@@ -466,7 +496,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //which satisfies a naive field tie (it differs from the true value by exactly p).
     //reducedValue is range-checked canonical and < modulus and returned most-
     //significant first for reuse as the ladder scalar.
-    public (int Wire, int[] BitsMostSignificantFirst) AddReduceModOrder(int valueWire, ReadOnlySpan<byte> reducedValue, ReadOnlySpan<byte> modulus, int bitCount = 256)
+    public (int Wire, WireWord BitsMostSignificantFirst) AddReduceModOrder(int valueWire, ReadOnlySpan<byte> reducedValue, ReadOnlySpan<byte> modulus, int bitCount = 256)
     {
         //quotient ∈ {0,1}: 1 iff value ≥ modulus (one subtraction suffices since the
         //value is below p < 2·modulus).
@@ -479,16 +509,16 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //Test-only: build the binding with a CHOSEN quotient bit — the witness a malicious
     //prover would pick — so the integer identity's soundness can be checked against the
     //mod-p alias, which needs the wrong quotient (the honest path picks it from value).
-    internal (int Wire, int[] BitsMostSignificantFirst) AddReduceModOrderWithQuotientForTesting(
+    internal (int Wire, WireWord BitsMostSignificantFirst) AddReduceModOrderWithQuotientForTesting(
         int valueWire, ReadOnlySpan<byte> reducedValue, ReadOnlySpan<byte> modulus, bool quotient, int bitCount = 256) =>
         AddReduceModOrderCore(valueWire, reducedValue, modulus, bitCount, quotient);
 
 
-    private (int Wire, int[] BitsMostSignificantFirst) AddReduceModOrderCore(int valueWire, ReadOnlySpan<byte> reducedValue, ReadOnlySpan<byte> modulus, int bitCount, bool quotientIsOne)
+    private (int Wire, WireWord BitsMostSignificantFirst) AddReduceModOrderCore(int valueWire, ReadOnlySpan<byte> reducedValue, ReadOnlySpan<byte> modulus, int bitCount, bool quotientIsOne)
     {
         int reducedWire = AddConstant(reducedValue);
-        int[] reducedBits = AddRangeBelow(reducedWire, modulus, bitCount);
-        int[] valueBits = AddCanonicalBits(valueWire, bitCount);
+        WireWord reducedBits = AddRangeBelow(reducedWire, modulus, bitCount);
+        WireWord valueBits = AddCanonicalBits(valueWire, bitCount);
 
         Span<byte> scratch = stackalloc byte[ScalarSize];
         EncodeConstant(quotientIsOne ? 1u : 0u, scratch);
@@ -534,8 +564,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
             carry = nextCarry;
         }
 
-        int[] mostSignificantFirst = (int[])reducedBits.Clone();
-        Array.Reverse(mostSignificantFirst);
+        WireWord mostSignificantFirst = ReverseInto(reducedBits);
 
         return (reducedWire, mostSignificantFirst);
     }
@@ -691,12 +720,20 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //Hands out one scalar (ScalarSize bytes) from the current pooled arena slab, renting
     //a fresh slab from the memory pool when the current one is exhausted. Every handed-out
     //scalar is fully overwritten by its caller before it is read, so no stale slab bytes
-    //leak into a wire, target, or coefficient.
-    private Memory<byte> RentScalar()
+    //leak into a wire, target, or coefficient. Internal so the gadgets rent their byte
+    //scratch and constants from the same arena instead of minting naked byte[].
+    //
+    //The arena is Pinned (pinned-object-heap): a witness scalar can hold a secret (the ECDSA
+    //nonce coordinates enter as wires), and pinning means the zeroize-on-return wipe lands on
+    //the exact bytes that held it, with no GC-relocation copy left behind. This matches how
+    //LigeroProver retains its secret witness; a witness-scale arena is too large for the
+    //native (locked) tier, so Pinned is the portable floor — pure managed, identical guarantee
+    //on every platform including WASM, no native backing required.
+    internal Memory<byte> RentScalar()
     {
         if(slabs.Count == 0 || slabOffset == ScalarsPerSlab)
         {
-            IMemoryOwner<byte> owner = memoryPool.Rent(ScalarsPerSlab * ScalarSize);
+            IMemoryOwner<byte> owner = memoryPool.Rent(ScalarsPerSlab * ScalarSize, AllocationKind.Pinned);
             slabs.Add(owner);
             currentSlab = owner.Memory[..(ScalarsPerSlab * ScalarSize)];
             slabOffset = 0;
@@ -706,6 +743,48 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         slabOffset++;
 
         return scalar;
+    }
+
+
+    //Hands out a fixed-length wire word (count wire indices) from the current pooled wire slab, renting a
+    //fresh slab when the current one cannot fit it. The returned WireWord reinterprets the bytes as ints;
+    //the builder owns the slab and the pool clears it on Dispose, so the word is valid for the whole
+    //circuit build and needs no separate disposal — replacing the gadgets' naked new int[] wire arrays.
+    //
+    //Unlike the scalar arena this stays Managed: a wire word holds wire INDICES — public circuit structure,
+    //not secret values — so there is nothing to pin against a dump, and a circuit's index arenas run to
+    //megabytes that would needlessly pressure the (non-compacting) pinned-object-heap. The reviewable rule
+    //is one line: scalars (may hold secrets) are Pinned, indices (public structure) are Managed.
+    internal WireWord RentWireWord(int count)
+    {
+        int byteCount = count * sizeof(int);
+        if(wireSlabs.Count == 0 || wireSlabByteOffset + byteCount > currentWireSlab.Length)
+        {
+            int slabBytes = Math.Max(WireSlabBytes, byteCount);
+            IMemoryOwner<byte> owner = memoryPool.Rent(slabBytes);
+            wireSlabs.Add(owner);
+            currentWireSlab = owner.Memory[..slabBytes];
+            wireSlabByteOffset = 0;
+        }
+
+        Memory<byte> backing = currentWireSlab.Slice(wireSlabByteOffset, byteCount);
+        wireSlabByteOffset += byteCount;
+
+        return new WireWord(backing, count);
+    }
+
+
+    //A fresh pooled wire word holding source reversed (least-significant-first bits become most-significant
+    //first for a double-and-add / Straus ladder), without minting a naked int[] clone.
+    private WireWord ReverseInto(WireWord source)
+    {
+        WireWord reversed = RentWireWord(source.Length);
+        for(int i = 0; i < source.Length; i++)
+        {
+            reversed[i] = source[source.Length - 1 - i];
+        }
+
+        return reversed;
     }
 
 
@@ -723,6 +802,13 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         }
 
         slabs.Clear();
+
+        foreach(IMemoryOwner<byte> wireSlab in wireSlabs)
+        {
+            wireSlab.Dispose();
+        }
+
+        wireSlabs.Clear();
         disposed = true;
     }
 }

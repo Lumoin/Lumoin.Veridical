@@ -21,6 +21,7 @@
     <InternalsVisibleTo Include="Lumoin.Veridical.Analysis" />
     <InternalsVisibleTo Include="Lumoin.Veridical.Bbs" />
     <InternalsVisibleTo Include="Lumoin.Veridical.Bbs.Tests" />
+    <InternalsVisibleTo Include="Lumoin.Veridical.Secdsa" />
   </ItemGroup>
 
 </Project>

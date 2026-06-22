@@ -78,10 +78,10 @@ internal sealed class LigeroModularBindingTests
         //A scalar < n pins canonically and its bits recompose (most-significant first)
         //to the scalar.
         var builder = NewBuilder();
-        (int wire, int[] bitsMsb) = builder.AddPublicScalarBits(Bytes(0x9a), NBytes);
+        (int wire, WireWord bitsMsb) = builder.AddPublicScalarBits(Bytes(0x9a), NBytes);
         Assert.IsTrue(LigeroConstraintEvaluator.IsSatisfied(builder), "A scalar < n must satisfy AddPublicScalarBits.");
         Assert.AreEqual(new BigInteger(0x9a), new BigInteger(builder.Value(wire), isUnsigned: true, isBigEndian: true), "The pinned wire must hold the scalar.");
-        Assert.HasCount(256, bitsMsb, "A 256-bit scalar decomposition is returned.");
+        Assert.AreEqual(256, bitsMsb.Length, "A 256-bit scalar decomposition is returned.");
 
         using LigeroProof proof = Prove(builder);
         Assert.IsTrue(Verify(builder, proof), "An honest public-scalar binding must verify.");
