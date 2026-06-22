@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
 using System.Numerics;
+using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
 
 namespace Lumoin.Veridical.Secdsa;
 
@@ -30,11 +31,15 @@ namespace Lumoin.Veridical.Secdsa;
 /// concern; this algorithm is byte-for-byte stable across it.
 /// </para>
 /// <para>
-/// <b>Not constant-time yet.</b> The wired BigInteger arithmetic, the RFC 6979 nonce derivation, and the
-/// public-order range checks here are all variable-time in their secret inputs. Constant-time secret-scalar
-/// handling for <c>u</c>, <c>P</c>, and the derived intermediates is a separate, later hardening step; this is
-/// flagged exactly as <see cref="Core.Cryptography.Rfc6979DeterministicNonce"/> flags its own candidate
-/// comparison. Key-derived scratch is nonetheless cleared before return.
+/// <b>Timing-hardening status.</b> The in-package secret-scalar checks — the <c>[1, n−1]</c> range validation
+/// and the zero tests on <c>P</c>, <c>u</c>, and the derived intermediates — are <i>branchless</i>: they
+/// inspect every byte with no data-dependent early exit, so they do not leak by an early return where a key
+/// and the order first differ. This is best-effort in managed code, not a hard constant-time guarantee, and it
+/// is the cheap part: the dominant variable-time cost is the <i>injected</i> mod-<c>n</c> arithmetic (the
+/// BigInteger reference today; a constant-time scalar backend is a call-site choice) and the RFC 6979 nonce
+/// derivation (see <see cref="Core.Cryptography.Rfc6979DeterministicNonce"/>) — so genuine constant-time
+/// signing requires a constant-time scalar backend, which this algorithm is byte-for-byte stable across.
+/// Key-derived scratch is cleared before return.
 /// </para>
 /// </remarks>
 public static class SecdsaAlgorithm
@@ -670,23 +675,5 @@ public static class SecdsaAlgorithm
         {
             throw new ArgumentException($"Expected {expected} bytes; received {span.Length}.", name);
         }
-    }
-
-
-    private static bool IsZero(ReadOnlySpan<byte> value) => value.IndexOfAnyExcept((byte)0) < 0;
-
-
-    //Big-endian unsigned comparison: a < b. Equal-length operands (both 32-byte scalars).
-    private static bool IsLess(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-    {
-        for(int i = 0; i < a.Length; i++)
-        {
-            if(a[i] != b[i])
-            {
-                return a[i] < b[i];
-            }
-        }
-
-        return false;
     }
 }

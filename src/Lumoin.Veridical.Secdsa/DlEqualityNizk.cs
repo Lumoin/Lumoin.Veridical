@@ -4,6 +4,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
+using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
 
 namespace Lumoin.Veridical.Secdsa;
 
@@ -43,9 +44,11 @@ namespace Lumoin.Veridical.Secdsa;
 /// throw on an invalid encoding; a backend that clamps or sentinels instead would weaken this.
 /// </para>
 /// <para>
-/// <b>Not constant-time yet.</b> As with <see cref="SecdsaAlgorithm"/>, the wired arithmetic and range checks are
-/// variable-time in their secret inputs; witness-derived scratch (<c>k</c>, <c>r·d</c>) is nonetheless cleared
-/// before return. Constant-time hardening is a separate, later step.
+/// <b>Timing-hardening status.</b> The in-package secret checks — the <c>[1, n−1]</c> witness validation and
+/// the zero tests — are <i>branchless</i> (every byte inspected, no data-dependent early exit), best-effort in
+/// managed code as in <see cref="SecdsaAlgorithm"/>, not a hard constant-time guarantee; the <i>injected</i>
+/// scalar arithmetic remains the dominant variable-time cost (a constant-time backend is a call-site choice).
+/// Witness-derived scratch (<c>k</c>, <c>r·d</c>) is cleared before return.
 /// </para>
 /// </remarks>
 public static class DlEqualityNizk
@@ -436,23 +439,5 @@ public static class DlEqualityNizk
         {
             throw new ArgumentException($"Expected {expected} bytes; received {span.Length}.", name);
         }
-    }
-
-
-    private static bool IsZero(ReadOnlySpan<byte> value) => value.IndexOfAnyExcept((byte)0) < 0;
-
-
-    //Unsigned big-endian comparison of two equal-length scalars: returns a < b.
-    private static bool IsLess(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-    {
-        for(int i = 0; i < a.Length; i++)
-        {
-            if(a[i] != b[i])
-            {
-                return a[i] < b[i];
-            }
-        }
-
-        return false;
     }
 }

@@ -55,8 +55,8 @@ internal sealed class Sha256GadgetTests
         {
             LigeroConstraintSystemBuilder builder = NewBuilder();
             var sha = new Sha256Gadget(builder);
-            int[] wa = sha.WitnessWord(a);
-            int[] wb = sha.WitnessWord(b);
+            WireWord wa = sha.WitnessWord(a);
+            WireWord wb = sha.WitnessWord(b);
 
             Assert.AreEqual(a ^ b, sha.WordValue(sha.Xor(wa, wb)), $"XOR of {a:X8},{b:X8}.");
             Assert.AreEqual(a & b, sha.WordValue(sha.And(wa, wb)), $"AND of {a:X8},{b:X8}.");
@@ -75,8 +75,8 @@ internal sealed class Sha256GadgetTests
         {
             LigeroConstraintSystemBuilder builder = NewBuilder();
             var sha = new Sha256Gadget(builder);
-            int[] wa = sha.WitnessWord(a);
-            int[] wb = sha.WitnessWord(b);
+            WireWord wa = sha.WitnessWord(a);
+            WireWord wb = sha.WitnessWord(b);
 
             Assert.AreEqual(unchecked(a + b), sha.WordValue(sha.AddMod32(wa, wb)), $"({a:X8} + {b:X8}) mod 2^32.");
             Assert.IsTrue(LigeroConstraintEvaluator.IsSatisfied(builder), "Addition constraints must be consistent.");
@@ -86,7 +86,7 @@ internal sealed class Sha256GadgetTests
         LigeroConstraintSystemBuilder multi = NewBuilder();
         var multiSha = new Sha256Gadget(multi);
         uint[] values = [0xF0000000u, 0x20000000u, 0x30000000u, 0x10000000u, 0x0000007Fu];
-        int[][] words = new int[values.Length][];
+        WireWord[] words = new WireWord[values.Length];
         for(int i = 0; i < values.Length; i++)
         {
             words[i] = multiSha.WitnessWord(values[i]);
@@ -110,11 +110,11 @@ internal sealed class Sha256GadgetTests
         {
             LigeroConstraintSystemBuilder builder = NewBuilder();
             var sha = new Sha256Gadget(builder);
-            int[] wa = sha.WitnessWord(a);
+            WireWord wa = sha.WitnessWord(a);
 
             foreach(int n in new[] { 1, 6, 7, 11, 13, 16, 17, 18, 22, 25, 31 })
             {
-                Assert.AreEqual(BitOperations.RotateRight(a, n), sha.WordValue(Sha256Gadget.RotateRight(wa, n)), $"ROTR({a:X8}, {n}).");
+                Assert.AreEqual(BitOperations.RotateRight(a, n), sha.WordValue(sha.RotateRight(wa, n)), $"ROTR({a:X8}, {n}).");
             }
 
             foreach(int n in new[] { 1, 3, 10, 16, 31 })
@@ -147,7 +147,7 @@ internal sealed class Sha256GadgetTests
             LigeroConstraintSystemBuilder builder = NewBuilder();
             var sha = new Sha256Gadget(builder);
 
-            int[][] digestWords = sha.Hash(message);
+            WireWord[] digestWords = sha.Hash(message);
             sha.DigestBytes(digestWords, digest);
 
             Assert.IsTrue(digest.SequenceEqual(SHA256.HashData(message)), $"In-circuit SHA-256 of {length} bytes must match the reference.");
@@ -173,9 +173,9 @@ internal sealed class Sha256GadgetTests
 
             LigeroConstraintSystemBuilder builder = NewBuilder();
             var sha = new Sha256Gadget(builder);
-            int[] byteWires = builder.WitnessMessage(message);
+            WireWord byteWires = builder.WitnessMessage(message);
 
-            int[][] digestWords = sha.Hash(byteWires);
+            WireWord[] digestWords = sha.Hash(byteWires);
             sha.DigestBytes(digestWords, digest);
 
             Assert.IsTrue(digest.SequenceEqual(SHA256.HashData(message)), $"Byte-wire SHA-256 of {length} bytes must match the reference.");

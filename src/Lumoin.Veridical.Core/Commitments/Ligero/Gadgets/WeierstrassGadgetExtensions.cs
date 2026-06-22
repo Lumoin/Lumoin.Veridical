@@ -304,11 +304,10 @@ internal static class WeierstrassGadgetExtensions
     //given most-significant first. Each step doubles the accumulator and
     //conditionally adds P through the mux; the complete formula serves both, so no
     //edge-case branching and every intermediate point is equality-checked.
-    public static (int X, int Y, int Z) AddScalarMultiplyLadder(this LigeroConstraintSystemBuilder builder, WeierstrassCurve curve, int[] bitsMostSignificantFirst, int px, int py, int pz)
+    public static (int X, int Y, int Z) AddScalarMultiplyLadder(this LigeroConstraintSystemBuilder builder, WeierstrassCurve curve, ReadOnlySpan<int> bitsMostSignificantFirst, int px, int py, int pz)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(curve);
-        ArgumentNullException.ThrowIfNull(bitsMostSignificantFirst);
 
         (int X, int Y, int Z) accumulator = (builder.AddConstant(curve.Zero.Span), builder.AddConstant(curve.One.Span), builder.AddConstant(curve.Zero.Span));
         for(int i = 0; i < bitsMostSignificantFirst.Length; i++)
@@ -330,13 +329,10 @@ internal static class WeierstrassGadgetExtensions
     public static (int X, int Y, int Z) AddThreeScalarMultiScalarMultiply(
         this LigeroConstraintSystemBuilder builder, WeierstrassCurve curve,
         (int X, int Y, int Z) p0, (int X, int Y, int Z) p1, (int X, int Y, int Z) p2,
-        int[] bits0MostSignificantFirst, int[] bits1MostSignificantFirst, int[] bits2MostSignificantFirst)
+        ReadOnlySpan<int> bits0MostSignificantFirst, ReadOnlySpan<int> bits1MostSignificantFirst, ReadOnlySpan<int> bits2MostSignificantFirst)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(curve);
-        ArgumentNullException.ThrowIfNull(bits0MostSignificantFirst);
-        ArgumentNullException.ThrowIfNull(bits1MostSignificantFirst);
-        ArgumentNullException.ThrowIfNull(bits2MostSignificantFirst);
 
         (int X, int Y, int Z)[] table = builder.AddThreeBaseTable(curve, p0, p1, p2);
         (int X, int Y, int Z) accumulator = (builder.AddConstant(curve.Zero.Span), builder.AddConstant(curve.One.Span), builder.AddConstant(curve.Zero.Span));

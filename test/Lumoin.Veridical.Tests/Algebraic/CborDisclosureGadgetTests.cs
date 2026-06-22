@@ -77,7 +77,7 @@ internal sealed class CborDisclosureGadgetTests
 
         var present = NewBuilder();
         var presentSha = new Sha256Gadget(present);
-        int[] presentDigest = presentSha.DigestByteWires(presentSha.Hash(present.WitnessMessage(item)));
+        WireWord presentDigest = presentSha.DigestByteWires(presentSha.Hash(present.WitnessMessage(item)));
         present.AssertContainsBytesAt(present.WitnessMessage(mso), offset, presentDigest);
         Assert.IsTrue(LigeroConstraintEvaluator.IsSatisfied(present), "The MSO must contain SHA-256(item) at its offset.");
 
@@ -85,7 +85,7 @@ internal sealed class CborDisclosureGadgetTests
         byte[] otherMso = [.. prefix, .. SHA256.HashData("a different signed item"u8.ToArray()), .. suffix];
         var missing = NewBuilder();
         var missingSha = new Sha256Gadget(missing);
-        int[] missingDigest = missingSha.DigestByteWires(missingSha.Hash(missing.WitnessMessage(item)));
+        WireWord missingDigest = missingSha.DigestByteWires(missingSha.Hash(missing.WitnessMessage(item)));
         missing.AssertContainsBytesAt(missing.WitnessMessage(otherMso), offset, missingDigest);
         Assert.IsFalse(LigeroConstraintEvaluator.IsSatisfied(missing), "An MSO lacking the item's digest must be rejected.");
     }

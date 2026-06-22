@@ -272,9 +272,9 @@ internal static class LongfellowSumcheckVerifier
                     add(p0, p1, product, curve);
 
                     //round(): absorb the two transmitted points (p(0), p(2)) [skip p(1)], squeeze challenge.
-                    WriteLittleEndian(p0, squeezed);
+                    profile.ToBytesField(p0, squeezed);
                     transcript.AbsorbFieldElement(squeezed, elementBytes);
-                    WriteLittleEndian(proof.RoundPolynomialPoint(layer, hand, round, 2), squeezed);
+                    profile.ToBytesField(proof.RoundPolynomialPoint(layer, hand, round, 2), squeezed);
                     transcript.AbsorbFieldElement(squeezed, elementBytes);
                     transcript.SqueezeFieldElement(profile, challenge);
 
@@ -292,8 +292,8 @@ internal static class LongfellowSumcheckVerifier
             proof.Claim(layer, 0).CopyTo(claim0);
             proof.Claim(layer, 1).CopyTo(claim1);
 
-            WriteLittleEndian(claim0, wcBytes[..elementBytes]);
-            WriteLittleEndian(claim1, wcBytes.Slice(elementBytes, elementBytes));
+            profile.ToBytesField(claim0, wcBytes[..elementBytes]);
+            profile.ToBytesField(claim1, wcBytes.Slice(elementBytes, elementBytes));
             transcript.AbsorbFieldElementArray(wcBytes[..(LongfellowSumcheckProof.ClaimCount * elementBytes)], LongfellowSumcheckProof.ClaimCount, elementBytes);
 
             observer?.OnLayerClaims(layer, claim0, claim1);
@@ -368,13 +368,4 @@ internal static class LongfellowSumcheckVerifier
     }
 
 
-    //to_bytes_field: the low ElementBytes canonical big-endian bytes reversed to ElementBytes little-endian
-    //element bytes; the destination length is the element width.
-    private static void WriteLittleEndian(ReadOnlySpan<byte> canonical, Span<byte> littleEndian)
-    {
-        for(int i = 0; i < littleEndian.Length; i++)
-        {
-            littleEndian[i] = canonical[ScalarSize - 1 - i];
-        }
-    }
 }

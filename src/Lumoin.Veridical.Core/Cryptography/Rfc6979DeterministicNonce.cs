@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
 
 namespace Lumoin.Veridical.Core.Cryptography;
 
@@ -23,8 +24,9 @@ namespace Lumoin.Veridical.Core.Cryptography;
 /// The private key and the running <c>HMAC_DRBG</c> state (<c>V</c>, <c>K</c>) plus the work buffers are
 /// cleared before return. The reject loop's iteration count is message/key-dependent (RFC 6979's inherent
 /// shape), but for a 256-bit order whose value is within <c>2⁻³²</c> of <c>2²⁵⁶</c> (P-256) a candidate is
-/// accepted on the first attempt with overwhelming probability. The candidate range check is NOT yet a
-/// constant-time comparison — the constant-time secret-scalar hardening is a separate, later step.
+/// accepted on the first attempt with overwhelming probability. The candidate range check is <i>branchless</i>
+/// (every byte inspected, no data-dependent early exit) — best-effort in managed code, not a hard guarantee;
+/// the injected HMAC and the scalar reduction carry their own timing profile.
 /// </para>
 /// </remarks>
 public static class Rfc6979DeterministicNonce
@@ -167,24 +169,6 @@ public static class Rfc6979DeterministicNonce
         order.Clear();
         qBytes.CopyTo(order[(HashLength - qBytes.Length)..]);
     }
-
-
-    //Big-endian unsigned comparison: a < b.
-    private static bool IsLess(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-    {
-        for(int i = 0; i < a.Length; i++)
-        {
-            if(a[i] != b[i])
-            {
-                return a[i] < b[i];
-            }
-        }
-
-        return false;
-    }
-
-
-    private static bool IsZero(ReadOnlySpan<byte> value) => value.IndexOfAnyExcept((byte)0) < 0;
 
 
     //Big-endian in-place subtraction a -= b, assuming a >= b (the caller's conditional guards this).

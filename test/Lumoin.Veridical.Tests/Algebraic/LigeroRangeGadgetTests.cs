@@ -135,7 +135,7 @@ internal sealed class LigeroRangeGadgetTests
         //< p chain rejects it — a naive recomposition-only decomposition would not.
         var attacked = NewBuilder();
         int wire = Wire(attacked, 3);
-        int[] bits = attacked.AddCanonicalBits(wire);
+        WireWord bits = attacked.AddCanonicalBits(wire);
         Assert.IsTrue(LigeroConstraintEvaluator.IsSatisfied(attacked), "The honest decomposition of 3 must satisfy before the attack.");
 
         InjectBits(attacked, bits, 3 + P);
@@ -191,7 +191,7 @@ internal sealed class LigeroRangeGadgetTests
         //ladder) as the value 5.
         var builder = NewBuilder();
         int wire = Wire(builder, 5);
-        int[] bits = builder.AddRangeBelow(wire, NBytes);
+        WireWord bits = builder.AddRangeBelow(wire, NBytes);
         Assert.IsTrue(LigeroConstraintEvaluator.IsSatisfied(builder), "The honest decomposition of 5 must satisfy before the attack.");
 
         InjectBits(builder, bits, 5 + P);
@@ -246,7 +246,7 @@ internal sealed class LigeroRangeGadgetTests
     }
 
 
-    private static void InjectBits(LigeroConstraintSystemBuilder builder, int[] bitsLeastSignificantFirst, BigInteger value)
+    private static void InjectBits(LigeroConstraintSystemBuilder builder, ReadOnlySpan<int> bitsLeastSignificantFirst, BigInteger value)
     {
         Span<byte> bit = stackalloc byte[ScalarSize];
         for(int i = 0; i < bitsLeastSignificantFirst.Length; i++)

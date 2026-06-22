@@ -26,11 +26,11 @@ internal static class CborDisclosureGadgetExtensions
 
 
     //Witnesses a message as one wire per byte (the byte's integer value).
-    public static int[] WitnessMessage(this LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> message)
+    public static WireWord WitnessMessage(this LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> message)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        int[] messageBytes = new int[message.Length];
+        WireWord messageBytes = builder.RentWireWord(message.Length);
         Span<byte> value = stackalloc byte[ScalarSize];
         for(int i = 0; i < message.Length; i++)
         {
@@ -46,13 +46,12 @@ internal static class CborDisclosureGadgetExtensions
     //selector over the valid start positions [0, n − l] picks the offset; for each pattern
     //byte the selected message byte (Σ selector[j]·message[j+i]) is pinned to the pattern, so
     //the existence of the match — not a specific public offset — is what is proven.
-    public static void AssertContainsAt(this LigeroConstraintSystemBuilder builder, int[] messageBytes, int offset, ReadOnlySpan<byte> pattern)
+    public static void AssertContainsAt(this LigeroConstraintSystemBuilder builder, ReadOnlySpan<int> messageBytes, int offset, ReadOnlySpan<byte> pattern)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(messageBytes);
 
-        ReadOnlyMemory<byte> one = One();
-        int[] selector = BuildSelector(builder, messageBytes.Length, pattern.Length, offset);
+        ReadOnlyMemory<byte> one = One(builder);
+        WireWord selector = BuildSelector(builder, messageBytes.Length, pattern.Length, offset);
 
         //Σ_j selector[j]·message[j+i] = pattern[i] (a public constant).
         Span<byte> target = stackalloc byte[ScalarSize];
@@ -73,18 +72,17 @@ internal static class CborDisclosureGadgetExtensions
     //Like AssertContainsAt but the pattern is wire-valued (a value derived in-circuit, e.g. a
     //SHA-256 digest of an inner item), so it proves an outer message contains a computed digest
     //— the inner level of the two-level mdoc chain (the MSO holds SHA-256 of each signed item).
-    public static void AssertContainsBytesAt(this LigeroConstraintSystemBuilder builder, int[] messageBytes, int offset, int[] patternByteWires)
+    public static void AssertContainsBytesAt(this LigeroConstraintSystemBuilder builder, ReadOnlySpan<int> messageBytes, int offset, ReadOnlySpan<int> patternByteWires)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(messageBytes);
-        ArgumentNullException.ThrowIfNull(patternByteWires);
 
-        ReadOnlyMemory<byte> one = One();
-        byte[] negativeOne = new byte[ScalarSize];
-        builder.Negate(one.Span, negativeOne);
-        byte[] zero = new byte[ScalarSize];
+        ReadOnlyMemory<byte> one = One(builder);
+        Memory<byte> negativeOne = builder.RentScalar();
+        builder.Negate(one.Span, negativeOne.Span);
+        Span<byte> zero = stackalloc byte[ScalarSize];
+        zero.Clear();
 
-        int[] selector = BuildSelector(builder, messageBytes.Length, patternByteWires.Length, offset);
+        WireWord selector = BuildSelector(builder, messageBytes.Length, patternByteWires.Length, offset);
 
         //Σ_j selector[j]·message[j+i] − patternByteWires[i] = 0.
         for(int i = 0; i < patternByteWires.Length; i++)
@@ -102,7 +100,7 @@ internal static class CborDisclosureGadgetExtensions
 
 
     //A one-hot selector over the valid start positions [0, n − l]: exactly one position chosen.
-    private static int[] BuildSelector(LigeroConstraintSystemBuilder builder, int messageLength, int patternLength, int offset)
+    private static WireWord BuildSelector(LigeroConstraintSystemBuilder builder, int messageLength, int patternLength, int offset)
     {
         int positions = messageLength - patternLength + 1;
         if(positions <= 0)
@@ -110,8 +108,8 @@ internal static class CborDisclosureGadgetExtensions
             throw new ArgumentException("The pattern is longer than the message.", nameof(patternLength));
         }
 
-        ReadOnlyMemory<byte> one = One();
-        int[] selector = new int[positions];
+        ReadOnlyMemory<byte> one = One(builder);
+        WireWord selector = builder.RentWireWord(positions);
         Span<byte> bit = stackalloc byte[ScalarSize];
         for(int j = 0; j < positions; j++)
         {
@@ -131,10 +129,12 @@ internal static class CborDisclosureGadgetExtensions
     }
 
 
-    private static byte[] One()
+    //One as a pooled scalar from the builder's arena (consumed as a stored linear-term coefficient,
+    //so it must outlive the loop — rented, not stack-allocated).
+    private static ReadOnlyMemory<byte> One(LigeroConstraintSystemBuilder builder)
     {
-        byte[] one = new byte[ScalarSize];
-        LigeroConstraintSystemBuilder.EncodeConstant(1, one);
+        Memory<byte> one = builder.RentScalar();
+        LigeroConstraintSystemBuilder.EncodeConstant(1, one.Span);
 
         return one;
     }
