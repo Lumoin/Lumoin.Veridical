@@ -10,8 +10,8 @@ namespace Lumoin.Veridical.Tests.Memory;
 /// </summary>
 internal sealed class PlainSensitiveMemory: SensitiveMemory
 {
-    public PlainSensitiveMemory(IMemoryOwner<byte> owner, int length)
-        : base(owner, length, Tag.Empty)
+    public PlainSensitiveMemory(IMemoryOwner<byte> owner)
+        : base(owner, Tag.Empty)
     {
     }
 }

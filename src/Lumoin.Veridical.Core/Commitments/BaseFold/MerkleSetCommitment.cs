@@ -138,7 +138,7 @@ public static class MerkleSetCommitment
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(hash);
 
-        int digestSize = root.Length;
+        int digestSize = root.AsReadOnlySpan().Length;
         if(entryIndex < 0 || key.Length != digestSize || value.Length != digestSize
             || digestSize > WellKnownMerkleHashParameters.MaximumDigestSizeBytes)
         {

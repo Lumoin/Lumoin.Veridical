@@ -37,11 +37,11 @@ public static class LigeroPolynomialCommitmentScheme
 
     //The inverse code rate is fixed so the opening size is a pure function of
     //(variableCount, queryCount, digest) — which lets the Spartan proof carrier
-    //size openings from the provider's metadata alone, as for BaseFold. Rate 1/4
-    //(δ ≈ 3/4 RS relative distance) gives ≈ 2 bits of soundness per opened column
-    //(plus lower-order RS/affine terms); the soundness level is then scaled by the
-    //query count, not the rate.
-    private const int InverseRate = 4;
+    //size openings from the provider's metadata alone, as for BaseFold. The rate,
+    //its per-opened-column soundness (rate 1/4 gives ≈ 2 bits/column) and the
+    //128-bit query-count derivation live in WellKnownLigeroParameters; the soundness
+    //level is scaled by the query count, not the rate.
+    private const int InverseRate = WellKnownLigeroParameters.DefaultInverseRate;
 
 
     /// <summary>
@@ -49,7 +49,7 @@ public static class LigeroPolynomialCommitmentScheme
     /// algebraic, hashing and Merkle backends.
     /// </summary>
     /// <param name="curve">The curve whose scalar field the polynomial lives in (BLS12-381 or BN254).</param>
-    /// <param name="queryCount">The number of opened columns (the soundness query count); clamped per-polynomial to the available extension width.</param>
+    /// <param name="queryCount">The number of opened columns (the soundness query count); use <see cref="Ligero.WellKnownLigeroParameters.ClassicalSecurityDefaultQueryCount"/> for the 128-bit-classical target. Clamped per-polynomial to the available extension width, so for a small polynomial check the clamped count against <see cref="Ligero.WellKnownLigeroParameters.EffectiveSecurityBits"/>.</param>
     /// <param name="add">Scalar-add backend.</param>
     /// <param name="subtract">Scalar-subtract backend.</param>
     /// <param name="multiply">Scalar-multiply backend.</param>

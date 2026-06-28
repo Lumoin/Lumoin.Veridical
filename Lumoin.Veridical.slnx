@@ -11,6 +11,7 @@
     <File Path="LICENSE" />
     <File Path="NuGet.config" />
     <File Path="README.md" />
+    <File Path="SECURITY.md" />
     <File Path="spellcheckerexclusion.dic" />
     <File Path="verify-packages.sh" />
   </Folder>
@@ -21,6 +22,7 @@
     <Project Path="src/Lumoin.Veridical.Analysis/Lumoin.Veridical.Analysis.csproj" />
     <Project Path="src/Lumoin.Veridical.Backends.Managed/Lumoin.Veridical.Backends.Managed.csproj" />
     <Project Path="src/Lumoin.Veridical.Secdsa/Lumoin.Veridical.Secdsa.csproj" />
+    <Project Path="src/Lumoin.Veridical.Longfellow/Lumoin.Veridical.Longfellow.csproj" />
     <Project Path="src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj" />
   </Folder>
   <Folder Name="/test/">

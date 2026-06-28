@@ -22,6 +22,10 @@
     <InternalsVisibleTo Include="Lumoin.Veridical.Bbs" />
     <InternalsVisibleTo Include="Lumoin.Veridical.Bbs.Tests" />
     <InternalsVisibleTo Include="Lumoin.Veridical.Secdsa" />
+    <!-- The Longfellow facade package wraps the internal dual-field mdoc driver
+         (LongfellowMdocProver/Verifier and the per-field bundles) behind a curated,
+         serialization-free public surface; the low-level driver stays internal. -->
+    <InternalsVisibleTo Include="Lumoin.Veridical.Longfellow" />
   </ItemGroup>
 
 </Project>

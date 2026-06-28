@@ -7,7 +7,7 @@
     <!-- Shared Lumoin bedrock: the type-keyed Tag and the secure (Managed/Pinned/Native) byte memory pool,
          aligned across the Lumoin family so tagged/pooled crypto material crosses package boundaries without
          a duplicate-type impedance mismatch. -->
-    <PackageVersion Include="Lumoin.Base" Version="0.0.2" />
+    <PackageVersion Include="Lumoin.Base" Version="0.0.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.12.0-beta1.25218.8" />
     <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />

@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -175,7 +176,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
                             //masked sumcheck chain.
                             int maskOffset = ZkBaseFoldPolynomialCommitmentScheme.GetZeroKnowledgeEvaluationProofSizeBytes(
                                 RealVariableCount, ExtraVariableCount, Curve, TestQueryCount, DigestSizeBytes);
-                            opening.AsSpan()[maskOffset + DigestSizeBytes] ^= 0x01;
+                            MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[maskOffset + DigestSizeBytes] ^= 0x01;
 
                             using FiatShamirTranscript verifyTx = NewTranscript();
                             Assert.IsFalse(
@@ -225,7 +226,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
                             //opening's authentication against that root.
                             int maskCommitmentRootOffset = ZkBaseFoldPolynomialCommitmentScheme.GetZeroKnowledgeEvaluationProofSizeBytes(
                                 RealVariableCount, ExtraVariableCount, Curve, TestQueryCount, DigestSizeBytes);
-                            opening.AsSpan()[maskCommitmentRootOffset] ^= 0x01;
+                            MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[maskCommitmentRootOffset] ^= 0x01;
 
                             using FiatShamirTranscript verifyTx = NewTranscript();
                             Assert.IsFalse(
@@ -276,7 +277,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
                             int maskStart = ZkBaseFoldPolynomialCommitmentScheme.GetZeroKnowledgeEvaluationProofSizeBytes(
                                 RealVariableCount, ExtraVariableCount, Curve, TestQueryCount, DigestSizeBytes);
                             int fillerSumOffset = maskStart + DigestSizeBytes + ScalarSize;
-                            opening.AsSpan()[fillerSumOffset] ^= 0x01;
+                            MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[fillerSumOffset] ^= 0x01;
 
                             using FiatShamirTranscript verifyTx = NewTranscript();
                             Assert.IsFalse(
@@ -324,7 +325,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
                             //The nested weighted opening is the final section; its last
                             //byte sits inside a query authentication path, so flipping it
                             //must fail the nested IOPP authentication.
-                            opening.AsSpan()[^1] ^= 0x01;
+                            MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
                             using FiatShamirTranscript verifyTx = NewTranscript();
                             Assert.IsFalse(
@@ -370,7 +371,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
                         using(claimedValue)
                         {
                             //Flip a byte in the first (blended) round polynomial.
-                            opening.AsSpan()[0] ^= 0x01;
+                            MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[0] ^= 0x01;
 
                             using FiatShamirTranscript verifyTx = NewTranscript();
                             Assert.IsFalse(

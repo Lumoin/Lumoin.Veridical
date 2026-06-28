@@ -9,6 +9,7 @@ using System;
 using System.Buffers;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments;
 
@@ -188,7 +189,7 @@ internal sealed class HyraxWeightedOpeningTests
             using(proof)
             using(claimedValue)
             {
-                proof.AsSpan()[byteOffset] ^= 0x01;
+                MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[byteOffset] ^= 0x01;
 
                 bool ok = commitment.VerifyWeightedSum(
                     weights, claimedValue, proof, key, verifierTx,

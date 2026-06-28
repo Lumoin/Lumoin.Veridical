@@ -14,6 +14,7 @@ using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Text;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Spartan;
 
@@ -21,8 +22,8 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// End-to-end round-trip tests for the masked Spartan2 construction with
 /// BaseFold as its polynomial commitment scheme (AB.5 Stage B): the masked
 /// prover assembles a <see cref="BaseFoldMaskedSpartanProof"/> over
-/// <c>x · y = 15</c> through <c>ProveBaseFold</c>, and the masked verifier
-/// accepts it through <c>VerifyBaseFold</c>. Tampering a mask-opening byte and a
+/// <c>x · y = 15</c> through <c>ProveBaseFoldSound</c>, and the masked verifier
+/// accepts it through <c>VerifyBaseFoldSound</c>. Tampering a mask-opening byte and a
 /// sumcheck-middle byte is rejected.
 /// </summary>
 /// <remarks>
@@ -78,7 +79,7 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
         using BaseFoldMaskedSpartanProof proof = Prove(pool);
 
         //The witness opening is the final section; flip its last byte.
-        proof.AsSpan()[^1] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
         Assert.IsFalse(Verify(proof, pool), "A tampered witness-opening section must be rejected.");
     }
@@ -93,7 +94,7 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
 
         //The sumcheck middle starts after three 32-byte roots and the two
         //mask-sum scalars; flip the first byte of the first outer round.
-        proof.AsSpan()[(3 * DigestSizeBytes) + (2 * 32)] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[(3 * DigestSizeBytes) + (2 * 32)] ^= 0x01;
 
         Assert.IsFalse(Verify(proof, pool), "A tampered sumcheck-middle byte must be rejected.");
     }
@@ -111,7 +112,7 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
 
         ScalarRandomDelegate random = new DeterministicScalarRandom(RandomSeed).AsDelegate();
 
-        return prover.ProveBaseFold(
+        return prover.ProveBaseFoldSound(
             instance, witness, transcript,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
@@ -126,7 +127,7 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
         using RawR1csInstance instance = BuildInstance();
         using FiatShamirTranscript transcript = FreshTranscript();
 
-        return verifier.VerifyBaseFold(
+        return verifier.VerifyBaseFoldSound(
             proof, instance, transcript,
             Add, Multiply, Subtract, Invert, Reduce, Hash, Squeeze, pool);
     }

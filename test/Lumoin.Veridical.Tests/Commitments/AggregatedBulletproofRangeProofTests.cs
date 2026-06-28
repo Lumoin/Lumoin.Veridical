@@ -8,6 +8,7 @@ using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments;
 
@@ -110,7 +111,7 @@ internal sealed class AggregatedBulletproofRangeProofTests
             using(proof)
             {
                 //Flip a byte in the IPA tail.
-                proof.AsSpan()[^1] ^= 0x01;
+                MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
                 using FiatShamirTranscript verifyTx = NewTranscript();
                 Assert.IsFalse(

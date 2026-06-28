@@ -99,10 +99,9 @@ internal sealed class HyraxBindingTests
             //C_f - C_combined ?= Δr·H check fails.
             IMemoryOwner<byte> forgedOwner = BaseMemoryPool.Shared.Rent(HyraxOpeningWitness.GetBufferSizeBytes(witness.RowCount));
             forgedOwner.Memory.Span[..HyraxOpeningWitness.GetBufferSizeBytes(witness.RowCount)].Clear();
-            Tag forgedTag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.CommitmentWitness),
-                (typeof(CurveParameterSet), (object)key.Curve),
-                (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+            Tag forgedTag = Tag.Create(AlgebraicRole.CommitmentWitness)
+                .With(key.Curve)
+                .With(CommitmentScheme.Hyrax);
             using var forgedWitness = new HyraxOpeningWitness(forgedOwner, witness.RowCount, key.Curve, forgedTag);
 
             using PointArray point = BuildPointArray(VariableCount);

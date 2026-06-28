@@ -61,9 +61,8 @@ public sealed class SpartanProvingKey: IDisposable
         this.provider = provider;
         Curve = provider.Curve;
 
-        Tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.ProvingKey),
-            (typeof(CurveParameterSet), (object)provider.Curve));
+        Tag = Tag.Create(AlgebraicRole.ProvingKey)
+            .With(provider.Curve);
     }
 
 

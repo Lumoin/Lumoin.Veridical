@@ -30,22 +30,20 @@ public sealed class BbsSignature: SensitiveMemory
     public const int SizeBytes = ASizeBytes + ESizeBytes;
 
 
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.Signature),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381),
-        (typeof(BbsCiphersuite), (object)BbsCiphersuite.Bls12Curve381Sha256));
+    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.Signature)
+        .With(CurveParameterSet.Bls12Curve381)
+        .With(BbsCiphersuite.Bls12Curve381Sha256);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.Signature),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381),
-        (typeof(BbsCiphersuite), (object)BbsCiphersuite.Bls12Curve381Shake256));
+    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.Signature)
+        .With(CurveParameterSet.Bls12Curve381)
+        .With(BbsCiphersuite.Bls12Curve381Shake256);
 
 
     /// <summary>The BBS+ ciphersuite this signature was produced under (cached lookup from <see cref="Tag"/>).</summary>
     public BbsCiphersuite Ciphersuite => Tag.Get<BbsCiphersuite>();
 
 
-    internal BbsSignature(IMemoryOwner<byte> owner, Tag tag) : base(owner, SizeBytes, tag)
+    internal BbsSignature(IMemoryOwner<byte> owner, Tag tag) : base(owner, tag)
     {
     }
 
@@ -117,9 +115,8 @@ public sealed class BbsSignature: SensitiveMemory
 
     private static Tag MergeWithAlgebraicTag(Tag tag, BbsCiphersuite ciphersuite)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.Signature),
-            (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381),
-            (typeof(BbsCiphersuite), (object)ciphersuite));
+        return tag.With(AlgebraicRole.Signature)
+            .With(CurveParameterSet.Bls12Curve381)
+            .With(ciphersuite);
     }
 }

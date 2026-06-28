@@ -9,6 +9,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments;
 
@@ -117,7 +118,7 @@ internal sealed class BatchAggregatedBulletproofRangeProofTests
         {
             using IMemoryOwner<byte> commitmentsOwner = ProveBatch(key, 3, proofs, pool);
             ReadOnlySpan<byte> commitments = commitmentsOwner.Memory.Span[..(3 * ValueCount * WellKnownCurves.GetG1CompressedSizeBytes(Curve))];
-            proofs[1].AsSpan()[^1] ^= 0x01;
+            MemoryMarshal.AsMemory(proofs[1].AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
             using FiatShamirTranscript batchTx = NewTranscript(BatchDomain);
             Assert.IsFalse(

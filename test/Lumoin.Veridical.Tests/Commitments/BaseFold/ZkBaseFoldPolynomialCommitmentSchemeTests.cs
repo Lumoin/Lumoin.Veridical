@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -144,7 +145,7 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
                 using(claimedValue)
                 {
                     //Flip a byte inside the opening (a round-polynomial coefficient).
-                    opening.AsSpan()[0] ^= 0x01;
+                    MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[0] ^= 0x01;
 
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
@@ -186,7 +187,7 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
                     //Flip a byte inside the first revealed leaf salt: the verifier
                     //recomputes hash(value ‖ salt) for the leaf, so a corrupted salt
                     //must fail the authentication path against the layer root.
-                    opening.AsSpan()[FirstLeafSaltOffset(VariableCount)] ^= 0x01;
+                    MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[FirstLeafSaltOffset(VariableCount)] ^= 0x01;
 
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);

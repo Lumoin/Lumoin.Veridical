@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Longfellow</RootNamespace>
+    <Description>High-level, consumable Longfellow-style zero-knowledge over ECDSA-signed mdoc credentials: a facade over the dual-field prover/verifier (the GF(2^128) hash circuit and the P-256 Fp256 signature circuit) that is byte-conformant to google/longfellow-zk. The library stays serialization-free — the mdoc/CBOR walk and the public-input templates are supplied by the caller through delegate seams, while circuit provisioning, the shared transcript, the cross-field MAC binding and the proof envelope are owned by the facade. Proof material is pool-backed; no naked byte arrays cross the public surface.</Description>
+    <PackageTags>cryptography zero-knowledge mdoc longfellow ecdsa p-256 eudi-wallet selective-disclosure</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+    <ProjectReference Include="..\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
+  </ItemGroup>
+
+  <!-- The production crypto suite drives the Fiat-Shamir transcript through a single-block AES-256-ECB
+       permutation (System.Security.Cryptography.Aes), which the WASM runtime does not provide. The high-level
+       mdoc facade is not a browser target; a browser consumer supplies its own block-cipher seam. -->
+  <ItemGroup>
+    <SupportedPlatform Remove="browser" />
+  </ItemGroup>
+
+</Project>

@@ -67,7 +67,7 @@ public sealed class HyraxCommitmentKey: SensitiveMemory
         CurveParameterSet curve,
         string seed,
         Tag tag)
-        : base(owner, GetBufferSizeBytes(vectorLength, curve), tag)
+        : base(owner, tag)
     {
         VectorLength = vectorLength;
         Curve = curve;
@@ -150,11 +150,10 @@ public sealed class HyraxCommitmentKey: SensitiveMemory
         Span<byte> valueDestination = buffer.Slice((vectorLength + 1) * g1Size, g1Size);
         _ = hashToCurve(valueInput, dst, valueDestination, curve, Tag.Empty);
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.CommitmentKey),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax),
-            (typeof(string), (object)seed));
+        Tag tag = Tag.Create(AlgebraicRole.CommitmentKey)
+            .With(curve)
+            .With(CommitmentScheme.Hyrax)
+            .With(seed);
 
         return new HyraxCommitmentKey(owner, vectorLength, curve, seed, tag);
     }

@@ -40,6 +40,7 @@
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Analysis\Lumoin.Veridical.Analysis.csproj" />
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Longfellow\Lumoin.Veridical.Longfellow.csproj" />
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Secdsa\Lumoin.Veridical.Secdsa.csproj" />
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Cli\Lumoin.Veridical.Cli.csproj" />
   </ItemGroup>
