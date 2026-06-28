@@ -49,10 +49,9 @@ public sealed class MaskedSpartanVerifier: IDisposable
         this.verifyingKey = verifyingKey;
         Curve = verifyingKey.Curve;
 
-        Tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.VerificationKey),
-            (typeof(CurveParameterSet), (object)verifyingKey.Curve),
-            (typeof(SpartanProofVariant), (object)SpartanProofVariant.MaskedStatistical));
+        Tag = Tag.Create(AlgebraicRole.VerificationKey)
+            .With(verifyingKey.Curve)
+            .With(SpartanProofVariant.MaskedStatistical);
     }
 
 

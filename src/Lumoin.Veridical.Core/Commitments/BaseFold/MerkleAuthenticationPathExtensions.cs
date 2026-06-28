@@ -39,7 +39,7 @@ public static class MerkleAuthenticationPathExtensions
             ArgumentNullException.ThrowIfNull(hash);
             ArgumentOutOfRangeException.ThrowIfNegative(leafIndex);
 
-            int digestSize = root.Length;
+            int digestSize = root.AsReadOnlySpan().Length;
             if(digestSize > WellKnownMerkleHashParameters.MaximumDigestSizeBytes)
             {
                 throw new ArgumentException(

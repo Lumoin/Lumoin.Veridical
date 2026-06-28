@@ -63,7 +63,7 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
         PolynomialCommitment errorCommitment,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, ComputeBufferSize(publicInputCount, curve), tag)
+        : base(owner, tag)
     {
         A = a;
         B = b;
@@ -187,18 +187,16 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(R1csDimensions dimensions, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.FoldingAccumulator),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(R1csDimensions), (object)dimensions));
+        return Tag.Create(AlgebraicRole.FoldingAccumulator)
+            .With(curve)
+            .With(dimensions);
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, R1csDimensions dimensions, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.FoldingAccumulator),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(R1csDimensions), (object)dimensions));
+        return tag.With(AlgebraicRole.FoldingAccumulator)
+            .With(curve)
+            .With(dimensions);
     }
 }

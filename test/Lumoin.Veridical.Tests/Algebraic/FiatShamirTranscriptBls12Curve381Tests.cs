@@ -179,10 +179,9 @@ internal sealed class FiatShamirTranscriptBls12Curve381Tests
 
         IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent((1 << VariableCount) * elementSize);
         owner.Memory.Span[..((1 << VariableCount) * elementSize)].Clear();
-        Tag pallasTag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.MultilinearExtension),
-            (typeof(CurveParameterSet), (object)CurveParameterSet.Pallas),
-            (typeof(MultilinearExtensionDimensions), (object)new MultilinearExtensionDimensions(VariableCount, 1 << VariableCount)));
+        Tag pallasTag = Tag.Create(AlgebraicRole.MultilinearExtension)
+            .With(CurveParameterSet.Pallas)
+            .With(new MultilinearExtensionDimensions(VariableCount, 1 << VariableCount));
         using var foreignMle = new MultilinearExtension(owner, VariableCount, elementSize, CurveParameterSet.Pallas, pallasTag);
 
         ReadOnlySpan<byte> seed = stackalloc byte[8];

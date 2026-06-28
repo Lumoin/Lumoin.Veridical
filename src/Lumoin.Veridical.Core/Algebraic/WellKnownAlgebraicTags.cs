@@ -26,45 +26,35 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// </remarks>
 public static class WellKnownAlgebraicTags
 {
-    private static Tag ScalarBls12Curve381 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.Scalar),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381));
+    private static Tag ScalarBls12Curve381 { get; } = Tag.Create(AlgebraicRole.Scalar)
+        .With(CurveParameterSet.Bls12Curve381);
 
-    private static Tag ScalarBn254 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.Scalar),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bn254));
+    private static Tag ScalarBn254 { get; } = Tag.Create(AlgebraicRole.Scalar)
+        .With(CurveParameterSet.Bn254);
 
-    private static Tag ScalarP256 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.Scalar),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
+    private static Tag ScalarP256 { get; } = Tag.Create(AlgebraicRole.Scalar)
+        .With(CurveParameterSet.P256);
 
-    private static Tag G1PointBls12Curve381 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.G1Point),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381));
+    private static Tag G1PointBls12Curve381 { get; } = Tag.Create(AlgebraicRole.G1Point)
+        .With(CurveParameterSet.Bls12Curve381);
 
-    private static Tag G1PointBn254 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.G1Point),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bn254));
+    private static Tag G1PointBn254 { get; } = Tag.Create(AlgebraicRole.G1Point)
+        .With(CurveParameterSet.Bn254);
 
-    private static Tag G1PointP256 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.G1Point),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
+    private static Tag G1PointP256 { get; } = Tag.Create(AlgebraicRole.G1Point)
+        .With(CurveParameterSet.P256);
 
-    private static Tag G2PointBls12Curve381 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.G2Point),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381));
+    private static Tag G2PointBls12Curve381 { get; } = Tag.Create(AlgebraicRole.G2Point)
+        .With(CurveParameterSet.Bls12Curve381);
 
-    private static Tag G2PointBn254 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.G2Point),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bn254));
+    private static Tag G2PointBn254 { get; } = Tag.Create(AlgebraicRole.G2Point)
+        .With(CurveParameterSet.Bn254);
 
-    private static Tag ExtensionFieldElementBls12Curve381 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.ExtensionFieldElement),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381));
+    private static Tag ExtensionFieldElementBls12Curve381 { get; } = Tag.Create(AlgebraicRole.ExtensionFieldElement)
+        .With(CurveParameterSet.Bls12Curve381);
 
-    private static Tag ExtensionFieldElementBn254 { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.ExtensionFieldElement),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bn254));
+    private static Tag ExtensionFieldElementBn254 { get; } = Tag.Create(AlgebraicRole.ExtensionFieldElement)
+        .With(CurveParameterSet.Bn254);
 
 
     /// <summary>

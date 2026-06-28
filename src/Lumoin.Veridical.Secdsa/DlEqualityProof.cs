@@ -40,12 +40,11 @@ public sealed class DlEqualityProof: SensitiveMemory
 
 
     /// <summary>The shared algebraic-identity tag every DL-equality proof carries: zero-knowledge-proof role, P-256 curve.</summary>
-    public static Tag AlgebraicTag { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.ZkProof),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
+    public static Tag AlgebraicTag { get; } = Tag.Create(AlgebraicRole.ZkProof)
+        .With(CurveParameterSet.P256);
 
 
-    internal DlEqualityProof(IMemoryOwner<byte> owner, Tag tag) : base(owner, SizeBytes, tag)
+    internal DlEqualityProof(IMemoryOwner<byte> owner, Tag tag) : base(owner, tag)
     {
     }
 
@@ -91,8 +90,7 @@ public sealed class DlEqualityProof: SensitiveMemory
 
     private static Tag MergeWithAlgebraicTag(Tag tag)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.ZkProof),
-            (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
+        return tag.With(AlgebraicRole.ZkProof)
+            .With(CurveParameterSet.P256);
     }
 }

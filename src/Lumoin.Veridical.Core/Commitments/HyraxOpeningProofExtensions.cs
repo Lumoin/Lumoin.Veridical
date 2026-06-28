@@ -178,10 +178,9 @@ public static class HyraxOpeningProofExtensions
 
             CryptographicOperationCounters.Increment(CryptographicOperationKind.HyraxOpen, curve);
 
-            Tag proofTag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.OpeningProof),
-                (typeof(CurveParameterSet), (object)curve),
-                (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+            Tag proofTag = Tag.Create(AlgebraicRole.OpeningProof)
+                .With(curve)
+                .With(CommitmentScheme.Hyrax);
 
             var proof = new HyraxOpeningProof(proofOwner, roundCount, curve, proofTag);
             var claimedValueScalar = Scalar.FromCanonical(claimedValueBytes, curve, pool);

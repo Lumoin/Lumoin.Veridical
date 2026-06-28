@@ -30,12 +30,11 @@ public sealed class SecdsaSignature: SensitiveMemory
 
 
     /// <summary>The shared algebraic-identity tag every SECDSA signature carries: signature role, P-256 curve.</summary>
-    public static Tag AlgebraicTag { get; } = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.Signature),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
+    public static Tag AlgebraicTag { get; } = Tag.Create(AlgebraicRole.Signature)
+        .With(CurveParameterSet.P256);
 
 
-    internal SecdsaSignature(IMemoryOwner<byte> owner, Tag tag) : base(owner, SizeBytes, tag)
+    internal SecdsaSignature(IMemoryOwner<byte> owner, Tag tag) : base(owner, tag)
     {
     }
 
@@ -81,8 +80,7 @@ public sealed class SecdsaSignature: SensitiveMemory
 
     private static Tag MergeWithAlgebraicTag(Tag tag)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.Signature),
-            (typeof(CurveParameterSet), (object)CurveParameterSet.P256));
+        return tag.With(AlgebraicRole.Signature)
+            .With(CurveParameterSet.P256);
     }
 }

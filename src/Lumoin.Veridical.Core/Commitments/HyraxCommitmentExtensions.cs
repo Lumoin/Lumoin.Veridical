@@ -97,16 +97,14 @@ public static class HyraxCommitmentExtensions
 
             CryptographicOperationCounters.Increment(CryptographicOperationKind.HyraxCommit, key.Curve);
 
-            Tag commitmentTag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.Commitment),
-                (typeof(CurveParameterSet), (object)key.Curve),
-                (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax),
-                (typeof(HyraxCommitmentDimensions), (object)dimensions));
+            Tag commitmentTag = Tag.Create(AlgebraicRole.Commitment)
+                .With(key.Curve)
+                .With(CommitmentScheme.Hyrax)
+                .With(dimensions);
 
-            Tag witnessTag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.CommitmentWitness),
-                (typeof(CurveParameterSet), (object)key.Curve),
-                (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+            Tag witnessTag = Tag.Create(AlgebraicRole.CommitmentWitness)
+                .With(key.Curve)
+                .With(CommitmentScheme.Hyrax);
 
             var commitment = new HyraxCommitment(commitmentOwner, rowCount, columnCount, mle.VariableCount, key.Curve, commitmentTag);
             var witness = new HyraxOpeningWitness(witnessOwner, rowCount, key.Curve, witnessTag);
@@ -175,15 +173,13 @@ public static class HyraxCommitmentExtensions
 
             CryptographicOperationCounters.Increment(CryptographicOperationKind.HyraxCommit, key.Curve);
 
-            Tag commitmentTag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.Commitment),
-                (typeof(CurveParameterSet), (object)key.Curve),
-                (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+            Tag commitmentTag = Tag.Create(AlgebraicRole.Commitment)
+                .With(key.Curve)
+                .With(CommitmentScheme.Hyrax);
 
-            Tag witnessTag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.CommitmentWitness),
-                (typeof(CurveParameterSet), (object)key.Curve),
-                (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+            Tag witnessTag = Tag.Create(AlgebraicRole.CommitmentWitness)
+                .With(key.Curve)
+                .With(CommitmentScheme.Hyrax);
 
             var commitment = new HyraxCommitment(commitmentOwner, SingleRowCount, columnCount, vector.VariableCount, key.Curve, commitmentTag);
             var witness = new HyraxOpeningWitness(witnessOwner, SingleRowCount, key.Curve, witnessTag);

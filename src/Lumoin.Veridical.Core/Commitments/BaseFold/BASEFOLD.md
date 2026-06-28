@@ -57,7 +57,7 @@ sibling containers and thin prover/verifier entry points:
   roots for commitments and serialized BaseFold evaluation proofs for openings,
   and share the scheme-independent middle via `SpartanSumcheckProofPart`.
 - `SpartanProver.ProveBaseFold` / `SpartanVerifier.VerifyBaseFold` and the masked
-  `MaskedSpartanProver.ProveBaseFold` / `MaskedSpartanVerifier.VerifyBaseFold`.
+  `MaskedSpartanProver.ProveBaseFoldSound` / `MaskedSpartanVerifier.VerifyBaseFoldSound`.
   They reuse the one scheme-neutral orchestration core each side; the Hyrax
   entries are byte-identical to before (the committed fixtures gate this).
 

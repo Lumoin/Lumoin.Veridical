@@ -86,8 +86,7 @@ public sealed class MatrixMleEvaluation
         RowVariableCount = BitOperations.Log2((uint)matrix.RowCount);
         ColumnVariableCount = BitOperations.Log2((uint)matrix.ColumnCount);
 
-        Tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.MultilinearExtension),
-            (typeof(CurveParameterSet), (object)matrix.Curve));
+        Tag = Tag.Create(AlgebraicRole.MultilinearExtension)
+            .With(matrix.Curve);
     }
 }

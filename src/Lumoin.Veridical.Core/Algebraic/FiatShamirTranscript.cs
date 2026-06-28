@@ -117,7 +117,7 @@ public sealed class FiatShamirTranscript: SensitiveMemory
         byte[] cachedDomainLabelBytes,
         BaseMemoryPool pool,
         Tag tag)
-        : base(owner, StateSizeBytes, tag)
+        : base(owner, tag)
     {
         HashFunction = hashFunction;
         DomainLabel = domainLabel;
@@ -175,10 +175,9 @@ public sealed class FiatShamirTranscript: SensitiveMemory
 
         CryptographicOperationCounters.Increment(CryptographicOperationKind.TranscriptInitialise, CurveParameterSet.None);
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.FiatShamirTranscript),
-            (typeof(WellKnownHashAlgorithms), (object)hashFunction),
-            (typeof(FiatShamirDomainLabel), (object)domainLabel));
+        Tag tag = Tag.Create(AlgebraicRole.FiatShamirTranscript)
+            .With(hashFunction)
+            .With(domainLabel);
 
         return new FiatShamirTranscript(stateOwner, hashFunction, domainLabel, domainBytes, pool, tag);
     }
@@ -217,7 +216,7 @@ public sealed class FiatShamirTranscript: SensitiveMemory
         //if we hashed in-place over the same span.
         Span<byte> newState = stackalloc byte[StateSizeBytes];
         hash(scratch, newState, HashFunction);
-        newState.CopyTo(AsSpan());
+        newState.CopyTo(MemoryOwner.Memory.Span);
 
         CryptographicOperationCounters.Increment(CryptographicOperationKind.TranscriptAbsorbBytes, CurveParameterSet.None);
     }
@@ -268,7 +267,7 @@ public sealed class FiatShamirTranscript: SensitiveMemory
 
         Span<byte> newState = stackalloc byte[StateSizeBytes];
         hash(updateInput, newState, HashFunction);
-        newState.CopyTo(AsSpan());
+        newState.CopyTo(MemoryOwner.Memory.Span);
 
         CryptographicOperationCounters.Increment(CryptographicOperationKind.TranscriptUpdateState, CurveParameterSet.None);
 

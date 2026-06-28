@@ -38,11 +38,11 @@ public sealed class MerkleAuthenticationPath: SensitiveMemory
     public int DigestSizeBytes { get; }
 
     /// <summary>The number of sibling digests in the path; equals the tree depth.</summary>
-    public int SiblingCount => DigestSizeBytes == 0 ? 0 : Length / DigestSizeBytes;
+    public int SiblingCount => DigestSizeBytes == 0 ? 0 : AsReadOnlySpan().Length / DigestSizeBytes;
 
 
     internal MerkleAuthenticationPath(IMemoryOwner<byte> owner, int length, int digestSizeBytes, Tag tag)
-        : base(owner, length, tag)
+        : base(owner, tag)
     {
         DigestSizeBytes = digestSizeBytes;
     }
@@ -51,7 +51,7 @@ public sealed class MerkleAuthenticationPath: SensitiveMemory
     /// <summary>Builds the identifying tag for a Merkle authentication path.</summary>
     internal static Tag CreateTag()
     {
-        return Tag.Create((typeof(AlgebraicRole), (object)AlgebraicRole.OpeningProof));
+        return Tag.Create(AlgebraicRole.OpeningProof);
     }
 
 

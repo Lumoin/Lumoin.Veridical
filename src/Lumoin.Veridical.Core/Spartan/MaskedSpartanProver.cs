@@ -65,10 +65,9 @@ public sealed class MaskedSpartanProver: IDisposable
         this.provingKey = provingKey;
         Curve = provingKey.Curve;
 
-        Tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.ProvingKey),
-            (typeof(CurveParameterSet), (object)provingKey.Curve),
-            (typeof(SpartanProofVariant), (object)SpartanProofVariant.MaskedStatistical));
+        Tag = Tag.Create(AlgebraicRole.ProvingKey)
+            .With(provingKey.Curve)
+            .With(SpartanProofVariant.MaskedStatistical);
     }
 
 

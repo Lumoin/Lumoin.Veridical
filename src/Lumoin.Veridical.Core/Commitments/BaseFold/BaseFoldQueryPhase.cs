@@ -210,7 +210,7 @@ internal static class BaseFoldQueryPhase
             return path.Verify(layerRoot, leafIndex, value, merkleHash);
         }
 
-        int digestSize = layerRoot.Length;
+        int digestSize = layerRoot.AsReadOnlySpan().Length;
         Span<byte> leaf = stackalloc byte[WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         leaf = leaf[..digestSize];
         merkleHash(value, isFirst ? step.FirstSalt : step.SecondSalt, leaf);

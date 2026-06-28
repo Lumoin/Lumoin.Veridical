@@ -89,7 +89,7 @@ public sealed class CompressedRoundPolynomial: SensitiveMemory
         int fieldElementSizeBytes,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, degree * fieldElementSizeBytes, tag)
+        : base(owner, tag)
     {
         Degree = degree;
         FieldElementSizeBytes = fieldElementSizeBytes;
@@ -196,18 +196,16 @@ public sealed class CompressedRoundPolynomial: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(int degree, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.CompressedRoundPolynomial),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CompressedRoundPolynomialDegree), (object)new CompressedRoundPolynomialDegree(degree)));
+        return Tag.Create(AlgebraicRole.CompressedRoundPolynomial)
+            .With(curve)
+            .With(new CompressedRoundPolynomialDegree(degree));
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, int degree, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.CompressedRoundPolynomial),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CompressedRoundPolynomialDegree), (object)new CompressedRoundPolynomialDegree(degree)));
+        return tag.With(AlgebraicRole.CompressedRoundPolynomial)
+            .With(curve)
+            .With(new CompressedRoundPolynomialDegree(degree));
     }
 }

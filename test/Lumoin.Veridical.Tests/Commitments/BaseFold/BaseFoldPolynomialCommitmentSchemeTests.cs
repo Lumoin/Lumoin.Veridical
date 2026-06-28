@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -114,7 +115,7 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
                 using(claimedValue)
                 {
                     //Flip a byte inside the opening (a round-polynomial coefficient).
-                    opening.AsSpan()[0] ^= 0x01;
+                    MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[0] ^= 0x01;
 
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);

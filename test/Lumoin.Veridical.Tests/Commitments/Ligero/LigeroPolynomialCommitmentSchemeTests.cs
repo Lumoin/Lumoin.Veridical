@@ -10,6 +10,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
@@ -119,7 +120,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
                 using(opening)
                 using(claimedValue)
                 {
-                    opening.AsSpan()[byteOffset] ^= 0x01;
+                    MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[byteOffset] ^= 0x01;
 
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);

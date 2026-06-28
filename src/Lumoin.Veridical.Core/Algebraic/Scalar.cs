@@ -75,7 +75,7 @@ public sealed class Scalar: SensitiveMemory
     /// <param name="owner">A pool-rented buffer whose first <see cref="SizeBytes"/> bytes hold the canonical big-endian scalar bytes.</param>
     /// <param name="curve">The curve whose scalar field the value belongs to.</param>
     /// <param name="tag">The runtime tag; should at minimum carry the algebraic identity entries from <see cref="WellKnownAlgebraicTags.ScalarFor"/> plus any provenance the producer stamps.</param>
-    internal Scalar(IMemoryOwner<byte> owner, CurveParameterSet curve, Tag tag) : base(owner, SizeBytes, tag)
+    internal Scalar(IMemoryOwner<byte> owner, CurveParameterSet curve, Tag tag) : base(owner, tag)
     {
         Curve = curve;
     }
@@ -259,8 +259,7 @@ public sealed class Scalar: SensitiveMemory
     /// </summary>
     private static Tag MergeWithAlgebraicTag(Tag tag, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.Scalar),
-            (typeof(CurveParameterSet), (object)curve));
+        return tag.With(AlgebraicRole.Scalar)
+            .With(curve);
     }
 }

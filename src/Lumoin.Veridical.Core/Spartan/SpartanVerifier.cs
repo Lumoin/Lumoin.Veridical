@@ -49,9 +49,8 @@ public sealed class SpartanVerifier: IDisposable
         this.verifyingKey = verifyingKey;
         Curve = verifyingKey.Curve;
 
-        Tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.VerificationKey),
-            (typeof(CurveParameterSet), (object)verifyingKey.Curve));
+        Tag = Tag.Create(AlgebraicRole.VerificationKey)
+            .With(verifyingKey.Curve);
     }
 
 

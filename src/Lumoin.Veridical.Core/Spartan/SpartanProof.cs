@@ -72,7 +72,7 @@ public sealed class SpartanProof: SensitiveMemory
         int errorIpaRoundCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, GetBufferSizeBytes(witnessCommitmentRowCount, outerRoundCount, innerRoundCount, ipaRoundCount, errorIpaRoundCount, curve), tag)
+        : base(owner, tag)
     {
         WitnessCommitmentRowCount = witnessCommitmentRowCount;
         OuterRoundCount = outerRoundCount;
@@ -427,20 +427,18 @@ public sealed class SpartanProof: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(SpartanProofDimensions dimensions, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.ZkProof),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(SpartanProofDimensions), (object)dimensions),
-            (typeof(SpartanProofVariant), (object)SpartanProofVariant.Unmasked));
+        return Tag.Create(AlgebraicRole.ZkProof)
+            .With(curve)
+            .With(dimensions)
+            .With(SpartanProofVariant.Unmasked);
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, SpartanProofDimensions dimensions, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.ZkProof),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(SpartanProofDimensions), (object)dimensions),
-            (typeof(SpartanProofVariant), (object)SpartanProofVariant.Unmasked));
+        return tag.With(AlgebraicRole.ZkProof)
+            .With(curve)
+            .With(dimensions)
+            .With(SpartanProofVariant.Unmasked);
     }
 }

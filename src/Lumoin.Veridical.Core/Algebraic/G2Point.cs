@@ -44,7 +44,7 @@ public sealed class G2Point: SensitiveMemory
     /// <param name="curve">The curve the point lives on.</param>
     /// <param name="tag">The runtime tag.</param>
     internal G2Point(IMemoryOwner<byte> owner, CurveParameterSet curve, Tag tag)
-        : base(owner, WellKnownCurves.GetG2CompressedSizeBytes(curve), tag)
+        : base(owner, tag)
     {
         Curve = curve;
     }
@@ -165,8 +165,7 @@ public sealed class G2Point: SensitiveMemory
 
     private static Tag MergeWithAlgebraicTag(Tag tag, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.G2Point),
-            (typeof(CurveParameterSet), (object)curve));
+        return tag.With(AlgebraicRole.G2Point)
+            .With(curve);
     }
 }

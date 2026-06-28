@@ -74,7 +74,7 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
         int extraVariableCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, GetBufferSizeBytes(outerRoundCount, innerRoundCount, queryCount, digestSizeBytes, extraVariableCount, curve), tag)
+        : base(owner, tag)
     {
         OuterRoundCount = outerRoundCount;
         InnerRoundCount = innerRoundCount;
@@ -187,7 +187,7 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
         offset += Copy(buffer, offset, innerMaskOpening.AsReadOnlySpan());
         Copy(buffer, offset, witnessOpening.AsReadOnlySpan());
 
-        Tag effectiveTag = tag is null ? ComposeTag(curve) : tag.With(AlgebraicTagEntries(curve));
+        Tag effectiveTag = tag is null ? ComposeTag(curve) : MergeAlgebraicTag(tag, curve);
 
         return new ZkBaseFoldMaskedSpartanProof(owner, outerRoundCount, innerRoundCount, queryCount, digestSizeBytes, extraVariableCount, curve, effectiveTag);
     }
@@ -373,14 +373,12 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     }
 
 
-    private static Tag ComposeTag(CurveParameterSet curve) => Tag.Create(AlgebraicTagEntries(curve));
+    private static Tag ComposeTag(CurveParameterSet curve) => MergeAlgebraicTag(Tag.Empty, curve);
 
 
-    private static (Type, object)[] AlgebraicTagEntries(CurveParameterSet curve) =>
-    [
-        (typeof(AlgebraicRole), AlgebraicRole.ZkProof),
-        (typeof(CurveParameterSet), curve),
-        (typeof(CommitmentScheme), CommitmentScheme.BaseFold),
-        (typeof(SpartanProofVariant), SpartanProofVariant.MaskedStatistical)
-    ];
+    private static Tag MergeAlgebraicTag(Tag tag, CurveParameterSet curve) =>
+        tag.With(AlgebraicRole.ZkProof)
+            .With(curve)
+            .With(CommitmentScheme.BaseFold)
+            .With(SpartanProofVariant.MaskedStatistical);
 }

@@ -55,7 +55,7 @@ public sealed class HyraxOpeningProof: SensitiveMemory
         int ipaRoundCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, GetBufferSizeBytes(ipaRoundCount, curve), tag)
+        : base(owner, tag)
     {
         IpaRoundCount = ipaRoundCount;
         Curve = curve;
@@ -162,10 +162,9 @@ public sealed class HyraxOpeningProof: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(expectedLength);
         proofBytes.CopyTo(owner.Memory.Span[..expectedLength]);
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.OpeningProof),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+        Tag tag = Tag.Create(AlgebraicRole.OpeningProof)
+            .With(curve)
+            .With(CommitmentScheme.Hyrax);
 
         return new HyraxOpeningProof(owner, ipaRoundCount, curve, tag);
     }

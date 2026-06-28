@@ -28,7 +28,7 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 public sealed class MerkleRoot: SensitiveMemory
 {
     internal MerkleRoot(IMemoryOwner<byte> owner, int length, Tag tag)
-        : base(owner, length, tag)
+        : base(owner, tag)
     {
     }
 
@@ -36,7 +36,7 @@ public sealed class MerkleRoot: SensitiveMemory
     /// <summary>Builds the identifying tag for a Merkle root.</summary>
     internal static Tag CreateTag()
     {
-        return Tag.Create((typeof(AlgebraicRole), (object)AlgebraicRole.Commitment));
+        return Tag.Create(AlgebraicRole.Commitment);
     }
 
 

@@ -54,7 +54,7 @@ public sealed class RangeProof: SensitiveMemory
 
 
     internal RangeProof(IMemoryOwner<byte> owner, int bitWidth, CurveParameterSet curve, Tag tag)
-        : base(owner, GetBufferSizeBytes(bitWidth, curve), tag)
+        : base(owner, tag)
     {
         BitWidth = bitWidth;
         Curve = curve;
@@ -148,9 +148,8 @@ public sealed class RangeProof: SensitiveMemory
 
     private static Tag ComposeTag(CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.ZkProof),
-            (typeof(CurveParameterSet), (object)curve));
+        return Tag.Create(AlgebraicRole.ZkProof)
+            .With(curve);
     }
 
 

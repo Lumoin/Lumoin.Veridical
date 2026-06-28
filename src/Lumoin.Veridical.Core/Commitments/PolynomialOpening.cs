@@ -37,7 +37,7 @@ public sealed class PolynomialOpening: SensitiveMemory
         CurveParameterSet curve,
         CommitmentScheme scheme,
         Tag tag)
-        : base(owner, length, tag)
+        : base(owner, tag)
     {
         Curve = curve;
         Scheme = scheme;
@@ -47,10 +47,9 @@ public sealed class PolynomialOpening: SensitiveMemory
     /// <summary>Builds the identifying tag for an opening over <paramref name="curve"/> from <paramref name="scheme"/>.</summary>
     internal static Tag CreateTag(CurveParameterSet curve, CommitmentScheme scheme)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.OpeningProof),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)scheme));
+        return Tag.Create(AlgebraicRole.OpeningProof)
+            .With(curve)
+            .With(scheme);
     }
 
 

@@ -63,7 +63,7 @@ public sealed class R1csMatrix: SensitiveMemory
         int nonzeroCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, ComputeBufferSize(nonzeroCount, curve), tag)
+        : base(owner, tag)
     {
         RowCount = rowCount;
         ColumnCount = columnCount;
@@ -269,18 +269,16 @@ public sealed class R1csMatrix: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(R1csMatrixDimensions dimensions, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.R1csMatrix),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(R1csMatrixDimensions), (object)dimensions));
+        return Tag.Create(AlgebraicRole.R1csMatrix)
+            .With(curve)
+            .With(dimensions);
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, R1csMatrixDimensions dimensions, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.R1csMatrix),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(R1csMatrixDimensions), (object)dimensions));
+        return tag.With(AlgebraicRole.R1csMatrix)
+            .With(curve)
+            .With(dimensions);
     }
 }
