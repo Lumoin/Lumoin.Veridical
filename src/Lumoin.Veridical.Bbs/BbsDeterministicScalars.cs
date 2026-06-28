@@ -25,15 +25,15 @@ namespace Lumoin.Veridical.Bbs;
 /// </para>
 /// <para>
 /// In keeping with the rest of the BBS+ surface, the <c>expand_message</c> primitive and the modular
-/// reduction enter as injected delegates. The supplied <paramref name="expandMessage"/> MUST be the
-/// variant the <paramref name="ciphersuite"/> mandates — RFC 9380 XMD-SHA-256 for BLS12-381-SHA-256,
+/// reduction enter as injected delegates. The supplied <c>expandMessage</c> MUST be the
+/// variant the <c>ciphersuite</c> mandates — RFC 9380 XMD-SHA-256 for BLS12-381-SHA-256,
 /// XOF-SHAKE-256 for BLS12-381-SHAKE-256 — exactly the same delegate wired into
 /// <c>GenerateProof</c>; the ciphersuite is used here only to form the DST.
 /// </para>
 /// <para>
 /// ProofGen draws <c>5 + U</c> scalars (U = the number of undisclosed messages), so pass
 /// <c>count = 5 + U</c>. The returned delegate hands out the precomputed scalars in order; a call past
-/// the preset <paramref name="count"/> throws <see cref="InvalidOperationException"/>.
+/// the preset <c>count</c> throws <see cref="InvalidOperationException"/>.
 /// </para>
 /// </remarks>
 public static class BbsDeterministicScalars

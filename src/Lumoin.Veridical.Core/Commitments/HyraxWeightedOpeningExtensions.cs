@@ -64,6 +64,20 @@ public static class HyraxWeightedOpeningExtensions
         /// <param name="witness">The single-row commitment witness from <c>CommitVector</c>.</param>
         /// <param name="vector">The committed vector, carried as an MLE.</param>
         /// <param name="weights">The public weight vector <c>W</c>, carried as an MLE of the same shape.</param>
+        /// <param name="key">The Hyrax commitment key whose generators the opening runs over.</param>
+        /// <param name="transcript">The Fiat-Shamir transcript.</param>
+        /// <param name="hash">The Fiat-Shamir hash.</param>
+        /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+        /// <param name="scalarReduce">Backend scalar reduction.</param>
+        /// <param name="scalarAdd">Backend scalar addition.</param>
+        /// <param name="scalarSubtract">Backend scalar subtraction.</param>
+        /// <param name="scalarMul">Backend scalar multiplication.</param>
+        /// <param name="scalarInvert">Backend scalar inversion.</param>
+        /// <param name="scalarRandom">Backend random scalar generation.</param>
+        /// <param name="g1Add">Backend G1 addition.</param>
+        /// <param name="g1ScalarMul">Backend G1 scalar multiplication.</param>
+        /// <param name="g1Msm">Backend G1 multi-scalar multiplication.</param>
+        /// <param name="pool">The pool to rent the working buffers from.</param>
         /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">When the commitment is not single-row or a shape does not match.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "Both returned disposables (the proof and the claimed-value scalar) transfer ownership to the caller.")]

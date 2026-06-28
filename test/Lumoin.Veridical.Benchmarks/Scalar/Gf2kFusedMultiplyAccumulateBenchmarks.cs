@@ -60,6 +60,7 @@ public class Gf2kFusedMultiplyAccumulateBenchmarks
     private ScalarBatchMultiplyAccumulateDelegate batchMultiplyAccumulate = null!;
 
 
+    /// <summary>Resolves the GF(2^128) scalar and batch-FMA delegates and fills the operand and accumulator buffers.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -87,6 +88,7 @@ public class Gf2kFusedMultiplyAccumulateBenchmarks
     }
 
 
+    /// <summary>Benchmarks GF(2^128) fused multiply-accumulate as a naive per-scalar multiply-then-add loop.</summary>
     [Benchmark(Baseline = true, Description = "Naive multiply-then-add loop (reduce per multiply)")]
     public void NaiveMultiplyAddLoop()
     {
@@ -101,6 +103,7 @@ public class Gf2kFusedMultiplyAccumulateBenchmarks
     }
 
 
+    /// <summary>Benchmarks GF(2^128) batch fused multiply-accumulate with deferred reduction.</summary>
     [Benchmark(Description = "Batch FMA (deferred reduce)")]
     public void BatchFusedMultiplyAccumulate()
     {

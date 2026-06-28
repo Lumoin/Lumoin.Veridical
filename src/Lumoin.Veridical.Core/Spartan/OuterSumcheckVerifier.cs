@@ -23,7 +23,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// per-round identity <c>g_i(0) + g_i(1) == previous_claim</c> always
 /// holds for any decompressed polynomial. Detection of a tampered or
 /// malformed proof happens at the outer or inner terminating-identity
-/// check at the end of <see cref="SpartanVerifierExtensions.Verify"/>.
+/// check at the end of <see cref="SpartanVerifierExtensions.Verify(SpartanVerifier, SpartanProof, Lumoin.Veridical.Core.ConstraintSystems.RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarInvertDelegate, ScalarReduceDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, Lumoin.Base.BaseMemoryPool)"/>.
 /// </para>
 /// </remarks>
 internal static class OuterSumcheckVerifier

@@ -18,6 +18,11 @@ public static class EqualityPolynomial
     private const int ScalarSize = SumcheckChallenge.ScalarSize;
 
 
+    /// <summary>
+    /// Materialises the <c>2^variableCount</c> hypercube evaluations of the equality polynomial
+    /// <c>eq_g</c> for the fixed point <paramref name="point"/> into <paramref name="destination"/>,
+    /// built by tensor doubling so each variable costs one pass.
+    /// </summary>
     public static void BuildTable(
         ReadOnlySpan<byte> point,
         int variableCount,

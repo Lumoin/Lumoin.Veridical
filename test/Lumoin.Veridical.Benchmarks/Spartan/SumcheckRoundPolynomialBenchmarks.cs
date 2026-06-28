@@ -55,6 +55,7 @@ public class SumcheckRoundPolynomialBenchmarks
     private BaseMemoryPool pool = null!;
 
 
+    /// <summary>Builds the canonical input tables and backend delegates shared by the benchmarks.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -75,6 +76,8 @@ public class SumcheckRoundPolynomialBenchmarks
     }
 
 
+    /// <summary>Benchmarks the outer round-polynomial computation with the per-element BigInteger backend.</summary>
+    /// <returns>The length of the resulting round polynomial.</returns>
     [Benchmark(Baseline = true)]
     public int PerElementBigInteger()
     {
@@ -85,6 +88,8 @@ public class SumcheckRoundPolynomialBenchmarks
     }
 
 
+    /// <summary>Benchmarks the outer round-polynomial computation with the batched BigInteger backend.</summary>
+    /// <returns>The length of the resulting round polynomial.</returns>
     [Benchmark]
     public int BatchedBigInteger()
     {
@@ -95,6 +100,8 @@ public class SumcheckRoundPolynomialBenchmarks
     }
 
 
+    /// <summary>Benchmarks the outer round-polynomial computation with the per-element SIMD backend.</summary>
+    /// <returns>The length of the resulting round polynomial.</returns>
     [Benchmark]
     public int PerElementSimd()
     {
@@ -105,6 +112,8 @@ public class SumcheckRoundPolynomialBenchmarks
     }
 
 
+    /// <summary>Benchmarks the outer round-polynomial computation with the batched SIMD backend.</summary>
+    /// <returns>The length of the resulting round polynomial.</returns>
     [Benchmark]
     public int BatchedSimd()
     {

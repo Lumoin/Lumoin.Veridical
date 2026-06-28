@@ -36,7 +36,7 @@ namespace Lumoin.Veridical.Core.Common;
 /// <para>
 /// Unlike the Verifiable base, this one does not require
 /// <c>TResult : new()</c> and offers no default-constructed-seed
-/// <c>Build()</c>. Veridical's results (notably <see cref="R1csCircuit"/>) are
+/// <c>Build()</c>. Veridical's results (notably <see cref="ConstraintSystems.R1csCircuit"/>) are
 /// immutable types with no parameterless constructor — the canonical types are
 /// unchanged from their original form — so the seed is always supplied:
 /// <see cref="Build()"/> is abstract and a derived builder constructs the

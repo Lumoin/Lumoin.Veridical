@@ -41,6 +41,7 @@ public class Bn254ScalarBenchmarks
     private ScalarInvertDelegate invert = null!;
 
 
+    /// <summary>Resolves the BN254 BigInteger scalar op delegates and prepares two reduced operands.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -69,6 +70,7 @@ public class Bn254ScalarBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger addition over the BN254 scalar field.</summary>
     [Benchmark(Baseline = true, Description = "BN254 BigInteger Add")]
     public void Add254()
     {
@@ -76,6 +78,7 @@ public class Bn254ScalarBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger subtraction over the BN254 scalar field.</summary>
     [Benchmark(Description = "BN254 BigInteger Subtract")]
     public void Subtract254()
     {
@@ -83,6 +86,7 @@ public class Bn254ScalarBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger multiplication over the BN254 scalar field.</summary>
     [Benchmark(Description = "BN254 BigInteger Multiply")]
     public void Multiply254()
     {
@@ -90,6 +94,7 @@ public class Bn254ScalarBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger inversion over the BN254 scalar field.</summary>
     [Benchmark(Description = "BN254 BigInteger Invert")]
     public void Invert254()
     {

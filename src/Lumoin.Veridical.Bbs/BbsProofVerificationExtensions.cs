@@ -35,6 +35,7 @@ public static class BbsProofVerificationExtensions
         /// <param name="presentationHeader">The presentation-header bytes the Prover bound into this proof.</param>
         /// <param name="disclosedMessages">The disclosed messages, in original signing order. Parallel to <paramref name="disclosedIndices"/>.</param>
         /// <param name="disclosedIndices">Strictly ascending, deduplicated, all in <c>[0, totalMessages)</c> where <c>totalMessages = proof.UndisclosedMessageCount + disclosedIndices.Length</c>.</param>
+        /// <param name="expandMessage">The RFC 9380 expand_message hash-to-field delegate.</param>
         /// <param name="hashToScalar">Backend hash-to-scalar.</param>
         /// <param name="g1Add">Backend G1 addition.</param>
         /// <param name="g1MultiScalarMultiply">Backend G1 multi-scalar multiplication.</param>

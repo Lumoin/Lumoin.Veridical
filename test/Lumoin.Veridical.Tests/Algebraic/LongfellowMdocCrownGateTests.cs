@@ -36,7 +36,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// <para>
 /// The end-to-end verify over the genuine ~85k-wire hash circuit and the P-256 signature circuit is the
-/// expensive Ligero-over-the-whole-R1CS path, so the accept gate is marked <see cref="TestCategory"/>
+/// expensive Ligero-over-the-whole-R1CS path, so the accept gate is marked <see cref="TestCategoryAttribute"/>
 /// <c>Slow</c>. The tamper dual flips one byte in the hash-proof region and (separately) one byte in the
 /// sig-proof region of the envelope and asserts the verdict is no longer <c>Accepted</c>, with a fresh
 /// transcript per call.

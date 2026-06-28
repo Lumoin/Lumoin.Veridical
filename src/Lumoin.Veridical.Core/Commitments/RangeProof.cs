@@ -44,6 +44,7 @@ public sealed class RangeProof: SensitiveMemory
     //full 64-bit width, the largest proof vector the IPA folds.
     private const int MaximumVectorLength = 4096;
 
+    /// <summary>The bit width <c>n</c> of the range: the proof attests the committed value lies in <c>[0, 2^n)</c>.</summary>
     public int BitWidth { get; }
 
     /// <summary>The number of IPA rounds (<c>log₂(BitWidth)</c>).</summary>

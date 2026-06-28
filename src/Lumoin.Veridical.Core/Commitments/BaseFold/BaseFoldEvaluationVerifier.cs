@@ -98,7 +98,22 @@ public static class BaseFoldEvaluationVerifier
     /// folding the public multiplier table under the squeezed challenges, the
     /// same collapse the prover's tables undergo — instead of <c>eq_z(r)</c>.
     /// </summary>
+    /// <param name="code">The foldable code, reconstructed from the same seed the prover used.</param>
+    /// <param name="commitment">The public commitment: the Merkle root of the committed codeword <c>π_d</c>.</param>
     /// <param name="multiplier">The public multiplier multilinear <c>W</c>; its variable count must equal the code's layer count.</param>
+    /// <param name="claimedValue">The claimed evaluation <c>y</c>.</param>
+    /// <param name="proof">The evaluation proof.</param>
+    /// <param name="queryCount">The IOPP query repetition count; must match the proof.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
+    /// <param name="pool">The pool to rent scratch buffers from.</param>
     /// <inheritdoc cref="Verify"/>
     public static bool VerifyWeightedSum(
         FoldableCode code,
@@ -312,8 +327,23 @@ public static class BaseFoldEvaluationVerifier
     /// nested weighted opening of the mask's coefficient commitment against the
     /// derived claim <c>s(r) + σ_F</c> under publicly derived weights.
     /// </summary>
+    /// <param name="code">The foldable code, reconstructed from the same seed the prover used.</param>
     /// <param name="commitment">The public commitment: the Merkle root of the committed witness codeword <c>π_d</c>.</param>
+    /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, matching the prover's.</param>
+    /// <param name="claimedValue">The claimed evaluation <c>y</c>.</param>
+    /// <param name="proof">The evaluation proof.</param>
+    /// <param name="queryCount">The IOPP query repetition count; must match the proof.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
     /// <param name="maskCommitmentCode">The foldable code the mask's coefficient commitment lives under, derived from the same seed at the deterministic lifted layer count (must mirror the prover's).</param>
+    /// <param name="pool">The pool to rent scratch buffers from.</param>
     /// <inheritdoc cref="Verify"/>
     public static bool VerifyZeroKnowledge(
         FoldableCode code,

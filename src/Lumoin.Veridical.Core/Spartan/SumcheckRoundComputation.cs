@@ -46,6 +46,7 @@ internal static class SumcheckRoundComputation
     /// <param name="add">Scalar-add delegate.</param>
     /// <param name="subtract">Scalar-subtract delegate.</param>
     /// <param name="multiply">Scalar-multiply delegate.</param>
+    /// <param name="curve">The curve whose scalar field the computation is over.</param>
     /// <param name="pool">The pool to rent scratch and the result buffer from.</param>
     /// <returns>A degree-3 univariate <see cref="Polynomial"/> in coefficient form.</returns>
     public static Polynomial ComputeOuterRoundPolynomial(
@@ -456,7 +457,9 @@ internal static class SumcheckRoundComputation
     /// <param name="challenges">The challenge vector τ; one scalar per variable.</param>
     /// <param name="subtract">Scalar-subtract delegate.</param>
     /// <param name="multiply">Scalar-multiply delegate.</param>
+    /// <param name="curve">The curve whose scalar field the computation is over.</param>
     /// <param name="pool">The pool to rent the result MLE's buffer from.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <returns>A multilinear extension of <see cref="MultilinearExtension.VariableCount"/> equal to <c>challenges.Length</c>.</returns>
     /// <remarks>
     /// <para>

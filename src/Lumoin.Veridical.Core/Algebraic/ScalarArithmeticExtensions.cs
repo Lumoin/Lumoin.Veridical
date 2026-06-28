@@ -158,7 +158,7 @@ public static class ScalarArithmeticExtensions
         /// Returns <c>a^(-1) mod r</c> if <c>a</c> is non-zero; otherwise the
         /// behaviour depends on the backend convention. A correct backend
         /// throws or returns a sentinel for a zero input — application code
-        /// must check <see cref="ScalarInspectionExtensions.IsZero"/>
+        /// must check <c>IsZero</c>
         /// before calling this when the value's invertibility is uncertain.
         /// </summary>
         /// <param name="invert">The backend implementation of scalar inversion.</param>

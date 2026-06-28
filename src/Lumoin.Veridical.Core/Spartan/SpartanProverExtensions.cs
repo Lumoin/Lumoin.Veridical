@@ -19,7 +19,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// The unified prover proves the <em>relaxed</em> R1CS identity
 /// <c>(A·z) ∘ (B·z) = u · (C·z) + E</c> over <c>z = (u, public, witness)</c>.
 /// Standard R1CS is the special case <c>u = 1</c>, <c>E = 0</c> — a raw
-/// instance reaches this prover through <see cref="RawR1csInstanceExtensions.Prepare"/>
+/// instance reaches this prover through <see cref="RawR1csInstanceExtensions.Prepare(RawR1csInstance, PolynomialCommitmentProvider, ScalarRandomDelegate, G1MultiScalarMultiplyDelegate, BaseMemoryPool)"/>
 /// (or the raw convenience overload), which produces <c>u = 1</c> and
 /// the identity error commitment.
 /// </para>
@@ -67,6 +67,7 @@ public static class SpartanProverExtensions
         /// <param name="mleEvaluate">The MLE evaluation delegate.</param>
         /// <param name="mleFold">The MLE fold delegate.</param>
         /// <param name="pool">The pool to rent every buffer from.</param>
+        /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
         /// <returns>A Spartan2 wire-format proof. The caller owns its disposal.</returns>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         /// <exception cref="R1csNotSatisfiedException">When the witness does not satisfy the relaxed R1CS instance.</exception>
@@ -105,7 +106,7 @@ public static class SpartanProverExtensions
         /// <summary>
         /// Produces a BaseFold-backed Spartan2 proof that <paramref name="witness"/>
         /// satisfies the relaxed R1CS <paramref name="instance"/>. Identical flow
-        /// to <see cref="Prove(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>
+        /// to <see cref="Prove(SpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/>
         /// up to the final assembly, which packs a BaseFold-shaped
         /// <see cref="BaseFoldSpartanProof"/>. The proving key's provider must be a
         /// BaseFold provider (carrying its query count and digest size).
@@ -152,7 +153,7 @@ public static class SpartanProverExtensions
         /// <summary>
         /// Produces a Ligero-backed Spartan2 proof that <paramref name="witness"/>
         /// satisfies the relaxed R1CS <paramref name="instance"/>. Identical flow to
-        /// <see cref="ProveBaseFold"/> up to the final assembly, which packs a
+        /// <see cref="ProveBaseFold(SpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/> up to the final assembly, which packs a
         /// Ligero-shaped <see cref="LigeroSpartanProof"/>. The proving key's provider
         /// must be a Ligero provider (carrying its query count and digest size). The
         /// group backends are unused by the hash-based Ligero scheme but are accepted
@@ -466,6 +467,7 @@ public static class SpartanProverExtensions
         /// <param name="mleEvaluate">The MLE evaluation delegate.</param>
         /// <param name="mleFold">The MLE fold delegate.</param>
         /// <param name="pool">The pool to rent every buffer from.</param>
+        /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
         /// <returns>A Spartan2 wire-format proof. The caller owns its disposal.</returns>
         [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; SpartanProof transfers to the caller.")]
         public SpartanProof Prove(
@@ -529,7 +531,7 @@ public static class SpartanProverExtensions
         /// Convenience overload that proves a <em>raw</em> R1CS instance under a
         /// BaseFold provider: prepares the raw instance/witness into their
         /// relaxed equivalents (<c>u = 1</c>, zero error vector, identity error
-        /// commitment) and forwards to <see cref="ProveBaseFold(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>.
+        /// commitment) and forwards to <see cref="ProveBaseFold(SpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/>.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; the proof transfers to the caller.")]
