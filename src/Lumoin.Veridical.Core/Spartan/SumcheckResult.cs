@@ -51,7 +51,7 @@ public abstract record SumcheckResult: IDisposable
 
 
     /// <summary>Override in concrete subclasses to release resources.</summary>
-    /// <param name="disposing"><see langword="true"/> when called from <see cref="Dispose"/>; <see langword="false"/> from a finalizer.</param>
+    /// <param name="disposing"><see langword="true"/> when called from <see cref="Dispose()"/>; <see langword="false"/> from a finalizer.</param>
     protected virtual void Dispose(bool disposing) { }
 
 

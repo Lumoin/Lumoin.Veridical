@@ -76,6 +76,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="multiply">Scalar-multiply backend.</param>
     /// <param name="invert">Scalar-invert backend (the fold uses it).</param>
     /// <param name="pool">The pool to rent working and proof buffers from.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <returns>The evaluation proof (caller owns its disposal) and the claimed value <c>y</c> (caller owns its disposal).</returns>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> is non-positive or the code has no foldable layers.</exception>
@@ -112,8 +113,23 @@ public static class BaseFoldEvaluationProver
     /// commit time and so must match here — while the lower fold layers are
     /// salted with fresh salts drawn from <paramref name="saltRandom"/>.
     /// </summary>
+    /// <param name="code">The foldable code; its layer count must equal the polynomial's variable count, and it is reconstructed from the same seed the verifier uses.</param>
+    /// <param name="polynomial">The committed multilinear polynomial <c>f</c>.</param>
+    /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
+    /// <param name="queryCount">The number of IOPP query repetitions.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
     /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one digest-wide salt per codeword position, in position order.</param>
     /// <param name="saltRandom">The entropy-sourced sampler for the lower fold layers' salts.</param>
+    /// <param name="pool">The pool to rent working and proof buffers from.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <inheritdoc cref="Prove"/>
     /// <exception cref="ArgumentException">When <paramref name="topLayerSalts"/> does not carry exactly one salt per top-layer codeword position, in addition to the base exceptions.</exception>
     public static (BaseFoldEvaluationProof Proof, Scalar ClaimedValue) ProveHiding(
@@ -157,8 +173,25 @@ public static class BaseFoldEvaluationProver
     /// nested hiding weighted opening of <c>C*</c> against the claim
     /// <c>s(r) + σ_F</c> the verifier derives from the masked chain.
     /// </summary>
+    /// <param name="code">The foldable code; its layer count must equal the polynomial's variable count, and it is reconstructed from the same seed the verifier uses.</param>
+    /// <param name="polynomial">The committed multilinear polynomial <c>f</c>.</param>
+    /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
+    /// <param name="queryCount">The number of IOPP query repetitions.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
+    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one digest-wide salt per codeword position, in position order.</param>
+    /// <param name="saltRandom">The entropy-sourced sampler for the lower fold layers' salts.</param>
     /// <param name="maskRandom">The entropy-sourced sampler for the mask coefficients, the filler, and the commitment's lift block.</param>
     /// <param name="maskCommitmentCode">The foldable code the mask's coefficient commitment lives under: derived from the same seed as <paramref name="code"/> at the lifted layer count of <see cref="WellKnownStatisticalMaskParameters.CreateClassicalSecurity"/> for this protocol's shape.</param>
+    /// <param name="pool">The pool to rent working and proof buffers from.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <inheritdoc cref="ProveHiding"/>
     /// <exception cref="ArgumentException">When <paramref name="maskCommitmentCode"/> does not match the deterministic mask-commitment shape, in addition to the base exceptions.</exception>
     public static (BaseFoldEvaluationProof Proof, Scalar ClaimedValue) ProveZeroKnowledge(
@@ -208,7 +241,21 @@ public static class BaseFoldEvaluationProver
     /// responsible for the transcript already being bound to the statement
     /// (the multiplier's identity and the claimed value's role) before opening.
     /// </remarks>
+    /// <param name="code">The foldable code; its layer count must equal the polynomial's variable count, and it is reconstructed from the same seed the verifier uses.</param>
+    /// <param name="polynomial">The committed multilinear polynomial <c>f</c>.</param>
     /// <param name="multiplier">The public multiplier multilinear <c>W</c>; its variable count must equal the code's layer count.</param>
+    /// <param name="queryCount">The number of IOPP query repetitions.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
+    /// <param name="pool">The pool to rent working and proof buffers from.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <inheritdoc cref="Prove"/>
     /// <exception cref="ArgumentException">When the polynomial's or multiplier's variable count does not match the code.</exception>
     public static (BaseFoldEvaluationProof Proof, Scalar ClaimedValue) ProveWeightedSum(

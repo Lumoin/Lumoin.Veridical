@@ -241,9 +241,25 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     /// <summary>
     /// Builds the tableau, commits, and writes the 32-byte Merkle root into <paramref name="root"/> in
     /// one shot, releasing the commitment immediately. The thin facade the commit-only conformance gate
-    /// (C.2) drives; the prove flow uses the object-returning <see cref="Commit"/> instead.
+    /// (C.2) drives; the prove flow uses the object-returning <see cref="Commit(LongfellowLigeroParameters, ReadOnlySpan{byte}, ReadOnlySpan{LigeroQuadraticConstraint}, int, int, LongfellowRandomByteSource, LongfellowRowEncoderFactory, LongfellowFieldProfile, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/> instead.
     /// </summary>
+    /// <param name="parameters">The wire-format tableau layout.</param>
+    /// <param name="witnesses">The witness vector; exactly <see cref="LongfellowLigeroParameters.WitnessCount"/> · 32 canonical bytes.</param>
+    /// <param name="quadraticConstraints">One entry per multiplication constraint; exactly <see cref="LongfellowLigeroParameters.QuadraticConstraintCount"/> of them.</param>
+    /// <param name="subFieldBytes">The subfield element byte size (2 for GF(2^16), 4 for GF(2^32)); the byte count a subfield random draw consumes.</param>
+    /// <param name="subfieldBoundary">The reference's <c>subfield_boundary</c>: witness rows whose elements are all below this index draw subfield padding; the rest draw full-field padding. The production wiring sets it to <see cref="LongfellowLigeroParameters.WitnessCount"/>; <c>0</c> trivially makes every row full-field.</param>
+    /// <param name="random">The raw-byte entropy source, consumed in the reference's fixed order.</param>
+    /// <param name="encoderFactory">Builds the systematic Reed–Solomon row encoder per shape (binary LCH14 or prime FFT-convolution).</param>
+    /// <param name="profile">The field profile: element width, the <c>to_bytes_field</c> framing, and the subfield <c>of_scalar</c> the padding draws map through.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="merkleHash">The two-to-one <c>SHA256(L ‖ R)</c> Merkle compression.</param>
+    /// <param name="leafHash">The one-shot SHA-256 over a single contiguous input span (nonce followed by the column bytes).</param>
+    /// <param name="hashAlgorithm">The canonical hash-function name (SHA-256) the leaf and node hashes implement.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="root">Receives the 32-byte commitment root.</param>
+    /// <param name="pool">Pool to rent the tableau, leaf and column buffers from.</param>
     /// <inheritdoc cref="Commit(LongfellowLigeroParameters, ReadOnlySpan{byte}, ReadOnlySpan{LigeroQuadraticConstraint}, int, int, LongfellowRandomByteSource, LongfellowRowEncoderFactory, LongfellowFieldProfile, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/>
     public static void Commit(
         LongfellowLigeroParameters parameters,

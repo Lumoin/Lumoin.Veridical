@@ -34,6 +34,7 @@ public static class BbsProofGenerationExtensions
         /// <param name="presentationHeader">Optional presentation-context bytes the Prover binds into this specific proof. May be empty.</param>
         /// <param name="messages">The full message vector. The signer signed this exact vector under <paramref name="header"/>.</param>
         /// <param name="disclosedIndices">Strictly ascending, deduplicated, all in <c>[0, messages.Length)</c>. The verifier learns only the messages at these positions.</param>
+        /// <param name="expandMessage">The RFC 9380 expand_message hash-to-field delegate.</param>
         /// <param name="hashToScalar">Backend hash-to-scalar.</param>
         /// <param name="scalarAdd">Backend scalar addition.</param>
         /// <param name="scalarSubtract">Backend scalar subtraction.</param>

@@ -188,7 +188,14 @@ public sealed class MonomialBasisMask: SensitiveMemory
     /// <paramref name="c3"/> — the shape the Spartan outer sumcheck's
     /// degree-3 round format carries.
     /// </summary>
+    /// <param name="boundVariable">The variable <c>X_k</c> this round binds; rounds run <c>k = d … 1</c> (high variable first, the BaseFold fold order).</param>
+    /// <param name="challengesForVariable">One-based challenge registry: <c>challengesForVariable[j]</c> is the challenge <c>r_j</c> that bound <c>X_j</c>; entries for <c>j &gt; boundVariable</c> must be populated, the rest are unread.</param>
+    /// <param name="rho">The squeezed blend scalar <c>ρ</c>, canonical bytes.</param>
+    /// <param name="c0">The round polynomial's constant coefficient, blended in place.</param>
+    /// <param name="c2">The round polynomial's quadratic coefficient, blended in place.</param>
     /// <param name="c3">The round polynomial's cubic coefficient, blended in place.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
     /// <inheritdoc cref="AddRoundBlend(int, ReadOnlySpan{Scalar}, ReadOnlySpan{byte}, Span{byte}, Span{byte}, ScalarAddDelegate, ScalarMultiplyDelegate)"/>
     public void AddRoundBlend(
         int boundVariable,

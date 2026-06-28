@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <see cref="ScalarAddDelegate"/> family. This is one of two reduction-strategy
 /// backends over the shared <see cref="PrimeField256"/> limb core (the other is
 /// <see cref="P256BaseFieldSolinasBackend"/>); both are validated bit-for-bit
-/// against the BigInteger oracle <see cref="P256BaseFieldReference"/>.
+/// against the BigInteger oracle <c>P256BaseFieldReference</c>.
 /// </summary>
 /// <remarks>
 /// <para>

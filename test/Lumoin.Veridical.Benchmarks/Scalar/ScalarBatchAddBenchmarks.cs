@@ -64,6 +64,7 @@ public class ScalarBatchAddBenchmarks
     private ScalarBatchSubtractDelegate simdBatchSubtract = null!;
 
 
+    /// <summary>Resolves the BigInteger and SIMD batch add/subtract delegates and fills the operand buffers with reduced scalars.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -106,6 +107,7 @@ public class ScalarBatchAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger batched addition over the BLS12-381 scalar field.</summary>
     [Benchmark(Baseline = true, Description = "BigInteger BatchAdd")]
     public void BigIntegerBatchAdd()
     {
@@ -119,6 +121,7 @@ public class ScalarBatchAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks SIMD lane-interleaved batched addition over the BLS12-381 scalar field.</summary>
     [Benchmark(Description = "SIMD BatchAdd (AVX2 4-wide or NEON 2-wide via dispatch)")]
     public void SimdBatchAdd()
     {
@@ -132,6 +135,7 @@ public class ScalarBatchAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger batched subtraction over the BLS12-381 scalar field.</summary>
     [Benchmark(Description = "BigInteger BatchSubtract")]
     public void BigIntegerBatchSubtract()
     {
@@ -145,6 +149,7 @@ public class ScalarBatchAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks SIMD lane-interleaved batched subtraction over the BLS12-381 scalar field.</summary>
     [Benchmark(Description = "SIMD BatchSubtract")]
     public void SimdBatchSubtract()
     {

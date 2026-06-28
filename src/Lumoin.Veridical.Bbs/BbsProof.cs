@@ -137,6 +137,7 @@ public sealed class BbsProof: SensitiveMemory
     /// spec's <c>octets_to_proof</c> deserialisation.
     /// </summary>
     /// <param name="canonicalBytes">At least <see cref="MinimumSizeBytes"/> bytes; the difference from the minimum must be a multiple of <see cref="ScalarSizeBytes"/>.</param>
+    /// <param name="ciphersuite">The BBS ciphersuite.</param>
     /// <param name="pool">The pool to rent the backing buffer from.</param>
     /// <param name="tag">An optional tag carrying provenance entries. The algebraic-identity entries are merged in unconditionally.</param>
     /// <returns>A proof wrapping a pool-rented copy of the supplied bytes.</returns>

@@ -352,7 +352,7 @@ public static class SpartanVerifierExtensions
 
         /// <summary>
         /// Verifies a Ligero-backed Spartan2 proof against a relaxed R1CS
-        /// instance. The Ligero-shaped sibling of <see cref="VerifyBaseFold(BaseFoldSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>;
+        /// instance. The Ligero-shaped sibling of <see cref="VerifyBaseFold(SpartanVerifier, BaseFoldSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>;
         /// the opening verification lives in the provider's delegate, so the body is the same scheme-neutral core.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>

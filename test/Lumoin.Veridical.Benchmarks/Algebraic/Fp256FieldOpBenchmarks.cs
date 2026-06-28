@@ -46,6 +46,7 @@ public class Fp256FieldOpBenchmarks
     private ScalarSubtractDelegate solinasSubtract = null!;
 
 
+    /// <summary>Resolves the BigInteger, Montgomery, and Solinas Fp256 op delegates and prepares two reduced operands.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -86,39 +87,51 @@ public class Fp256FieldOpBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger multiplication over the P-256 base field.</summary>
     [Benchmark(Baseline = true, Description = "Multiply: BigInteger")]
     public void BigIntegerMultiply() => bigIntegerMultiply(a, b, result, Curve);
 
+    /// <summary>Benchmarks Montgomery-domain multiplication over the P-256 base field.</summary>
     [Benchmark(Description = "Multiply: Montgomery")]
     public void MontgomeryMultiply() => montgomeryMultiply(a, b, result, Curve);
 
+    /// <summary>Benchmarks Solinas fast-reduction multiplication over the P-256 base field.</summary>
     [Benchmark(Description = "Multiply: Solinas")]
     public void SolinasMultiply() => solinasMultiply(a, b, result, Curve);
 
+    /// <summary>Benchmarks BigInteger inversion over the P-256 base field.</summary>
     [Benchmark(Description = "Invert: BigInteger")]
     public void BigIntegerInvert() => bigIntegerInvert(a, result, Curve);
 
+    /// <summary>Benchmarks Montgomery-domain inversion over the P-256 base field.</summary>
     [Benchmark(Description = "Invert: Montgomery")]
     public void MontgomeryInvert() => montgomeryInvert(a, result, Curve);
 
+    /// <summary>Benchmarks Solinas-backend inversion over the P-256 base field.</summary>
     [Benchmark(Description = "Invert: Solinas")]
     public void SolinasInvert() => solinasInvert(a, result, Curve);
 
+    /// <summary>Benchmarks BigInteger addition over the P-256 base field.</summary>
     [Benchmark(Description = "Add: BigInteger")]
     public void BigIntegerAdd() => bigIntegerAdd(a, b, result, Curve);
 
+    /// <summary>Benchmarks Montgomery-domain addition over the P-256 base field.</summary>
     [Benchmark(Description = "Add: Montgomery")]
     public void MontgomeryAdd() => montgomeryAdd(a, b, result, Curve);
 
+    /// <summary>Benchmarks Solinas-backend addition over the P-256 base field.</summary>
     [Benchmark(Description = "Add: Solinas")]
     public void SolinasAdd() => solinasAdd(a, b, result, Curve);
 
+    /// <summary>Benchmarks BigInteger subtraction over the P-256 base field.</summary>
     [Benchmark(Description = "Subtract: BigInteger")]
     public void BigIntegerSubtract() => bigIntegerSubtract(a, b, result, Curve);
 
+    /// <summary>Benchmarks Montgomery-domain subtraction over the P-256 base field.</summary>
     [Benchmark(Description = "Subtract: Montgomery")]
     public void MontgomerySubtract() => montgomerySubtract(a, b, result, Curve);
 
+    /// <summary>Benchmarks Solinas-backend subtraction over the P-256 base field.</summary>
     [Benchmark(Description = "Subtract: Solinas")]
     public void SolinasSubtract() => solinasSubtract(a, b, result, Curve);
 }

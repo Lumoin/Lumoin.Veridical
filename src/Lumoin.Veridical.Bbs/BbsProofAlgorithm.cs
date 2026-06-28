@@ -18,7 +18,8 @@ namespace Lumoin.Veridical.Bbs;
 /// <para>
 /// All operations dispatch to backend delegates. The composition of
 /// those delegates and the spec's deterministic byte-layout rules
-/// live here; the public surface (<see cref="BbsProofExtensions"/>)
+/// live here; the public surface (<see cref="BbsProofGenerationExtensions"/> /
+/// <see cref="BbsProofVerificationExtensions"/>)
 /// is a thin wrapper that validates inputs, stamps provenance, and
 /// delegates to these methods.
 /// </para>

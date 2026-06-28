@@ -17,8 +17,8 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </para>
 /// <list type="number">
 ///   <item><description>One version byte; must be <see cref="FormatVersion"/> (1).</description></item>
-///   <item><description>The field id (validated against <paramref name="fieldId"/>), then <c>nv</c>, <c>nc</c>, <c>npub_in</c>, <c>subfield_boundary</c>, <c>ninputs</c>, <c>nl</c>, <c>numconst</c>. Note the on-wire order places <c>npub_in</c> and <c>subfield_boundary</c> before <c>ninputs</c> — the reverse of the in-memory struct order.</description></item>
-///   <item><description><c>numconst</c> field constants, each <paramref name="elementBytes"/> little-endian bytes, reversed into the 32-byte big-endian canonical scalar form. The constant at index 0 is the assert-zero coefficient and is conventionally zero.</description></item>
+///   <item><description>The field id (validated against <c>fieldId</c>), then <c>nv</c>, <c>nc</c>, <c>npub_in</c>, <c>subfield_boundary</c>, <c>ninputs</c>, <c>nl</c>, <c>numconst</c>. Note the on-wire order places <c>npub_in</c> and <c>subfield_boundary</c> before <c>ninputs</c> — the reverse of the in-memory struct order.</description></item>
+///   <item><description><c>numconst</c> field constants, each <c>elementBytes</c> little-endian bytes, reversed into the 32-byte big-endian canonical scalar form. The constant at index 0 is the assert-zero coefficient and is conventionally zero.</description></item>
 ///   <item><description>Per layer: <c>logw</c>, <c>nw</c>, <c>nq</c>, then <c>nq</c> quad terms. Each term is the gate index <c>g</c> (delta-encoded from the previous term's <c>g</c>), the two hand indices <c>h0</c>, <c>h1</c> (each delta-encoded), and a value index <c>vi</c> into the constant table. The reference resolves <c>vi</c> to the constant value; this reader stores the resolved big-endian coefficient bytes on the term, matching <see cref="LongfellowSumcheckQuadTerm"/>.</description></item>
 ///   <item><description>A 32-byte circuit id.</description></item>
 /// </list>

@@ -66,7 +66,7 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     /// combination of the committed vectors. Pedersen-family schemes (Hyrax) are;
     /// hash-based schemes (BaseFold, FRI) are not. Nova-style folding requires
     /// this (it combines error and cross-term commitments homomorphically), so
-    /// <see cref="FoldChain"/> rejects a provider for which this is
+    /// <see cref="Spartan.FoldChain"/> rejects a provider for which this is
     /// <see langword="false"/>. Defaults to <see langword="false"/> — a scheme
     /// must opt in.
     /// </summary>

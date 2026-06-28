@@ -23,6 +23,7 @@ public class LigeroProveBenchmarks
 {
     //Number of chained complete additions; each is ~30 wires + a dozen
     //quadratics, so this sweeps the prover's row count.
+    /// <summary>Lengths of the chained complete-addition circuit the benchmark sweeps.</summary>
     [Params(1, 4)]
     public int Additions { get; set; }
 
@@ -33,6 +34,7 @@ public class LigeroProveBenchmarks
     private ScalarReduceDelegate reduce = null!;
 
 
+    /// <summary>Resolves the Fp256 op delegates the prove-and-verify benchmark runs on.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -47,6 +49,7 @@ public class LigeroProveBenchmarks
     }
 
 
+    /// <summary>Benchmarks an end-to-end Ligero prove and verify over the chained complete-addition circuit.</summary>
     [Benchmark(Description = "Prove (chained complete-add)")]
     public bool ProveAndVerify()
     {

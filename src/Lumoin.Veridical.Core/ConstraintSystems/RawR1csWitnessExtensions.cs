@@ -17,7 +17,7 @@ public static class RawR1csWitnessExtensions
         /// Prepares a raw witness for proving by attaching the
         /// all-zero error vector that the relaxed satisfaction
         /// identity requires. Pairs with
-        /// <see cref="RawR1csInstanceExtensions.Prepare(RawR1csInstance, Commitments.HyraxCommitmentKey, Algebraic.ScalarRandomDelegate, Algebraic.G1MultiScalarMultiplyDelegate, BaseMemoryPool)"/>.
+        /// <see cref="RawR1csInstanceExtensions.Prepare(RawR1csInstance, Commitments.PolynomialCommitmentProvider, Algebraic.ScalarRandomDelegate, Algebraic.G1MultiScalarMultiplyDelegate, BaseMemoryPool)"/>.
         /// </summary>
         /// <remarks>
         /// The relaxed identity <c>(A·z) ∘ (B·z) = u · (C·z) + E</c>

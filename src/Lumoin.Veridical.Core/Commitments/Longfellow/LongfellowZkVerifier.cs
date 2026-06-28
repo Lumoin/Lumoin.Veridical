@@ -191,7 +191,7 @@ internal static class LongfellowZkVerifier
     /// and the Fp256 signature circuit on the same transcript.
     /// </summary>
     /// <param name="circuit">The circuit shape with its per-layer <c>Quad</c> terms; must have <c>logc == 0</c>.</param>
-    /// <param name="parameters">The circuit-derived Ligero parameters (see <see cref="DeriveParameters"/>).</param>
+    /// <param name="parameters">The circuit-derived Ligero parameters (see <see cref="DeriveParameters(LongfellowSumcheckCircuit, int, int, int, int, int)"/>).</param>
     /// <param name="sumcheckProof">The parsed sumcheck segment (<c>read_sc_proof</c>).</param>
     /// <param name="ligeroProof">The parsed Ligero <c>com_proof</c> (<c>read_com_proof</c>).</param>
     /// <param name="root">The 32-byte commitment root the Ligero Merkle check re-derives leaves against (already absorbed via <see cref="RecvCommitment"/>).</param>
@@ -323,7 +323,7 @@ internal static class LongfellowZkVerifier
     /// <see cref="VerifyFromAbsorbedRoot"/> (the dual-field driver drives the two halves directly).
     /// </summary>
     /// <param name="circuit">The circuit shape with its per-layer <c>Quad</c> terms; must have <c>logc == 0</c>.</param>
-    /// <param name="parameters">The circuit-derived Ligero parameters (see <see cref="DeriveParameters"/>).</param>
+    /// <param name="parameters">The circuit-derived Ligero parameters (see <see cref="DeriveParameters(LongfellowSumcheckCircuit, int, int, int, int, int)"/>).</param>
     /// <param name="proofBytes">The full proof envelope <c>com ‖ sc ‖ com_proof</c>.</param>
     /// <param name="publicInputs">The public inputs (the first <c>npub_in</c> witness elements), <c>npub_in</c> · 16 little-endian element bytes.</param>
     /// <param name="subFieldBytes">The subfield element byte size (2 for GF(2^16)).</param>

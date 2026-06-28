@@ -62,7 +62,7 @@ public static class ScalarInspectionExtensions
         /// <remarks>
         /// Big-endian one is <c>0x00..00 0x01</c>: thirty-one leading zero
         /// bytes followed by a final byte of <c>0x01</c>. As with
-        /// <see cref="IsZero"/>, the test walks every byte to keep timing
+        /// <c>IsZero</c>, the test walks every byte to keep timing
         /// uniform across inputs.
         /// </remarks>
         public bool IsOne

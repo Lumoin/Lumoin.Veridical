@@ -23,8 +23,10 @@ public sealed class ProductSumcheckProof: IDisposable
     private readonly IMemoryOwner<byte> buffer;
 
 
+    /// <summary>The number of variables, equal to the number of sumcheck rounds the proof carries.</summary>
     public int VariableCount { get; }
 
+    /// <summary>The number of multilinear factors <c>k</c> in the product; equivalently the per-round univariate degree.</summary>
     public int FactorCount { get; }
 
     /// <summary>The round polynomials: per round, <c>FactorCount + 1</c> evaluations of 32 bytes.</summary>
@@ -72,5 +74,6 @@ public sealed class ProductSumcheckProof: IDisposable
     }
 
 
+    /// <inheritdoc/>
     public void Dispose() => buffer.Dispose();
 }

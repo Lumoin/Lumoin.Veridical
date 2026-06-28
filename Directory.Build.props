@@ -12,6 +12,7 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <EnablePackageValidation>true</EnablePackageValidation>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <GenerateSBOM>true</GenerateSBOM>
     <!-- This should be the published baseline version to validate against.
     <PackageValidationBaselineVersion>0.0.1</PackageValidationBaselineVersion>

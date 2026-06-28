@@ -44,7 +44,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// sig template is <c>sigColumn[0..4]</c> as 4·32 little-endian bytes — and the driver/verifier append the
 /// seven mac/av slots themselves. The end-to-end prove+verify over the genuine ~85k-wire hash circuit and the
 /// P-256 sig circuit is the expensive Ligero-over-the-whole-R1CS path, so the accept gate is
-/// <see cref="TestCategory"/> <c>Slow</c>; the fast pre-checks (common-match, EvaluateCircuit after a
+/// <see cref="TestCategoryAttribute"/> <c>Slow</c>; the fast pre-checks (common-match, EvaluateCircuit after a
 /// simulated patch, macs round-trip) stay in the default suite.
 /// </para>
 /// </remarks>

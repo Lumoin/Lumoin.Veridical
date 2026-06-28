@@ -22,7 +22,7 @@ namespace Lumoin.Veridical.Core.Commitments.Ligero;
 /// over any field a backend exposes — for the Longfellow ECDSA circuits that is
 /// the P-256 <em>base</em> field Fp256. The builder is the substrate the
 /// higher-level elliptic-curve gadgets
-/// (<see cref="Gadgets.WeierstrassGadgets"/>) compose from; it carries no curve
+/// (<see cref="Gadgets.WeierstrassGadgetExtensions"/>) compose from; it carries no curve
 /// identity of its own.
 /// </para>
 /// <para>

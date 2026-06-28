@@ -29,6 +29,7 @@ public static class BbsVerificationExtensions
         /// <param name="signature">The signature to verify.</param>
         /// <param name="header">Application-context bytes the signer bound into the signature.</param>
         /// <param name="messages">The message vector to verify against.</param>
+        /// <param name="expandMessage">The RFC 9380 expand_message hash-to-field delegate.</param>
         /// <param name="hashToScalar">Backend hash-to-scalar.</param>
         /// <param name="g1Add">Backend G1 addition.</param>
         /// <param name="g1MultiScalarMultiply">Backend G1 multi-scalar multiplication.</param>
