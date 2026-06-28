@@ -106,10 +106,9 @@ internal sealed class HyraxCommitmentTests
         const int VariableCount = 2;
         IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent((1 << VariableCount) * elementSize);
         owner.Memory.Span[..((1 << VariableCount) * elementSize)].Clear();
-        Tag bn254Tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.MultilinearExtension),
-            (typeof(CurveParameterSet), (object)CurveParameterSet.Bn254),
-            (typeof(MultilinearExtensionDimensions), (object)new MultilinearExtensionDimensions(VariableCount, 1 << VariableCount)));
+        Tag bn254Tag = Tag.Create(AlgebraicRole.MultilinearExtension)
+            .With(CurveParameterSet.Bn254)
+            .With(new MultilinearExtensionDimensions(VariableCount, 1 << VariableCount));
         using var foreignMle = new MultilinearExtension(owner, VariableCount, elementSize, CurveParameterSet.Bn254, bn254Tag);
 
         ScalarRandomDelegate fixedRandom = MakeFixedRandom(seed: 1);

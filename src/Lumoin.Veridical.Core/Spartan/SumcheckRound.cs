@@ -66,7 +66,7 @@ public sealed class SumcheckRound: SensitiveMemory
         int fieldElementSizeBytes,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, (degree + 1) * fieldElementSizeBytes, tag)
+        : base(owner, tag)
     {
         RoundIndex = roundIndex;
         Degree = degree;
@@ -166,18 +166,16 @@ public sealed class SumcheckRound: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(SumcheckRoundDimensions dimensions, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.SumcheckRound),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(SumcheckRoundDimensions), (object)dimensions));
+        return Tag.Create(AlgebraicRole.SumcheckRound)
+            .With(curve)
+            .With(dimensions);
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, SumcheckRoundDimensions dimensions, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.SumcheckRound),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(SumcheckRoundDimensions), (object)dimensions));
+        return tag.With(AlgebraicRole.SumcheckRound)
+            .With(curve)
+            .With(dimensions);
     }
 }

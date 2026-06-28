@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Spartan;
 
@@ -147,7 +148,7 @@ internal sealed class LigeroAgeThresholdCredentialProofTests
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
 
-        proof.AsSpan()[^1] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
         using var verifier = new SpartanVerifier(new SpartanVerifyingKey(BuildProvider()));
         (RawR1csInstance Instance, RawR1csWitness Witness) verifierCompiled = circuit.Compile(inputs, pool);

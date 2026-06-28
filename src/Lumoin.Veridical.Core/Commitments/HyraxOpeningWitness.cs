@@ -38,7 +38,7 @@ public sealed class HyraxOpeningWitness: SensitiveMemory
         int rowCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, GetBufferSizeBytes(rowCount), tag)
+        : base(owner, tag)
     {
         RowCount = rowCount;
         Curve = curve;
@@ -71,10 +71,9 @@ public sealed class HyraxOpeningWitness: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(GetBufferSizeBytes(rowCount));
         owner.Memory.Span[..GetBufferSizeBytes(rowCount)].Clear();
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.CommitmentWitness),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+        Tag tag = Tag.Create(AlgebraicRole.CommitmentWitness)
+            .With(curve)
+            .With(CommitmentScheme.Hyrax);
 
         return new HyraxOpeningWitness(owner, rowCount, curve, tag);
     }
@@ -111,10 +110,9 @@ public sealed class HyraxOpeningWitness: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(blindingBytes.Length);
         blindingBytes.CopyTo(owner.Memory.Span[..blindingBytes.Length]);
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.CommitmentWitness),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax));
+        Tag tag = Tag.Create(AlgebraicRole.CommitmentWitness)
+            .With(curve)
+            .With(CommitmentScheme.Hyrax);
 
         return new HyraxOpeningWitness(owner, rowCount, curve, tag);
     }

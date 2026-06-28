@@ -56,7 +56,7 @@ public sealed class MonomialBasisMask: SensitiveMemory
 
 
     private MonomialBasisMask(IMemoryOwner<byte> owner, MonomialBasis basis, CurveParameterSet curve, Tag tag)
-        : base(owner, basis.Count * ScalarSize, tag)
+        : base(owner, tag)
     {
         Basis = basis;
         Curve = curve;
@@ -95,9 +95,8 @@ public sealed class MonomialBasisMask: SensitiveMemory
             _ = random(coefficients.Slice(i * ScalarSize, ScalarSize), curve, scalarTag);
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve));
+        Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve);
 
         return new MonomialBasisMask(owner, basis, curve, tag);
     }
@@ -425,16 +424,16 @@ public sealed class MonomialBasisMask: SensitiveMemory
     /// <exception cref="ObjectDisposedException">When the mask has been disposed.</exception>
     public void CopyCoefficientsTo(Span<byte> destination)
     {
-        if(destination.Length < Length || destination.Length % ScalarSize != 0)
+        ReadOnlySpan<byte> coefficients = AsReadOnlySpan();
+        if(destination.Length < coefficients.Length || destination.Length % ScalarSize != 0)
         {
             throw new ArgumentException(
-                $"The destination must be a whole number of scalars and at least {Length} bytes; received {destination.Length}.",
+                $"The destination must be a whole number of scalars and at least {coefficients.Length} bytes; received {destination.Length}.",
                 nameof(destination));
         }
 
-        ReadOnlySpan<byte> coefficients = AsReadOnlySpan();
-        coefficients.CopyTo(destination[..Length]);
-        destination[Length..].Clear();
+        coefficients.CopyTo(destination[..coefficients.Length]);
+        destination[coefficients.Length..].Clear();
     }
 
 

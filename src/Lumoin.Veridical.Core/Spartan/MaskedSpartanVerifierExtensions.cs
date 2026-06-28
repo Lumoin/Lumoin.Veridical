@@ -203,7 +203,7 @@ public static class MaskedSpartanVerifierExtensions
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">When the proof's curve or dimensions do not match the instance.</exception>
-        public bool VerifyBaseFold(
+        public bool VerifyBaseFoldSound(
             BaseFoldMaskedSpartanProof proof,
             RelaxedR1csInstance instance,
             FiatShamirTranscript transcript,
@@ -288,8 +288,8 @@ public static class MaskedSpartanVerifierExtensions
         /// BaseFold provider the prover used.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance is disposed in the finally block once VerifyBaseFold returns.")]
-        public bool VerifyBaseFold(
+        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance is disposed in the finally block once VerifyBaseFoldSound returns.")]
+        public bool VerifyBaseFoldSound(
             BaseFoldMaskedSpartanProof proof,
             RawR1csInstance instance,
             FiatShamirTranscript transcript,
@@ -310,7 +310,7 @@ public static class MaskedSpartanVerifierExtensions
             RelaxedR1csInstance relaxedInstance = instance.Prepare(verifier.VerifyingKey.Pcs, pool);
             try
             {
-                return verifier.VerifyBaseFold(
+                return verifier.VerifyBaseFoldSound(
                     proof, relaxedInstance, transcript,
                     scalarAdd, scalarMultiply, scalarSubtract, scalarInvert, scalarReduce, hash, squeeze, pool);
             }
@@ -325,7 +325,7 @@ public static class MaskedSpartanVerifierExtensions
         /// Verifies a genuinely zero-knowledge BaseFold-backed masked Spartan2
         /// proof (<see cref="ZkBaseFoldMaskedSpartanProof"/>) against a relaxed R1CS
         /// <paramref name="instance"/>. Identical to
-        /// <see cref="VerifyBaseFold(BaseFoldMaskedSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarInvertDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>
+        /// <see cref="VerifyBaseFoldSound(BaseFoldMaskedSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarInvertDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>
         /// except the embedded openings are full-ZK (lifted and masked); the
         /// scheme-neutral verifier core checks them through the verifying key's
         /// full-ZK provider, which routes to the ZK opening verification.
@@ -392,6 +392,15 @@ public static class MaskedSpartanVerifierExtensions
 
             PolynomialCommitmentProvider pcs = verifier.VerifyingKey.Pcs;
             ThrowIfWeightedOpeningPathMissing(pcs);
+
+            //The full-ZK masked path only achieves zero-knowledge over a hiding
+            //provider; a non-hiding provider here is the privacy footgun, so
+            //refuse it loudly rather than accepting a sound-only proof as ZK.
+            if(!pcs.IsHiding)
+            {
+                throw new InvalidOperationException(
+                    $"VerifyZkBaseFold requires a hiding provider (a full-ZK BaseFold provider); the provider's scheme is {pcs.Scheme}.");
+            }
 
             CryptographicOperationCounters.Increment(CryptographicOperationKind.SpartanVerifierVerify, curve);
 

@@ -43,7 +43,7 @@ public sealed class PolynomialCommitment: SensitiveMemory
         CurveParameterSet curve,
         CommitmentScheme scheme,
         Tag tag)
-        : base(owner, length, tag)
+        : base(owner, tag)
     {
         Curve = curve;
         Scheme = scheme;
@@ -53,10 +53,9 @@ public sealed class PolynomialCommitment: SensitiveMemory
     /// <summary>Builds the identifying tag for a commitment over <paramref name="curve"/> from <paramref name="scheme"/>.</summary>
     internal static Tag CreateTag(CurveParameterSet curve, CommitmentScheme scheme)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.Commitment),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)scheme));
+        return Tag.Create(AlgebraicRole.Commitment)
+            .With(curve)
+            .With(scheme);
     }
 
 

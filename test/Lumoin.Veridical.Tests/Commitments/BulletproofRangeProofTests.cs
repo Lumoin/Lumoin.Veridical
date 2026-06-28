@@ -7,6 +7,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments;
 
@@ -136,7 +137,7 @@ internal sealed class BulletproofRangeProofTests
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, MakeFixedRandom(seed: 23),
             G1Add, G1ScalarMul, G1Msm, pool);
 
-        proof.AsSpan()[byteOffset] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[byteOffset] ^= 0x01;
 
         using FiatShamirTranscript verifierTx = NewTranscript();
         bool verified = BulletproofRangeVerifier.Verify(

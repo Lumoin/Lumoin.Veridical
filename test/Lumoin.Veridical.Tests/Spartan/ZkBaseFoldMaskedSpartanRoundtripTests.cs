@@ -14,6 +14,7 @@ using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Text;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Spartan;
 
@@ -87,7 +88,7 @@ internal sealed class ZkBaseFoldMaskedSpartanRoundtripTests
         using ZkBaseFoldMaskedSpartanProof proof = Prove(pool);
 
         //The witness opening is the final section; flip its last byte.
-        proof.AsSpan()[^1] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
         Assert.IsFalse(Verify(proof, pool), "A tampered witness-opening section must be rejected.");
     }
@@ -102,7 +103,7 @@ internal sealed class ZkBaseFoldMaskedSpartanRoundtripTests
 
         //The sumcheck middle starts after three 32-byte roots and the two
         //mask-sum scalars; flip the first byte of the first outer round.
-        proof.AsSpan()[(3 * DigestSizeBytes) + (2 * 32)] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[(3 * DigestSizeBytes) + (2 * 32)] ^= 0x01;
 
         Assert.IsFalse(Verify(proof, pool), "A tampered sumcheck-middle byte must be rejected.");
     }

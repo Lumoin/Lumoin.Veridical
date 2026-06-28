@@ -1,6 +1,7 @@
 using Lumoin.Veridical.Core;
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 
 namespace Lumoin.Veridical.Backends.Managed;
 
@@ -76,16 +77,17 @@ internal static class PrimeField256
     }
 
 
-    //a −= b over four limbs; returns the borrow out of the top limb.
+    //a −= b over four limbs; returns the borrow out of the top limb. Branchless: the UInt128 difference
+    //underflows so its high half is all-ones exactly when a borrow is needed (mirroring AddWithCarry's carry
+    //extraction), so the borrow is read off the high bits rather than from a value-dependent comparison.
     internal static bool SubtractWithBorrow(Span<ulong> a, ReadOnlySpan<ulong> b)
     {
         ulong borrow = 0UL;
         for(int i = 0; i < LimbCount; i++)
         {
-            ulong x = a[i];
-            ulong y = b[i];
-            a[i] = unchecked(x - y - borrow);
-            borrow = (x < y) || (x == y && borrow != 0UL) ? 1UL : 0UL;
+            UInt128 difference = unchecked((UInt128)a[i] - b[i] - borrow);
+            a[i] = (ulong)difference;
+            borrow = (ulong)(difference >> 64) & 1UL;
         }
 
         return borrow != 0UL;
@@ -95,7 +97,11 @@ internal static class PrimeField256
     //Branch-free per-limb blend: onTrue when condition holds, else onFalse.
     internal static void Select(ReadOnlySpan<ulong> onTrue, ReadOnlySpan<ulong> onFalse, bool condition, Span<ulong> destination)
     {
-        ulong mask = condition ? ~0UL : 0UL;
+        //Derive the all-ones/zero mask arithmetically, not with a `? :`: a comparison-sourced bool is 0 or 1
+        //in memory, so reinterpret it as that byte and negate. This removes the dependence on the JIT lowering
+        //a value-selecting ternary to a conditional move (the residual managed-CT caveat in SECURITY.md); the
+        //blend itself was already branch-free.
+        ulong mask = unchecked(0UL - (ulong)Unsafe.BitCast<bool, byte>(condition));
         for(int i = 0; i < LimbCount; i++)
         {
             destination[i] = (onTrue[i] & mask) | (onFalse[i] & ~mask);

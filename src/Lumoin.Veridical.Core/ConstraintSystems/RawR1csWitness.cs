@@ -30,7 +30,7 @@ public sealed class RawR1csWitness: SensitiveMemory
         int witnessVariableCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, witnessVariableCount * R1csMatrix.GetValueByteSize(curve), tag)
+        : base(owner, tag)
     {
         WitnessVariableCount = witnessVariableCount;
         Curve = curve;
@@ -85,16 +85,14 @@ public sealed class RawR1csWitness: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.RawR1csWitness),
-            (typeof(CurveParameterSet), (object)curve));
+        return Tag.Create(AlgebraicRole.RawR1csWitness)
+            .With(curve);
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.RawR1csWitness),
-            (typeof(CurveParameterSet), (object)curve));
+        return tag.With(AlgebraicRole.RawR1csWitness)
+            .With(curve);
     }
 }

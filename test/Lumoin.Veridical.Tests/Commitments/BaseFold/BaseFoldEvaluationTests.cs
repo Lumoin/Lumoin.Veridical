@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -194,7 +195,7 @@ internal sealed class BaseFoldEvaluationTests
             using(proof)
             using(claimedValue)
             {
-                proof.FoldRoots[0].AsSpan()[0] ^= 0x01;
+                MemoryMarshal.AsMemory(proof.FoldRoots[0].AsReadOnlyMemory()).Span[0] ^= 0x01;
 
                 using MerkleRoot commitment = ComputeCommitment(code, mle, pool);
                 using FiatShamirTranscript verifierTx = NewTranscript();

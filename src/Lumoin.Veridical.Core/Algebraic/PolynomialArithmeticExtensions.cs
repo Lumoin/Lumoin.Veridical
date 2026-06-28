@@ -101,10 +101,9 @@ public static class PolynomialArithmeticExtensions
                 polynomial.Degree,
                 polynomial.Curve);
 
-            Tag tag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-                (typeof(CurveParameterSet), (object)polynomial.Curve),
-                (typeof(PolynomialDegree), (object)new PolynomialDegree(polynomial.Degree)));
+            Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+                .With(polynomial.Curve)
+                .With(new PolynomialDegree(polynomial.Degree));
 
             return new Polynomial(owner, polynomial.Degree, elementSize, polynomial.Curve, tag);
         }
@@ -146,10 +145,9 @@ public static class PolynomialArithmeticExtensions
                 owner.Memory.Span[..bufferSize],
                 polynomial.Curve);
 
-            Tag tag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-                (typeof(CurveParameterSet), (object)polynomial.Curve),
-                (typeof(PolynomialDegree), (object)new PolynomialDegree(productDegree)));
+            Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+                .With(polynomial.Curve)
+                .With(new PolynomialDegree(productDegree));
 
             return new Polynomial(owner, productDegree, elementSize, polynomial.Curve, tag);
         }

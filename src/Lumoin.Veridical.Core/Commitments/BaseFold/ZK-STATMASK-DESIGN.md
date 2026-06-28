@@ -462,7 +462,7 @@ sum-of-univariates basis is invariant under the relabeling).
   (rooted in DLOG), as it always was — but with the round-message channel now
   statistically masked and the previously-detectable top-coefficient residual
   removed.
-- **Plain BaseFold path** (`ProveBaseFold`): no hiding claim (the witness
+- **Plain BaseFold path** (`ProveBaseFoldSound`): no hiding claim (the witness
   commitment itself is non-hiding); the masks share the unlifted shape with
   the filler inert — sound-only.
 

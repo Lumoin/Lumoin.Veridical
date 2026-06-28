@@ -38,7 +38,7 @@ public sealed class PolynomialCommitmentBlind: SensitiveMemory
         CurveParameterSet curve,
         CommitmentScheme scheme,
         Tag tag)
-        : base(owner, length, tag)
+        : base(owner, tag)
     {
         Curve = curve;
         Scheme = scheme;
@@ -48,10 +48,9 @@ public sealed class PolynomialCommitmentBlind: SensitiveMemory
     /// <summary>Builds the identifying tag for a blind over <paramref name="curve"/> from <paramref name="scheme"/>.</summary>
     internal static Tag CreateTag(CurveParameterSet curve, CommitmentScheme scheme)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.CommitmentWitness),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)scheme));
+        return Tag.Create(AlgebraicRole.CommitmentWitness)
+            .With(curve)
+            .With(scheme);
     }
 
 

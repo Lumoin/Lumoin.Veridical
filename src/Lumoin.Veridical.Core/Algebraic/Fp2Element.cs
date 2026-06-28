@@ -38,7 +38,7 @@ public sealed class Fp2Element: SensitiveMemory
     /// <param name="curve">The curve the element belongs to.</param>
     /// <param name="tag">The runtime tag.</param>
     internal Fp2Element(IMemoryOwner<byte> owner, CurveParameterSet curve, Tag tag)
-        : base(owner, WellKnownCurves.GetFp2SizeBytes(curve), tag)
+        : base(owner, tag)
     {
         Curve = curve;
     }
@@ -178,8 +178,7 @@ public sealed class Fp2Element: SensitiveMemory
 
     private static Tag MergeWithAlgebraicTag(Tag tag, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.ExtensionFieldElement),
-            (typeof(CurveParameterSet), (object)curve));
+        return tag.With(AlgebraicRole.ExtensionFieldElement)
+            .With(curve);
     }
 }

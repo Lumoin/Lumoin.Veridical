@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -143,7 +144,7 @@ internal sealed class BaseFoldIoppTests
             code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Flip a bit in the first fold root (root of π_{d-1}).
-        proof.FoldRoots[0].AsSpan()[0] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.FoldRoots[0].AsReadOnlyMemory()).Span[0] ^= 0x01;
 
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
         BuildCommitmentBytes(codeword, codewordElements, rootBytes);
@@ -175,7 +176,7 @@ internal sealed class BaseFoldIoppTests
             code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Flip a bit in the first query's top-layer first-path sibling.
-        proof.Openings[0][0].FirstPath.AsSpan()[0] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.Openings[0][0].FirstPath.AsReadOnlyMemory()).Span[0] ^= 0x01;
 
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
         BuildCommitmentBytes(codeword, codewordElements, rootBytes);

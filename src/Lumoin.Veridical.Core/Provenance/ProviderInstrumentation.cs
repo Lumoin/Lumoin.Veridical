@@ -57,11 +57,10 @@ public static class ProviderInstrumentation
     {
         ArgumentNullException.ThrowIfNull(tag);
 
-        return tag.With(
-            (typeof(ProviderLibrary), providerLibrary),
-            (typeof(CryptoLibrary), cryptoLibrary),
-            (typeof(ProviderClass), providerClass),
-            (typeof(ProviderOperation), providerOperation));
+        return tag.With(providerLibrary)
+            .With(cryptoLibrary)
+            .With(providerClass)
+            .With(providerOperation);
     }
 
 

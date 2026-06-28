@@ -69,10 +69,9 @@ public static class CompressedRoundPolynomialArithmeticExtensions
                     .CopyTo(destination.Slice((k - 1) * elementSize, elementSize));
             }
 
-            Tag tag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.CompressedRoundPolynomial),
-                (typeof(CurveParameterSet), (object)curve),
-                (typeof(CompressedRoundPolynomialDegree), (object)new CompressedRoundPolynomialDegree(degree)));
+            Tag tag = Tag.Create(AlgebraicRole.CompressedRoundPolynomial)
+                .With(curve)
+                .With(new CompressedRoundPolynomialDegree(degree));
 
             return new CompressedRoundPolynomial(owner, degree, elementSize, curve, tag);
         }
@@ -140,10 +139,9 @@ public static class CompressedRoundPolynomialArithmeticExtensions
                 subtract(linearSlot, coefficient, linearSlot, curve);
             }
 
-            Tag tag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-                (typeof(CurveParameterSet), (object)curve),
-                (typeof(PolynomialDegree), (object)new PolynomialDegree(degree)));
+            Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+                .With(curve)
+                .With(new PolynomialDegree(degree));
 
             return new Polynomial(destinationOwner, degree, elementSize, curve, tag);
         }

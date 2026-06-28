@@ -63,9 +63,9 @@ internal sealed class SensitiveMemoryLifetimeTests
     {
         using BaseMemoryPool pool = new();
 
-        using(PlainSensitiveMemory memory = new(pool.Rent(SegmentBytes), SegmentBytes))
+        using(PlainSensitiveMemory memory = new(pool.Rent(SegmentBytes)))
         {
-            Assert.AreEqual(SegmentBytes, memory.Length);
+            Assert.AreEqual(SegmentBytes, memory.AsReadOnlySpan().Length);
         }
 
         //The only rental was returned by Dispose, so the slab is fully
@@ -80,7 +80,7 @@ internal sealed class SensitiveMemoryLifetimeTests
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The leak is the subject under test: the wrapper is deliberately dropped undisposed to prove its pool slot is orphaned, not returned.")]
     private static void AllocateAndLeak(BaseMemoryPool pool)
     {
-        PlainSensitiveMemory leaked = new(pool.Rent(SegmentBytes), SegmentBytes);
-        Assert.AreEqual(SegmentBytes, leaked.Length);
+        PlainSensitiveMemory leaked = new(pool.Rent(SegmentBytes));
+        Assert.AreEqual(SegmentBytes, leaked.AsReadOnlySpan().Length);
     }
 }

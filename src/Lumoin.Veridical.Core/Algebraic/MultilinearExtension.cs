@@ -87,7 +87,7 @@ public sealed class MultilinearExtension: SensitiveMemory
         int fieldElementSizeBytes,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, (1 << variableCount) * fieldElementSizeBytes, tag)
+        : base(owner, tag)
     {
         VariableCount = variableCount;
         FieldElementSizeBytes = fieldElementSizeBytes;
@@ -281,18 +281,16 @@ public sealed class MultilinearExtension: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(int variableCount, int evaluationCount, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.MultilinearExtension),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(MultilinearExtensionDimensions), (object)new MultilinearExtensionDimensions(variableCount, evaluationCount)));
+        return Tag.Create(AlgebraicRole.MultilinearExtension)
+            .With(curve)
+            .With(new MultilinearExtensionDimensions(variableCount, evaluationCount));
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, int variableCount, int evaluationCount, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.MultilinearExtension),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(MultilinearExtensionDimensions), (object)new MultilinearExtensionDimensions(variableCount, evaluationCount)));
+        return tag.With(AlgebraicRole.MultilinearExtension)
+            .With(curve)
+            .With(new MultilinearExtensionDimensions(variableCount, evaluationCount));
     }
 }

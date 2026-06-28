@@ -28,22 +28,20 @@ public sealed class BbsPublicKey: SensitiveMemory
     public const int SizeBytes = WellKnownCurves.Bls12Curve381G2CompressedSizeBytes;
 
 
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.SignaturePublicKey),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381),
-        (typeof(BbsCiphersuite), (object)BbsCiphersuite.Bls12Curve381Sha256));
+    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.SignaturePublicKey)
+        .With(CurveParameterSet.Bls12Curve381)
+        .With(BbsCiphersuite.Bls12Curve381Sha256);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(
-        (typeof(AlgebraicRole), (object)AlgebraicRole.SignaturePublicKey),
-        (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381),
-        (typeof(BbsCiphersuite), (object)BbsCiphersuite.Bls12Curve381Shake256));
+    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.SignaturePublicKey)
+        .With(CurveParameterSet.Bls12Curve381)
+        .With(BbsCiphersuite.Bls12Curve381Shake256);
 
 
     /// <summary>The BBS+ ciphersuite this public key belongs to (cached lookup from <see cref="Tag"/>).</summary>
     public BbsCiphersuite Ciphersuite => Tag.Get<BbsCiphersuite>();
 
 
-    internal BbsPublicKey(IMemoryOwner<byte> owner, Tag tag) : base(owner, SizeBytes, tag)
+    internal BbsPublicKey(IMemoryOwner<byte> owner, Tag tag) : base(owner, tag)
     {
     }
 
@@ -108,9 +106,8 @@ public sealed class BbsPublicKey: SensitiveMemory
 
     private static Tag MergeWithAlgebraicTag(Tag tag, BbsCiphersuite ciphersuite)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.SignaturePublicKey),
-            (typeof(CurveParameterSet), (object)CurveParameterSet.Bls12Curve381),
-            (typeof(BbsCiphersuite), (object)ciphersuite));
+        return tag.With(AlgebraicRole.SignaturePublicKey)
+            .With(CurveParameterSet.Bls12Curve381)
+            .With(ciphersuite);
     }
 }

@@ -79,10 +79,9 @@ public static class MultilinearExtensionArithmeticExtensions
             //Tag composition for the folded result mirrors the source MLE's
             //algebraic-identity entries with the dimension entry updated for
             //the reduced variable count.
-            Tag tag = Tag.Create(
-                (typeof(AlgebraicRole), (object)AlgebraicRole.MultilinearExtension),
-                (typeof(CurveParameterSet), (object)mle.Curve),
-                (typeof(MultilinearExtensionDimensions), (object)new MultilinearExtensionDimensions(foldedVariableCount, foldedEvaluationCount)));
+            Tag tag = Tag.Create(AlgebraicRole.MultilinearExtension)
+                .With(mle.Curve)
+                .With(new MultilinearExtensionDimensions(foldedVariableCount, foldedEvaluationCount));
 
             return new MultilinearExtension(destination, foldedVariableCount, mle.FieldElementSizeBytes, mle.Curve, tag);
         }

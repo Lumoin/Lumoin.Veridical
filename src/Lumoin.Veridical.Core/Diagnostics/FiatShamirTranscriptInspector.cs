@@ -38,7 +38,7 @@ public static class FiatShamirTranscriptInspector
     {
         var builder = new StringBuilder();
         bool first = true;
-        foreach(var entry in tag.Data)
+        foreach(var entry in tag.Entries)
         {
             if(!first)
             {

@@ -90,7 +90,7 @@ public static class MaskedSpartanProverExtensions
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         /// <exception cref="InvalidOperationException">When the provider does not carry the BaseFold query count and digest size.</exception>
-        public BaseFoldMaskedSpartanProof ProveBaseFold(
+        public BaseFoldMaskedSpartanProof ProveBaseFoldSound(
             RelaxedR1csInstance instance,
             RelaxedR1csWitness witness,
             PolynomialCommitmentBlind errorOpeningWitness,
@@ -131,7 +131,7 @@ public static class MaskedSpartanProverExtensions
 
         /// <summary>
         /// Produces a genuinely zero-knowledge BaseFold-backed masked Spartan2
-        /// proof. Identical flow to <see cref="ProveBaseFold(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>,
+        /// proof. Identical flow to <see cref="ProveBaseFoldSound(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>,
         /// but the proving key's provider must be a full-ZK BaseFold provider
         /// (<see cref="Commitments.ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge"/>):
         /// the witness and error openings are then hiding, simulatable full-ZK
@@ -165,6 +165,11 @@ public static class MaskedSpartanProverExtensions
             ScalarArithmeticBackend? batch = null)
         {
             ArgumentNullException.ThrowIfNull(errorPcs);
+
+            //Fail fast before the expensive masked prove: the witness and masks require a hiding provider, so
+            //reject a non-hiding one here rather than only at final assembly. The hiding provider is the
+            //proving-key provider; errorPcs is deliberately the plain error provider, so it is not the one checked.
+            ThrowIfProviderNotHiding(prover.ProvingKey.Pcs);
 
             return prover.ProveMaskedCore(
                 instance, witness, errorOpeningWitness, transcript, hash, squeeze,
@@ -607,11 +612,11 @@ public static class MaskedSpartanProverExtensions
         /// <summary>
         /// Convenience overload that proves a <em>raw</em> R1CS instance under a
         /// BaseFold provider and forwards to the relaxed masked
-        /// <see cref="ProveBaseFold(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>.
+        /// <see cref="ProveBaseFoldSound(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; the proof transfers to the caller.")]
-        public BaseFoldMaskedSpartanProof ProveBaseFold(
+        public BaseFoldMaskedSpartanProof ProveBaseFoldSound(
             RawR1csInstance instance,
             RawR1csWitness witness,
             FiatShamirTranscript transcript,
@@ -652,7 +657,7 @@ public static class MaskedSpartanProverExtensions
                 errorOpeningWitness = PolynomialCommitmentBlind.CreateZero(
                     relaxedInstance.ErrorCommitment.AsReadOnlySpan().Length, instance.Curve, pcs.Scheme, pool);
 
-                return prover.ProveBaseFold(
+                return prover.ProveBaseFoldSound(
                     relaxedInstance, relaxedWitness, errorOpeningWitness, transcript,
                     hash, squeeze, scalarReduce, scalarAdd, scalarSubtract, scalarMultiply,
                     scalarInvert, scalarRandom, g1Add, g1ScalarMultiply, g1Msm,
@@ -774,6 +779,10 @@ public static class MaskedSpartanProverExtensions
             ArgumentNullException.ThrowIfNull(errorPcs);
             ArgumentNullException.ThrowIfNull(pool);
 
+            //Fail fast before the expensive masked prove (see ProveZkBaseFold): the hiding provider is the
+            //proving-key provider, not the plain errorPcs supplied here.
+            ThrowIfProviderNotHiding(prover.ProvingKey.Pcs);
+
             //The public zero-error vector is committed and opened through the plain
             //provider so the verifier's independent recomputation reaches the same
             //(deterministic) commitment; the witness and masks use the hiding pcs.
@@ -845,10 +854,24 @@ public static class MaskedSpartanProverExtensions
         if(pcs.QueryCount is not int queryCount || pcs.DigestSizeBytes is not int digestSize)
         {
             throw new InvalidOperationException(
-                $"ProveBaseFold requires a BaseFold provider carrying a query count and digest size; the provider's scheme is {pcs.Scheme}.");
+                $"ProveBaseFoldSound requires a BaseFold provider carrying a query count and digest size; the provider's scheme is {pcs.Scheme}.");
         }
 
         return (queryCount, digestSize);
+    }
+
+
+    //Throws when the provider is not hiding. Masked Spartan only achieves zero-knowledge over a hiding
+    //provider, so a non-hiding one is the privacy footgun: refuse it loudly rather than silently degrading
+    //ZK to a sound-only argument. Called fail-fast at the ProveZkBaseFold entries and again here at metadata
+    //extraction (defense in depth).
+    private static void ThrowIfProviderNotHiding(PolynomialCommitmentProvider pcs)
+    {
+        if(!pcs.IsHiding)
+        {
+            throw new InvalidOperationException(
+                $"ProveZkBaseFold requires a hiding provider (a full-ZK BaseFold provider); the provider's scheme is {pcs.Scheme}.");
+        }
     }
 
 
@@ -856,6 +879,8 @@ public static class MaskedSpartanProverExtensions
     //BaseFold provider; the lift count sizes the lifted witness opening.
     private static (int QueryCount, int DigestSize, int ExtraVariableCount) RequireZkBaseFoldMetadata(PolynomialCommitmentProvider pcs)
     {
+        ThrowIfProviderNotHiding(pcs);
+
         if(pcs.QueryCount is not int queryCount || pcs.DigestSizeBytes is not int digestSize || pcs.ExtraVariableCount is not int extraVariableCount)
         {
             throw new InvalidOperationException(

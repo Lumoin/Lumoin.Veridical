@@ -11,4 +11,12 @@
     <ProjectReference Include="..\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The Longfellow facade package wires the P-256 Montgomery base-field backends
+         (the Fp256 field delegates, the canonical<->Montgomery converters, the AVX batch
+         Montgomery multiply and the base-field prime) into the dual-field mdoc prover it
+         wraps; these backends are internal, so the facade reaches them by friend access. -->
+    <InternalsVisibleTo Include="Lumoin.Veridical.Longfellow" />
+  </ItemGroup>
+
 </Project>

@@ -9,6 +9,7 @@ using System;
 using System.Buffers;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments;
 
@@ -181,7 +182,7 @@ internal sealed class HyraxOpeningTests
             using(claimedValue)
             using(proof)
             {
-                proof.AsSpan()[byteOffset] ^= 0x01;
+                MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[byteOffset] ^= 0x01;
 
                 bool ok = commitment.VerifyOpening(
                     point.AsSpan, claimedValue, proof, key, verifierTx,

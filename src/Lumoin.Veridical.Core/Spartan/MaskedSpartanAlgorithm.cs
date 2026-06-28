@@ -503,10 +503,9 @@ internal static class MaskedSpartanAlgorithm
             mask.AddRoundBlend(boundVariable, challengesForVariable, rho.AsReadOnlySpan(), c0, c2, add, multiply);
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(degree)));
+        Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(degree));
 
         return new Polynomial(outputOwner, degree, scalarSize, curve, tag);
     }

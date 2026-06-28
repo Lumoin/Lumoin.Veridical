@@ -34,7 +34,7 @@ public sealed class RelaxedR1csWitness: SensitiveMemory
         int errorLength,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, (witnessVariableCount + errorLength) * R1csMatrix.GetValueByteSize(curve), tag)
+        : base(owner, tag)
     {
         WitnessVariableCount = witnessVariableCount;
         ErrorLength = errorLength;
@@ -110,16 +110,14 @@ public sealed class RelaxedR1csWitness: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.FoldingAccumulator),
-            (typeof(CurveParameterSet), (object)curve));
+        return Tag.Create(AlgebraicRole.FoldingAccumulator)
+            .With(curve);
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.FoldingAccumulator),
-            (typeof(CurveParameterSet), (object)curve));
+        return tag.With(AlgebraicRole.FoldingAccumulator)
+            .With(curve);
     }
 }

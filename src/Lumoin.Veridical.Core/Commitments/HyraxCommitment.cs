@@ -48,7 +48,7 @@ public sealed class HyraxCommitment: SensitiveMemory
         int variableCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, GetBufferSizeBytes(rowCount, curve), tag)
+        : base(owner, tag)
     {
         RowCount = rowCount;
         ColumnCount = columnCount;
@@ -123,11 +123,10 @@ public sealed class HyraxCommitment: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(expectedLength);
         commitmentBytes.CopyTo(owner.Memory.Span[..expectedLength]);
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.Commitment),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(CommitmentScheme), (object)CommitmentScheme.Hyrax),
-            (typeof(HyraxCommitmentDimensions), (object)new HyraxCommitmentDimensions(variableCount, rowCount, columnCount)));
+        Tag tag = Tag.Create(AlgebraicRole.Commitment)
+            .With(curve)
+            .With(CommitmentScheme.Hyrax)
+            .With(new HyraxCommitmentDimensions(variableCount, rowCount, columnCount));
 
         return new HyraxCommitment(owner, rowCount, columnCount, variableCount, curve, tag);
     }

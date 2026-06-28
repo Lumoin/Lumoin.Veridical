@@ -13,6 +13,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Text;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Spartan;
 
@@ -73,7 +74,7 @@ internal sealed class LigeroSpartanRoundtripTests
         using LigeroSpartanProof proof = Prove(pool);
 
         //The witness opening is the final section; flip its last byte.
-        proof.AsSpan()[^1] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
         bool verified = Verify(proof, pool);
         Assert.IsFalse(verified, "A tampered witness-opening section must be rejected.");
@@ -90,7 +91,7 @@ internal sealed class LigeroSpartanRoundtripTests
         //The sumcheck middle starts right after the witness commitment (the
         //digest-wide column-commitment root): flip the first byte of the first
         //outer round.
-        proof.AsSpan()[DigestSizeBytes] ^= 0x01;
+        MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[DigestSizeBytes] ^= 0x01;
 
         bool verified = Verify(proof, pool);
         Assert.IsFalse(verified, "A tampered sumcheck-middle byte must be rejected.");

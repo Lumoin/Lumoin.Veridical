@@ -297,7 +297,7 @@ when `provider.IsAdditivelyHomomorphic` is false, rather than failing deep insid
 the first fold.
 
 BaseFold (added in batch AB) serves the **direct** Spartan prove/verify paths
-instead — `SpartanProver.ProveBaseFold` / `MaskedSpartanProver.ProveBaseFold`
+instead — `SpartanProver.ProveBaseFold` / `MaskedSpartanProver.ProveBaseFoldSound`
 and their verifier counterparts — which never combine commitments and so have no
 homomorphism requirement. Aggregating many BaseFold statements would need a
 different accumulation technique (e.g. a hash-based accumulation scheme), which

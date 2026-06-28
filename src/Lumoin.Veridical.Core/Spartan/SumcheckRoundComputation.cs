@@ -157,10 +157,9 @@ internal static class SumcheckRoundComputation
             add(outC3, temp1, outC3, curve);
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(3)));
+        Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(3));
 
         return new Polynomial(outputOwner, 3, elementSize, curve, tag);
     }
@@ -343,10 +342,9 @@ internal static class SumcheckRoundComputation
             add(outC3, temp1, outC3, curve);
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(3)));
+        Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(3));
 
         return new Polynomial(outputOwner, 3, elementSize, curve, tag);
     }
@@ -442,10 +440,9 @@ internal static class SumcheckRoundComputation
             add(outC2, temp1, outC2, curve);
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(2)));
+        Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(2));
 
         return new Polynomial(outputOwner, 2, elementSize, curve, tag);
     }
@@ -549,10 +546,9 @@ internal static class SumcheckRoundComputation
             }
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.MultilinearExtension),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(MultilinearExtensionDimensions), (object)new MultilinearExtensionDimensions(variableCount, evaluationCount)));
+        Tag tag = Tag.Create(AlgebraicRole.MultilinearExtension)
+            .With(curve)
+            .With(new MultilinearExtensionDimensions(variableCount, evaluationCount));
 
         return new MultilinearExtension(owner, variableCount, elementSize, curve, tag);
     }
@@ -682,10 +678,9 @@ internal static class SumcheckRoundComputation
             AccumulateColumn(outC3, p1, n, add, curve);
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(3)));
+        Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(3));
 
         return new Polynomial(outputOwner, 3, elementSize, curve, tag);
     }
@@ -753,10 +748,9 @@ internal static class SumcheckRoundComputation
             AccumulateColumn(outC2, p1, n, add, curve);
         }
 
-        Tag tag = Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(2)));
+        Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(2));
 
         return new Polynomial(outputOwner, 2, elementSize, curve, tag);
     }

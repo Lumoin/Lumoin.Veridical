@@ -1034,7 +1034,7 @@ polynomials and the witness under a *hiding* commitment and blending the
 round polynomials. Hyrax/Pedersen commitments are perfectly hiding. BaseFold's
 commitment is a Merkle root over the codeword — computationally *binding* but
 **not hiding** (given a candidate witness an adversary recomputes the root). So
-`MaskedSpartanProver.ProveBaseFold` produces a sound argument of knowledge but
+`MaskedSpartanProver.ProveBaseFoldSound` produces a sound argument of knowledge but
 does **not** deliver the witness privacy the "masked" name implies. Achieving ZK
 with BaseFold requires a *hiding* BaseFold variant (a blinded codeword), which
 batch AB does not provide. Until then, masked-over-BaseFold should be read as

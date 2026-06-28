@@ -54,7 +54,7 @@ public sealed class RawR1csInstance: SensitiveMemory
         int publicInputCount,
         CurveParameterSet curve,
         Tag tag)
-        : base(publicInputsOwner, publicInputCount * R1csMatrix.GetValueByteSize(curve), tag)
+        : base(publicInputsOwner, tag)
     {
         A = a;
         B = b;
@@ -138,7 +138,10 @@ public sealed class RawR1csInstance: SensitiveMemory
 
 
     /// <summary>Returns the canonical big-endian bytes of the public-input scalars.</summary>
-    public ReadOnlySpan<byte> GetPublicInputsBytes() => AsReadOnlySpan();
+    //The backing buffer is rented with a one-byte floor so the pool never sees a zero-length request
+    //(see Create); the logical content is exactly PublicInputCount scalars, so slice to that — an
+    //instance with no public inputs reports an empty span, not the padding byte.
+    public ReadOnlySpan<byte> GetPublicInputsBytes() => AsReadOnlySpan()[..(PublicInputCount * R1csMatrix.GetValueByteSize(Curve))];
 
 
     /// <inheritdoc/>
@@ -162,18 +165,16 @@ public sealed class RawR1csInstance: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(R1csDimensions dimensions, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.RawR1csInstance),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(R1csDimensions), (object)dimensions));
+        return Tag.Create(AlgebraicRole.RawR1csInstance)
+            .With(curve)
+            .With(dimensions);
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, R1csDimensions dimensions, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.RawR1csInstance),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(R1csDimensions), (object)dimensions));
+        return tag.With(AlgebraicRole.RawR1csInstance)
+            .With(curve)
+            .With(dimensions);
     }
 }

@@ -80,7 +80,7 @@ public sealed class Polynomial: SensitiveMemory
         int fieldElementSizeBytes,
         CurveParameterSet curve,
         Tag tag)
-        : base(owner, (degree + 1) * fieldElementSizeBytes, tag)
+        : base(owner, tag)
     {
         Degree = degree;
         FieldElementSizeBytes = fieldElementSizeBytes;
@@ -223,18 +223,16 @@ public sealed class Polynomial: SensitiveMemory
 
     private static Tag ComposeAlgebraicTag(int degree, CurveParameterSet curve)
     {
-        return Tag.Create(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(degree)));
+        return Tag.Create(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(degree));
     }
 
 
     private static Tag MergeWithAlgebraicTag(Tag tag, int degree, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.PolynomialCoefficients),
-            (typeof(CurveParameterSet), (object)curve),
-            (typeof(PolynomialDegree), (object)new PolynomialDegree(degree)));
+        return tag.With(AlgebraicRole.PolynomialCoefficients)
+            .With(curve)
+            .With(new PolynomialDegree(degree));
     }
 }

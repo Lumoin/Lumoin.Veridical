@@ -58,7 +58,7 @@ public sealed class G1Point: SensitiveMemory
     /// <param name="curve">The curve the point lives on.</param>
     /// <param name="tag">The runtime tag; carries the algebraic identity entries plus any provenance the producer stamps.</param>
     internal G1Point(IMemoryOwner<byte> owner, CurveParameterSet curve, Tag tag)
-        : base(owner, WellKnownCurves.GetG1CompressedSizeBytes(curve), tag)
+        : base(owner, tag)
     {
         Curve = curve;
     }
@@ -197,8 +197,7 @@ public sealed class G1Point: SensitiveMemory
     /// </summary>
     private static Tag MergeWithAlgebraicTag(Tag tag, CurveParameterSet curve)
     {
-        return tag.With(
-            (typeof(AlgebraicRole), (object)AlgebraicRole.G1Point),
-            (typeof(CurveParameterSet), (object)curve));
+        return tag.With(AlgebraicRole.G1Point)
+            .With(curve);
     }
 }

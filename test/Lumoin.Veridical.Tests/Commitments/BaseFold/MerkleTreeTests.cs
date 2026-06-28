@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -108,7 +109,7 @@ internal sealed class MerkleTreeTests
         using MerkleAuthenticationPath path = tree.BuildPath(3, BaseMemoryPool.Shared);
 
         //Flip one bit in the first stored sibling digest.
-        path.AsSpan()[0] ^= 0x01;
+        MemoryMarshal.AsMemory(path.AsReadOnlyMemory()).Span[0] ^= 0x01;
 
         bool authenticated = path.Verify(
             tree.Root, 3, leaves.Slice(3 * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
@@ -209,7 +210,7 @@ internal sealed class MerkleTreeTests
                 using MerkleAuthenticationPath path = tree.BuildPath(leafIndex, BaseMemoryPool.Shared);
 
                 //Flip the first bit of the first sibling; authentication must fail.
-                path.AsSpan()[0] ^= 0x01;
+                MemoryMarshal.AsMemory(path.AsReadOnlyMemory()).Span[0] ^= 0x01;
                 bool authenticated = path.Verify(
                     tree.Root, leafIndex, leafBytes.AsSpan(leafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
 

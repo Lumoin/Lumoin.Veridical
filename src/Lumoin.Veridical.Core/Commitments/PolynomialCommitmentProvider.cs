@@ -129,6 +129,17 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     /// </summary>
     public StatisticalMaskShapeDelegate? ResolveStatisticalMaskShape { get; }
 
+    /// <summary>
+    /// Whether the scheme supplies the complete weighted-opening path
+    /// (<see cref="CommitVector"/>, <see cref="OpenWeightedSum"/>, <see cref="VerifyWeightedSum"/>,
+    /// <see cref="ResolveStatisticalMaskShape"/>) that the masked-Spartan statistical mask binding needs. A
+    /// consumer can check this upfront rather than discovering the gap mid-proof; masked Spartan refuses a
+    /// provider for which it is <see langword="false"/> (the binding-only Ligero PCS). Hyrax and the BaseFold
+    /// flavors supply it.
+    /// </summary>
+    public bool SupportsWeightedOpening =>
+        CommitVector is not null && OpenWeightedSum is not null && VerifyWeightedSum is not null && ResolveStatisticalMaskShape is not null;
+
 
     /// <summary>Bundles a scheme's operations and identity into the surface Spartan consumes.</summary>
     /// <param name="scheme">The commitment scheme identity.</param>
