@@ -173,7 +173,7 @@ public static class LongfellowMdoc
     {
         ReadOnlySpan<byte> raw = circuits.RawCircuitBytes.Span;
 
-        if(!LongfellowCircuitReader.TryRead(raw, LongfellowMdocBundles.Point256FieldId, LongfellowMdocBundles.Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out int signatureBytes) || signature is null)
+        if(!LongfellowCircuitReader.TryRead(raw, LongfellowMdocBundles.Point256FieldId, LongfellowMdocBundles.Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out int signatureBytes, LongfellowMdocBundles.InRangeFp256) || signature is null)
         {
             throw new ArgumentException("The signature circuit could not be parsed from the circuit-definition bytes.", nameof(circuits));
         }

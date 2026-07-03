@@ -142,7 +142,7 @@ public sealed class BbsProof: SensitiveMemory
     /// <param name="tag">An optional tag carrying provenance entries. The algebraic-identity entries are merged in unconditionally.</param>
     /// <returns>A proof wrapping a pool-rented copy of the supplied bytes.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> is shorter than <see cref="MinimumSizeBytes"/> or its length above the minimum is not a multiple of <see cref="ScalarSizeBytes"/>.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> is shorter than <see cref="MinimumSizeBytes"/>, its length above the minimum is not a multiple of <see cref="ScalarSizeBytes"/>, or any scalar component is zero or not below the scalar field order.</exception>
     public static BbsProof FromCanonical(
         ReadOnlySpan<byte> canonicalBytes,
         BbsCiphersuite ciphersuite,
@@ -165,6 +165,21 @@ public sealed class BbsProof: SensitiveMemory
                 nameof(canonicalBytes));
         }
         int undisclosed = extra / ScalarSizeBytes;
+
+        //The spec's octets_to_proof: every scalar component (e^, r1^, r3^, the
+        //m^_j commitments, and the challenge c) must be in [1, r-1]. Everything
+        //after the three G1 points is a 32-byte scalar slot, so one pass covers
+        //them all; the points are validated at decode when they enter the MSM.
+        for(int offset = EHatOffset; offset < canonicalBytes.Length; offset += ScalarSizeBytes)
+        {
+            ReadOnlySpan<byte> scalar = canonicalBytes.Slice(offset, ScalarSizeBytes);
+            if(!WellKnownCurves.IsCanonicalScalar(scalar, CurveParameterSet.Bls12Curve381) || scalar.IndexOfAnyExcept((byte)0) < 0)
+            {
+                throw new ArgumentException(
+                    $"BBS+ proof scalar at byte offset {offset} must be in [1, r-1]; received zero or a value at or above the scalar field order.",
+                    nameof(canonicalBytes));
+            }
+        }
 
         IMemoryOwner<byte> owner = pool.Rent(canonicalBytes.Length);
         canonicalBytes.CopyTo(owner.Memory.Span);

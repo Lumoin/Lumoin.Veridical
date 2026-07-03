@@ -71,6 +71,7 @@ internal static class LongfellowCircuitReader
     /// <param name="circuit">On success, the parsed circuit; otherwise <see langword="null"/>.</param>
     /// <param name="subfieldBoundary">On success, the reference's <c>subfield_boundary</c> (the least input wire not known to be in the subfield), which the <see cref="LongfellowSumcheckCircuit"/> shape does not itself carry — the prover and commit take it as a separate argument, so it is surfaced here rather than dropped; otherwise zero.</param>
     /// <param name="bytesConsumed">On success, the number of bytes consumed (the start offset of the next circuit, or the trailing length); otherwise zero.</param>
+    /// <param name="constantRange">An optional canonical-range predicate for the field; when supplied, a constant-table element at or above the field modulus makes the parse fail. GF(2^128) needs none (every 16-byte pattern is a field element); the prime field passes its <c>an &lt; p</c> guard.</param>
     /// <returns><see langword="true"/> when a well-formed circuit was parsed; <see langword="false"/> on any malformation.</returns>
     public static bool TryRead(
         ReadOnlySpan<byte> bytes,
@@ -78,7 +79,8 @@ internal static class LongfellowCircuitReader
         int elementBytes,
         out LongfellowSumcheckCircuit? circuit,
         out int subfieldBoundary,
-        out int bytesConsumed)
+        out int bytesConsumed,
+        LongfellowCanonicalRangeDelegate? constantRange = null)
     {
         circuit = null;
         subfieldBoundary = 0;
@@ -143,6 +145,15 @@ internal static class LongfellowCircuitReader
         {
             byte[] canonical = new byte[ScalarSize];
             reader.ReadElementCanonical(elementBytes, canonical);
+
+            //A constant at or above the field modulus is malformed: the constants
+            //resolve onto quad-term coefficients, so an out-of-range value would
+            //diverge between its stream bytes and its reduced arithmetic value.
+            if(constantRange is not null && !constantRange(canonical))
+            {
+                return false;
+            }
+
             constants[i] = canonical;
         }
 

@@ -286,7 +286,10 @@ public static class CircomR1csReader
             throw new ArgumentException("R1CS header declares nConstraints = 0; constraint section is mandatory.");
         }
 
-        if(nPubOut + nPubIn + nPrvIn + 1 > nWires)
+        //The sum is computed in ulong: in uint arithmetic a crafted header
+        //(e.g. nPubOut = 0xFFFFFFFF, nPubIn = 1) wraps mod 2^32 and slips
+        //past this consistency check.
+        if((ulong)nPubOut + nPubIn + nPrvIn + 1 > nWires)
         {
             throw new ArgumentException(
                 $"R1CS header inconsistency: nPubOut ({nPubOut}) + nPubIn ({nPubIn}) + nPrvIn ({nPrvIn}) + 1 (constant) exceeds nWires ({nWires}).");

@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.ConstraintSystems;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Core.Spartan;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Numerics;
 
@@ -145,14 +146,13 @@ internal sealed class MaskedSpartanSoundnessTests
     {
         int scalarSize = Scalar.SizeBytes;
         byte[] witnessBytes = new byte[3 * scalarSize];
-        //Deterministic per-trial: each trial's bytes are a hash of the
-        //trial index. We don't use cryptographic randomness here; the
-        //point is to exercise distinct unsatisfying witnesses, not to
-        //statistically sample.
-        for(int i = 0; i < 3 * scalarSize; i++)
-        {
-            witnessBytes[i] = (byte)((trialIndex * 251 + i * 17 + 37) % 256);
-        }
+        //Deterministic per-trial CANONICAL scalars: the point is to exercise
+        //distinct unsatisfying witnesses, not to statistically sample. The
+        //fill must stay below the field order because FromCanonical rejects
+        //non-canonical elements at the construction boundary — a raw byte
+        //pattern would be rejected before the soundness gate even runs.
+        DeterministicScalarFill.FillCanonical(witnessBytes, salt: trialIndex, Reduce, CurveParameterSet.Bls12Curve381);
+
         return RawR1csWitness.FromCanonical(witnessBytes, CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
     }
 }
