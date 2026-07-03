@@ -306,7 +306,7 @@ public static class BatchAggregatedBulletproofRangeVerifier
 
             BatchBulletproofRangeVerifier.ComputeSVector(roundChallenges, rounds, total, sVector, multiply, invert, curve);
 
-            //--- The t̂ equation, weighted by α_p ---
+            //The t̂ equation, weighted by α_p
             //(t̂ − δ)·g + τ_x·h − Σ_j z^{2+j}·V_j − x·T1 − x²·T2 == 0.
             ComputeAggregatedDelta(yBytes, zBytes, zSquared, zPowers, powersTwo, n, m, total, delta, add, subtract, multiply, curve, pool);
 
@@ -334,7 +334,7 @@ public static class BatchAggregatedBulletproofRangeVerifier
             subtract(zero, xSquared, term, curve);
             SetScalar(scalars, afterCommitments + 1, tWeight, term, multiply, curve);
 
-            //--- The IPA equation, weighted by β_p ---
+            //The IPA equation, weighted by β_p
             int aIndex = afterCommitments + 2;
             int sIndex = aIndex + 1;
             //A: +β_p.

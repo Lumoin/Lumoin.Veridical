@@ -152,9 +152,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Fp12 Frobenius — tower-structured x ↦ x^p.
-    //------------------------------------------------------------------
     private static Fp12Value Fp12Frobenius(Fp12Value v)
     {
         Bls12Curve381BigIntegerFp6Reference.Fp6Value c0 = Fp6Frobenius(v.C0);
@@ -176,9 +174,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Miller loop — BLS12-381 over |x| with M-twist line evaluations.
-    //------------------------------------------------------------------
     private static Fp12Value MillerLoop(G1Affine p, G2Affine q)
     {
         G2Affine accumulator = q;
@@ -278,9 +274,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Final exponentiation — (p^12 − 1)/r as easy · hard.
-    //------------------------------------------------------------------
     private static Fp12Value FinalExponentiation(Fp12Value f)
     {
         //Easy part: f^(p^6 - 1) · (p^2 + 1).
@@ -321,9 +315,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Fp2 exponentiation — for Frobenius-constant computation at init.
-    //------------------------------------------------------------------
     private static Fp2BigInt.Value Fp2Pow(Fp2BigInt.Value baseValue, BigInteger exponent)
     {
         Fp2BigInt.Value result = Fp2BigInt.One;
@@ -346,10 +338,8 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //G1 / G2 affine decode (inline, minimal — re-uses the complex Fp2
     //sqrt formula from the H.2 G2 reference).
-    //------------------------------------------------------------------
 
     /// <summary>An affine G1 point over Fp.</summary>
     internal readonly record struct G1Affine(BigInteger X, BigInteger Y, bool IsInfinity);

@@ -312,7 +312,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //--- CIOS Montgomery multiply: two reduction strategies over the shared multiply-accumulate column ---
+    //CIOS Montgomery multiply: two reduction strategies over the shared multiply-accumulate column
     //
     //Both compute result = a·b·R⁻¹ mod p; inputs are assumed < p and the output is reduced by one
     //constant-time conditional subtraction. The two methods share the identical multiply-accumulate half
@@ -477,7 +477,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //--- Constant derivation from the base-field prime (static-init only) ---
+    //Constant derivation from the base-field prime (static-init only)
 
     private static ulong[] ComputeModulusLimbs()
     {

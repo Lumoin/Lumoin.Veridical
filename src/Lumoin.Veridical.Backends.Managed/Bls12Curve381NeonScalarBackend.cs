@@ -574,7 +574,7 @@ internal static class Bls12Curve381NeonScalarBackend
     }
 
 
-    //--- Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS, 2-wide) ---
+    //Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS, 2-wide)
 
     private const int Limb32Count = 8;
 

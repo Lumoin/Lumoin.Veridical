@@ -134,9 +134,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Fp12 Frobenius (γ-constant tower form), and Fp6/Fp2 sub-steps.
-    //------------------------------------------------------------------
     private static Fp12 Fp12Frobenius(Fp12 v)
     {
         Fp6 c0 = Fp6Frobenius(v.C0);
@@ -159,9 +157,7 @@ internal static class Bn254BigIntegerPairingReference
     private static Fp2 Fp2Conjugate(Fp2 a) => new(a.C0, Mod(-a.C1));
 
 
-    //------------------------------------------------------------------
     //Optimal-ate Miller loop in full Fp12.
-    //------------------------------------------------------------------
     private readonly record struct Fp12Point(Fp12 X, Fp12 Y);
 
 
@@ -240,9 +236,7 @@ internal static class Bn254BigIntegerPairingReference
     private static Fp12Point FrobeniusPoint(Fp12Point p) => new(Fp12Frobenius(p.X), Fp12Frobenius(p.Y));
 
 
-    //------------------------------------------------------------------
     //Final exponentiation.
-    //------------------------------------------------------------------
     private static Fp12 FinalExponentiation(Fp12 f)
     {
         //Easy part: f^(p^6 - 1) = conj(f) · inv(f), then f^(p^2 + 1) = Frob²·self.
@@ -300,9 +294,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Fp12 helpers built on the tower references.
-    //------------------------------------------------------------------
     private static Fp12 Fp12Multiply(Fp12 a, Fp12 b) => Bn254BigIntegerFp12Reference.Fp12Multiply(a, b);
     private static Fp12 Fp12Square(Fp12 a) => Bn254BigIntegerFp12Reference.Fp12Multiply(a, a);
     private static Fp12 Fp12Add(Fp12 a, Fp12 b) => new(Bn254BigIntegerFp6Reference.Fp6Add(a.C0, b.C0), Bn254BigIntegerFp6Reference.Fp6Add(a.C1, b.C1));
@@ -317,9 +309,7 @@ internal static class Bn254BigIntegerPairingReference
     private static Fp12 EmbedFp2(Fp2 z) => new(new Fp6(z, Bn254Fp2BigInt.Zero, Bn254Fp2BigInt.Zero), Fp6.Zero);
 
 
-    //------------------------------------------------------------------
     //G1 / G2 decode (gnark big-endian compressed, mirroring U.3/U.5).
-    //------------------------------------------------------------------
     private static (BigInteger X, BigInteger Y, bool IsInfinity) DecodeG1(ReadOnlySpan<byte> bytes)
     {
         if(bytes.Length != G1CompressedSize)

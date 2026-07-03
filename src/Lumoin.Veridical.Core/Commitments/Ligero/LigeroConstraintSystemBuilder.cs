@@ -163,7 +163,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     public ReadOnlySpan<byte> Value(int wire) => wires[wire].Span;
 
 
-    //--- Field value helpers (delegate wrappers) used by the gadget layer ---
+    //Field value helpers (delegate wrappers) used by the gadget layer
 
     public void AddValues(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result) => add(a, b, result, curve);
 
@@ -184,7 +184,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     }
 
 
-    //--- Constraint primitives ---
+    //Constraint primitives
 
     //Allocates a wire holding the given value reduced into canonical form, backed by a
     //pooled arena scalar.
@@ -601,7 +601,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     }
 
 
-    //--- Output for LigeroProver / LigeroVerifier ---
+    //Output for LigeroProver / LigeroVerifier
 
     public LigeroParameters BuildParameters() => new(wires.Count, quadratics.Count, inverseRate, openedColumnCount, block);
 
