@@ -10,57 +10,39 @@
 
 ## What is Veridical?
 
-Veridical is a .NET library for cryptography beyond signatures and hashes: zero-knowledge proofs over rank-1 constraint systems, polynomial commitment schemes, Nova-style folding, and BBS selective-disclosure signatures. The library is built so that high-level credential and identity systems can adopt these primitives without needing to bind themselves to any particular curve, proof system, or hardware backend.
+Veridical is a .NET library for cryptography beyond signatures and hashes: zero-knowledge proofs over rank-1 constraint systems, polynomial commitment schemes, Nova-style folding, and BBS selective-disclosure signatures. It lets credential and identity systems adopt these primitives without binding themselves to any particular curve, proof system, or hardware backend.
 
-The core value proposition is verifiable computation and privacy-preserving disclosure. A holder can prove statements about credentials, computations, or data without revealing the underlying material; a verifier can check those proofs cheaply; and an issuer can produce credentials that support post-issuance, unlinkable presentations.
-
-Veridical is designed to be a peer of credential and identity stacks rather than a dependency of any one of them. Cryptographic material is never exposed as naked bytes; field elements, group elements, and polynomials each have semantic types with `Tag` metadata and pool-backed memory.
+It is designed as a peer of credential and identity stacks rather than a dependency of one. Cryptographic material is never exposed as naked bytes: field elements, group elements, and polynomials are semantic types carrying `Tag` metadata over pool-backed memory.
 
 ## Libraries
 
 | Library | Purpose | NuGet |
 |---------|---------|:-----:|
-| **Lumoin.Veridical.Core** | Field and group arithmetic (BLS12-381, BN254, P-256), multilinear polynomials, Fiat-Shamir transcripts, R1CS, the Spartan proof system with sumcheck, Hyrax and BaseFold polynomial commitments, a transparent Ligero argument, P-256 ECDSA, Nova-style folding, Bulletproof range proofs (single, aggregated, batched), a native circomlib-compatible Poseidon, and Merkle set commitments | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Core.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Core/) |
-| **Lumoin.Veridical.Bbs** | BBS multi-message signatures with unlinkable selective-disclosure proofs (IETF draft, BLS12-381-SHA-256 ciphersuite) | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Bbs.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Bbs/) |
-| **Lumoin.Veridical.Secdsa** | Split-ECDSA (SECDSA) over NIST P-256 — the EUDI-wallet sole-control signing primitive (Verheul): split signing from a PIN-key and a hardware key without forming the composite key, full-format signatures, a Schnorr/Chaum-Pedersen discrete-log-equality NIZK, and blind-signing and transaction-evidence proofs | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Secdsa.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Secdsa/) |
-| **Lumoin.Veridical.Backends.Managed** | Managed scalar-field backends: a BigInteger reference implementation and per-ISA SIMD backends (AVX2, AVX-512, NEON, WebAssembly PackedSimd) with runtime dispatch | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Backends.Managed.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Backends.Managed/) |
+| **Lumoin.Veridical.Core** | Field and group arithmetic (BLS12-381, BN254, P-256), multilinear polynomials, Fiat-Shamir transcripts, R1CS, the Spartan proof system, Hyrax/BaseFold/Ligero polynomial commitments, P-256 ECDSA, Nova-style folding, Bulletproof range proofs, a circomlib-compatible Poseidon, and Merkle set commitments | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Core.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Core/) |
+| **Lumoin.Veridical.Bbs** | BBS multi-message signatures with unlinkable selective-disclosure proofs (IETF draft, BLS12-381-SHA-256) | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Bbs.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Bbs/) |
+| **Lumoin.Veridical.Secdsa** | Split-ECDSA (SECDSA) over NIST P-256 — the EUDI-wallet sole-control signing primitive (Verheul): split signing from a PIN-key and a hardware key without forming the composite key, a discrete-log-equality NIZK, and blind-signing and transaction-evidence proofs | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Secdsa.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Secdsa/) |
+| **Lumoin.Veridical.Backends.Managed** | Managed scalar-field backends: a BigInteger reference plus per-ISA SIMD (AVX2, AVX-512, NEON, WebAssembly PackedSimd) with runtime dispatch | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Backends.Managed.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Backends.Managed/) |
 | **Lumoin.Veridical.Hashing** | BLAKE3 with per-ISA SIMD backends | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Hashing.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Hashing/) |
-| **Lumoin.Veridical.Analysis** | Statistical analysis tools: Kolmogorov–Smirnov and chi-squared tests, leakage investigations for masked commitment designs | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Analysis.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Analysis/) |
-| **Lumoin.Veridical.Cli** | Command-line and MCP tool: platform and backend info, BLAKE3 hashing, conformance self-tests; ships as native-AOT packages per platform with a framework-dependent fallback | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Cli.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Cli/) |
+| **Lumoin.Veridical.Analysis** | Statistical tools (Kolmogorov–Smirnov, chi-squared) for leakage investigations of masked commitment designs | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Analysis.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Analysis/) |
+| **Lumoin.Veridical.Cli** | Command-line and MCP tool: platform/backend info, BLAKE3 hashing, conformance self-tests; ships as native-AOT packages per platform | [![NuGet](https://img.shields.io/nuget/v/Lumoin.Veridical.Cli.svg?style=flat)](https://www.nuget.org/packages/Lumoin.Veridical.Cli/) |
 
-## Key capabilities
+## Capabilities
 
-**BBS selective-disclosure signatures.** A managed implementation of the IETF BBS signature scheme (draft-irtf-cfrg-bbs-signatures, BLS12-381-SHA-256 ciphersuite): multi-message signing, verification, and unlinkable proofs that disclose a chosen subset of signed messages. The draft's Appendix A test vectors are the load-bearing interoperability gate.
+- **BBS selective-disclosure signatures** — multi-message signing, verification, and unlinkable subset-disclosure proofs (draft-irtf-cfrg-bbs-signatures, BLS12-381-SHA-256); the draft's Appendix A test vectors are the interoperability gate.
+- **Zero-knowledge proofs over R1CS** — a Spartan-style prover and verifier built on sumcheck over multilinear extensions, with masked variants for zero knowledge and circuit-builder utilities.
+- **Polynomial commitments** — Hyrax (discrete-log), BaseFold (hash-based, with a zero-knowledge variant validated by the leakage toolkit), and Ligero (interleaved Reed–Solomon), all behind a uniform `Commit`/`Open`/`Verify` surface so Spartan drops in any of them unchanged.
+- **Transparent Ligero argument** — field-generic and NTT-free over a correctness-first barycentric Reed–Solomon encoder, so it runs over fields without smooth-order roots of unity, including the P-256 scalar field. This is the substrate for Longfellow-style zero-knowledge over ECDSA-signed mdoc credentials.
+- **P-256 as a first-class curve** — scalar and base fields, short-Weierstrass G1, and ECDSA sign/verify cross-checked against `System.Security.Cryptography.ECDsa`.
+- **Split-ECDSA (SECDSA)** — Verheul's split-signing for HSM-based EUDI wallets: a standard ECDSA signature under the composite key `P·u` formed from a PIN-key and a hardware key without ever materialising `P·u`, with RFC 6979 nonces, a pluggable raw-sign seam that keeps the hardware key inside a TPM/HSM, a Schnorr/Chaum-Pedersen discrete-log-equality NIZK, and publicly verifiable transaction-transparency evidence. See [the paper](https://wellet.nl/SECDSA-EUDI-wallet-latest.pdf).
+- **Nova-style folding** — relaxed R1CS folding of two instance–witness pairs into one, with fold chains for accumulating long-running computations.
+- **Range proofs** — Bulletproofs over BLS12-381 and BN254: single-value, aggregated, batched verification, and batched aggregated, riding a Pippenger multi-exponentiation with a decoded-point cache.
+- **Algebraic hashing** — a native Poseidon permutation, Grain-derived and byte-compatible with circomlib over BN254, behind Merkle set-commitment shadow roots.
+- **Curves and hashing** — BLS12-381 (including the Ate pairing), BN254, and P-256; RFC 9380 hash-to-curve and hash-to-scalar; BLAKE3 with per-ISA SIMD.
+- **Managed backends and memory safety** — a BigInteger reference oracle plus agreement-tested per-ISA SIMD backends (all managed code, no native binaries); cryptographic material lives in pool-backed `SensitiveMemory` tagged with its algebraic role, with no naked byte arrays in public APIs.
 
-**Zero-knowledge proofs over R1CS.** A Spartan-style prover and verifier for rank-1 constraint systems, built on the sumcheck protocol over multilinear extensions, with masked variants for zero knowledge and circuit-builder utilities for constructing constraint systems.
+## Architecture
 
-**Polynomial commitment schemes.** Hyrax (discrete-log based), BaseFold (hash-based, including a zero-knowledge variant with statistical masking validated by the leakage-analysis toolkit), and Ligero (hash-based, interleaved Reed–Solomon). Schemes sit behind a uniform `Commit`/`Open`/`Verify` delegate surface so protocols are parameterized over the commitment scheme rather than hard-coded against one — Spartan drops in any of them unchanged.
-
-**Transparent Ligero argument.** A field-generic, NTT-free Ligero over interleaved Reed–Solomon codes, in two forms: a constraint-satisfaction argument (a column-committed tableau with low-degree, dot-product/linear and quadratic tests over a Fiat-Shamir transcript and bias-free opened-column sampling) and a Brakedown-style tensor-query polynomial commitment that implements the commitment seam above and drops into Spartan. Both are built on a correctness-first O(n²) barycentric Reed–Solomon encoder (a CRT/FFT encoder is a later performance seam), so they run over fields without smooth-order roots of unity — including the P-256 scalar field. This is the substrate for Longfellow-style zero-knowledge over ECDSA-signed mdoc credentials.
-
-**P-256 as a first-class curve.** Reference scalar and base fields, short-Weierstrass G1, and ECDSA sign/verify over P-256, cross-checked against the platform `System.Security.Cryptography.ECDsa`, so a consumer whose signatures sit on P-256 (an mdoc/SECDSA stack) can prove statements about them.
-
-**Split-ECDSA (SECDSA).** Verheul's split-signing construction for HSM-based EUDI wallets over P-256: a standard ECDSA signature under the composite key `P·u`, formed from a PIN-key and a hardware key without ever materialising `P·u`, with RFC 6979 nonces and a pluggable raw-sign seam that keeps the hardware key inside a TPM/HSM. It adds full-format signatures, a Schnorr/Chaum-Pedersen discrete-log-equality NIZK, and the blind-signing and publicly-verifiable transaction-transparency evidence proofs — the cryptographic core of sole control and non-repudiation for the EUDI wallet.
-
-**Nova-style folding.** Relaxed R1CS folding combines two instance–witness pairs into one via a Fiat-Shamir challenge, with fold chains for accumulating long-running computations into a single instance.
-
-**Range proofs.** Bulletproof range proofs over BLS12-381 and BN254 across the full family: single-value, aggregated (many values in one logarithmic proof), batched verification (many proofs collapsed into one multi-exponentiation), and batched aggregated verification. The verifier paths ride a bucket-method (Pippenger) multi-exponentiation with a decoded-point cache.
-
-**Algebraic hashing.** A native Poseidon permutation and hash, Grain-derived and byte-compatible with circomlib over BN254, for in-circuit-friendly hashing where BLAKE3 is expensive — the compression behind Merkle set-commitment shadow roots.
-
-**Curves and hashing.** BLS12-381 (including the Ate pairing), BN254, and P-256 arithmetic; RFC 9380 hash-to-curve and hash-to-scalar; BLAKE3 hashing with per-ISA SIMD backends.
-
-**Managed backend abstraction.** Field and group operations are exposed as delegates. A BigInteger reference backend provides the correctness oracle; per-ISA SIMD backends (AVX2, AVX-512, NEON, WebAssembly PackedSimd) accelerate scalar-field arithmetic with runtime ISA selection. Everything is managed code — agreement between backends is property-tested, and no native binaries are shipped.
-
-**Memory-safe cryptographic material.** Field elements, scalars, group points, and polynomials are wrapped in pool-backed `SensitiveMemory` types tagged with their algebraic role. There are no naked byte arrays in public APIs.
-
-## Architecture principles
-
-Veridical follows the same data-oriented principles as the rest of the family: code is separate from immutable data, generic data structures are favored, and general-purpose functions are implemented as static extensions. Domain types contain raw algebraic material without encoding artifacts; encoding lives at serialization boundaries in dedicated `Lumoin.Veridical.Json` or `Lumoin.Veridical.Cbor` packages when those are introduced.
-
-Curves, proof systems, and backends are wired through delegates rather than interfaces. The same prover code runs against the reference backend during testing and a SIMD backend in production without changes at the call site. Backend selection is the application developer's concern, not the library's.
-
-Every allocation of cryptographic material goes through a pool so that the library is friendly to arena-style allocators if a Rust port is ever written. There are no static caches or hidden global state in the cryptographic core.
+Curves, proof systems, and backends wire through delegates rather than interfaces: the same prover runs against the reference backend in tests and a SIMD backend in production with no change at the call site, and backend selection is the application's concern. Every allocation of cryptographic material goes through a pool, and there is no static cache or hidden global state in the cryptographic core.
 
 ## Getting started
 
@@ -89,24 +71,7 @@ dotnet tool install --global Lumoin.Veridical.Cli
 
 ## Development
 
-The codebase runs on Windows, Linux, and macOS. Backend acceleration is selected at runtime per instruction set; the managed reference backend always works.
-
-Press **.** on the repository page to open the codebase in VS Code web editor for quick exploration.
-
-### Banned-API enforcement
-
-Two banlists at the repository root are wired into every project via `Directory.Build.props`:
-
-- **`BannedSymbols.txt`** — applied universally, no opt-out. Bans wall-clock APIs (`DateTime.Now`, `DateTime.UtcNow`, `DateTimeOffset.Now`, `DateTimeOffset.UtcNow`) and the non-UTC file-time getters (`File.GetCreationTime`, `File.GetLastWriteTime`). Production and test code use `TimeProvider` consistently.
-- **`BannedSymbols.Serialization.txt`** — applied by default, opt-out per project. Bans `System.Text.Json` and `System.Formats.Cbor`. A project that legitimately needs a serialization namespace (a future `Lumoin.Veridical.Json` or `Lumoin.Veridical.Cbor` package) opts out by setting `<EnableSerializationBan>false</EnableSerializationBan>` in its `<PropertyGroup>`. Opt-out is deliberate rather than incidental: a maintainer adding a JSON-using project has to silence the ban explicitly, which surfaces the design decision.
-
-The wiring uses `Microsoft.CodeAnalysis.BannedApiAnalyzers`, which surfaces violations as `RS0030` build errors. New projects pick up both bans automatically by existing inside the repository; no per-csproj ceremony.
-
-### Naming conventions
-
-**Wire-format strings keep their exact bytes; identifiers reflect mechanics.** A wire-format string — a DST suffix, a ciphersuite identifier, an IETF domain separator, any spec-defined ASCII constant — keeps its exact byte content, because it is hashed into a wire protocol and changing it would break interoperability or test-vector reproduction. The byte content is locked by the spec, not by us. The *C# identifier* that names such a string, however, is ours, and it should describe what the string **is** (a domain separator, a ciphersuite tag, a DST suffix) rather than echoing the role-based name a spec gives it where that name differs from the mechanics. Lock the bytes in an XML comment so the next reader knows not to touch the value.
-
-**`Mocked`, `Fake`, `Stub`, and `Dummy` are reserved for genuine test doubles** — constructs that return canned values *without computing*. A deterministic construction that merely happens to be used in tests is not a mock: it computes a precise result. For example, the IETF BBS draft's `mocked_calculate_random_scalars` is a role-based spec name, but the function expands a seed through `expand_message_xmd`, chunks the output, and reduces each chunk modulo the field order — a deterministic key-derivation, not a pretence. The corresponding type is therefore named `BbsDeterministicScalars`, with its XML doc retaining the pointer to the spec function so a reader coming from the draft can still find it. Conversely, a placeholder that fills bytes never read by the code under test (`BuildDummyCommitment`), an adversarial input that fails to satisfy (a "fake witness"), or a delegate wired only to prove a guard rejects before invoking it (`StubPairing`) genuinely are doubles and keep those names.
+The codebase runs on Windows, Linux, and macOS; backend acceleration is selected at runtime per instruction set, and the managed reference backend always works. Press **.** on the repository page to open the codebase in the VS Code web editor.
 
 ## Vulnerability disclosure
 
@@ -114,18 +79,14 @@ Please report suspected security vulnerabilities privately through [GitHub secur
 
 ## Contributing
 
-Open issues for bugs, suggestions, or improvements, or create pull requests. Especially welcome:
-
-- Tests using test vectors from established implementations for cross-checking.
-- Expanded coverage of curves, proof systems, and commitment schemes.
-- Improved threat and privacy modeling.
+Open issues or pull requests. Especially welcome: tests using vectors from established implementations, expanded curve/proof-system/commitment coverage, and improved threat and privacy modeling.
 
 ## Acknowledgements
 
-Veridical's design is informed by published specifications and papers. The implementations here are independent; no code is copied or translated mechanically. The sources below were consulted during development:
+Veridical's design is informed by published specifications and papers. The implementations here are independent; no code is copied or translated mechanically.
 
-- **IETF draft-irtf-cfrg-bbs-signatures** (Looker, Kalos, Whitehead, Lodder) — wire-format authority for the BBS signature scheme in `Lumoin.Veridical.Bbs`. The Appendix A test vectors are the load-bearing interoperability gate.
-- **RFC 9380** (Faz-Hernandez, Scott, Sullivan, Wahby, Wood) — hash-to-curve and hash-to-scalar primitives, including the BLS12-381 G1 SSWU + 11-isogeny map used inside BBS's generator derivation.
+- **IETF draft-irtf-cfrg-bbs-signatures** — wire-format authority for the BBS signature scheme; the Appendix A test vectors are the interoperability gate.
+- **RFC 9380** — hash-to-curve and hash-to-scalar primitives.
 - **Spartan** (Setty, 2020) — the sumcheck-based R1CS proof system.
 - **Nova** (Kothapalli, Setty, Tzialla, 2021) — the relaxed R1CS folding scheme.
 - **BaseFold** (Zeilberger, Chen, Fisch, 2023) — the field-agnostic hash-based polynomial commitment.
@@ -133,9 +94,7 @@ Veridical's design is informed by published specifications and papers. The imple
 - **Ligero** (Ames, Hazay, Ishai, Venkitasubramaniam, 2017/2022) — the interleaved-Reed–Solomon transparent argument.
 - **Anonymous Credentials from ECDSA** (Frigo, shelat, 2024) — the Longfellow-style ZK-over-ECDSA construction the P-256 and Ligero work targets.
 - **Bulletproofs** (Bünz, Bootle, Boneh, Poelstra, Wuille, Maxwell, 2018) — the range-proof construction.
-- **An HSM-based EUDI wallet using Split-ECDSA (SECDSA)** (Verheul, 2026) — the split-ECDSA sole-control construction, its discrete-log-equality NIZK, and the transaction-transparency evidence proofs in `Lumoin.Veridical.Secdsa`.
-
-Additional acknowledgements will be added as the library grows. Design decisions informed by these specifications are recorded in the `tempdocs/` directory (gitignored), which is the historical archive of architecture choices.
+- **[An HSM-based EUDI wallet using Split-ECDSA (SECDSA)](https://wellet.nl/SECDSA-EUDI-wallet-latest.pdf)** (Verheul, version 21 June 2026) — the split-ECDSA sole-control construction, its discrete-log-equality NIZK, and the transaction-transparency evidence proofs in `Lumoin.Veridical.Secdsa`.
 
 ## License
 
