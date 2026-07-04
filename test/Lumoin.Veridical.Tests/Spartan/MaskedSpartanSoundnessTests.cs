@@ -114,6 +114,40 @@ internal sealed class MaskedSpartanSoundnessTests
 
 
     [TestMethod]
+    public void VerifyAgainstDifferentInstanceRejected()
+    {
+        //Statement-binding ledger check for the composed masked-Spartan path:
+        //the audit found the PCS opening sub-protocols do not themselves absorb
+        //the statement, so masked Spartan's soundness against a substituted
+        //instance rests on its outer transcript binding the instance. Prove
+        //satisfaction of one 2×8 instance, then verify against a different 2×8
+        //instance (same dimensions, different wiring); the composed proof must
+        //reject. The plain-Spartan sibling is
+        //SpartanFailureTests.VerifyAgainstDifferentInstanceRejected.
+        using MaskedSpartanProver prover = BuildMaskedProver(hyraxVectorLength: 4);
+        using RawR1csInstance proverInstance = BuildTwoMultiplyInstance();
+        using RawR1csWitness witness = BuildTwoMultiplyWitness();
+        using FiatShamirTranscript proverTranscript = FreshTranscript();
+        using MaskedSpartanProof proof = prover.Prove(
+            proverInstance, witness, proverTranscript,
+            Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, ScalarRandom,
+            G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold,
+            BaseMemoryPool.Shared);
+
+        using MaskedSpartanVerifier verifier = BuildMaskedVerifier(hyraxVectorLength: 4);
+        using RawR1csInstance wrongInstance = BuildDifferentTwoMultiplyInstance();
+        using FiatShamirTranscript verifierTranscript = FreshTranscript();
+        bool verified = verifier.Verify(
+            proof, wrongInstance, verifierTranscript,
+            Add, Multiply, Subtract, Invert, Reduce,
+            G1Add, G1ScalarMul, G1Msm, Hash, Squeeze,
+            BaseMemoryPool.Shared);
+
+        Assert.IsFalse(verified, "Masked Spartan must reject a proof generated against a different instance.");
+    }
+
+
+    [TestMethod]
     public void WitnessOffByOneInZeroSlotStillCaught()
     {
         //Edge case: a witness that's almost satisfying but off-by-one
