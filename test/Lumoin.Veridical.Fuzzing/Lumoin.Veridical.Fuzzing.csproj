@@ -47,8 +47,10 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(EnableSharpFuzz)' == 'true'">
-    <!-- Version is a starting pin; verify the latest against the SharpFuzz project on activation. -->
-    <PackageReference Include="SharpFuzz" Version="2.1.1" />
+    <!-- Versionless under central package management: the version is pinned in
+         Directory.Packages.props. Activating also needs the lock file regenerated
+         (the default lock omits SharpFuzz); see FUZZING.md for the restore step. -->
+    <PackageReference Include="SharpFuzz" />
   </ItemGroup>
 
   <ItemGroup>
