@@ -1,0 +1,129 @@
+name: Fuzz decoders
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly deep coverage-guided fuzz of the hand-written decoders. The
+    # deterministic corpus-replay harness in Lumoin.Veridical.Tests
+    # (DecoderRobustnessTests) already gates every PR via the normal test leg;
+    # this scheduled job is the open-ended, coverage-guided search that finds
+    # what a fixed mutation catalogue cannot. Runs on the default branch only.
+    #
+    # Run this once manually (workflow_dispatch) and confirm it is green before
+    # relying on the schedule: the SharpFuzz -> libfuzzer-dotnet toolchain is
+    # exercised for the first time here and its exact invocation can shift
+    # between SharpFuzz versions (see test/Lumoin.Veridical.Fuzzing/FUZZING.md).
+    - cron: "0 3 * * 1"   # 03:00 UTC every Monday.
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_NOLOGO: true
+  # libFuzzer wall-clock budget per target; timeout-minutes below leaves headroom
+  # for restore, publish, instrumentation, and the loader build.
+  FUZZ_SECONDS_PER_TARGET: "1800"
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # The public external-parser targets the SharpFuzz host exposes
+        # (Lumoin.Veridical.Fuzzing). The internal Longfellow and curve decoders
+        # are covered by the deterministic harness, not this job.
+        target:
+          - circom-r1cs
+          - circom-wtns
+          - zkinterface-decoder
+          - zkinterface-r1cs
+          - zkinterface-wtns
+          - compressed-round-poly
+          - raw-r1cs-witness
+
+    steps:
+      - name: Harden Runner
+        # egress-policy: audit (not block) because this new job's SharpFuzz /
+        # libfuzzer-dotnet toolchain endpoints are not yet enumerated. Read the
+        # audit log from the first run, then switch to block + an allowed-endpoints
+        # list (mirror COMMON_ALLOWED_ENDPOINTS in main.yml, plus the SharpFuzz
+        # source host raw.githubusercontent.com:443).
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2
+        with:
+          global-json-file: global.json
+
+      - name: Restore with SharpFuzz enabled
+        # The harness is inert by default and its committed lock omits SharpFuzz,
+        # so regenerate the lock here (--force-evaluate) with the gate flag on.
+        run: >
+          dotnet restore test/Lumoin.Veridical.Fuzzing/Lumoin.Veridical.Fuzzing.csproj
+          -p:EnableSharpFuzz=true --force-evaluate
+
+      - name: Install the SharpFuzz instrumenter
+        run: dotnet tool install --global SharpFuzz.CommandLine
+
+      - name: Publish the fuzz host
+        run: >
+          dotnet publish test/Lumoin.Veridical.Fuzzing/Lumoin.Veridical.Fuzzing.csproj
+          -c Release -p:EnableSharpFuzz=true --no-restore -o out/fuzz
+
+      - name: Instrument the decoder assemblies
+        # sharpfuzz rewrites the IL in place to add libFuzzer coverage counters.
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          sharpfuzz out/fuzz/Lumoin.Veridical.Core.dll
+          sharpfuzz out/fuzz/Lumoin.Veridical.Backends.Managed.dll
+
+      - name: Build the libfuzzer-dotnet loader
+        # clang ships on ubuntu-latest; -fsanitize=fuzzer supplies the libFuzzer runtime.
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Metalnem/sharpfuzz/master/libfuzzer-dotnet.cc -o libfuzzer-dotnet.cc
+          clang -fsanitize=fuzzer libfuzzer-dotnet.cc -o libfuzzer-dotnet
+
+      - name: Seed the corpus
+        # Seeds are the committed fixtures. This job does not persist the corpus
+        # between runs, so each week starts from the seeds; wiring actions/cache on
+        # corpus/${{ matrix.target }} would make coverage compound week over week.
+        run: |
+          mkdir -p corpus/${{ matrix.target }} findings/${{ matrix.target }}
+          circom=test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/Circom/Fixtures
+          zkif=test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/ZkInterface/Fixtures
+          case "${{ matrix.target }}" in
+            circom-r1cs)  cp "$circom"/*/poseidon2.r1cs corpus/${{ matrix.target }}/ 2>/dev/null || true ;;
+            circom-wtns)  cp "$circom"/*/poseidon2.wtns corpus/${{ matrix.target }}/ 2>/dev/null || true ;;
+            zkinterface-*) cp "$zkif"/example.zkif "$zkif"/*/multiplier2.zkif corpus/${{ matrix.target }}/ 2>/dev/null || true ;;
+          esac
+
+      - name: Fuzz ${{ matrix.target }}
+        # The libfuzzer-dotnet loader launches the instrumented .NET host and drives
+        # it with libFuzzer; --target_arg carries the fuzz-target name to Program.Main,
+        # and the remaining flags plus the corpus dir go to libFuzzer. A crash makes
+        # this step exit non-zero (the intended signal); the artifact is uploaded
+        # regardless. VERIFY this invocation on the first manual dispatch.
+        run: >
+          ./libfuzzer-dotnet
+          --target_path=out/fuzz/Lumoin.Veridical.Fuzzing
+          --target_arg=${{ matrix.target }}
+          -artifact_prefix=findings/${{ matrix.target }}/
+          -max_total_time=${{ env.FUZZ_SECONDS_PER_TARGET }}
+          corpus/${{ matrix.target }}
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: fuzz-findings-${{ matrix.target }}
+          path: findings/${{ matrix.target }}
+          if-no-files-found: ignore

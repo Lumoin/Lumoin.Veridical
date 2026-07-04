@@ -110,68 +110,28 @@ deterministic harness (harness 1) rather than this console host.
 
 ### Weekly scheduled CI
 
-Add the workflow below as `.github/workflows/fuzz.yml` when activating. It is deliberately
-`workflow_dispatch` first (never auto-runs, no surprise red runs before step 1 above is done);
-flip the commented `schedule` on for the weekly cadence once a manual run is green. It mirrors
-the `harden-runner` egress hardening the other Ubuntu legs use.
+The workflow is committed as `.github/workflows/fuzz.yml`: a weekly (Monday 03:00 UTC)
+matrixed deep run over the seven targets, plus `workflow_dispatch`. It restores with
+`-p:EnableSharpFuzz=true`, installs the instrumenter, publishes + instruments Core and
+Backends.Managed, builds `libfuzzer-dotnet`, seeds from the committed fixtures, and runs each
+target for `FUZZ_SECONDS_PER_TARGET` (30 min). A crash makes the target's leg red and uploads
+the reproducing artifact. Scheduled runs fire on the default branch only, so it stays dormant
+until this branch is merged.
 
-```yaml
-name: Fuzz decoders
+Operational notes:
 
-on:
-  workflow_dispatch:
-  # Enable after a green manual run:
-  # schedule:
-  #   - cron: "0 3 * * 1"   # 03:00 UTC every Monday
-
-permissions:
-  contents: read
-
-jobs:
-  fuzz:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - circom-r1cs
-          - circom-wtns
-          - zkinterface-decoder
-          - zkinterface-r1cs
-          - zkinterface-wtns
-          - compressed-round-poly
-          - raw-r1cs-witness
-    steps:
-      - uses: step-security/harden-runner@v2
-        with:
-          egress-policy: audit   # tighten to block + an allowlist once endpoints are known
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - name: Install SharpFuzz instrumenter
-        run: dotnet tool install --global SharpFuzz.CommandLine
-      - name: Publish + instrument
-        run: |
-          dotnet publish test/Lumoin.Veridical.Fuzzing/Lumoin.Veridical.Fuzzing.csproj \
-            -c Release -p:EnableSharpFuzz=true -o out/fuzz
-          sharpfuzz out/fuzz/Lumoin.Veridical.Core.dll
-          sharpfuzz out/fuzz/Lumoin.Veridical.Backends.Managed.dll
-      - name: Seed corpus
-        run: |
-          mkdir -p corpus findings
-          # copy the committed fixtures for ${{ matrix.target }} into corpus/ (see the table above)
-      - name: Fuzz ${{ matrix.target }}
-        run: |
-          out/fuzz/Lumoin.Veridical.Fuzzing ${{ matrix.target }} \
-            -artifact_prefix=findings/ -max_total_time=1800 corpus || true
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fuzz-findings-${{ matrix.target }}
-          path: findings/
-```
+- **Run it once via `workflow_dispatch` and confirm green before trusting the schedule.** The
+  SharpFuzz → `libfuzzer-dotnet` toolchain is exercised for the first time here and its exact
+  loader invocation can shift between SharpFuzz versions.
+- **`egress-policy` is `audit`**, not `block`, because the fuzz toolchain's endpoint set is not
+  yet enumerated. After the first run, read the audit log and switch to `block` with an
+  allowed-endpoints list (mirror `COMMON_ALLOWED_ENDPOINTS` in `main.yml`, plus
+  `raw.githubusercontent.com:443` for the loader source).
+- **No corpus persistence yet.** Each run starts from the committed seeds. Wiring `actions/cache`
+  on `corpus/<target>` would let coverage compound week over week — the single biggest lever for
+  a coverage-guided fuzzer's yield.
+- The deterministic harness (harness 1) remains the PR-time decoder gate; this job is the
+  open-ended discovery search, not a merge gate.
 
 ## Triaging a crash
 
