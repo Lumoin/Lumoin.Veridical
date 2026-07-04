@@ -36,5 +36,10 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageVersion Include="System.CommandLine" Version="2.0.9" />
     <PackageVersion Include="ModelContextProtocol" Version="1.4.0" />
+    <!-- Fuzzing-only and inert by default: Lumoin.Veridical.Fuzzing references SharpFuzz only under
+         -p:EnableSharpFuzz=true, which also requires adding the SharpFuzz package owner to the
+         NuGet.config trusted-signers <owners> allowlist. See test/Lumoin.Veridical.Fuzzing/FUZZING.md.
+         Verify the latest version on activation. -->
+    <PackageVersion Include="SharpFuzz" Version="2.1.1" />
   </ItemGroup>
 </Project>
