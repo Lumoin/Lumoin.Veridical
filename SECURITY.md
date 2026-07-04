@@ -50,6 +50,38 @@ deliberately **no buffer-touching finalizer**: a missed `Dispose` orphans the po
 rather than risking a use-after-free against an in-flight span read. There are no static caches or hidden
 global secret state in the cryptographic core.
 
+## Proof-system soundness posture
+
+The zero-knowledge proof systems (Spartan and the polynomial-commitment schemes it composes with —
+Hyrax, Ligero, BaseFold/ZkBaseFold — plus the Bulletproofs range arguments and the relaxed-R1CS
+folding chain) are non-interactive via the Fiat-Shamir transform over a `FiatShamirTranscript`. Their
+soundness rests on assumptions a consumer must uphold:
+
+- **The circuit or statement is fixed and agreed out of band.** Fiat-Shamir soundness for these
+  arguments assumes the constraint system (R1CS matrices, verifying key, code parameters) is fixed
+  before any challenge is drawn; the transcript binds the *witness-dependent* prover messages, not the
+  circuit definition. A verifier must obtain the circuit and the verifying key from a trusted channel,
+  not from the prover alongside the proof. This is the standard fixed-circuit assumption; the library
+  does not implement a stronger "unbound" Fiat-Shamir variant (which has known counterexamples).
+- **The polynomial-commitment opening sub-protocols bind the statement through the caller's
+  transcript, not their own.** The evaluation point, the claimed value, and any weighting travel into
+  the inner-product and BaseFold opening arguments through the enclosing protocol's transcript (as
+  masked Spartan does), which is where the composed proof binds them. A consumer that wires a
+  commitment scheme's opening delegate *standalone* — outside a protocol that has already absorbed the
+  statement into the shared transcript — must absorb the evaluation point and claimed value itself
+  before invoking the opening. The delegate surface does not enforce this; it is the caller's
+  obligation, documented on the delegate types.
+- **Proof bytes are not canonicalized end to end, so proof-byte identity is not a uniqueness
+  primitive.** Field-element inputs read from *external* sources (the Circom / ZkInterface R1CS and
+  witness readers) and the sumcheck round-polynomial coefficients are rejected at deserialization if
+  they encode an integer at or above the scalar-field order. The remaining scalar sections of a
+  proof container (for example the Spartan opening responses and the Bulletproofs inner-product
+  scalars) are reduced modulo the order by the arithmetic backends rather than rejected, so a valid
+  proof admits a second, byte-distinct encoding that still verifies. This is a proof-*byte*
+  malleability, not a soundness break — the accepted statement is unchanged — but a consumer must not
+  treat a proof's byte identity (or its hash) as a deduplication, anti-replay, or nullifier key. Bind
+  such keys to the statement or a canonical semantic digest instead.
+
 ## Scope
 
 This repository is **WSCA-side cryptography only**: primitives and proof systems. Agent protocols, OID4VP, the
