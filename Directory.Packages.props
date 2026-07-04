@@ -40,6 +40,6 @@
          -p:EnableSharpFuzz=true, which also requires adding the SharpFuzz package owner to the
          NuGet.config trusted-signers <owners> allowlist. See test/Lumoin.Veridical.Fuzzing/FUZZING.md.
          Verify the latest version on activation. -->
-    <PackageVersion Include="SharpFuzz" Version="2.1.1" />
+    <PackageVersion Include="SharpFuzz" Version="2.3.0" />
   </ItemGroup>
 </Project>

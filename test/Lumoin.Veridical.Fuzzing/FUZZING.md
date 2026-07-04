@@ -57,12 +57,12 @@ ReportGenerator / dotnet-validate commented out in `main.yml`. OSS-Fuzz also sti
 
 ### Activation (owner steps)
 
-1. **Trust the package.** Add SharpFuzz's nuget.org owner account to the `<owners>` list in
-   `NuGet.config` (verify the account on the SharpFuzz nuget.org page first). Confirm the version
-   pin in `Directory.Packages.props` (`SharpFuzz`, currently `2.1.1`) is current. The default lock
-   file omits SharpFuzz, so the first `EnableSharpFuzz=true` restore must regenerate it — restore
-   with `--force-evaluate` (or delete `test/Lumoin.Veridical.Fuzzing/packages.lock.json` first) to
-   avoid a locked-mode NU1004.
+1. **Trust the package.** DONE — the SharpFuzz owner (`Metalnem`, owner of both `SharpFuzz` and
+   `SharpFuzz.CommandLine` on nuget.org) is in the `<owners>` list in `NuGet.config`, and
+   `Directory.Packages.props` pins `SharpFuzz` `2.3.0`. The default lock file omits SharpFuzz, so
+   the first `EnableSharpFuzz=true` restore must regenerate it — restore with `--force-evaluate`
+   (or delete `test/Lumoin.Veridical.Fuzzing/packages.lock.json` first) to avoid a locked-mode
+   NU1004.
 2. **Install the instrumenter** (a global tool that rewrites IL to add libFuzzer coverage
    counters):
 
