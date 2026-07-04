@@ -56,11 +56,23 @@ internal static class TestSetup
     public static G1MultiScalarMultiplyDelegate G1MultiScalarMultiply { get; } =
         TestG1Backends.Bls12Curve381Msm;
 
+    public static G1IsOnCurveDelegate G1IsOnCurve { get; } =
+        Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    public static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } =
+        Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
     public static G2AddDelegate G2Add { get; } =
         Bls12Curve381BigIntegerG2Reference.GetAdd();
 
     public static G2ScalarMultiplyDelegate G2ScalarMultiply { get; } =
         Bls12Curve381BigIntegerG2Reference.GetScalarMultiply();
+
+    public static G2IsOnCurveDelegate G2IsOnCurve { get; } =
+        Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
+
+    public static G2IsInPrimeOrderSubgroupDelegate G2IsInPrimeOrderSubgroup { get; } =
+        Bls12Curve381BigIntegerG2Reference.GetIsInPrimeOrderSubgroup();
 
     public static PairingDelegate Pairing { get; } =
         Bls12Curve381BigIntegerPairingReference.GetPairing();

@@ -40,16 +40,31 @@ public static class BbsProofVerificationExtensions
         /// <param name="g1Add">Backend G1 addition.</param>
         /// <param name="g1MultiScalarMultiply">Backend G1 multi-scalar multiplication.</param>
         /// <param name="g1HashToCurve">Backend G1 hash-to-curve (generator derivation).</param>
+        /// <param name="g1IsOnCurve">Backend G1 on-curve validation for the proof points <c>Abar</c>, <c>Bbar</c> and <c>D</c>.</param>
+        /// <param name="g1IsInPrimeOrderSubgroup">Backend G1 prime-order-subgroup validation for the proof points <c>Abar</c>, <c>Bbar</c> and <c>D</c>.</param>
         /// <param name="g2Add">Backend G2 addition.</param>
         /// <param name="g2ScalarMultiply">Backend G2 scalar multiplication.</param>
+        /// <param name="g2IsOnCurve">Backend G2 on-curve validation for the public-key point <c>W</c>.</param>
+        /// <param name="g2IsInPrimeOrderSubgroup">Backend G2 prime-order-subgroup validation for the public-key point <c>W</c>.</param>
         /// <param name="pairing">Backend optimal-ate pairing.</param>
         /// <param name="pool">The pool to rent destination buffers from.</param>
         /// <returns><see langword="true"/> when the proof is valid; <see langword="false"/> otherwise.</returns>
         /// <remarks>
+        /// <para>
         /// Uses the equivalent pairing form <c>e(Abar, W) == e(Bbar, BP2)</c>
         /// rather than the spec's <c>e(Abar, W) * e(Bbar, -BP2) == 1_GT</c>:
         /// the two are algebraically equal but the equivalent form avoids
         /// one Fp12 multiplication and one G2 negation.
+        /// </para>
+        /// <para>
+        /// Deserialization follows the spec's <c>octets_to_proof</c>
+        /// (Section 4.2.4.5) and <c>octets_to_pubkey</c> (Section 4.2.4.6):
+        /// the proof points <c>Abar</c>, <c>Bbar</c> and <c>D</c> and the
+        /// public key <c>W</c> must decode onto their curves, must not be
+        /// the identity, and must lie in the prime-order subgroups; both
+        /// curves have non-trivial cofactors, so on-curve membership alone
+        /// does not imply subgroup membership.
+        /// </para>
         /// </remarks>
         public bool VerifyProof(
             BbsProof proof,
@@ -62,8 +77,12 @@ public static class BbsProofVerificationExtensions
             G1AddDelegate g1Add,
             G1MultiScalarMultiplyDelegate g1MultiScalarMultiply,
             G1HashToCurveDelegate g1HashToCurve,
+            G1IsOnCurveDelegate g1IsOnCurve,
+            G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup,
             G2AddDelegate g2Add,
             G2ScalarMultiplyDelegate g2ScalarMultiply,
+            G2IsOnCurveDelegate g2IsOnCurve,
+            G2IsInPrimeOrderSubgroupDelegate g2IsInPrimeOrderSubgroup,
             PairingDelegate pairing,
             BaseMemoryPool pool)
         {
@@ -74,8 +93,12 @@ public static class BbsProofVerificationExtensions
             ArgumentNullException.ThrowIfNull(g1Add);
             ArgumentNullException.ThrowIfNull(g1MultiScalarMultiply);
             ArgumentNullException.ThrowIfNull(g1HashToCurve);
+            ArgumentNullException.ThrowIfNull(g1IsOnCurve);
+            ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
             ArgumentNullException.ThrowIfNull(g2Add);
             ArgumentNullException.ThrowIfNull(g2ScalarMultiply);
+            ArgumentNullException.ThrowIfNull(g2IsOnCurve);
+            ArgumentNullException.ThrowIfNull(g2IsInPrimeOrderSubgroup);
             ArgumentNullException.ThrowIfNull(pairing);
             ArgumentNullException.ThrowIfNull(pool);
 
@@ -156,6 +179,28 @@ public static class BbsProofVerificationExtensions
             {
                 try
                 {
+                    //octets_to_proof steps 6-8 (Section 4.2.4.5): each of Abar, Bbar and D
+                    //must decode onto the curve, must not be the identity, and must lie in
+                    //the prime-order subgroup. Scalar canonicity (range and non-zero) is
+                    //enforced at BbsProof construction.
+                    ReadOnlySpan<G1Point> proofPoints = [aBar!, bBar!, d!];
+                    foreach(G1Point proofPoint in proofPoints)
+                    {
+                        if(!proofPoint.IsOnCurve(g1IsOnCurve) || proofPoint.IsIdentity || !proofPoint.IsInPrimeOrderSubgroup(g1IsInPrimeOrderSubgroup))
+                        {
+                            return false;
+                        }
+                    }
+
+                    //octets_to_pubkey steps 2-4 (Section 4.2.4.6): W must decode onto
+                    //the curve, must lie in the prime-order subgroup, and must not be
+                    //the identity.
+                    using G2Point w = G2Point.FromCanonical(publicKey.AsReadOnlySpan(), CurveParameterSet.Bls12Curve381, pool);
+                    if(!w.IsOnCurve(g2IsOnCurve) || !w.IsInPrimeOrderSubgroup(g2IsInPrimeOrderSubgroup) || w.IsIdentity)
+                    {
+                        return false;
+                    }
+
                     G1Point q1 = generators[0];
                     ReadOnlySpan<G1Point> hPoints = generators.AsSpan()[1..];
 
@@ -210,7 +255,6 @@ public static class BbsProofVerificationExtensions
                     }
 
                     //Pairing check: e(Abar, W) == e(Bbar, BP2). Equivalent to the spec's e(Abar, W) * e(Bbar, -BP2) == 1_GT.
-                    using G2Point w = G2Point.FromCanonical(publicKey.AsReadOnlySpan(), CurveParameterSet.Bls12Curve381, pool);
                     using G2Point bp2 = G2Point.Generator(CurveParameterSet.Bls12Curve381, pool);
 
                     using Fp12Element lhs = aBar!.PairWith(w, pairing, pool);

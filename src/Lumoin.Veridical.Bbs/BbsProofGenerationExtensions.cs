@@ -46,9 +46,21 @@ public static class BbsProofGenerationExtensions
         /// <param name="g1ScalarMultiply">Backend G1 scalar multiplication.</param>
         /// <param name="g1MultiScalarMultiply">Backend G1 multi-scalar multiplication.</param>
         /// <param name="g1HashToCurve">Backend G1 hash-to-curve (used during generator derivation).</param>
+        /// <param name="g1IsOnCurve">Backend G1 on-curve validation for the signature point <c>A</c>.</param>
+        /// <param name="g1IsInPrimeOrderSubgroup">Backend G1 prime-order-subgroup validation for the signature point <c>A</c>.</param>
         /// <param name="pool">The pool to rent destination buffers from.</param>
         /// <returns>A proof wrapping a pool-rented byte buffer of size <c>272 + 32 * (messages.Length - disclosedIndices.Length)</c>.</returns>
-        /// <exception cref="ArgumentException">When <paramref name="disclosedIndices"/> is not strictly ascending, contains a negative or out-of-range value, or has more entries than <paramref name="messages"/>; or when <paramref name="publicKey"/>'s ciphersuite differs from <paramref name="signature"/>'s.</exception>
+        /// <exception cref="ArgumentException">When <paramref name="disclosedIndices"/> is not strictly ascending, contains a negative or out-of-range value, or has more entries than <paramref name="messages"/>; when <paramref name="publicKey"/>'s ciphersuite differs from <paramref name="signature"/>'s; or when the signature point <c>A</c> is off-curve, the identity, or outside the prime-order subgroup.</exception>
+        /// <remarks>
+        /// The signature is deserialized per the spec's <c>octets_to_signature</c>
+        /// (Section 4.2.4.3): <c>A</c> must decode onto the curve, must not be the
+        /// identity, and must lie in the prime-order subgroup. The subgroup check
+        /// protects the Prover: an <c>A</c> outside the prime-order subgroup would
+        /// carry a cofactor component that survives blinding into <c>Abar</c> and
+        /// <c>Bbar</c>, giving a malicious Signer a covert channel that breaks
+        /// proof unlinkability.
+        /// </remarks>
+        [SuppressMessage("Usage", "CA2208", Justification = "C# 14 extension blocks surface the receiver as a regular parameter; 'signature' is the receiver parameter whose point A fails validation.")]
         public BbsProof GenerateProof(
             BbsPublicKey publicKey,
             BbsHeader header,
@@ -67,6 +79,8 @@ public static class BbsProofGenerationExtensions
             G1ScalarMultiplyDelegate g1ScalarMultiply,
             G1MultiScalarMultiplyDelegate g1MultiScalarMultiply,
             G1HashToCurveDelegate g1HashToCurve,
+            G1IsOnCurveDelegate g1IsOnCurve,
+            G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup,
             BaseMemoryPool pool)
         {
             ArgumentNullException.ThrowIfNull(signature);
@@ -83,6 +97,8 @@ public static class BbsProofGenerationExtensions
             ArgumentNullException.ThrowIfNull(g1ScalarMultiply);
             ArgumentNullException.ThrowIfNull(g1MultiScalarMultiply);
             ArgumentNullException.ThrowIfNull(g1HashToCurve);
+            ArgumentNullException.ThrowIfNull(g1IsOnCurve);
+            ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
             ArgumentNullException.ThrowIfNull(pool);
 
             if(signature.Ciphersuite != publicKey.Ciphersuite)
@@ -109,9 +125,17 @@ public static class BbsProofGenerationExtensions
 
             string apiId = signature.Ciphersuite.Identifier;
 
-            //Decode signature into (A, e).
+            //Decode signature into (A, e), then validate A per octets_to_signature
+            //steps 5-7 (Section 4.2.4.3): on-curve, not the identity, in the
+            //prime-order subgroup. See the remarks for why the Prover must check
+            //this rather than trust the Signer.
             using G1Point a = G1Point.FromCanonical(signature.GetABytes(), CurveParameterSet.Bls12Curve381, pool);
             using Scalar e = Scalar.FromCanonical(signature.GetEBytes(), CurveParameterSet.Bls12Curve381, pool);
+
+            if(!a.IsOnCurve(g1IsOnCurve) || a.IsIdentity || !a.IsInPrimeOrderSubgroup(g1IsInPrimeOrderSubgroup))
+            {
+                throw new ArgumentException("BBS+ signature point A must be a non-identity point in the prime-order subgroup.", nameof(signature));
+            }
 
             ImmutableArray<Scalar> messageScalars = BbsAlgorithm.MessagesToScalars(messages, apiId, hashToScalar, pool);
             ImmutableArray<G1Point> generators = BbsAlgorithm.CreateGenerators(totalMessages + 1, apiId, expandMessage, g1HashToCurve, pool);

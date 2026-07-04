@@ -169,7 +169,8 @@ public sealed class BbsProof: SensitiveMemory
         //The spec's octets_to_proof: every scalar component (e^, r1^, r3^, the
         //m^_j commitments, and the challenge c) must be in [1, r-1]. Everything
         //after the three G1 points is a 32-byte scalar slot, so one pass covers
-        //them all; the points are validated at decode when they enter the MSM.
+        //them all; the points are validated (on-curve, non-identity, prime-order
+        //subgroup) at the VerifyProof surface before any MSM.
         for(int offset = EHatOffset; offset < canonicalBytes.Length; offset += ScalarSizeBytes)
         {
             ReadOnlySpan<byte> scalar = canonicalBytes.Slice(offset, ScalarSizeBytes);

@@ -96,8 +96,9 @@ public sealed class BbsSignature: SensitiveMemory
 
         //The spec's octets_to_signature: e must be in [1, r-1]. Rejecting here
         //keeps a non-canonical second encoding of the same residue from ever
-        //reaching the verifier's arithmetic. The point A is validated at decode
-        //(canonical x, on-curve) when it enters the pairing.
+        //reaching the verifier's arithmetic. The point A is validated (on-curve,
+        //non-identity, prime-order subgroup) at the operation surfaces — Verify
+        //and GenerateProof — before any pairing or scalar multiplication.
         ReadOnlySpan<byte> e = canonicalBytes.Slice(EOffset, ESizeBytes);
         if(!WellKnownCurves.IsCanonicalScalar(e, CurveParameterSet.Bls12Curve381) || e.IndexOfAnyExcept((byte)0) < 0)
         {
