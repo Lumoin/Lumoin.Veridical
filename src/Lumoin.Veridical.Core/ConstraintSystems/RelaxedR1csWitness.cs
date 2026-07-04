@@ -78,6 +78,28 @@ public sealed class RelaxedR1csWitness: SensitiveMemory
                 "Relaxed R1CS witness requires at least one witness variable and at least one error entry.");
         }
 
+        //Reject non-canonical field elements at the construction boundary, mirroring
+        //RawR1csWitness: a value at or above the order would diverge between its
+        //transcript-absorb bytes and its reduced arithmetic value.
+        for(int i = 0; i < witnessCount; i++)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(witnessBytes.Slice(i * scalarSize, scalarSize), curve))
+            {
+                throw new ArgumentException(
+                    $"Witness element {i} encodes an integer at or above the scalar field order of {curve}.",
+                    nameof(witnessBytes));
+            }
+        }
+        for(int i = 0; i < errorCount; i++)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(errorBytes.Slice(i * scalarSize, scalarSize), curve))
+            {
+                throw new ArgumentException(
+                    $"Error element {i} encodes an integer at or above the scalar field order of {curve}.",
+                    nameof(errorBytes));
+            }
+        }
+
         int totalSize = witnessBytes.Length + errorBytes.Length;
         IMemoryOwner<byte> owner = pool.Rent(totalSize);
         Span<byte> buffer = owner.Memory.Span[..totalSize];
