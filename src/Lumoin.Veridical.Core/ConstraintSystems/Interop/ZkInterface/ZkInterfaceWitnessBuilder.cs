@@ -141,7 +141,10 @@ internal sealed class ZkInterfaceWitnessBuilder: IZkInterfaceMessageSink
 
     private void Assign(ulong variableId, ReadOnlySpan<byte> valueLittleEndian)
     {
-        if(variableId > int.MaxValue)
+        //The resolved column count is maxColumn + 1 and must fit in Int32; a variable id at
+        //Int32.MaxValue would need Int32.MaxValue + 1 columns, overflowing the checked cast in
+        //ResolveColumnCount. Reject it here as an out-of-range id rather than as an OverflowException.
+        if(variableId >= int.MaxValue)
         {
             throw new ArgumentException($"ZkInterface variable id {variableId} exceeds the addressable column range.");
         }
