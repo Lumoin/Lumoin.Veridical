@@ -73,8 +73,11 @@ soundness rests on assumptions a consumer must uphold:
   obligation, documented on the delegate types.
 - **Proof bytes are not canonicalized end to end, so proof-byte identity is not a uniqueness
   primitive.** Field-element inputs read from *external* sources (the Circom / ZkInterface R1CS and
-  witness readers) and the sumcheck round-polynomial coefficients are rejected at deserialization if
-  they encode an integer at or above the scalar-field order. The remaining scalar sections of a
+  witness readers) are rejected at deserialization if they encode an integer at or above the
+  scalar-field order, and a sumcheck round-polynomial coefficient at or above the order is rejected
+  when the polynomial is reconstructed — at proof deserialization for BaseFold, and during
+  verification for Spartan, where it makes the verifier return `false`. The remaining scalar sections
+  of a
   proof container (for example the Spartan opening responses and the Bulletproofs inner-product
   scalars) are reduced modulo the order by the arithmetic backends rather than rejected, so a valid
   proof admits a second, byte-distinct encoding that still verifies. This is a proof-*byte*
