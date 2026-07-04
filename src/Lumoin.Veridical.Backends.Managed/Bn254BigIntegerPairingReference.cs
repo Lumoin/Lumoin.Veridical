@@ -320,6 +320,14 @@ internal static class Bn254BigIntegerPairingReference
         int tag = bytes[0] & 0xC0;
         if(tag == 0x40)
         {
+            //The canonical infinity encoding is exactly the infinity tag with every
+            //other bit zero. Any other infinity-tagged pattern is non-canonical and
+            //rejected rather than aliased onto the identity.
+            if(bytes[0] != 0x40 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                throw new InvalidOperationException("Non-canonical BN254 G1 infinity encoding.");
+            }
+
             return (BigInteger.Zero, BigInteger.Zero, true);
         }
 
@@ -351,6 +359,14 @@ internal static class Bn254BigIntegerPairingReference
         int tag = bytes[0] & 0xC0;
         if(tag == 0x40)
         {
+            //The canonical infinity encoding is exactly the infinity tag with every
+            //other bit zero. Any other infinity-tagged pattern is non-canonical and
+            //rejected rather than aliased onto the identity.
+            if(bytes[0] != 0x40 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                throw new InvalidOperationException("Non-canonical BN254 G2 infinity encoding.");
+            }
+
             return (Bn254Fp2BigInt.Zero, Bn254Fp2BigInt.Zero, true);
         }
 

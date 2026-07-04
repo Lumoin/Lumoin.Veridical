@@ -361,6 +361,14 @@ internal static class Bls12Curve381BigIntegerPairingReference
 
         if(isInfinity)
         {
+            //The canonical identity encoding is exactly the compression and infinity
+            //flags set with every other bit zero. Any other infinity-flagged pattern
+            //is non-canonical and rejected rather than aliased onto the identity.
+            if(headerByte != 0xC0 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                throw new InvalidOperationException("Non-canonical BLS12-381 G1 infinity encoding.");
+            }
+
             return new G1Affine(BigInteger.Zero, BigInteger.Zero, IsInfinity: true);
         }
 
@@ -394,6 +402,14 @@ internal static class Bls12Curve381BigIntegerPairingReference
 
         if(isInfinity)
         {
+            //The canonical identity encoding is exactly the compression and infinity
+            //flags set with every other bit zero. Any other infinity-flagged pattern
+            //is non-canonical and rejected rather than aliased onto the identity.
+            if(headerByte != 0xC0 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                throw new InvalidOperationException("Non-canonical BLS12-381 G2 infinity encoding.");
+            }
+
             return new G2Affine(Fp2BigInt.Zero, Fp2BigInt.Zero, IsInfinity: true);
         }
 
