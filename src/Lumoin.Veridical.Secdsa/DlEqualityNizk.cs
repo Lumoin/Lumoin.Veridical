@@ -4,6 +4,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Security.Cryptography;
 using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
 
 namespace Lumoin.Veridical.Secdsa;
@@ -380,7 +381,7 @@ public static class DlEqualityNizk
             Span<byte> v = stackalloc byte[ScalarSizeBytes];
             hash(fsTranscript, v, WellKnownHashAlgorithms.Sha256);
 
-            return v.SequenceEqual(r);
+            return CryptographicOperations.FixedTimeEquals(v, r);
         }
         catch(InvalidOperationException)
         {

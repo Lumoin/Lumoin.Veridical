@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Numerics;
+using System.Security.Cryptography;
 
 namespace Lumoin.Veridical.Backends.Managed;
 
@@ -111,7 +112,7 @@ internal static class P256EcdsaReference
             Span<byte> rPrime = stackalloc byte[ScalarSize];
             ScalarReduce(point[1..], rPrime, Curve);
 
-            return rPrime.SequenceEqual(r);
+            return CryptographicOperations.FixedTimeEquals(rPrime, r);
         }
         catch(InvalidOperationException)
         {

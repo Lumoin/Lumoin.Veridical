@@ -139,4 +139,15 @@ See full changelog at https://github.com/lumoin/Lumoin.Veridical/blob/main/CHANG
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.Serialization.txt" />
   </ItemGroup>
 
+  <!-- Constant-time comparison banlist: bans MemoryExtensions.SequenceEqual in the
+       signing / secret-touching projects (Secdsa, Bbs, Backends.Managed) so an equality
+       over secret or authentication bytes cannot slip in variable-time. Opt-in per project
+       via <EnableConstantTimeEqualityBan>true</EnableConstantTimeEqualityBan> — the
+       sanctioned equality is CryptographicOperations.FixedTimeEquals; a genuinely
+       public-data comparison suppresses RS0030 with a Justification. Off everywhere else,
+       where SequenceEqual over recomputed public values is correct and ubiquitous. -->
+  <ItemGroup Condition="'$(EnableConstantTimeEqualityBan)' == 'true'">
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.ConstantTime.txt" />
+  </ItemGroup>
+
 </Project>

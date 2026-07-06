@@ -5,6 +5,7 @@ using Lumoin.Veridical.Core.Telemetry;
 using System;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography;
 
 namespace Lumoin.Veridical.Bbs;
 
@@ -249,7 +250,7 @@ public static class BbsProofVerificationExtensions
                         hashToScalar,
                         pool);
 
-                    if(!challenge.AsReadOnlySpan().SequenceEqual(c!.AsReadOnlySpan()))
+                    if(!CryptographicOperations.FixedTimeEquals(challenge.AsReadOnlySpan(), c!.AsReadOnlySpan()))
                     {
                         return false;
                     }
@@ -260,7 +261,7 @@ public static class BbsProofVerificationExtensions
                     using Fp12Element lhs = aBar!.PairWith(w, pairing, pool);
                     using Fp12Element rhs = bBar!.PairWith(bp2, pairing, pool);
 
-                    return lhs.AsReadOnlySpan().SequenceEqual(rhs.AsReadOnlySpan());
+                    return CryptographicOperations.FixedTimeEquals(lhs.AsReadOnlySpan(), rhs.AsReadOnlySpan());
                 }
                 catch(InvalidOperationException)
                 {

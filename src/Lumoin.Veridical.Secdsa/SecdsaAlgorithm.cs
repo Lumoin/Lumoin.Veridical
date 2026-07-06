@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
 using System.Numerics;
+using System.Security.Cryptography;
 using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
 
 namespace Lumoin.Veridical.Secdsa;
@@ -404,7 +405,7 @@ public static class SecdsaAlgorithm
             Span<byte> rPrime = stackalloc byte[ScalarSizeBytes];
             scalarReduce(noncePoint[1..], rPrime, Curve);
 
-            return rPrime.SequenceEqual(r);
+            return CryptographicOperations.FixedTimeEquals(rPrime, r);
         }
         catch(InvalidOperationException)
         {

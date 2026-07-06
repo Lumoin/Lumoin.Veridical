@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Lumoin.Veridical.Backends.Managed</RootNamespace>
+    <EnableConstantTimeEqualityBan>true</EnableConstantTimeEqualityBan>
     <Description>Managed scalar-field arithmetic backends for Lumoin.Veridical: the BigInteger reference backends and the per-ISA SIMD backends (AVX2, AVX-512, NEON) behind the curve scalar delegates, plus the dispatch facade that picks the fastest available implementation. Additional accelerator backends land here.</Description>
     <PackageTags>cryptography simd avx2 avx-512 neon scalar-field bls12-381 bn254 p-256</PackageTags>
   </PropertyGroup>
