@@ -61,7 +61,7 @@ internal static class Program
             return ExitUsage;
         }
 
-        FuzzTargetInvoke? target = ResolveTarget(args[0]);
+        FuzzTarget? target = ResolveTarget(args[0]);
         if(target is null)
         {
             Console.Error.WriteLine($"unknown target '{args[0]}'. targets: {string.Join(", ", TargetNames)}");
@@ -70,9 +70,14 @@ internal static class Program
         }
 
 #if ENABLE_SHARPFUZZ
-        //libFuzzer drives this callback with each mutated input; an unhandled exception that is
-        //not one of the decoder's documented rejections is a crash it records and minimizes.
-        SharpFuzz.Fuzzer.LibFuzzer.Run(bytes => target(bytes));
+        //libFuzzer drives this callback with each mutated input. A decoder's OWN documented
+        //rejection of malformed input (FuzzTarget.ExpectedRejections, mirrored from the Tests
+        //harness's DecoderFuzzTargets) is the contract's graceful "no" and is swallowed here; any
+        //OTHER exception is the genuine finding libFuzzer records and minimizes. Without this
+        //filter nearly every input a fuzzer generates is malformed and throws a documented
+        //rejection, so every one would register as a false crash — starting with the empty unit.
+        FuzzTarget resolved = target;
+        SharpFuzz.Fuzzer.LibFuzzer.Run(bytes => Guard(resolved, bytes));
 
         return ExitOk;
 #else
@@ -86,17 +91,51 @@ internal static class Program
     }
 
 
-    private static FuzzTargetInvoke? ResolveTarget(string targetName) => targetName switch
+    //Each target pairs its decoder invocation with the exception types that count as a graceful,
+    //documented rejection of malformed input (mirrors DecoderFuzzTargets.All in the Tests harness).
+    private static FuzzTarget? ResolveTarget(string targetName) => targetName switch
     {
-        "circom-r1cs" => InvokeCircomR1cs,
-        "circom-wtns" => InvokeCircomWitness,
-        "zkinterface-decoder" => InvokeZkInterfaceDecoder,
-        "zkinterface-r1cs" => InvokeZkInterfaceR1cs,
-        "zkinterface-wtns" => InvokeZkInterfaceWitness,
-        "compressed-round-poly" => InvokeCompressedRoundPolynomial,
-        "raw-r1cs-witness" => InvokeRawR1csWitness,
+        "circom-r1cs" => new FuzzTarget(InvokeCircomR1cs, [typeof(ArgumentException), typeof(R1csUnsupportedFieldException)]),
+        "circom-wtns" => new FuzzTarget(InvokeCircomWitness, [typeof(ArgumentException), typeof(R1csUnsupportedFieldException)]),
+        "zkinterface-decoder" => new FuzzTarget(InvokeZkInterfaceDecoder, [typeof(ArgumentException)]),
+        "zkinterface-r1cs" => new FuzzTarget(InvokeZkInterfaceR1cs, [typeof(ArgumentException), typeof(R1csUnsupportedFieldException)]),
+        "zkinterface-wtns" => new FuzzTarget(InvokeZkInterfaceWitness, [typeof(ArgumentException), typeof(R1csUnsupportedFieldException)]),
+        "compressed-round-poly" => new FuzzTarget(InvokeCompressedRoundPolynomial, [typeof(ArgumentException)]),
+        "raw-r1cs-witness" => new FuzzTarget(InvokeRawR1csWitness, [typeof(ArgumentException)]),
         _ => null,
     };
+
+
+#if ENABLE_SHARPFUZZ
+    //Runs one decoder invocation under the same contract the deterministic harness asserts: a
+    //documented rejection returns normally (not a finding); any other exception propagates so
+    //libFuzzer records and minimizes it.
+    private static void Guard(FuzzTarget target, ReadOnlySpan<byte> input)
+    {
+        try
+        {
+            target.Invoke(input);
+        }
+        catch(Exception exception) when(IsDocumentedRejection(exception, target.ExpectedRejections))
+        {
+            //Documented rejection of malformed input — the contract's graceful "no", not a crash.
+        }
+    }
+
+
+    private static bool IsDocumentedRejection(Exception exception, Type[] expectedRejections)
+    {
+        foreach(Type expected in expectedRejections)
+        {
+            if(expected.IsInstanceOfType(exception))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+#endif
 
 
     private static void InvokeCircomR1cs(ReadOnlySpan<byte> input)
@@ -173,6 +212,11 @@ internal static class Program
             CurveParameterSet.Bls12Curve381,
             BaseMemoryPool.Shared);
     }
+
+
+    //One decoder under fuzz: its invocation wrapper and the exception types that count as a
+    //graceful, documented rejection of malformed input.
+    private sealed record FuzzTarget(FuzzTargetInvoke Invoke, Type[] ExpectedRejections);
 
 
     //All IZkInterfaceMessageSink members default to no-ops, so this sink drives the decoder's

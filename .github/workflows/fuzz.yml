@@ -87,9 +87,11 @@ jobs:
           sharpfuzz out/fuzz/Lumoin.Veridical.Backends.Managed.dll
 
       - name: Build the libfuzzer-dotnet loader
-        # clang ships on ubuntu-latest; -fsanitize=fuzzer supplies the libFuzzer runtime.
+        # The loader source lives in its own repo (Metalnem/libfuzzer-dotnet), NOT in the
+        # SharpFuzz repo — it was split out, so the old sharpfuzz/master path 404s. clang ships
+        # on ubuntu-latest; -fsanitize=fuzzer supplies the libFuzzer runtime.
         run: |
-          curl -fsSL https://raw.githubusercontent.com/Metalnem/sharpfuzz/master/libfuzzer-dotnet.cc -o libfuzzer-dotnet.cc
+          curl -fsSL https://raw.githubusercontent.com/Metalnem/libfuzzer-dotnet/master/libfuzzer-dotnet.cc -o libfuzzer-dotnet.cc
           clang -fsanitize=fuzzer libfuzzer-dotnet.cc -o libfuzzer-dotnet
 
       - name: Seed the corpus

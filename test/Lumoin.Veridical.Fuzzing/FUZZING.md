@@ -81,16 +81,28 @@ ReportGenerator / dotnet-validate commented out in `main.yml`. OSS-Fuzz also sti
    sharpfuzz out/fuzz/Lumoin.Veridical.Backends.Managed.dll
    ```
 
-4. **Run a target.** Seed the corpus from the committed fixtures (see below), then:
+4. **Build the `libfuzzer-dotnet` loader.** The loader launches the instrumented .NET host and
+   drives it with libFuzzer over shared memory; running the host directly only replays a corpus,
+   it does not fuzz. Its source lives in its own repo (`Metalnem/libfuzzer-dotnet`, split out of
+   the SharpFuzz repo — the old `sharpfuzz/master` path 404s), and `clang` supplies the libFuzzer
+   runtime:
+
+   ```
+   curl -fsSL https://raw.githubusercontent.com/Metalnem/libfuzzer-dotnet/master/libfuzzer-dotnet.cc -o libfuzzer-dotnet.cc
+   clang -fsanitize=fuzzer libfuzzer-dotnet.cc -o libfuzzer-dotnet
+   ```
+
+5. **Run a target.** Seed the corpus from the committed fixtures (see below), then drive the host
+   through the loader — `--target_arg` carries the fuzz-target name to `Program.Main`, and the
+   remaining flags plus the corpus dir go to libFuzzer:
 
    ```
    mkdir -p corpus/circom-r1cs findings/circom-r1cs
    cp test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/Circom/Fixtures/*/poseidon2.r1cs corpus/circom-r1cs/
-   out/fuzz/Lumoin.Veridical.Fuzzing circom-r1cs \
+   ./libfuzzer-dotnet --target_path=out/fuzz/Lumoin.Veridical.Fuzzing --target_arg=circom-r1cs \
        -artifact_prefix=findings/circom-r1cs/ -max_total_time=900 corpus/circom-r1cs
    ```
 
-   The first argument selects the target; everything after it is passed straight to libFuzzer.
    A crash is written under `-artifact_prefix`; replay it by passing the crash file as the sole
    corpus argument.
 
