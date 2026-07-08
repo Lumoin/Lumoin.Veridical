@@ -151,52 +151,24 @@ public static class BbsProofGenerationExtensions
                     randoms[i] = Scalar.FromRandom(randomScalars, CurveParameterSet.Bls12Curve381, pool);
                 }
 
-                Scalar r1 = randoms[0];
-                Scalar r2 = randoms[1];
-                Scalar eTilde = randoms[2];
-                Scalar r1Tilde = randoms[3];
-                Scalar r3Tilde = randoms[4];
-                ReadOnlySpan<Scalar> mTildes = randoms.AsSpan(5);
-
-                G1Point q1 = generators[0];
-                ReadOnlySpan<G1Point> hPoints = generators.AsSpan()[1..];
-
-                //domain = calculate_domain(PK, Q_1, (H_1, ..., H_L), header, api_id).
-                using Scalar domain = BbsAlgorithm.CalculateDomain(publicKey, q1, hPoints, header.Bytes, apiId, hashToScalar, pool);
-
-                //ProofInit step 2: B = P1 + Q_1 * domain + sum H_i * msg_i.
-                using G1Point p1 = BbsP1Generator.GetForCiphersuite(signature.Ciphersuite, pool);
-                using G1Point b = BbsAlgorithm.ComputeMessageCommitment(p1, q1, domain, hPoints, messageScalars.AsSpan(), g1Add, g1MultiScalarMultiply, pool);
-
-                //ProofInit step 3: D = B * r2.
-                using G1Point d = b.ScalarMultiply(r2, g1ScalarMultiply, pool);
-
-                //ProofInit step 4: Abar = A * (r1 * r2).
-                using Scalar r1TimesR2 = r1.Multiply(r2, scalarMultiply, pool);
-                using G1Point aBar = a.ScalarMultiply(r1TimesR2, g1ScalarMultiply, pool);
-
-                //ProofInit step 5: Bbar = D * r1 - Abar * e = MSM([D, Abar], [r1, -e]).
-                using Scalar negE = e.Negate(scalarNegate, pool);
-                G1Point[] bBarPoints = [d, aBar];
-                Scalar[] bBarScalars = [r1, negE];
-                using G1Point bBar = BbsProofAlgorithm.MultiScalarMultiply(bBarPoints, bBarScalars, g1MultiScalarMultiply, pool);
-
-                //ProofInit step 6: T1 = Abar * e~ + D * r1~ = MSM([Abar, D], [e~, r1~]).
-                G1Point[] t1Points = [aBar, d];
-                Scalar[] t1Scalars = [eTilde, r1Tilde];
-                using G1Point t1 = BbsProofAlgorithm.MultiScalarMultiply(t1Points, t1Scalars, g1MultiScalarMultiply, pool);
-
-                //ProofInit step 7: T2 = D * r3~ + sum_{j in undisclosed} H_j * m~_j.
-                G1Point[] t2Points = new G1Point[1 + undisclosedCount];
-                Scalar[] t2Scalars = new Scalar[1 + undisclosedCount];
-                t2Points[0] = d;
-                t2Scalars[0] = r3Tilde;
-                for(int i = 0; i < undisclosedCount; i++)
-                {
-                    t2Points[1 + i] = hPoints[undisclosed[i]];
-                    t2Scalars[1 + i] = mTildes[i];
-                }
-                using G1Point t2 = BbsProofAlgorithm.MultiScalarMultiply(t2Points, t2Scalars, g1MultiScalarMultiply, pool);
+                //ProofInit (Section 3.7.1): (Abar, Bbar, D, T1, T2, domain).
+                using BbsProofInitResult initResult = BbsProofAlgorithm.ProofInit(
+                    publicKey,
+                    a,
+                    e,
+                    generators.AsSpan(),
+                    header.Bytes,
+                    messageScalars.AsSpan(),
+                    undisclosed,
+                    randoms,
+                    apiId,
+                    hashToScalar,
+                    scalarMultiply,
+                    scalarNegate,
+                    g1Add,
+                    g1ScalarMultiply,
+                    g1MultiScalarMultiply,
+                    pool);
 
                 //Collect disclosed message scalars for the challenge calc.
                 Scalar[] disclosedScalars = new Scalar[r];
@@ -209,77 +181,46 @@ public static class BbsProofGenerationExtensions
                 using Scalar challenge = BbsProofAlgorithm.CalculateChallenge(
                     disclosed,
                     disclosedScalars,
-                    aBar, bBar, d, t1, t2, domain,
+                    initResult.ABar, initResult.BBar, initResult.D, initResult.T1, initResult.T2, initResult.Domain,
                     presentationHeader.Bytes,
                     apiId,
                     hashToScalar,
                     pool);
 
-                //ProofFinalize step 1: r3 = r2^-1.
-                using Scalar r3 = r2.Invert(scalarInvert, pool);
+                //Collect undisclosed message scalars for ProofFinalize; the
+                //references stay owned by messageScalars.
+                Scalar[] undisclosedScalars = new Scalar[undisclosedCount];
+                for(int i = 0; i < undisclosedCount; i++)
+                {
+                    undisclosedScalars[i] = messageScalars[undisclosed[i]];
+                }
 
-                //ProofFinalize step 2: e^ = e~ + e * c.
-                using Scalar eTimesC = e.Multiply(challenge, scalarMultiply, pool);
-                using Scalar eHat = eTilde.Add(eTimesC, scalarAdd, pool);
-
-                //ProofFinalize step 3: r1^ = r1~ - r1 * c.
-                using Scalar r1TimesC = r1.Multiply(challenge, scalarMultiply, pool);
-                using Scalar r1Hat = r1Tilde.Subtract(r1TimesC, scalarSubtract, pool);
-
-                //ProofFinalize step 4: r3^ = r3~ - r3 * c.
-                using Scalar r3TimesC = r3.Multiply(challenge, scalarMultiply, pool);
-                using Scalar r3Hat = r3Tilde.Subtract(r3TimesC, scalarSubtract, pool);
-
-                //ProofFinalize step 5: m^_j = m~_j + undisclosed_msg_j * c.
-                Scalar[] mHats = new Scalar[undisclosedCount];
+                //ProofFinalize (Section 3.7.2): responses + serialised proof bytes.
+                IMemoryOwner<byte> proofOwner = BbsProofAlgorithm.ProofFinalize(
+                    initResult,
+                    challenge,
+                    e,
+                    randoms,
+                    undisclosedScalars,
+                    scalarAdd,
+                    scalarSubtract,
+                    scalarMultiply,
+                    scalarInvert,
+                    pool);
                 try
                 {
-                    for(int i = 0; i < undisclosedCount; i++)
-                    {
-                        using Scalar msgTimesC = messageScalars[undisclosed[i]].Multiply(challenge, scalarMultiply, pool);
-                        mHats[i] = mTildes[i].Add(msgTimesC, scalarAdd, pool);
-                    }
-
-                    //ProofFinalize step 6 + 7: serialise the proof as Abar || Bbar || D || e^ || r1^ || r3^ || m^_j... || c.
-                    int proofSize = BbsProof.ComputeSizeBytes(undisclosedCount);
-                    IMemoryOwner<byte> proofOwner = pool.Rent(proofSize);
-                    try
-                    {
-                        Span<byte> dst = proofOwner.Memory.Span[..proofSize];
-                        aBar.AsReadOnlySpan().CopyTo(dst[BbsProof.ABarOffset..]);
-                        bBar.AsReadOnlySpan().CopyTo(dst[BbsProof.BBarOffset..]);
-                        d.AsReadOnlySpan().CopyTo(dst[BbsProof.DOffset..]);
-                        eHat.AsReadOnlySpan().CopyTo(dst.Slice(BbsProof.EHatOffset, Scalar.SizeBytes));
-                        r1Hat.AsReadOnlySpan().CopyTo(dst.Slice(BbsProof.R1HatOffset, Scalar.SizeBytes));
-                        r3Hat.AsReadOnlySpan().CopyTo(dst.Slice(BbsProof.R3HatOffset, Scalar.SizeBytes));
-                        for(int i = 0; i < undisclosedCount; i++)
-                        {
-                            mHats[i].AsReadOnlySpan()
-                                .CopyTo(dst.Slice(BbsProof.CommitmentsOffset + Scalar.SizeBytes * i, Scalar.SizeBytes));
-                        }
-                        challenge.AsReadOnlySpan()
-                            .CopyTo(dst.Slice(BbsProof.CommitmentsOffset + Scalar.SizeBytes * undisclosedCount, Scalar.SizeBytes));
-
-                        Tag proofTag = ProviderInstrumentation.StampTag(
-                            BbsProof.GetAlgebraicTag(signature.Ciphersuite),
-                            WellKnownBbsProviderIdentities.Library,
-                            WellKnownBbsProviderIdentities.Crypto,
-                            WellKnownBbsProviderIdentities.Class,
-                            ProviderOperation.SignatureGenerateProof);
-                        return new BbsProof(proofOwner, undisclosedCount, proofTag);
-                    }
-                    catch
-                    {
-                        proofOwner.Dispose();
-                        throw;
-                    }
+                    Tag proofTag = ProviderInstrumentation.StampTag(
+                        BbsProof.GetAlgebraicTag(signature.Ciphersuite),
+                        WellKnownBbsProviderIdentities.Library,
+                        WellKnownBbsProviderIdentities.Crypto,
+                        WellKnownBbsProviderIdentities.Class,
+                        ProviderOperation.SignatureGenerateProof);
+                    return new BbsProof(proofOwner, undisclosedCount, proofTag);
                 }
-                finally
+                catch
                 {
-                    for(int i = 0; i < mHats.Length; i++)
-                    {
-                        mHats[i]?.Dispose();
-                    }
+                    proofOwner.Dispose();
+                    throw;
                 }
             }
             finally

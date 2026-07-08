@@ -67,6 +67,7 @@ public static class BbsProofVerificationExtensions
         /// does not imply subgroup membership.
         /// </para>
         /// </remarks>
+        [SuppressMessage("Reliability", "CA2000", Justification = "The ProofVerifyInit result is disposed in the finally block; when it exists it also owns the decoded Abar, Bbar and D, which the same block otherwise disposes directly.")]
         public bool VerifyProof(
             BbsProof proof,
             BbsHeader header,
@@ -176,6 +177,7 @@ public static class BbsProofVerificationExtensions
             ImmutableArray<G1Point> generators = BbsAlgorithm.CreateGenerators(totalMessages + 1, apiId, expandMessage, g1HashToCurve, pool);
             int[] undisclosed = BbsProofAlgorithm.ComputeUndisclosedIndices(disclosed, totalMessages);
 
+            BbsProofInitResult? initResult = null;
             try
             {
                 try
@@ -202,49 +204,34 @@ public static class BbsProofVerificationExtensions
                         return false;
                     }
 
-                    G1Point q1 = generators[0];
-                    ReadOnlySpan<G1Point> hPoints = generators.AsSpan()[1..];
-
-                    using Scalar domain = BbsAlgorithm.CalculateDomain(publicKey, q1, hPoints, header.Bytes, apiId, hashToScalar, pool);
-
-                    //ProofVerifyInit step 2: T1 = Bbar * c + Abar * e^ + D * r1^.
-                    G1Point[] t1Points = [bBar!, aBar!, d!];
-                    Scalar[] t1Scalars = [c!, eHat!, r1Hat!];
-                    using G1Point t1 = BbsProofAlgorithm.MultiScalarMultiply(t1Points, t1Scalars, g1MultiScalarMultiply, pool);
-
-                    //ProofVerifyInit step 3: Bv = P1 + Q_1 * domain + sum_{i in disclosed} H_i * msg_i.
-                    using G1Point p1 = BbsP1Generator.GetForCiphersuite(publicKey.Ciphersuite, pool);
-                    G1Point[] bvMsmPoints = new G1Point[1 + r];
-                    Scalar[] bvMsmScalars = new Scalar[1 + r];
-                    bvMsmPoints[0] = q1;
-                    bvMsmScalars[0] = domain;
-                    for(int i = 0; i < r; i++)
-                    {
-                        bvMsmPoints[1 + i] = hPoints[disclosed[i]];
-                        bvMsmScalars[1 + i] = disclosedScalars[i];
-                    }
-                    using G1Point bvMsm = BbsProofAlgorithm.MultiScalarMultiply(bvMsmPoints, bvMsmScalars, g1MultiScalarMultiply, pool);
-                    using G1Point bv = p1.Add(bvMsm, g1Add, pool);
-
-                    //ProofVerifyInit step 4: T2 = Bv * c + D * r3^ + sum_{j in undisclosed} H_j * m^_j.
-                    G1Point[] t2Points = new G1Point[2 + u];
-                    Scalar[] t2Scalars = new Scalar[2 + u];
-                    t2Points[0] = bv;
-                    t2Scalars[0] = c!;
-                    t2Points[1] = d!;
-                    t2Scalars[1] = r3Hat!;
-                    for(int i = 0; i < u; i++)
-                    {
-                        t2Points[2 + i] = hPoints[undisclosed[i]];
-                        t2Scalars[2 + i] = mHats![i];
-                    }
-                    using G1Point t2 = BbsProofAlgorithm.MultiScalarMultiply(t2Points, t2Scalars, g1MultiScalarMultiply, pool);
+                    //ProofVerifyInit (Section 3.7.3): recompute (T1, T2, domain);
+                    //the result adopts Abar, Bbar and D on success.
+                    initResult = BbsProofAlgorithm.ProofVerifyInit(
+                        publicKey,
+                        aBar!,
+                        bBar!,
+                        d!,
+                        eHat!,
+                        r1Hat!,
+                        r3Hat!,
+                        c!,
+                        mHats!,
+                        generators.AsSpan(),
+                        header.Bytes,
+                        disclosed,
+                        disclosedScalars.AsSpan(),
+                        undisclosed,
+                        apiId,
+                        hashToScalar,
+                        g1Add,
+                        g1MultiScalarMultiply,
+                        pool);
 
                     //Re-derive the challenge and compare.
                     using Scalar challenge = BbsProofAlgorithm.CalculateChallenge(
                         disclosed,
                         disclosedScalars.AsSpan(),
-                        aBar!, bBar!, d!, t1, t2, domain,
+                        initResult.ABar, initResult.BBar, initResult.D, initResult.T1, initResult.T2, initResult.Domain,
                         presentationHeader.Bytes,
                         apiId,
                         hashToScalar,
@@ -277,10 +264,20 @@ public static class BbsProofVerificationExtensions
             {
                 //At this point all proof slices were decoded successfully (the catch
                 //above returned false otherwise), so the locals are guaranteed
-                //non-null. Disposing in declaration order.
-                aBar.Dispose();
-                bBar.Dispose();
-                d.Dispose();
+                //non-null. ProofVerifyInit adopts Abar, Bbar and D into the init
+                //result on success, so they are disposed through it; on any path
+                //where the result was never created (validation failures, backend
+                //aborts) ownership is still here.
+                if(initResult is not null)
+                {
+                    initResult.Dispose();
+                }
+                else
+                {
+                    aBar.Dispose();
+                    bBar.Dispose();
+                    d.Dispose();
+                }
                 eHat.Dispose();
                 r1Hat.Dispose();
                 r3Hat.Dispose();
