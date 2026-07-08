@@ -1,6 +1,8 @@
+using Lumoin.Veridical.Bbs;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -76,6 +78,8 @@ internal sealed class DecoderRobustnessTests
     [DataRow("bn254-g2-oncurve")]
     [DataRow("compressed-round-poly")]
     [DataRow("raw-r1cs-witness")]
+    [DataRow("bbs-commitment-with-proof")]
+    [DataRow("bbs-blind-proof")]
     public void SmokeSweepProducesOnlyDocumentedRejections(string targetName)
     {
         FuzzTarget target = ResolveTarget(targetName);
@@ -187,8 +191,76 @@ internal sealed class DecoderRobustnessTests
         "bn254-g2-oncurve" => EdgeCaseSeeds(WellKnownCurves.Bn254G2CompressedSizeBytes),
         "compressed-round-poly" => EdgeCaseSeeds(RoundPolynomialLengthHint),
         "raw-r1cs-witness" => EdgeCaseSeeds(WitnessLengthHint),
+        "bbs-commitment-with-proof" => BbsCommitmentWithProofSeeds(),
+        "bbs-blind-proof" => BbsBlindProofSeeds(),
         _ => throw new ArgumentException($"No seed corpus wired for fuzz target '{targetName}'.", nameof(targetName)),
     };
+
+
+    //The two BBS blind-extension deserializers have no natural fixture file; each corpus pairs
+    //a hand-built WELL-FORMED container (generator-point filler, unit scalars) with the sized
+    //edge-case set, so the mutation families exercise the frame arithmetic from a passing
+    //baseline rather than only from rejections.
+    private static IReadOnlyList<byte[]> BbsCommitmentWithProofSeeds()
+    {
+        byte[] seed = new byte[BbsCommitmentWithProof.ComputeSizeBytes(committedMessageCount: 1)];
+        WellKnownCurves.GetG1GeneratorCompressed(CurveParameterSet.Bls12Curve381)
+            .CopyTo(seed.AsSpan(BbsCommitmentWithProof.COffset, BbsCommitmentWithProof.CSizeBytes));
+        for(int offset = BbsCommitmentWithProof.SHatOffset; offset < seed.Length; offset += BbsCommitmentWithProof.ScalarSizeBytes)
+        {
+            seed[offset + BbsCommitmentWithProof.ScalarSizeBytes - 1] = 1;
+        }
+
+        return [seed, .. DeterministicMutations.EdgeCaseInputs(BbsCommitmentWithProof.MinimumSizeBytes)];
+    }
+
+
+    private static IReadOnlyList<byte[]> BbsBlindProofSeeds() =>
+        [BuildBlindProofSeed(), .. DeterministicMutations.EdgeCaseInputs(BbsBlindProof.MinimumSizeBytes)];
+
+
+    /// <summary>
+    /// A well-formed framed blind proof with zero undisclosed messages,
+    /// one disclosed index, and one committed disclosure — the smallest
+    /// shape that populates all four frames.
+    /// </summary>
+    private static byte[] BuildBlindProofSeed()
+    {
+        ReadOnlySpan<byte> pointFiller = WellKnownCurves.GetG1GeneratorCompressed(CurveParameterSet.Bls12Curve381);
+        int coreProofSizeBytes = BbsProof.MinimumSizeBytes;
+        byte[] seed = new byte[BbsBlindProof.ComputeSizeBytes(undisclosedMessageCount: 0, disclosedIndexCount: 1, committedDisclosureCount: 1)];
+        Span<byte> cursor = seed;
+
+        BinaryPrimitives.WriteInt64BigEndian(cursor, coreProofSizeBytes);
+        cursor = cursor[BbsBlindProof.Int64FieldSizeBytes..];
+        pointFiller.CopyTo(cursor[BbsProof.ABarOffset..]);
+        pointFiller.CopyTo(cursor[BbsProof.BBarOffset..]);
+        pointFiller.CopyTo(cursor[BbsProof.DOffset..]);
+        //The four fixed scalar slots (e^, r1^, r3^, challenge), each set to 1.
+        for(int i = 0; i < 4; i++)
+        {
+            cursor[BbsProof.EHatOffset + BbsProof.ScalarSizeBytes * (i + 1) - 1] = 1;
+        }
+        cursor = cursor[coreProofSizeBytes..];
+
+        BinaryPrimitives.WriteInt64BigEndian(cursor, 1);
+        cursor = cursor[BbsBlindProof.Int64FieldSizeBytes..];
+        BinaryPrimitives.WriteInt64BigEndian(cursor, 0);
+        cursor = cursor[BbsBlindProof.Int64FieldSizeBytes..];
+
+        BinaryPrimitives.WriteInt64BigEndian(cursor, 1);
+        cursor = cursor[BbsBlindProof.Int64FieldSizeBytes..];
+        pointFiller.CopyTo(cursor);
+        cursor = cursor[BbsBlindProof.CommittedDisclosurePointSizeBytes..];
+        cursor[BbsBlindProof.CommittedDisclosureScalarSizeBytes - 1] = 1;
+        cursor = cursor[BbsBlindProof.CommittedDisclosureScalarSizeBytes..];
+
+        BinaryPrimitives.WriteInt64BigEndian(cursor, 1);
+        cursor = cursor[BbsBlindProof.Int64FieldSizeBytes..];
+        BinaryPrimitives.WriteInt64BigEndian(cursor, 1);
+
+        return seed;
+    }
 
 
     //poseidon2.r1cs alone under-covers the header's own count fields: the real

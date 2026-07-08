@@ -1,4 +1,5 @@
 using Lumoin.Veridical.Backends.Managed;
+using Lumoin.Veridical.Bbs;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
@@ -117,6 +118,16 @@ internal static class DecoderFuzzTargets
             "raw-r1cs-witness",
             InvokeRawR1csWitness,
             [typeof(ArgumentException)]),
+
+        new FuzzTarget(
+            "bbs-commitment-with-proof",
+            InvokeBbsCommitmentWithProof,
+            [typeof(ArgumentException)]),
+
+        new FuzzTarget(
+            "bbs-blind-proof",
+            InvokeBbsBlindProof,
+            [typeof(ArgumentException)]),
     ];
 
 
@@ -205,6 +216,24 @@ internal static class DecoderFuzzTargets
         using RawR1csWitness witness = RawR1csWitness.FromCanonical(
             input,
             CurveParameterSet.Bls12Curve381,
+            BaseMemoryPool.Shared);
+    }
+
+
+    private static void InvokeBbsCommitmentWithProof(ReadOnlySpan<byte> input)
+    {
+        using BbsCommitmentWithProof commitment = BbsCommitmentWithProof.FromCanonical(
+            input,
+            BbsCiphersuite.Bls12Curve381Sha256Blind,
+            BaseMemoryPool.Shared);
+    }
+
+
+    private static void InvokeBbsBlindProof(ReadOnlySpan<byte> input)
+    {
+        using BbsBlindProof proof = BbsBlindProof.FromCanonical(
+            input,
+            BbsCiphersuite.Bls12Curve381Sha256Blind,
             BaseMemoryPool.Shared);
     }
 

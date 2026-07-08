@@ -99,3 +99,37 @@ Where the library targets an external specification or reference implementation,
 load-bearing gate: the IETF BBS draft Appendix A vectors, RFC 9380 hash-to-curve vectors, the platform
 `System.Security.Cryptography` oracles for ECDSA/SHA-256, and byte-conformance to `google/longfellow-zk` for
 the dual-field zero-knowledge stack. A change that would alter a proof's bytes is gated by those fixtures.
+
+### BBS extension drafts (blind signatures, per-verifier pseudonyms)
+
+The BBS extension surfaces implement moving IETF drafts and are pinned to specific revisions:
+`draft-irtf-cfrg-bbs-blind-signatures-03` and `draft-irtf-cfrg-bbs-per-verifier-linkability-03`, both
+normatively referencing core `draft-irtf-cfrg-bbs-signatures-10`. The Interface identifiers (api_ids) are
+draft-versioned by construction — every generator, domain separation tag, and challenge derives from them —
+so artifacts produced under these revisions will not silently interoperate with a future revision that
+changes the semantics; a mismatch is a hard verification failure.
+
+- **Fixture status.** The blind commitment surface is KAT-gated on the still-valid `-02` commitment vectors
+  (textually identical in `-03`); the pseudonym surfaces are KAT-gated on the nym `-03` vectors, which also
+  transitively byte-anchor the blind signing machinery. The blind `-03` **proof wire surface (the framed
+  proof with committed disclosure) has no published test vectors** (draft §10: fixtures are being regenerated)
+  — it is gated by self-consistency roundtrips and tamper suites, and the draft-defect interpretation choices
+  are marked as fixture-pending at their decision sites in code. Also fixture-pending, and the highest-risk
+  unpinned byte choice of the batch, is the **blind interface's `e`-scalar derivation**: `BlindSign` follows
+  the blind `-03` text and binds the domain into `e` (`serialize((SK, B, domain))`), while the pseudonym
+  interface pins the domain-free `serialize((SK, B))` form that the nym `-03` vectors byte-anchor (see
+  `BbsBlindAlgorithm.DeriveBlindSigningScalar`); if the regenerated blind fixtures pin the domain-free form,
+  every blind signature and blind proof byte changes. **Re-KAT tripwires:** a core `-11` revision,
+  the blind draft's regenerated fixtures, and a nym `-04` revision each trigger re-verification of the
+  corresponding byte surfaces before any claim of conformance to the new revision.
+- **Pseudonym unlinkability budget.** The per-verifier pseudonym construction offers *limited everlasting*
+  unlinkability: with a `nym_secrets` vector of length `N`, pseudonyms stay unlinkable — even against a
+  cryptographically-relevant quantum computer breaking discrete log — only while the number of distinct
+  verifier contexts used, `M`, satisfies `N > M`. Applications wanting everlasting unlinkability must size
+  the prover-nym vector for the expected number of contexts; exceeding the budget degrades to computational
+  unlinkability only.
+- **Prover-side secrets.** `secret_prover_blind` (returned by `Commit`) and the `add_zkp_info` openings
+  returned by blind proof generation (`BbsBlindProofCommitmentOpenings`: the committed-disclosure commitments
+  paired with their Pedersen randomness) MUST remain with the prover. Neither is ever serialized by this
+  library, and neither may be sent to a verifier or any other party — leaking them collapses the hiding of
+  the committed messages that blind issuance and committed disclosure exist to provide.
