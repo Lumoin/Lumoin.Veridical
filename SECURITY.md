@@ -100,6 +100,30 @@ load-bearing gate: the IETF BBS draft Appendix A vectors, RFC 9380 hash-to-curve
 `System.Security.Cryptography` oracles for ECDSA/SHA-256, and byte-conformance to `google/longfellow-zk` for
 the dual-field zero-knowledge stack. A change that would alter a proof's bytes is gated by those fixtures.
 
+### Longfellow upstream pin
+
+The `draft-google-cfrg-libzk` Internet-Draft is expired (`-01` is the latest revision; not adopted by CFRG),
+so the `google/longfellow-zk` repository is the de-facto specification. The committed Longfellow fixtures are
+pinned to upstream commit `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (`v0.9-90-gd8ad8f6`, 2026-05-29 — also
+the upstream `main` HEAD as of 2026-07-09) and to the circuit generation the upstream `kZkSpecs` table names
+`longfellow-libzk-v1` version 7 (the pinned mdoc bundle: one disclosed attribute, `block_enc` 4151/4096,
+Ligero rate 7 with 132 opened columns, 40 SHA-256 blocks of MSO capacity). Two identity subtleties are
+deliberate:
+
+- **The raw circuit bytes are the identity; the published circuit hash is a registry key.** The `kZkSpecs`
+  `circuit_hash` (`8d079211…` for the pinned bundle) is the SHA-256 of the canonical 2026-01-09 zstd
+  compression, which zstd does not reproduce across builds — neither upstream's own in-tree blob nor any
+  other public artifact hashes to it. The committed fixture pins the decompressed raw stream
+  (`raw_rawsha 332e3a96…`, asserted on every read), which is byte-identical to the decompression of
+  upstream's canonical in-tree blob (verified 2026-07-09). Proof envelopes carry the registry-key hash only
+  as a circuit-lookup identifier; the Fiat-Shamir transcript binds the structural circuit ids inside the
+  raw stream.
+- **Re-pin tripwires.** An upstream release newer than `v0.9`, a `kZkSpecs` table change (a new circuit
+  version or changed hashes), or a normative `docs/specs` change that alters transcript or wire bytes each
+  trigger re-verification of the Longfellow fixtures against the new upstream state before any claim of
+  conformance to it. The per-fixture provenance inventory lives at
+  `test/Lumoin.Veridical.Tests/TestMaterial/Longfellow/PROVENANCE.md`.
+
 ### BBS extension drafts (blind signatures, per-verifier pseudonyms)
 
 The BBS extension surfaces implement moving IETF drafts and are pinned to specific revisions:
