@@ -268,6 +268,26 @@ internal sealed class LongfellowMdocVerifierTests
 
 
     [TestMethod]
+    public void TheCose1LengthEncodingIsByteCorrectAtTheBoundaries()
+    {
+        //TOB-LIBZK-5 found an off-by-one in the reference's COSE1 length serialization (length 256
+        //encoded as 0 via `> 256`; text length 255 emitted nothing); the fixed reference and this port
+        //use `>= 256` / correct 24..255 handling. Pin the CBOR major-type-2 (byte string, base 0x40)
+        //and major-type-3 (text string, base 0x60) length-prefix encodings at the boundaries the bug
+        //touched: the 24 short/long-form cutover and the one-byte/two-byte length-field cutover at 256.
+        AssertBytesLen(23, [0x57]);
+        AssertBytesLen(24, [0x58, 0x18]);
+        AssertBytesLen(255, [0x58, 0xFF]);
+        AssertBytesLen(256, [0x59, 0x01, 0x00]);
+        AssertBytesLen(65535, [0x59, 0xFF, 0xFF]);
+
+        AssertTextLen(23, [0x77]);
+        AssertTextLen(24, [0x78, 0x18]);
+        AssertTextLen(255, [0x78, 0xFF]);
+    }
+
+
+    [TestMethod]
     public void AShortEnvelopeYieldsMalformedEnvelopeWithoutThrowing()
     {
         //Parse safety: an envelope shorter than the 96-byte mac region must return MalformedEnvelope, never
@@ -431,6 +451,26 @@ internal sealed class LongfellowMdocVerifierTests
             buf.Add(0x78);
             buf.Add((byte)len);
         }
+    }
+
+
+    //Runs AppendBytesLen into a fresh buffer and asserts the produced CBOR major-type-2 prefix is
+    //byte-exact.
+    private static void AssertBytesLen(int len, byte[] expected)
+    {
+        var buf = new List<byte>();
+        AppendBytesLen(buf, len);
+        Assert.IsTrue(buf.ToArray().AsSpan().SequenceEqual(expected), $"AppendBytesLen({len}) must match the CBOR major-type-2 encoding.");
+    }
+
+
+    //Runs AppendTextLen into a fresh buffer and asserts the produced CBOR major-type-3 prefix is
+    //byte-exact.
+    private static void AssertTextLen(int len, byte[] expected)
+    {
+        var buf = new List<byte>();
+        AppendTextLen(buf, len);
+        Assert.IsTrue(buf.ToArray().AsSpan().SequenceEqual(expected), $"AppendTextLen({len}) must match the CBOR major-type-3 encoding.");
     }
 
 

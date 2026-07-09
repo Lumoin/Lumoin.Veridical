@@ -300,6 +300,30 @@ internal sealed class LongfellowTranscriptTests
     }
 
 
+    [TestMethod]
+    public void ASingleFieldElementAndAnArrayOfOneElementProduceDistinctTranscripts()
+    {
+        //Trail of Bits TOB-LIBZK-2: the field-element and array domain-separation tags collided (both
+        //1) in the audited reference; the fixed reference uses distinct tags (field element 1, array
+        //2). Absorbing the same element through the two typed paths must diverge the transcript state.
+        byte[] element = new byte[FieldElementBytes];
+        element[0] = 0x2A;
+        element[FieldElementBytes - 1] = 0x7E;
+
+        using LongfellowTranscript single = NewTranscript(TestSeed, version: 6);
+        using LongfellowTranscript array = NewTranscript(TestSeed, version: 6);
+        single.AbsorbFieldElement(element);
+        array.AbsorbFieldElementArray(element, 1);
+
+        Span<byte> singleKey = stackalloc byte[DigestSize];
+        Span<byte> arrayKey = stackalloc byte[DigestSize];
+        single.SnapshotKey(singleKey);
+        array.SnapshotKey(arrayKey);
+
+        Assert.IsFalse(singleKey.SequenceEqual(arrayKey), "A single field-element absorb and a one-element array absorb must produce distinct transcript keys.");
+    }
+
+
     //Advances a fresh transcript through the absorb sequence up to the point right before the nat()
     //draws: payload, eltA drain, of_scalar(7), eltB drain, array, eltC drain, root, eltPostRoot drain,
     //then the "nats" tag absorb. The reference draws the naturals immediately after that tag.
