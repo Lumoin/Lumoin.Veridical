@@ -19,6 +19,11 @@ untracked local `tempdocs/longfellow-anchors/`; no reference code is committed h
   132 opened columns, 40 SHA-256 blocks of MSO capacity (max hashed COSE1 input 40*64-9 = 2551 bytes,
   max tagged MSO 2533 bytes net of the 18-byte COSE prefix); up to 4 attributes are disclosed per
   proof (one circuit per attribute count).
+- ZkSpec identity of the pinned four-attribute bundle (`kZkSpecs[3]`): system `longfellow-libzk-v1`,
+  version 7, num_attributes 4, block_enc_hash 4415, block_enc_sig 4096, circuit_hash
+  `5aebdaaafe17296a3ef3ca6c80c6e7505e09291897c39700410a365fb278e460`. The signature circuit is
+  byte-identical across the version-7 attribute counts (structural id `2845210a…` in both circuit
+  anchors); only the hash circuit grows (ninputs 99,830, npub_in 3,304, subfield_boundary 99,824).
 
 ## Circuit identity chain (verified 2026-07-09)
 
@@ -42,6 +47,23 @@ Proof envelopes carry the registry-key hash only as a circuit-lookup identifier;
 transcript binds the structural circuit ids inside the raw stream (`sig_id`/`hash_id` in
 `mdoc-circuit-anchor-output.txt`).
 
+The four-attribute bundle's identity chain follows the same shape. Upstream ships no in-tree
+`kZkSpecs[3]` blob at the pinned checkout, so the chain has two sources, compared byte-for-byte
+on 2026-07-09; both decompress to the same raw stream (114,608,684 bytes, SHA-256
+`5a282c3f77d35a32ec5af028ece8c2c8cab612f4aa1d178f7607984dd5787010`):
+
+1. `mdoc-circuit-raw-4attr.gz` here — the decompression of the blob `generate_circuit(&kZkSpecs[3])`
+   emits at the pinned `google/longfellow-zk` commit `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2`
+   (the local zstd wrapper hashes to `2ab6f881…`, not the registry key, as expected);
+2. the decompression of the `5aebdaaa…` registry artifact committed by an independent
+   implementation of the format, taken at that implementation's commit
+   `4f3d1b3fc6818901f8e532b20daa3e9faf6d3b57` (2026-05-04); the artifact's own zstd wrapper
+   hashes to `3a979b6e6a7df8e9404b2293d60c3277d3ba2a1846baa82e5fad75cbe3bbc76b`.
+
+The second-source artifact is not committed here (no foreign content enters this repository), so
+the default suite re-verifies source 1 only; the comparison is reproducible by refetching the
+artifact named by the `5aebdaaa…` registry key at the commit above and checking the two hashes.
+
 ## Fixture inventory
 
 | File | Conformance step | Contents |
@@ -58,6 +80,10 @@ transcript binds the structural circuit ids inside the raw stream (`sig_id`/`has
 | `mdoc-circuit-hash-witness.gz` | C.10 | GF(2^128) hash-circuit witness column for mdoc_tests[0] with age_over_18 |
 | `fp256-rs-anchor-output.txt` | C.12 | Fp256 Reed-Solomon codewords + kRootX/kRootY ground truth |
 | `mdoc-zk-anchor-output.txt` | crown | Google's real reference mdoc ZkProof: version 7 envelope (359,924 bytes), 117-byte SessionTranscript, hash/sig public-input templates, over mdoc_tests[0] |
+| `mdoc-circuit-anchor-4attr-output.txt` | W2.5b | kZkSpecs[3] import ground truth: ZkSpec identity, both circuits' shapes and ids, `raw_rawsha` |
+| `mdoc-circuit-raw-4attr.gz` | W2.5b | The four-attribute circuit fixture: raw serialized dual-circuit stream (see the four-attribute chain above) |
+| `mdoc-circuit-hash-witness-4attr.gz` | W2.5b | GF(2^128) hash-circuit witness column for mdoc_tests[3] with the four org.iso.18013.5.1 attributes |
+| `mdoc-zk-anchor-4attr-output.txt` | W2.5b | The reference's real four-attribute mdoc ZkProof: kZkSpecs[3] envelope (364,804 bytes) over mdoc_tests[3] (family_name, birth_date, height, issue_date), templates + transcript + attribute list |
 
 The 26 mdoc credentials in `../Mdoc/mdoc-00..25.cbor` (+ `index.tsv`) are byte-exact exports of
 upstream `lib/circuits/mdoc/mdoc_examples.h` `mdoc_tests[]` at the same pinned commit.

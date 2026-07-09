@@ -106,9 +106,11 @@ The `draft-google-cfrg-libzk` Internet-Draft is expired (`-01` is the latest rev
 so the `google/longfellow-zk` repository is the de-facto specification. The committed Longfellow fixtures are
 pinned to upstream commit `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (`v0.9-90-gd8ad8f6`, 2026-05-29 — also
 the upstream `main` HEAD as of 2026-07-09) and to the circuit generation the upstream `kZkSpecs` table names
-`longfellow-libzk-v1` version 7 (the pinned mdoc bundle: one disclosed attribute, `block_enc` 4151/4096,
-Ligero rate 7 with 132 opened columns, 40 SHA-256 blocks of MSO capacity). Two identity subtleties are
-deliberate:
+`longfellow-libzk-v1` version 7. Two registry rows are pinned: the one-attribute bundle (`block_enc`
+4151/4096) and the four-attribute breadth bundle (`kZkSpecs[3]`, `block_enc` 4415/4096, sharing the
+byte-identical signature circuit); both run Ligero rate 7 with 132 opened columns and 40 SHA-256 blocks of
+MSO capacity, and both are carried as public `LongfellowMdocZkSpec` registry rows asserted against the
+reference anchors by the default suite. Two identity subtleties are deliberate:
 
 - **The raw circuit bytes are the identity; the published circuit hash is a registry key.** The `kZkSpecs`
   `circuit_hash` (`8d079211…` for the pinned bundle) is the SHA-256 of the canonical 2026-01-09 zstd

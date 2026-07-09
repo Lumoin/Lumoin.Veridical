@@ -60,6 +60,19 @@ public sealed class LongfellowMdocZkSpec
         hashTemplateElementCount: 945,
         hashSubfieldBoundary: 85112 - 952);
 
+    /// <summary>
+    /// The version-7 four-attribute specification (<c>longfellow-libzk-v1</c>, four disclosed attributes):
+    /// the reference registry row of the committed four-attribute breadth fixture. The signature circuit is
+    /// byte-identical across the version-7 attribute counts; only the hash circuit grows.
+    /// </summary>
+    public static LongfellowMdocZkSpec Version7FourAttributes { get; } = new(
+        proofSpecVersion: 7,
+        attributeCount: 4,
+        hashBlockEncoded: 4415,
+        signatureBlockEncoded: 4096,
+        hashTemplateElementCount: 3297,
+        hashSubfieldBoundary: 99824 - 3304);
+
 
     /// <summary>The proof-specification version (the reference <c>ZkSpec.version</c>); selects the transcript framing.</summary>
     public int ProofSpecVersion { get; }
