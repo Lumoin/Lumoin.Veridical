@@ -141,11 +141,13 @@ internal sealed class LongfellowCircuitConstantRangeTests
 
         //The signature template is SignatureTemplateElementCount canonical P-256
         //base-field scalars of 32 bytes each (the class keeps that size private).
-        int hashTemplateBytes = LongfellowMdocStatement.HashTemplateElementCount * LongfellowMdocStatement.HashTemplateElementBytes;
+        LongfellowMdocZkSpec spec = LongfellowMdocZkSpec.Version7OneAttribute;
+        int hashTemplateBytes = spec.HashTemplateElementCount * LongfellowMdocStatement.HashTemplateElementBytes;
         int signatureTemplateBytes = LongfellowMdocStatement.SignatureTemplateElementCount * WellKnownCurves.P256ScalarSizeBytes;
         using IMemoryOwner<byte> templateOwner = BaseMemoryPool.Shared.Rent(hashTemplateBytes + signatureTemplateBytes);
         templateOwner.Memory.Span.Clear();
         LongfellowMdocStatement statement = LongfellowMdocStatement.FromComponents(
+            spec,
             templateOwner.Memory[..hashTemplateBytes],
             templateOwner.Memory.Slice(hashTemplateBytes, signatureTemplateBytes));
 
