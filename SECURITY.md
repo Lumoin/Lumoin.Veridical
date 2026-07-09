@@ -159,3 +159,34 @@ changes the semantics; a mismatch is a hard verification failure.
   paired with their Pedersen randomness) MUST remain with the prover. Neither is ever serialized by this
   library, and neither may be sent to a verifier or any other party — leaking them collapses the hiding of
   the committed messages that blind issuance and committed disclosure exist to provide.
+
+### SECDSA paper pin
+
+SECDSA has no IETF/ISO specification; the specification is Verheul's paper *An HSM-based EUDI wallet using
+Split-ECDSA (SECDSA) providing verifiable "sole control"* at https://wellet.nl/SECDSA-EUDI-wallet-latest.pdf —
+a **rolling URL** whose content changes without the link changing. The implemented surfaces (`SecdsaAlgorithm`,
+`DlEqualityNizk`, `SecdsaEvidence`) are pinned to the revision **"Version 21 June 2026"** (verified 2026-07-09;
+upstream keeps frozen copies only up to `…walletV6.pdf` of Sep 2025, so 2026 revisions exist solely under the
+rolling URL). Within that revision the implemented algorithm map is: Algorithms 1/2 with Propositions 3.1/3.2
+(key generation and split sign), Algorithms 14/15 with Proposition A.1 (verification and the full
+representation), Algorithms 19/20 over statement (9) (the discrete-log-equality NIZK), the blinding relation of
+Algorithm 3 step 7 / Algorithm 4 step 11, and the control relation of Equation (7) / Algorithms 9/10; the §4
+split-key Algorithm 11 is realized by composing the two `SplitSign` entry points. Two standing caveats:
+
+- **The paper pins no wire encoding for the NIZK transcript.** "Convert point to byte array" is left to the
+  implementation, so no cross-implementation byte fixture is possible; this library's documented choice is
+  33-byte SEC1 compressed points throughout the Fiat–Shamir transcript, with the challenge `r` carried
+  full-width (never reduced) exactly as Algorithm 20's range check `r ∈ {1, 2^(8·|q|)−1}` requires. Nonce
+  determinism (RFC 6979 for signing; a domain-separated statement digest for the NIZK commitment nonce) is a
+  documented implementation choice the paper's "select random k" permits — wire bytes are unaffected.
+- **Re-diff tripwire.** A changed `Last-Modified`/version line on the rolling URL triggers a protocol re-diff
+  against the implemented surfaces before any claim of conformance to the new revision (the 2026-07-09 pass is
+  recorded in `tempdocs/W2.6-SECDSA-V2-DIFF.md`).
+
+The paper frames "sole control" through the certification regime rather than new cryptography: CIR (EU)
+2024/2981 wallet certification, the Common Criteria protection profiles EN 419221-5 (the wallet-provider HSM)
+and EN 419241-2 (SCAL2 sole-control assurance for server signing), FIPS 140-3 mode constraints (FIPS mode
+forbids the `CKD_NULL` derivation some building blocks use), and ISO/IEC 29115 — the ITU-T X.1254 twin text —
+as the assurance framework behind eIDAS High. This library implements the WSCA-side mathematics those
+certifications assume; PKCS#11/HSM integration and any certification obligations sit with the consuming
+deployment, per the Scope section above.
