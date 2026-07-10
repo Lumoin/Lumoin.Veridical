@@ -55,8 +55,6 @@ internal sealed class P256ConstantTimeG1TimingHarnessTests
             MeasurementCount,
             WarmupCount);
 
-        System.IO.File.AppendAllText(@"C:\Users\Veikko\AppData\Local\Temp\claude\C--projektit-Lumoin-Veridical\627f6a05-8ce0-48c7-90c9-8029f34f7148\scratchpad\verdicts.txt", $"REFERENCE {verdict.Interpretation} p={verdict.PValue:R} t={verdict.TestStatistic:R}\n");
-
         //The reference walks the minimal big-endian byte length of the scalar (see
         //P256BigIntegerG1Reference.ScalarMultiplyPoint), so the fixed class (k = 1, ~8 ladder steps)
         //runs roughly 32x faster than the random class (a full 256-bit scalar, ~256 steps). That gap is
@@ -80,8 +78,6 @@ internal sealed class P256ConstantTimeG1TimingHarnessTests
             ScalarInputLength,
             MeasurementCount,
             WarmupCount);
-
-        System.IO.File.AppendAllText(@"C:\Users\Veikko\AppData\Local\Temp\claude\C--projektit-Lumoin-Veridical\627f6a05-8ce0-48c7-90c9-8029f34f7148\scratchpad\verdicts.txt", $"CONSTANTTIME {verdict.Interpretation} p={verdict.PValue:R} t={verdict.TestStatistic:R}\n");
 
         //Report-not-fail: the constant-time ladder runs a fixed 256 iterations regardless of the
         //scalar, so no reliable timing gap is expected, but wall-clock timing on a shared runner is
