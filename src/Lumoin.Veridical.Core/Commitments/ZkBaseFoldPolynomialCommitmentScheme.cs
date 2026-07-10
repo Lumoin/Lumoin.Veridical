@@ -144,10 +144,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             int saltBytes = codewordElements * ScalarSize;
             using IMemoryOwner<byte> saltOwner = pool.Rent(saltBytes);
             Span<byte> salts = saltOwner.Memory.Span[..saltBytes];
-            for(int i = 0; i < codewordElements; i++)
-            {
-                _ = scalarRandom(salts.Slice(i * ScalarSize, ScalarSize), curve, WellKnownAlgebraicTags.ScalarFor(curve));
-            }
+            GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
             using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, merkleHash, pool);
 
@@ -866,12 +863,26 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
 
 
     //Fills a span with count fresh uniform scalars from the entropy sampler.
+    //Every caller draws hiding material — the per-leaf Merkle salts or a
+    //dimension-lift mask block — so an identically-zero block voids the hiding
+    //property while every proof still verifies. A healthy sampler produces a
+    //zero block with probability at most 2^-255 per scalar, so the post-check
+    //only ever fires on a broken entropy delegate; reject at generation, the
+    //one place the drawn bytes are visible.
     private static void GenerateScalars(Span<byte> destination, int count, ScalarRandomDelegate scalarRandom, CurveParameterSet curve)
     {
         Tag scalarTag = WellKnownAlgebraicTags.ScalarFor(curve);
         for(int i = 0; i < count; i++)
         {
             _ = scalarRandom(destination.Slice(i * ScalarSize, ScalarSize), curve, scalarTag);
+        }
+
+        if(count > 0 && destination[..(count * ScalarSize)].IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new InvalidOperationException(
+                "The sampled hiding block (salts or dimension-lift mask) is identically zero. A zero block voids "
+                + "the hiding property while the commitment and proof remain sound, and can only come from a broken "
+                + "entropy source; check the ScalarRandomDelegate wiring supplied to the provider factory.");
         }
     }
 

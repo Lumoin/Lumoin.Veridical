@@ -521,6 +521,8 @@ public static class BaseFoldEvaluationProver
                     _ = maskRandom!(liftedTable.Slice(i * ScalarSize, ScalarSize), curve, scalarTag);
                 }
 
+                ThrowIfMaskBlockZero(liftedTable[fillerStart..coefficientBytes], "mask laundering-filler block");
+
                 fillerSum = SumTable(liftedTable.Slice(fillerStart, coefficientBytes - fillerStart), maskParameters.FillerCount, add, curve, pool);
                 disposables.Add(fillerSum);
 
@@ -528,6 +530,8 @@ public static class BaseFoldEvaluationProver
                 {
                     _ = maskRandom!(liftedTable.Slice(i * ScalarSize, ScalarSize), curve, scalarTag);
                 }
+
+                ThrowIfMaskBlockZero(liftedTable[coefficientBytes..], "mask commitment dimension-lift block");
 
                 maskLiftedMle = MultilinearExtension.FromEvaluations(liftedTable, maskParameters.LiftedVariableCount, curve, pool);
                 disposables.Add(maskLiftedMle);
@@ -895,6 +899,23 @@ public static class BaseFoldEvaluationProver
         }
 
         return new Scalar(sumOwner, curve, WellKnownAlgebraicTags.ScalarFor(curve));
+    }
+
+
+    //An identically-zero mask block hides nothing: the opening still verifies,
+    //but the zero-knowledge property the block exists to provide is silently
+    //void. A healthy sampler produces a zero block with probability at most
+    //2^-255 per scalar, so the post-check only ever fires on a broken entropy
+    //delegate; reject at generation, the one place the drawn bytes are visible.
+    private static void ThrowIfMaskBlockZero(ReadOnlySpan<byte> block, string blockName)
+    {
+        if(!block.IsEmpty && block.IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new InvalidOperationException(
+                $"The sampled {blockName} is identically zero. A zero mask voids the zero-knowledge (hiding) "
+                + "property while the proof remains sound, and can only come from a broken entropy source; check "
+                + "the mask ScalarRandomDelegate wiring supplied to ProveZeroKnowledge.");
+        }
     }
 
 

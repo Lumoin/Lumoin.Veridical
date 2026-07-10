@@ -95,6 +95,22 @@ public sealed class MonomialBasisMask: SensitiveMemory
             _ = random(coefficients.Slice(i * ScalarSize, ScalarSize), curve, scalarTag);
         }
 
+        //An identically-zero coefficient vector blends nothing into the rounds:
+        //every proof still verifies, but the statistical zero-knowledge the mask
+        //exists to provide is silently void. A healthy sampler produces this with
+        //probability at most 2^-255 per coefficient, so it only ever signals a
+        //broken entropy delegate — reject it at the one place the coefficients
+        //are visible, their generation.
+        if(!coefficients.IsEmpty && coefficients.IndexOfAnyExcept((byte)0) < 0)
+        {
+            owner.Dispose();
+
+            throw new InvalidOperationException(
+                "The sampled sumcheck mask is identically zero. A zero mask voids the zero-knowledge (hiding) "
+                + "property while the proof remains sound, and can only come from a broken entropy source; check "
+                + "the ScalarRandomDelegate wiring supplied to MonomialBasisMask.Sample.");
+        }
+
         Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
             .With(curve);
 

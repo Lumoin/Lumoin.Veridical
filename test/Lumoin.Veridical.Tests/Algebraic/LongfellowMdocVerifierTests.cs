@@ -38,6 +38,14 @@ internal sealed class LongfellowMdocVerifierTests
     private const int OpenedColumnCount = 2;
     private const int AnchorSubfieldBoundary = 0;
 
+    //A cut this far into the hash proof's com_proof keeps the fixed root and
+    //sumcheck segment intact while landing inside the run-length section.
+    private const int HashComProofCutBytes = 8;
+
+    //A tail cut small enough that the hash proof still splits and only the
+    //sig-proof remainder underflows.
+    private const int SigProofTailCutBytes = 5;
+
     private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("mdoc-driver-gate");
     private static readonly byte[] AnchorProofSeed = Encoding.ASCII.GetBytes("zk8");
 
@@ -345,6 +353,68 @@ internal sealed class LongfellowMdocVerifierTests
 
         Assert.IsFalse(ok, "The splice cannot reach npub_in, so the driver must reject.");
         Assert.AreEqual(LongfellowMdocVerificationResult.AttributeNumberMismatch, result, "Reaching the size guard with too few public inputs is an AttributeNumberMismatch.");
+    }
+
+
+    [TestMethod]
+    public void ATruncationInsideTheHashComProofYieldsMalformedEnvelope()
+    {
+        //Cut inside the hash proof's run-length-encoded com_proof section: the
+        //fixed 32-byte root and the shape-derived sumcheck segment stay intact,
+        //so the failure is specifically the Ligero run-length read
+        //(LongfellowLigeroProofSerializer.Read) the envelope split probes with.
+        LongfellowSumcheckCircuit circuit = BuildAnchorCircuit();
+        byte[] proof = ProduceAnchorHashProof(circuit);
+        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof, proof);
+
+        using Lch14AdditiveFft fft = NewFft();
+        int sumcheckSegmentBytes = LongfellowSumcheckProofSerializer.SerializedSize(circuit, LongfellowFieldProfile.ForGf2k128(fft));
+        int cut = LongfellowMdocEnvelope.MacRegionBytes + DigestSize + sumcheckSegmentBytes + HashComProofCutBytes;
+        Assert.IsLessThan(envelope.Length, cut, "The cut must land strictly inside the envelope.");
+
+        bool ok = VerifyAnchorEnvelope(circuit, envelope.AsSpan(0, cut), out LongfellowMdocVerificationResult result);
+
+        Assert.IsFalse(ok, "An envelope cut inside the hash com_proof must not verify.");
+        Assert.AreEqual(LongfellowMdocVerificationResult.MalformedEnvelope, result, "A failed hash-proof split is a MalformedEnvelope cause.");
+    }
+
+
+    [TestMethod]
+    public void ATruncationInTheSigProofTailYieldsMalformedEnvelope()
+    {
+        //Cut a few bytes off the envelope tail: the hash proof still splits
+        //(its run-length probe consumes exactly its own bytes), and the sig
+        //remainder is short of a parseable ZkProof, so the sig-side parse
+        //fails before any verification runs.
+        LongfellowSumcheckCircuit circuit = BuildAnchorCircuit();
+        byte[] proof = ProduceAnchorHashProof(circuit);
+        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof, proof);
+
+        bool ok = VerifyAnchorEnvelope(circuit, envelope.AsSpan(0, envelope.Length - SigProofTailCutBytes), out LongfellowMdocVerificationResult result);
+
+        Assert.IsFalse(ok, "An envelope cut in the sig-proof tail must not verify.");
+        Assert.AreEqual(LongfellowMdocVerificationResult.MalformedEnvelope, result, "A failed sig-proof parse is a MalformedEnvelope cause.");
+    }
+
+
+    //Builds the anchor-circuit field bundle and drives the mdoc verifier over the supplied envelope
+    //bytes. Both proof slots share the GF bundle, which suffices for the parse-level verdicts the
+    //truncation gates pin.
+    private static bool VerifyAnchorEnvelope(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> envelope, out LongfellowMdocVerificationResult result)
+    {
+        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, GfElementBytes, AnchorSubFieldBytes);
+
+        using Lch14AdditiveFft fft = NewFft();
+        LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForGf2k128(profile, fft, AnchorSubFieldBytes, BaseMemoryPool.Shared);
+        var field = new LongfellowMdocFieldVerifier(circuit, parameters, NewGfEncoderFactory(fft), profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None);
+
+        using LongfellowTranscript transcript = NewTranscript();
+
+        return LongfellowMdocVerifier.Verify(
+            envelope, field, field, ReadOnlySpan<byte>.Empty, ReadOnlySpan<byte>.Empty,
+            transcript, Sha256TwoToOne, Sha256OneShot, WellKnownHashAlgorithms.Sha256, BaseMemoryPool.Shared,
+            out result);
     }
 
 

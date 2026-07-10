@@ -933,6 +933,19 @@ public static class MaskedSpartanProverExtensions
             _ = scalarRandom(vector.Slice(i * scalarSize, scalarSize), curve, scalarTag);
         }
 
+        //An identically-zero filler block launders no entropy, degrading the
+        //hiding the design's no-zero-weight-coordinates policy provides while
+        //every proof still verifies. A healthy sampler cannot produce it, so it
+        //only ever signals a broken entropy delegate — reject at generation.
+        Span<byte> filler = vector[(shape.MaskCoefficientCount * scalarSize)..];
+        if(!filler.IsEmpty && filler.IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new InvalidOperationException(
+                "The sampled mask-vector filler block is identically zero. A zero filler voids the hiding "
+                + "property while the proof remains sound, and can only come from a broken entropy source; "
+                + "check the ScalarRandomDelegate wiring supplied to Prove.");
+        }
+
         return MultilinearExtension.FromEvaluations(vector, shape.CoefficientVariableCount, curve, pool);
     }
 

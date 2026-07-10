@@ -340,6 +340,11 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
         int r = parameters.RandomCount;
         int w = parameters.WitnessPerRow;
 
+        //The three blinding rows carry the tableau's hiding budget; each drawn
+        //block is inspected before it is adjusted or RS-extended so the check
+        //sees exactly what the entropy source produced.
+        bool blindingDrawsNonzero = false;
+
         //ILDT: block random message entries, extend block -> block_enc.
         Span<byte> lowDegreeRow = RowSpan(tableau, rowStrideBytes, LongfellowLigeroParameters.LowDegreeRowIndex);
         for(int j = 0; j < block; j++)
@@ -347,6 +352,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
             DrawFieldElement(random, profile, ScalarAt(lowDegreeRow, j));
         }
 
+        blindingDrawsNonzero |= lowDegreeRow[..(block * ScalarSize)].IndexOfAnyExcept((byte)0) >= 0;
         ExtendRow(lowDegreeRow, parameters.BlockEncoded, blockRs);
 
         //IDOT: dblock random entries; subtract the whole witness-block sum from column r so [r, r+w)
@@ -357,6 +363,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
             DrawFieldElement(random, profile, ScalarAt(dotRow, j));
         }
 
+        blindingDrawsNonzero |= dotRow[..(dblock * ScalarSize)].IndexOfAnyExcept((byte)0) >= 0;
         ZeroWitnessBlockSum(dotRow, r, w, add, subtract, curve);
         ExtendRow(dotRow, parameters.BlockEncoded, doubleBlockRs);
 
@@ -370,12 +377,26 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
             DrawFieldElement(random, profile, ScalarAt(quadraticRow, j));
         }
 
+        blindingDrawsNonzero |= quadraticRow[..(dblock * ScalarSize)].IndexOfAnyExcept((byte)0) >= 0;
         for(int j = r; j < r + w; j++)
         {
             ScalarAt(quadraticRow, j).Clear();
         }
 
         ExtendRow(quadraticRow, parameters.BlockEncoded, doubleBlockRs);
+
+        //An identically-zero blinding block blinds nothing: the commitment and
+        //proof stay sound, but the hiding the ILDT/IDOT/IQUAD rows exist to
+        //provide is silently void. A healthy byte source cannot draw all-zero
+        //rows, so this only ever signals a broken entropy source — reject at
+        //generation, the one place the drawn randomness is visible.
+        if(!blindingDrawsNonzero)
+        {
+            throw new InvalidOperationException(
+                "The drawn Ligero blinding rows (ILDT, IDOT, IQUAD) are identically zero. A zero blinding block "
+                + "voids the hiding property while the commitment remains sound, and can only come from a broken "
+                + "entropy source; check the LongfellowRandomByteSource wiring supplied to Commit.");
+        }
     }
 
 
@@ -547,6 +568,20 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
                 }
 
                 leafHash(leafInput, leaves.Slice(j * DigestLength, DigestLength), hashAlgorithm);
+            }
+
+            //Identically-zero nonces make every leaf hash a deterministic function
+            //of its column: the commitment stays binding and the proof verifies,
+            //but the per-leaf hiding the nonces exist to provide is silently
+            //void. A healthy byte source cannot draw an all-zero nonce block, so
+            //this only ever signals a broken entropy source — reject at
+            //generation, the one place the nonces are visible.
+            if(nonces.IndexOfAnyExcept((byte)0) < 0)
+            {
+                throw new InvalidOperationException(
+                    "The drawn per-leaf Merkle nonces are identically zero. Zero nonces void the hiding property "
+                    + "while the commitment remains sound, and can only come from a broken entropy source; check "
+                    + "the LongfellowRandomByteSource wiring supplied to Commit.");
             }
 
             return LongfellowMerkleTree.Build(leaves, blockExtension, merkleHash, pool);
