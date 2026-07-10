@@ -165,13 +165,15 @@ changes the semantics; a mismatch is a hard verification failure.
 SECDSA has no IETF/ISO specification; the specification is Verheul's paper *An HSM-based EUDI wallet using
 Split-ECDSA (SECDSA) providing verifiable "sole control"* at https://wellet.nl/SECDSA-EUDI-wallet-latest.pdf —
 a **rolling URL** whose content changes without the link changing. The implemented surfaces (`SecdsaAlgorithm`,
-`DlEqualityNizk`, `SecdsaEvidence`) are pinned to the revision **"Version 21 June 2026"** (verified 2026-07-09;
+`DlEqualityNizk`, `SecdsaEvidence`, `EcdhMacAlgorithm`) are pinned to the revision **"Version 21 June 2026"** (verified 2026-07-09;
 upstream keeps frozen copies only up to `…walletV6.pdf` of Sep 2025, so 2026 revisions exist solely under the
 rolling URL). Within that revision the implemented algorithm map is: Algorithms 1/2 with Propositions 3.1/3.2
 (key generation and split sign), Algorithms 14/15 with Proposition A.1 (verification and the full
 representation), Algorithms 19/20 over statement (9) (the discrete-log-equality NIZK), the blinding relation of
 Algorithm 3 step 7 / Algorithm 4 step 11, and the control relation of Equation (7) / Algorithms 9/10; the §4
-split-key Algorithm 11 is realized by composing the two `SplitSign` entry points. Two standing caveats:
+split-key Algorithm 11 is realized by composing the two `SplitSign` entry points; Algorithms 16/17 with the §4
+split variant Algorithm 12 (ECDH-MAC and Split-ECDH-MAC, `EcdhMacAlgorithm` over HKDF-SHA256 per RFC 5869).
+Three standing caveats:
 
 - **The paper pins no wire encoding for the NIZK transcript.** "Convert point to byte array" is left to the
   implementation, so no cross-implementation byte fixture is possible; this library's documented choice is
@@ -179,6 +181,12 @@ split-key Algorithm 11 is realized by composing the two `SplitSign` entry points
   full-width (never reduced) exactly as Algorithm 20's range check `r ∈ {1, 2^(8·|q|)−1}` requires. Nonce
   determinism (RFC 6979 for signing; a domain-separated statement digest for the NIZK commitment nonce) is a
   documented implementation choice the paper's "select random k" permits — wire bytes are unaffected.
+- **ECDH-MAC has no published test vectors.** ISO/IEC 18013-5 §9.1.3.5 defines the primitive only implicitly
+  and publishes no vectors, so conformance is gated in layers: RFC 5869 Appendix A KATs plus BCL `HKDF`
+  cross-checks for the derivation stage, a full-pipeline independent oracle (the platform's raw-ECDH agreement
+  + `HKDF` + `HMACSHA256` reproduces Algorithm 16 byte-for-byte), and the split-vs-direct agreement gate
+  (Algorithm 12's three-share chain against a direct Algorithm 16 under the composed key, with the composition
+  computed in the opposite operation order so the two paths are independent).
 - **Re-diff tripwire.** A changed `Last-Modified`/version line on the rolling URL triggers a protocol re-diff
   against the implemented surfaces before any claim of conformance to the new revision (the 2026-07-09 pass is
   recorded in `tempdocs/W2.6-SECDSA-V2-DIFF.md`).
