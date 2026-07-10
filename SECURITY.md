@@ -50,6 +50,44 @@ deliberately **no buffer-touching finalizer**: a missed `Dispose` orphans the po
 rather than risking a use-after-free against an in-flight span read. There are no static caches or hidden
 global secret state in the cryptographic core.
 
+The pool (`Lumoin.Base`) distinguishes three allocation kinds by algebraic role, and the code chooses the
+kind where a buffer is rented. Public structure (wire-index arenas, public coefficients, the fixed constant
+basis) is `Managed` — ordinary relocatable heap. Bulk secret-bearing regions — the witness and scalar
+arenas that carry ECDSA nonce coordinates, the Ligero and Longfellow tableaux, the proof pad, per-leaf
+Merkle blinding nonces — are `Pinned`, allocated through `GC.AllocateArray(pinned: true)` on the pinned
+object heap so a compacting collection never relocates them; the wipe-on-return then erases the exact bytes
+that held the secret. Small, long-lived key material (the BBS secret key) is `Native`. Clearing on return
+uses a non-elidable zeroization (`CryptographicOperations.ZeroMemory`, never `Span.Clear`), and slabs are
+reused across rentals, so the zero-on-return is what prevents a later renter from observing a prior
+renter's bytes. The pinnedness and the wipe are exercised as an explicit behavioral regression test, not
+merely assumed.
+
+The `Native` kind is backed by an injected OS allocator, so its guarantee is the deployment's to wire, not
+the library's to assume. When a consumer constructs the pool with the libsodium backing
+(`Lumoin.Base.Sodium`, `new BaseMemoryPool(nativeBacking: SodiumBacking.Allocate)`), every `Native` rent
+becomes a `sodium_malloc` guarded allocation: **best-effort memory locking** (`mlock`/`VirtualLock`, so the
+pages resist being swapped to disk), no-access **guard pages** bracketing the buffer (an overflow crashes
+immediately), a **canary** checked at free (a small underflow aborts the process), and zero-on-free. The
+pool is strict by default — with no native backing wired it throws on a `Native` rent, unless constructed
+`allowNativeDegradation: true`, which falls back to `Pinned` on hosts (browser, mobile, unconfigured
+servers) where a native lock is unavailable, and records the effective kind in telemetry. The library
+itself stays allocator-agnostic: it threads the pool from the top and never names a concrete native
+allocator, so which protection the key material actually receives is a property of how the consuming
+deployment builds the pool.
+
+**Residual risk (what remains after the tiers above).** The relocation-erase gap is closed for `Pinned`
+and `Native` secrets, and paging is closed for `Native` secrets when the libsodium backing is wired
+(best-effort locking, subject to the platform's locked-memory limit). What is **not** closed: the bulk
+`Pinned` witness and tableau arenas are on the managed pinned heap, which is not locked, so a host under
+memory pressure may still swap them; register and stack spills, where the JIT may leave a copy of a secret
+scalar in a spill slot or a caller-saved register that no clear touches; a live-process memory dump or a
+debugger with process access, which sees any secret while it is legitimately in use; and side-channel
+observation of the secret's *use*, which is the constant-time posture's concern above, not this section's.
+A deployment that must resist a hostile host or a memory-dump adversary across *all* secret material — not
+only the locked key tier — needs OS- or hardware-level protection (an HSM, a `CKM_*` key that never leaves
+the module, encrypted swap, memory encryption). The library provides the WSCA-side mathematics such a
+deployment assumes and the allocation seams to wire that protection into, not the host hardening itself.
+
 ## Proof-system soundness posture
 
 The zero-knowledge proof systems (Spartan and the polynomial-commitment schemes it composes with —
@@ -84,6 +122,48 @@ soundness rests on assumptions a consumer must uphold:
   malleability, not a soundness break — the accepted statement is unchanged — but a consumer must not
   treat a proof's byte identity (or its hash) as a deduplication, anti-replay, or nullifier key. Bind
   such keys to the statement or a canonical semantic digest instead.
+- **Vector commitments are position-binding at a fixed depth, not by leaf/internal domain separation.**
+  The binary Merkle trees the commitment schemes use (the BaseFold codeword trees, the Ligero and
+  Longfellow column trees, the Poseidon-ready set commitment) apply **no domain separation between leaf
+  and internal-node hashing** — every internal node is the two-to-one compression of its children, and
+  the leaves are pre-hashed values (a codeword position, a salted `hash(value‖salt)`, a `hash(key‖value)`
+  entry, or a `hash(nonce‖column)`). This is sound for two independent reasons, both of which the analysis
+  in "The Billion Dollar Merkle Tree" (Coratger, Khovratovich, Mennink, Wagner, IACR ePrint 2026/089)
+  makes precise: the wired compression is a **collision-resistant** hash (BLAKE3-32 or SHA-256), so a leaf
+  digest cannot collide with an internal digest; and the tree **depth is fixed** and the verifier folds
+  exactly the authentication-path length, binding a leaf to its position so that a leaf and an internal
+  node never occupy interchangeable slots. A leaf index carrying a bit at or beyond the path length is
+  rejected rather than silently aliased onto its in-range counterpart. If a future wiring substitutes a
+  **truncated algebraic compression** (a native Poseidon shadow root), that compression is not
+  collision-resistant and position binding then rests on the eprint 2026/089 argument — the leaf
+  pre-hashing that argument requires is already in place and must be preserved.
+
+## Post-quantum posture
+
+The library mixes proof systems and signatures with different post-quantum standing. This ledger states
+where each path stands against a quantum adversary; none of it changes the classical soundness above.
+
+- **Plausibly post-quantum (in the random-oracle model): the hash-committed argument stack.** Spartan
+  composed over BaseFold or ZkBaseFold — and WHIR when it lands — rests on the collision resistance of the
+  wired hash and the Fiat-Shamir random oracle, with no discrete-logarithm or pairing assumption in the
+  soundness argument. These are the paths to reach for when a consumer needs a plausibly quantum-resistant
+  proof, subject to the usual caveats (a quantum random-oracle analysis, and hash output sizes chosen for
+  the lower post-quantum collision bound).
+- **Not post-quantum: the discrete-log paths.** Hyrax inner-product openings, the Bulletproofs range
+  arguments, BBS+ signatures and proofs, and ECDSA/SECDSA all rest on discrete-logarithm hardness in a
+  prime-order elliptic-curve group, which a cryptographically relevant quantum computer breaks. They are
+  in the library because they are what the deployed EUDI and W3C ecosystems require today; their presence
+  is a statement about current interoperability, not about long-term quantum resistance.
+- **The SECDSA post-quantum transition is an application-layer and future-primitive concern, not new
+  library crypto.** The SECDSA paper's Annex C describes a two-step PQC roadmap (no quantum-vulnerable
+  data stored or exchanged, then none processed outside HSMs) with a modified blinding protocol, modified
+  signing and evidence algorithms over the plain generator, and ICAO Chip-Authentication secure messaging
+  with the certified Diffie-Hellman key replaced by **ML-KEM** (FIPS 203). The proof-of-knowledge shapes
+  those variants use are the same discrete-log-equality statements `DlEqualityNizk` already proves and
+  verifies over generic generator/target pairs, so the PQC variant needs **no new library crypto**; the
+  genuinely new surfaces — an ML-KEM key encapsulation, the Chip-Authentication secure channel, and the
+  seeded-hash internal-certificate records — are application-layer wiring or future primitives outside
+  this repository's WSCA-side scope.
 
 ## Scope
 
