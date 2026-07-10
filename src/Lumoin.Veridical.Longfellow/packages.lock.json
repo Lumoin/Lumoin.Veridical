@@ -127,7 +127,7 @@
       "lumoin.veridical.core": {
         "type": "Project",
         "dependencies": {
-          "Lumoin.Base": "[0.0.4, )"
+          "Lumoin.Base": "[0.0.5, )"
         }
       },
       "lumoin.veridical.hashing": {
@@ -138,9 +138,9 @@
       },
       "Lumoin.Base": {
         "type": "CentralTransitive",
-        "requested": "[0.0.4, )",
-        "resolved": "0.0.4",
-        "contentHash": "BcM4Dz91K0HAEb1NEJZNlLP/Go1FAvHV/+tjxpymYXuUVZ0/SdWuc3ukVH9qUv6rLahBsXbkfXpBwF18bm6/UA=="
+        "requested": "[0.0.5, )",
+        "resolved": "0.0.5",
+        "contentHash": "f+3/RJPIgheAL6ARpPds5iI5MLvM54AJ7pkrlq712H+dc8xe09EOJaIQUYc8QlRL+OXMqvvk0q5mG5yzd9lv8w=="
       },
       "System.Security.Cryptography.Xml": {
         "type": "CentralTransitive",

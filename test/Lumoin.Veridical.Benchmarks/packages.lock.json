@@ -660,7 +660,7 @@
       "lumoin.veridical.core": {
         "type": "Project",
         "dependencies": {
-          "Lumoin.Base": "[0.0.4, )"
+          "Lumoin.Base": "[0.0.5, )"
         }
       },
       "lumoin.veridical.hashing": {
@@ -687,6 +687,7 @@
         "dependencies": {
           "CsCheck": "[4.7.0, )",
           "LiquidTestReports.Markdown": "[2.0.0-beta.6, )",
+          "Lumoin.Base.Sodium": "[0.0.5, )",
           "Lumoin.Veridical.Analysis": "[0.0.0, )",
           "Lumoin.Veridical.Backends.Managed": "[0.0.0, )",
           "Lumoin.Veridical.Bbs": "[0.0.0, )",
@@ -728,9 +729,18 @@
       },
       "Lumoin.Base": {
         "type": "CentralTransitive",
-        "requested": "[0.0.4, )",
-        "resolved": "0.0.4",
-        "contentHash": "BcM4Dz91K0HAEb1NEJZNlLP/Go1FAvHV/+tjxpymYXuUVZ0/SdWuc3ukVH9qUv6rLahBsXbkfXpBwF18bm6/UA=="
+        "requested": "[0.0.5, )",
+        "resolved": "0.0.5",
+        "contentHash": "f+3/RJPIgheAL6ARpPds5iI5MLvM54AJ7pkrlq712H+dc8xe09EOJaIQUYc8QlRL+OXMqvvk0q5mG5yzd9lv8w=="
+      },
+      "Lumoin.Base.Sodium": {
+        "type": "CentralTransitive",
+        "requested": "[0.0.5, )",
+        "resolved": "0.0.5",
+        "contentHash": "a70QYAAtd4Ztnqhtp6mMwLOgL5hx36E0MdHIoNvshfCgWuDhkLGAxx3cXvc8FwukSHyP6+vKIfkWrhjEKVvCUA==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.5"
+        }
       },
       "Microsoft.Extensions.Hosting": {
         "type": "CentralTransitive",

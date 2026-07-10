@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <PackageReference Include="CsCheck" />
+    <PackageReference Include="Lumoin.Base.Sodium" />
     <PackageReference Include="System.Formats.Cbor" />
     <PackageReference Include="LiquidTestReports.Markdown" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
