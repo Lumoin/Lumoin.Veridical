@@ -660,7 +660,7 @@
       "lumoin.veridical.core": {
         "type": "Project",
         "dependencies": {
-          "Lumoin.Base": "[0.0.5, )"
+          "Lumoin.Base": "[0.0.6, )"
         }
       },
       "lumoin.veridical.hashing": {
@@ -687,7 +687,8 @@
         "dependencies": {
           "CsCheck": "[4.7.0, )",
           "LiquidTestReports.Markdown": "[2.0.0-beta.6, )",
-          "Lumoin.Base.Sodium": "[0.0.5, )",
+          "Lumoin.Base.MemoryProtection": "[0.0.6, )",
+          "Lumoin.Base.Sodium": "[0.0.6, )",
           "Lumoin.Veridical.Analysis": "[0.0.0, )",
           "Lumoin.Veridical.Backends.Managed": "[0.0.0, )",
           "Lumoin.Veridical.Bbs": "[0.0.0, )",
@@ -729,17 +730,26 @@
       },
       "Lumoin.Base": {
         "type": "CentralTransitive",
-        "requested": "[0.0.5, )",
-        "resolved": "0.0.5",
-        "contentHash": "f+3/RJPIgheAL6ARpPds5iI5MLvM54AJ7pkrlq712H+dc8xe09EOJaIQUYc8QlRL+OXMqvvk0q5mG5yzd9lv8w=="
+        "requested": "[0.0.6, )",
+        "resolved": "0.0.6",
+        "contentHash": "NRaNiGb9SPGuDo9+tRGxZ5UQPWWPFSVt5Il/UV3yFGY/EHIVAuGy5M+wFHmNcXzMWucHOj8vxt19qQ1ZjJoE1A=="
+      },
+      "Lumoin.Base.MemoryProtection": {
+        "type": "CentralTransitive",
+        "requested": "[0.0.6, )",
+        "resolved": "0.0.6",
+        "contentHash": "4TIeX6vnvEVQj5Ri/fNqJRCfz74LA+LaGr0/ifVQ85eAo/4yTYGiCwCcVyitdTXXu+8L49nsBHgigcD4Eez1xw==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.6"
+        }
       },
       "Lumoin.Base.Sodium": {
         "type": "CentralTransitive",
-        "requested": "[0.0.5, )",
-        "resolved": "0.0.5",
-        "contentHash": "a70QYAAtd4Ztnqhtp6mMwLOgL5hx36E0MdHIoNvshfCgWuDhkLGAxx3cXvc8FwukSHyP6+vKIfkWrhjEKVvCUA==",
+        "requested": "[0.0.6, )",
+        "resolved": "0.0.6",
+        "contentHash": "A1zGpnQCFbToR/Y7El52gHBecWJDYMKLUSJVNp/rY2ySbgYj5CW9zSGGltnxTWvGIgM59R3ZRoVO4v7eVXPQNQ==",
         "dependencies": {
-          "Lumoin.Base": "0.0.5"
+          "Lumoin.Base": "0.0.6"
         }
       },
       "Microsoft.Extensions.Hosting": {

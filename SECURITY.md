@@ -63,20 +63,30 @@ renter's bytes. The pinnedness and the wipe are exercised as an explicit behavio
 merely assumed.
 
 The `Native` kind is backed by an injected OS allocator, so its guarantee is the deployment's to wire, not
-the library's to assume. When a consumer constructs the pool with the libsodium backing
-(`Lumoin.Base.Sodium`, `new BaseMemoryPool(nativeBacking: SodiumBacking.Allocate)`), every `Native` rent
-becomes a `sodium_malloc` guarded allocation: **best-effort memory locking** (`mlock`/`VirtualLock`, so the
-pages resist being swapped to disk), no-access **guard pages** bracketing the buffer (an overflow crashes
-immediately), a **canary** checked at free (a small underflow aborts the process), and zero-on-free. The
-pool is strict by default — with no native backing wired it throws on a `Native` rent, unless constructed
-`allowNativeDegradation: true`, which falls back to `Pinned` on hosts (browser, mobile, unconfigured
-servers) where a native lock is unavailable, and records the effective kind in telemetry. The library
-itself stays allocator-agnostic: it threads the pool from the top and never names a concrete native
-allocator, so which protection the key material actually receives is a property of how the consuming
-deployment builds the pool.
+the library's to assume. Two family backings implement it, both locking the pages into physical memory so
+they resist being swapped to disk (`mlock`/`madvise(MADV_DONTDUMP)` on Linux, `VirtualLock` on Windows),
+and both zero-on-free:
+
+- `Lumoin.Base.MemoryProtection` — the operating-system twins, pure P/Invoke against `kernel32` and `libc`
+  with **no native-library dependency**, so it locks memory on any supported host without shipping a binary.
+  It provides locking and best-effort dump exclusion, but **no guard pages or canary** — an overrun is not
+  detected by the backing itself (pair it with the pool's `ProtectedSlab` native mode, whose per-segment
+  software canaries run on top of the locked region, when overrun detection is wanted).
+- `Lumoin.Base.Sodium` — the libsodium backing, maximal per-allocation hardening: on top of the locking it
+  adds no-access **guard pages** bracketing the buffer (an overflow crashes immediately) and a **canary**
+  checked at free (a small underflow aborts the process). It requires a deployed libsodium.
+
+The pool is strict by default — with no native backing wired it throws on a `Native` rent, unless
+constructed `allowNativeDegradation: true`, which falls back to `Pinned` on hosts (browser, mobile,
+unconfigured servers) where a native lock is unavailable, and records the effective kind in telemetry.
+Locking is a real budget: each allocation is page-rounded and bounded by the platform's locked-memory limit
+(`RLIMIT_MEMLOCK`; the Windows minimum working set, raised with `SetProcessWorkingSetSize`), and the
+backings throw rather than silently hand back unlocked memory when it is exhausted. The library itself stays
+allocator-agnostic: it threads the pool from the top and never names a concrete native allocator, so which
+protection the key material actually receives is a property of how the consuming deployment builds the pool.
 
 **Residual risk (what remains after the tiers above).** The relocation-erase gap is closed for `Pinned`
-and `Native` secrets, and paging is closed for `Native` secrets when the libsodium backing is wired
+and `Native` secrets, and paging is closed for `Native` secrets when either native backing is wired
 (best-effort locking, subject to the platform's locked-memory limit). What is **not** closed: the bulk
 `Pinned` witness and tableau arenas are on the managed pinned heap, which is not locked, so a host under
 memory pressure may still swap them; register and stack spills, where the JIT may leave a copy of a secret
