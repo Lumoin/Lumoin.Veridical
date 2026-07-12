@@ -41,15 +41,27 @@ internal static class BbsP1Generator
     /// Returns a freshly pool-rented G1 point holding the
     /// <paramref name="ciphersuite"/>-specific <c>P1</c>.
     /// </summary>
+    /// <remarks>
+    /// <c>P1</c> is a ciphersuite constant, not an Interface constant: the
+    /// blind and pseudonym Interfaces reuse the core suites' values (the
+    /// per-verifier-pseudonym draft's fixtures print the same
+    /// "Interface P1" bytes as the core suite), so all interface-scoped
+    /// ciphersuites dispatch through their base hash suite to the same
+    /// two constants.
+    /// </remarks>
     /// <exception cref="ArgumentException">When <paramref name="ciphersuite"/> is not a known well-known ciphersuite.</exception>
     public static G1Point GetForCiphersuite(BbsCiphersuite ciphersuite, BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(pool);
-        if(ciphersuite == BbsCiphersuite.Bls12Curve381Sha256)
+        if(ciphersuite == BbsCiphersuite.Bls12Curve381Sha256
+            || ciphersuite == BbsCiphersuite.Bls12Curve381Sha256Blind
+            || ciphersuite == BbsCiphersuite.Bls12Curve381Sha256Pseudonym)
         {
             return G1Point.FromCanonical(Bls12Curve381Sha256Bytes, CurveParameterSet.Bls12Curve381, pool);
         }
-        if(ciphersuite == BbsCiphersuite.Bls12Curve381Shake256)
+        if(ciphersuite == BbsCiphersuite.Bls12Curve381Shake256
+            || ciphersuite == BbsCiphersuite.Bls12Curve381Shake256Blind
+            || ciphersuite == BbsCiphersuite.Bls12Curve381Shake256Pseudonym)
         {
             return G1Point.FromCanonical(Bls12Curve381Shake256Bytes, CurveParameterSet.Bls12Curve381, pool);
         }

@@ -20,8 +20,10 @@ public sealed class MultilinearSumcheckVerification: IDisposable
     private readonly IMemoryOwner<byte> buffer;
 
 
+    /// <summary>Whether every sumcheck round was internally consistent.</summary>
     public bool Accepted { get; }
 
+    /// <summary>The number of variables, equal to the number of sumcheck rounds that were verified.</summary>
     public int VariableCount { get; }
 
     /// <summary>The challenge point, one 32-byte element per variable in round order.</summary>
@@ -43,5 +45,6 @@ public sealed class MultilinearSumcheckVerification: IDisposable
     public static int GetBufferSizeBytes(int variableCount) => (variableCount * ScalarSize) + ScalarSize;
 
 
+    /// <inheritdoc/>
     public void Dispose() => buffer.Dispose();
 }

@@ -187,8 +187,12 @@ internal sealed class BbsIetfTestVectorsTests
             TestSetup.G1Add,
             TestSetup.G1MultiScalarMultiply,
             g1HashToCurve,
+            TestSetup.G1IsOnCurve,
+            TestSetup.G1IsInPrimeOrderSubgroup,
             TestSetup.G2Add,
             TestSetup.G2ScalarMultiply,
+            TestSetup.G2IsOnCurve,
+            TestSetup.G2IsInPrimeOrderSubgroup,
             TestSetup.Pairing,
             TestSetup.Pool);
 
@@ -251,6 +255,8 @@ internal sealed class BbsIetfTestVectorsTests
                 TestSetup.G1ScalarMultiply,
                 TestSetup.G1MultiScalarMultiply,
                 g1HashToCurve,
+                TestSetup.G1IsOnCurve,
+                TestSetup.G1IsInPrimeOrderSubgroup,
                 TestSetup.Pool);
 
             Assert.IsTrue(actualProof.AsReadOnlySpan().SequenceEqual(expectedProof),
@@ -270,8 +276,12 @@ internal sealed class BbsIetfTestVectorsTests
             TestSetup.G1Add,
             TestSetup.G1MultiScalarMultiply,
             g1HashToCurve,
+            TestSetup.G1IsOnCurve,
+            TestSetup.G1IsInPrimeOrderSubgroup,
             TestSetup.G2Add,
             TestSetup.G2ScalarMultiply,
+            TestSetup.G2IsOnCurve,
+            TestSetup.G2IsInPrimeOrderSubgroup,
             TestSetup.Pairing,
             TestSetup.Pool);
 

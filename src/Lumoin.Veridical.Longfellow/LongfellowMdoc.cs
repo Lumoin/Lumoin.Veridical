@@ -31,39 +31,42 @@ public static class LongfellowMdoc
     /// </summary>
     /// <param name="witness">The two field witness columns (the signature column canonical), the three common values, and the six MAC keys.</param>
     /// <param name="circuits">The concatenated signature-then-hash circuit-definition bytes.</param>
+    /// <param name="spec">The proof specification the circuits were generated for.</param>
     /// <param name="transcriptSeed">The session seed the transcript is constructed from.</param>
     /// <param name="pool">The pool the working buffers and the returned proof rent from.</param>
     /// <param name="suite">The cryptographic-primitive bundle; <see langword="null"/> selects <see cref="LongfellowMdocCryptoSuite.Default"/>.</param>
     /// <returns>A pooled proof wrapping the <c>[6 macs] ‖ [hash ZkProof] ‖ [sig ZkProof]</c> envelope.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When the circuit bytes do not parse, or a witness region length does not match the circuit.</exception>
+    /// <exception cref="ArgumentException">When the circuit bytes do not parse, do not match the specification, or a witness region length does not match the circuit.</exception>
     public static LongfellowMdocProof Prove(
         LongfellowMdocWitness witness,
         LongfellowMdocCircuitSource circuits,
+        LongfellowMdocZkSpec spec,
         ReadOnlySpan<byte> transcriptSeed,
         BaseMemoryPool pool,
         LongfellowMdocCryptoSuite? suite = null)
     {
         ArgumentNullException.ThrowIfNull(witness);
         ArgumentNullException.ThrowIfNull(circuits);
+        ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(pool);
         LongfellowMdocCryptoSuite cryptoSuite = suite ?? LongfellowMdocCryptoSuite.Default;
 
-        ParseCircuits(circuits, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
+        ParseCircuits(circuits, spec, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
 
         //The hash side runs over GF(2^128); its circuit is committed as parsed (no coefficient lift). The FFT
         //and the GF codec own pooled state and must outlive the driver call, so they are using-declared.
         using Lch14AdditiveFft hashFft = LongfellowMdocBundles.NewGfFft(pool);
         LongfellowFieldProfile hashProfile = LongfellowMdocBundles.NewGfProfile(hashFft);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowMdocBundles.NewGfCodec(hashProfile, hashFft, pool);
-        LongfellowMdocFieldProver hashBundle = LongfellowMdocBundles.BuildHashProver(hashCircuit, hashProfile, hashFft, hashCodec, pool);
+        LongfellowMdocFieldProver hashBundle = LongfellowMdocBundles.BuildHashProver(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
         //The sig side runs over the P-256 base field in the Montgomery working domain. The real-FFT owns no
         //pooled state (it is not disposable); the Fp256 codec owns nothing but is still disposable.
         LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile();
         Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
-        LongfellowMdocFieldProver signatureBundle = LongfellowMdocBundles.BuildSigProver(signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
+        LongfellowMdocFieldProver signatureBundle = LongfellowMdocBundles.BuildSigProver(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
 
         //Lift the caller's canonical signature column to the Montgomery working domain into a pooled buffer the
         //facade owns and clears (it carries the secret signature wires).
@@ -79,13 +82,13 @@ public static class LongfellowMdoc
         LongfellowRandomByteSource signatureRandom = destination => cryptoSuite.SignatureRandom(destination);
 
         using LongfellowTranscript transcript = new(
-            transcriptSeed, LongfellowMdocBundles.TranscriptVersion, LongfellowMdocBundles.TranscriptElementBytes,
+            transcriptSeed, spec.ProofSpecVersion, LongfellowMdocBundles.TranscriptElementBytes,
             blockCipher, pool, cryptoSuite.IncrementalHashFactory);
 
         byte[] envelope = LongfellowMdocProver.Prove(
             hashBundle, signatureBundle, witness.HashColumn.Span, montgomerySignatureColumn,
             hashRandom, signatureRandom, witness.CommonValues.Span, witness.ApKeys.Span,
-            witness.HashMacIndex, witness.SignatureMacIndex, transcript,
+            spec.HashMacIndex, LongfellowMdocZkSpec.SignatureMacIndex, transcript,
             cryptoSuite.MerkleHash, cryptoSuite.LeafHash, WellKnownHashAlgorithms.Sha256, pool);
 
         LongfellowMdocProof proof = LongfellowMdocProof.FromCanonical(envelope, pool);
@@ -102,14 +105,14 @@ public static class LongfellowMdoc
     /// Verifies a dual-field mdoc proof against the caller-assembled public statement.
     /// </summary>
     /// <param name="proof">The proof to verify.</param>
-    /// <param name="statement">The two field public-input templates (the signature template canonical).</param>
+    /// <param name="statement">The two field public-input templates (the signature template canonical) and the proof specification they were assembled for.</param>
     /// <param name="circuits">The concatenated signature-then-hash circuit-definition bytes.</param>
     /// <param name="transcriptSeed">The session seed the prover used.</param>
     /// <param name="pool">The pool the working buffers rent from.</param>
     /// <param name="suite">The cryptographic-primitive bundle; <see langword="null"/> selects <see cref="LongfellowMdocCryptoSuite.Default"/>.</param>
     /// <returns>The verdict; <see cref="LongfellowMdocVerdict.Accepted"/> when both proofs verify.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When the circuit bytes do not parse.</exception>
+    /// <exception cref="ArgumentException">When the circuit bytes do not parse or do not match the statement's specification.</exception>
     public static LongfellowMdocVerdict Verify(
         LongfellowMdocProof proof,
         LongfellowMdocStatement statement,
@@ -123,18 +126,19 @@ public static class LongfellowMdoc
         ArgumentNullException.ThrowIfNull(circuits);
         ArgumentNullException.ThrowIfNull(pool);
         LongfellowMdocCryptoSuite cryptoSuite = suite ?? LongfellowMdocCryptoSuite.Default;
+        LongfellowMdocZkSpec spec = statement.Spec;
 
-        ParseCircuits(circuits, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
+        ParseCircuits(circuits, spec, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
 
         using Lch14AdditiveFft hashFft = LongfellowMdocBundles.NewGfFft(pool);
         LongfellowFieldProfile hashProfile = LongfellowMdocBundles.NewGfProfile(hashFft);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowMdocBundles.NewGfCodec(hashProfile, hashFft, pool);
-        LongfellowMdocFieldVerifier hashBundle = LongfellowMdocBundles.BuildHashVerifier(hashCircuit, hashProfile, hashFft, hashCodec, pool);
+        LongfellowMdocFieldVerifier hashBundle = LongfellowMdocBundles.BuildHashVerifier(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
         LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile();
         Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
-        LongfellowMdocFieldVerifier signatureBundle = LongfellowMdocBundles.BuildSigVerifier(signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
+        LongfellowMdocFieldVerifier signatureBundle = LongfellowMdocBundles.BuildSigVerifier(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
 
         //Frame the canonical signature template into the little-endian wire form the verifier's splice consumes
         //(the hash template is already in GF wire framing and passes through as supplied).
@@ -145,7 +149,7 @@ public static class LongfellowMdoc
 
         LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => cryptoSuite.BlockCipher(key, input, output);
         using LongfellowTranscript transcript = new(
-            transcriptSeed, LongfellowMdocBundles.TranscriptVersion, LongfellowMdocBundles.TranscriptElementBytes,
+            transcriptSeed, spec.ProofSpecVersion, LongfellowMdocBundles.TranscriptElementBytes,
             blockCipher, pool, cryptoSuite.IncrementalHashFactory);
 
         LongfellowMdocVerifier.Verify(
@@ -168,12 +172,15 @@ public static class LongfellowMdoc
 
 
     //Parses the signature circuit first (field id 1 / 32-byte elements) to learn its length, then the hash
-    //circuit from the continuation span (field id 4 / 16-byte elements). Both must parse.
-    private static void ParseCircuits(LongfellowMdocCircuitSource circuits, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit)
+    //circuit from the continuation span (field id 4 / 16-byte elements). Both must parse, and the hash
+    //circuit's public-input count must match the specification: the public region is the template followed
+    //by the six MACs and the shared key, so npub_in pins the specification's template element count and a
+    //statement built for one specification cannot ride another specification's circuit bytes.
+    private static void ParseCircuits(LongfellowMdocCircuitSource circuits, LongfellowMdocZkSpec spec, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit)
     {
         ReadOnlySpan<byte> raw = circuits.RawCircuitBytes.Span;
 
-        if(!LongfellowCircuitReader.TryRead(raw, LongfellowMdocBundles.Point256FieldId, LongfellowMdocBundles.Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out int signatureBytes) || signature is null)
+        if(!LongfellowCircuitReader.TryRead(raw, LongfellowMdocBundles.Point256FieldId, LongfellowMdocBundles.Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out int signatureBytes, LongfellowMdocBundles.InRangeFp256) || signature is null)
         {
             throw new ArgumentException("The signature circuit could not be parsed from the circuit-definition bytes.", nameof(circuits));
         }
@@ -181,6 +188,11 @@ public static class LongfellowMdoc
         if(!LongfellowCircuitReader.TryRead(raw[signatureBytes..], LongfellowMdocBundles.Gf2128FieldId, LongfellowMdocBundles.Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out _, out _) || hash is null)
         {
             throw new ArgumentException("The hash circuit could not be parsed from the circuit-definition continuation.", nameof(circuits));
+        }
+
+        if(hash.PublicInputCount != spec.HashPublicInputCount)
+        {
+            throw new ArgumentException($"The hash circuit's public-input count is {hash.PublicInputCount}; the specification (version {spec.ProofSpecVersion}, {spec.AttributeCount} attribute(s)) requires {spec.HashPublicInputCount}.", nameof(circuits));
         }
 
         signatureCircuit = signature;

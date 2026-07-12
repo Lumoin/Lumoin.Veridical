@@ -3,8 +3,9 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
-using System.Numerics;
+using System.Security.Cryptography;
 using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
+using static Lumoin.Veridical.Secdsa.P256ScalarValidation;
 
 namespace Lumoin.Veridical.Secdsa;
 
@@ -51,11 +52,6 @@ public static class SecdsaAlgorithm
     public const int CompressedPointSizeBytes = WellKnownCurves.P256CompressedSizeBytes;
 
     private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
-
-
-    //The order n as a 32-byte big-endian scalar, used only for the public-order range checks. n is curve
-    //definition data, not a secret.
-    private static byte[] OrderBytes { get; } = BuildOrderBytes();
 
 
     /// <summary>
@@ -404,7 +400,7 @@ public static class SecdsaAlgorithm
             Span<byte> rPrime = stackalloc byte[ScalarSizeBytes];
             scalarReduce(noncePoint[1..], rPrime, Curve);
 
-            return rPrime.SequenceEqual(r);
+            return CryptographicOperations.FixedTimeEquals(rPrime, r);
         }
         catch(InvalidOperationException)
         {
@@ -620,17 +616,6 @@ public static class SecdsaAlgorithm
     }
 
 
-    private static byte[] BuildOrderBytes()
-    {
-        BigInteger n = WellKnownCurves.GetScalarFieldOrder(Curve);
-        byte[] big = n.ToByteArray(isUnsigned: true, isBigEndian: true);
-        byte[] order = new byte[ScalarSizeBytes];
-        big.CopyTo(order.AsSpan(ScalarSizeBytes - big.Length));
-
-        return order;
-    }
-
-
     //Blind: writes e' = P⁻¹·e mod n into blindedHash. Validates P in [1, n−1]; reduces the digest to a
     //canonical e first so the multiply operands are canonical for any mod-n backend (reduction is a ring
     //homomorphism, so this is byte-identical to multiplying the raw digest). Clears its own key-derived scratch.
@@ -656,24 +641,6 @@ public static class SecdsaAlgorithm
         {
             e.Clear();
             pinInverse.Clear();
-        }
-    }
-
-
-    private static void RequireScalarInRange(ReadOnlySpan<byte> scalar, string name)
-    {
-        if(IsZero(scalar) || !IsLess(scalar, OrderBytes))
-        {
-            throw new ArgumentException($"The scalar must be in [1, n-1] for the P-256 group order.", name);
-        }
-    }
-
-
-    private static void RequireLength(ReadOnlySpan<byte> span, int expected, string name)
-    {
-        if(span.Length != expected)
-        {
-            throw new ArgumentException($"Expected {expected} bytes; received {span.Length}.", name);
         }
     }
 }

@@ -849,7 +849,16 @@ internal static class Bls12Curve381BigIntegerG1Reference
 
         if(isInfinity)
         {
+            //The canonical identity encoding is exactly the compression and infinity
+            //flags set with every other bit zero. Any other infinity-flagged pattern
+            //is non-canonical and rejected rather than aliased onto the identity.
+            if(flagByte != 0xC0 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                return false;
+            }
+
             result = AffinePoint.Identity;
+
             return true;
         }
 

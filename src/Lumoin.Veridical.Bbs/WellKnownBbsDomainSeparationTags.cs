@@ -34,4 +34,39 @@ public static class WellKnownBbsDomainSeparationTags
 
     /// <summary>The initial generator seed; appended to api_id per Section 4.1.1.</summary>
     public const string MessageGeneratorSeedSuffix = "MESSAGE_GENERATOR_SEED";
+
+
+    /// <summary>
+    /// The pseudonym polynomial-evaluation-point DST suffix: appended to
+    /// the pseudonym api_id (<see cref="WellKnownBbsCiphersuites.Bls12Curve381Sha256Pseudonym"/>
+    /// / <see cref="WellKnownBbsCiphersuites.Bls12Curve381Shake256Pseudonym"/>) per
+    /// <c>draft-irtf-cfrg-bbs-per-verifier-linkability-03</c> Section 7.3.1
+    /// step 2 (<c>PseudonymProofInit</c>) and Section 7.3.2 step 2
+    /// (<c>PseudonymProofVerifyInit</c>): <c>z = hash_to_scalar(context_id,
+    /// api_id || "VECT_NYM_SECRETS")</c>. Unlike every other DST suffix in
+    /// this class, the draft does not append a trailing underscore — the
+    /// suffix is exactly the 16 ASCII bytes below.
+    /// </summary>
+    public const string PseudonymSecretsVectorDstSuffix = "VECT_NYM_SECRETS";
+
+    /// <summary>
+    /// The mock-random-scalar DST suffix for the blind-commitment fixture
+    /// vectors, composed onto the CORE Interface api_id
+    /// (<see cref="WellKnownBbsCiphersuites.Bls12Curve381Sha256"/> /
+    /// <see cref="WellKnownBbsCiphersuites.Bls12Curve381Shake256"/>) — NOT
+    /// the blind or pseudonym extension api_id, verified against both the
+    /// blind -02 Section 9 commitment fixtures (still valid for -03) and
+    /// the per-verifier-pseudonym -03 Section 12 commit fixtures, which use
+    /// the identical composition rule.
+    /// </summary>
+    public const string CommitMockRandomScalarsDstSuffix = "COMMIT_MOCK_RANDOM_SCALARS_DST_";
+
+    /// <summary>
+    /// The mock-random-scalar DST suffix for the blind-proof fixture
+    /// vectors, composed onto the CORE Interface api_id — see
+    /// <see cref="CommitMockRandomScalarsDstSuffix"/> for the same
+    /// core-vs-extension api_id caveat (blind -02 Section 9 / nym -03
+    /// Section 12 proof fixtures).
+    /// </summary>
+    public const string ProofMockRandomScalarsDstSuffix = "PROOF_MOCK_RANDOM_SCALARS_DST_";
 }

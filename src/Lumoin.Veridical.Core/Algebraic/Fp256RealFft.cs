@@ -238,7 +238,7 @@ internal sealed class Fp256RealFft
     }
 
 
-    //--- The forward butterflies (rfft.h r2hcI_2, r2hcI_4, r2hcII_4, hc2hcf_4) ---
+    //The forward butterflies (rfft.h r2hcI_2, r2hcI_4, r2hcII_4, hc2hcf_4)
 
     private void R2HcI2(Span<byte> a, int basePos, int s)
     {
@@ -336,7 +336,7 @@ internal sealed class Fp256RealFft
     }
 
 
-    //--- The backward butterflies (rfft.h hc2rI_2, hc2rI_4, hc2rIII_4, hc2hcb_4) ---
+    //The backward butterflies (rfft.h hc2rI_2, hc2rI_4, hc2rIII_4, hc2hcb_4)
 
     private void Hc2RI2(Span<byte> a, int basePos, int s)
     {
@@ -472,7 +472,7 @@ internal sealed class Fp256RealFft
     }
 
 
-    //--- The twiddle precompute and reroot (twiddle.h Twiddle / reroot) ---
+    //The twiddle precompute and reroot (twiddle.h Twiddle / reroot)
 
     //Builds the order/2 powers of the (length)-th root of unity, each an extension element. The root is
     //the engine's omega rerooted from omegaOrder down to length.
@@ -516,7 +516,7 @@ internal sealed class Fp256RealFft
     }
 
 
-    //--- bit reversal (permutations.h bitrev) ---
+    //bit reversal (permutations.h bitrev)
 
     private void BitReverse(Span<byte> data, int length)
     {

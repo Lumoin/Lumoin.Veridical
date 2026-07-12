@@ -22,7 +22,7 @@ namespace Lumoin.Veridical.Core.Commitments.Ligero;
 /// over any field a backend exposes — for the Longfellow ECDSA circuits that is
 /// the P-256 <em>base</em> field Fp256. The builder is the substrate the
 /// higher-level elliptic-curve gadgets
-/// (<see cref="Gadgets.WeierstrassGadgets"/>) compose from; it carries no curve
+/// (<see cref="Gadgets.WeierstrassGadgetExtensions"/>) compose from; it carries no curve
 /// identity of its own.
 /// </para>
 /// <para>
@@ -163,7 +163,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     public ReadOnlySpan<byte> Value(int wire) => wires[wire].Span;
 
 
-    //--- Field value helpers (delegate wrappers) used by the gadget layer ---
+    //Field value helpers (delegate wrappers) used by the gadget layer
 
     public void AddValues(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result) => add(a, b, result, curve);
 
@@ -184,7 +184,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     }
 
 
-    //--- Constraint primitives ---
+    //Constraint primitives
 
     //Allocates a wire holding the given value reduced into canonical form, backed by a
     //pooled arena scalar.
@@ -601,7 +601,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     }
 
 
-    //--- Output for LigeroProver / LigeroVerifier ---
+    //Output for LigeroProver / LigeroVerifier
 
     public LigeroParameters BuildParameters() => new(wires.Count, quadratics.Count, inverseRate, openedColumnCount, block);
 

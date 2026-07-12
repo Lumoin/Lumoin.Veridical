@@ -241,9 +241,25 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     /// <summary>
     /// Builds the tableau, commits, and writes the 32-byte Merkle root into <paramref name="root"/> in
     /// one shot, releasing the commitment immediately. The thin facade the commit-only conformance gate
-    /// (C.2) drives; the prove flow uses the object-returning <see cref="Commit"/> instead.
+    /// (C.2) drives; the prove flow uses the object-returning <see cref="Commit(LongfellowLigeroParameters, ReadOnlySpan{byte}, ReadOnlySpan{LigeroQuadraticConstraint}, int, int, LongfellowRandomByteSource, LongfellowRowEncoderFactory, LongfellowFieldProfile, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/> instead.
     /// </summary>
+    /// <param name="parameters">The wire-format tableau layout.</param>
+    /// <param name="witnesses">The witness vector; exactly <see cref="LongfellowLigeroParameters.WitnessCount"/> · 32 canonical bytes.</param>
+    /// <param name="quadraticConstraints">One entry per multiplication constraint; exactly <see cref="LongfellowLigeroParameters.QuadraticConstraintCount"/> of them.</param>
+    /// <param name="subFieldBytes">The subfield element byte size (2 for GF(2^16), 4 for GF(2^32)); the byte count a subfield random draw consumes.</param>
+    /// <param name="subfieldBoundary">The reference's <c>subfield_boundary</c>: witness rows whose elements are all below this index draw subfield padding; the rest draw full-field padding. The production wiring sets it to <see cref="LongfellowLigeroParameters.WitnessCount"/>; <c>0</c> trivially makes every row full-field.</param>
+    /// <param name="random">The raw-byte entropy source, consumed in the reference's fixed order.</param>
+    /// <param name="encoderFactory">Builds the systematic Reed–Solomon row encoder per shape (binary LCH14 or prime FFT-convolution).</param>
+    /// <param name="profile">The field profile: element width, the <c>to_bytes_field</c> framing, and the subfield <c>of_scalar</c> the padding draws map through.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="merkleHash">The two-to-one <c>SHA256(L ‖ R)</c> Merkle compression.</param>
+    /// <param name="leafHash">The one-shot SHA-256 over a single contiguous input span (nonce followed by the column bytes).</param>
+    /// <param name="hashAlgorithm">The canonical hash-function name (SHA-256) the leaf and node hashes implement.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="root">Receives the 32-byte commitment root.</param>
+    /// <param name="pool">Pool to rent the tableau, leaf and column buffers from.</param>
     /// <inheritdoc cref="Commit(LongfellowLigeroParameters, ReadOnlySpan{byte}, ReadOnlySpan{LigeroQuadraticConstraint}, int, int, LongfellowRandomByteSource, LongfellowRowEncoderFactory, LongfellowFieldProfile, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/>
     public static void Commit(
         LongfellowLigeroParameters parameters,
@@ -324,6 +340,11 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
         int r = parameters.RandomCount;
         int w = parameters.WitnessPerRow;
 
+        //The three blinding rows carry the tableau's hiding budget; each drawn
+        //block is inspected before it is adjusted or RS-extended so the check
+        //sees exactly what the entropy source produced.
+        bool blindingDrawsNonzero = false;
+
         //ILDT: block random message entries, extend block -> block_enc.
         Span<byte> lowDegreeRow = RowSpan(tableau, rowStrideBytes, LongfellowLigeroParameters.LowDegreeRowIndex);
         for(int j = 0; j < block; j++)
@@ -331,6 +352,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
             DrawFieldElement(random, profile, ScalarAt(lowDegreeRow, j));
         }
 
+        blindingDrawsNonzero |= lowDegreeRow[..(block * ScalarSize)].IndexOfAnyExcept((byte)0) >= 0;
         ExtendRow(lowDegreeRow, parameters.BlockEncoded, blockRs);
 
         //IDOT: dblock random entries; subtract the whole witness-block sum from column r so [r, r+w)
@@ -341,6 +363,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
             DrawFieldElement(random, profile, ScalarAt(dotRow, j));
         }
 
+        blindingDrawsNonzero |= dotRow[..(dblock * ScalarSize)].IndexOfAnyExcept((byte)0) >= 0;
         ZeroWitnessBlockSum(dotRow, r, w, add, subtract, curve);
         ExtendRow(dotRow, parameters.BlockEncoded, doubleBlockRs);
 
@@ -354,12 +377,26 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
             DrawFieldElement(random, profile, ScalarAt(quadraticRow, j));
         }
 
+        blindingDrawsNonzero |= quadraticRow[..(dblock * ScalarSize)].IndexOfAnyExcept((byte)0) >= 0;
         for(int j = r; j < r + w; j++)
         {
             ScalarAt(quadraticRow, j).Clear();
         }
 
         ExtendRow(quadraticRow, parameters.BlockEncoded, doubleBlockRs);
+
+        //An identically-zero blinding block blinds nothing: the commitment and
+        //proof stay sound, but the hiding the ILDT/IDOT/IQUAD rows exist to
+        //provide is silently void. A healthy byte source cannot draw all-zero
+        //rows, so this only ever signals a broken entropy source — reject at
+        //generation, the one place the drawn randomness is visible.
+        if(!blindingDrawsNonzero)
+        {
+            throw new InvalidOperationException(
+                "The drawn Ligero blinding rows (ILDT, IDOT, IQUAD) are identically zero. A zero blinding block "
+                + "voids the hiding property while the commitment remains sound, and can only come from a broken "
+                + "entropy source; check the LongfellowRandomByteSource wiring supplied to Commit.");
+        }
     }
 
 
@@ -531,6 +568,20 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
                 }
 
                 leafHash(leafInput, leaves.Slice(j * DigestLength, DigestLength), hashAlgorithm);
+            }
+
+            //Identically-zero nonces make every leaf hash a deterministic function
+            //of its column: the commitment stays binding and the proof verifies,
+            //but the per-leaf hiding the nonces exist to provide is silently
+            //void. A healthy byte source cannot draw an all-zero nonce block, so
+            //this only ever signals a broken entropy source — reject at
+            //generation, the one place the nonces are visible.
+            if(nonces.IndexOfAnyExcept((byte)0) < 0)
+            {
+                throw new InvalidOperationException(
+                    "The drawn per-leaf Merkle nonces are identically zero. Zero nonces void the hiding property "
+                    + "while the commitment remains sound, and can only come from a broken entropy source; check "
+                    + "the LongfellowRandomByteSource wiring supplied to Commit.");
             }
 
             return LongfellowMerkleTree.Build(leaves, blockExtension, merkleHash, pool);

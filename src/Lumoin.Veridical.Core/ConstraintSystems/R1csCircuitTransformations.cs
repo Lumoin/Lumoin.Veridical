@@ -7,7 +7,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 
 /// <summary>
 /// Structural transformations over a built <see cref="R1csCircuit"/>, shaped to
-/// compose through <see cref="R1csBuilder{TResult, TState, TBuilder}.With"/>:
+/// compose through <see cref="Common.R1csBuilder{TResult, TState, TBuilder}.With"/>:
 /// each is a <c>Func&lt;R1csCircuit, R1csCircuitBuilder, R1csBuildState, R1csCircuit&gt;</c>.
 /// Future passes (deduplication, common-subexpression elimination, constant
 /// folding) land here as further static methods; the composition surface is

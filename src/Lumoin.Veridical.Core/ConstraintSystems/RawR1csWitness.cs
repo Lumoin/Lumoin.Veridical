@@ -68,6 +68,20 @@ public sealed class RawR1csWitness: SensitiveMemory
                 nameof(witnessBytes));
         }
 
+        //Reject non-canonical field elements at the construction boundary: the
+        //Circom .wtns and ZkInterface witness readers both funnel through here,
+        //and a value at or above the order would diverge between its
+        //transcript-absorb bytes and its reduced arithmetic value.
+        for(int i = 0; i < witnessVariableCount; i++)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(witnessBytes.Slice(i * scalarSize, scalarSize), curve))
+            {
+                throw new ArgumentException(
+                    $"Witness element {i} encodes an integer at or above the scalar field order of {curve}.",
+                    nameof(witnessBytes));
+            }
+        }
+
         IMemoryOwner<byte> owner = pool.Rent(witnessBytes.Length);
         witnessBytes.CopyTo(owner.Memory.Span);
 

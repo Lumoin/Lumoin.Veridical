@@ -148,6 +148,8 @@ internal sealed class BbsProofGenerateVerifyTests
             TestSetup.G1ScalarMultiply,
             TestSetup.G1MultiScalarMultiply,
             TestSetup.Sha256.G1HashToCurve,
+            TestSetup.G1IsOnCurve,
+            TestSetup.G1IsInPrimeOrderSubgroup,
             TestSetup.Pool);
     }
 
@@ -165,8 +167,12 @@ internal sealed class BbsProofGenerateVerifyTests
             TestSetup.G1Add,
             TestSetup.G1MultiScalarMultiply,
             TestSetup.Sha256.G1HashToCurve,
+            TestSetup.G1IsOnCurve,
+            TestSetup.G1IsInPrimeOrderSubgroup,
             TestSetup.G2Add,
             TestSetup.G2ScalarMultiply,
+            TestSetup.G2IsOnCurve,
+            TestSetup.G2IsInPrimeOrderSubgroup,
             TestSetup.Pairing,
             TestSetup.Pool);
     }

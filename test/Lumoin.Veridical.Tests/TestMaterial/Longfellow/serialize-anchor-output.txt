@@ -1,4 +1,5 @@
 Wire-format-conformant Ligero proof BYTE SERIALIZATION ground truth from google/longfellow-zk (C.6).
+Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
 
 Produced by serialize_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
 reference implementation in its own build environment via development tooling outside this repository:

@@ -325,12 +325,23 @@ public static class MaskedSpartanVerifierExtensions
         /// Verifies a genuinely zero-knowledge BaseFold-backed masked Spartan2
         /// proof (<see cref="ZkBaseFoldMaskedSpartanProof"/>) against a relaxed R1CS
         /// <paramref name="instance"/>. Identical to
-        /// <see cref="VerifyBaseFoldSound(BaseFoldMaskedSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarInvertDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>
+        /// <see cref="VerifyBaseFoldSound(MaskedSpartanVerifier, BaseFoldMaskedSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarInvertDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>
         /// except the embedded openings are full-ZK (lifted and masked); the
         /// scheme-neutral verifier core checks them through the verifying key's
         /// full-ZK provider, which routes to the ZK opening verification.
         /// </summary>
+        /// <param name="proof">The zero-knowledge BaseFold-backed masked Spartan2 proof to verify.</param>
+        /// <param name="instance">The relaxed R1CS instance the proof claims satisfaction of.</param>
+        /// <param name="transcript">The Fiat-Shamir transcript.</param>
+        /// <param name="scalarAdd">Backend scalar addition.</param>
+        /// <param name="scalarMultiply">Backend scalar multiplication.</param>
+        /// <param name="scalarSubtract">Backend scalar subtraction.</param>
+        /// <param name="scalarInvert">Backend scalar inversion.</param>
+        /// <param name="scalarReduce">Backend scalar reduction.</param>
+        /// <param name="hash">The Fiat-Shamir hash.</param>
+        /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
         /// <param name="errorPcs">A plain (non-hiding) BaseFold provider over the same code parameters, matching the one the prover used for the public zero-error vector.</param>
+        /// <param name="pool">The pool to rent the working buffers from.</param>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">When the proof's curve or dimensions do not match the instance.</exception>
         public bool VerifyZkBaseFold(

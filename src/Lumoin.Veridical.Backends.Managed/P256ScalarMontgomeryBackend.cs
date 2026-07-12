@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <em>scalar</em> field — arithmetic modulo the group order
 /// <c>n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551</c> —
 /// exposed as the canonical <see cref="ScalarAddDelegate"/> family. It is the
-/// production replacement for the variable-time <see cref="BigInteger"/> path in
+/// production replacement for the variable-time <see cref="System.Numerics.BigInteger"/> path in
 /// <see cref="P256BigIntegerScalarReference"/> on the secret-sensitive operations
 /// (reduce, add, subtract, multiply, negate, invert), built to the same constant-time
 /// discipline as the base-field <see cref="P256BaseFieldMontgomeryBackend"/> but over
@@ -26,7 +26,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// the Montgomery domain. The Montgomery constants are derived once at static init from
 /// <see cref="P256BigIntegerScalarReference.FieldOrder"/> via
 /// <see cref="P256ScalarMontgomeryParameters"/>, so the per-op path is
-/// <see cref="BigInteger"/>-free.
+/// <see cref="System.Numerics.BigInteger"/>-free.
 /// </para>
 /// <para>
 /// <strong>Constant-time contract.</strong> No per-operation branch, array index, or loop

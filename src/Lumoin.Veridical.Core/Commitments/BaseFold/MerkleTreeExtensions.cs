@@ -50,7 +50,7 @@ public static class MerkleTreeExtensions
                 tree.GetNode(level, siblingIndex).CopyTo(buffer.Slice(level * nodeSize, nodeSize));
             }
 
-            return MerkleAuthenticationPath.Create(owner, pathLength, nodeSize);
+            return MerkleAuthenticationPath.Create(owner, nodeSize);
         }
     }
 }

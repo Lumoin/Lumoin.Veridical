@@ -65,6 +65,7 @@ public class Gf2kBatchMultiplyBenchmarks
     private ScalarBatchMultiplyAccumulateDelegate batchMultiplyAccumulate = null!;
 
 
+    /// <summary>Resolves the GF(2^128) scalar and batch multiply delegates and fills canonical operand buffers.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -90,6 +91,7 @@ public class Gf2kBatchMultiplyBenchmarks
     }
 
 
+    /// <summary>Benchmarks GF(2^128) multiplication as a per-scalar delegate loop.</summary>
     [Benchmark(Baseline = true, Description = "Per-scalar multiply loop")]
     public void ScalarMultiplyLoop()
     {
@@ -105,6 +107,7 @@ public class Gf2kBatchMultiplyBenchmarks
     }
 
 
+    /// <summary>Benchmarks GF(2^128) batch multiplication with packed limbs and per-product reduction.</summary>
     [Benchmark(Description = "Batch multiply (packed limbs, reduce per product)")]
     public void BatchMultiply()
     {
@@ -118,6 +121,7 @@ public class Gf2kBatchMultiplyBenchmarks
     }
 
 
+    /// <summary>Benchmarks GF(2^128) batch multiply in overwrite mode with deferred reduction.</summary>
     [Benchmark(Description = "Batch FMA overwrite (packed limbs, deferred reduce)")]
     public void BatchFusedMultiplyAccumulate()
     {

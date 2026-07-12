@@ -78,6 +78,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// <param name="scalarRandom">The entropy-sourced sampler for the per-leaf hiding salts.</param>
     /// <param name="hashToScalar">Hash-to-scalar backend the code derivation uses for its diagonal entries.</param>
     /// <param name="digestSizeBytes">The Merkle node digest size <paramref name="merkleHash"/> produces; defaults to <see cref="WellKnownMerkleHashParameters.DefaultDigestSizeBytes"/>.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <returns>A hiding provider whose commit / open / verify route to the salted BaseFold evaluation protocol.</returns>
     /// <exception cref="ArgumentNullException">When any reference argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive.</exception>
@@ -143,10 +144,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             int saltBytes = codewordElements * ScalarSize;
             using IMemoryOwner<byte> saltOwner = pool.Rent(saltBytes);
             Span<byte> salts = saltOwner.Memory.Span[..saltBytes];
-            for(int i = 0; i < codewordElements; i++)
-            {
-                _ = scalarRandom(salts.Slice(i * ScalarSize, ScalarSize), curve, WellKnownAlgebraicTags.ScalarFor(curve));
-            }
+            GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
             using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, merkleHash, pool);
 
@@ -280,7 +278,22 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// codeword positions is additionally validated empirically in ZK.4.
     /// </para>
     /// </remarks>
+    /// <param name="seed">The seed binding the random foldable code; commit, open, and verify must share it.</param>
+    /// <param name="curve">The curve every produced artifact is tagged with.</param>
+    /// <param name="queryCount">The IOPP query repetition count (see <see cref="WellKnownBaseFoldIoppParameters.ClassicalSecurityDefaultQueryCount"/>).</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression, used both to salt the leaves and to compress internal nodes.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
+    /// <param name="scalarRandom">Backend random scalar generation.</param>
+    /// <param name="hashToScalar">Hash-to-scalar backend the code derivation uses for its diagonal entries.</param>
     /// <param name="extraVariableCount">The number of extra (mask) variables <c>t</c> the witness is lifted by; must be positive.</param>
+    /// <param name="digestSizeBytes">The Merkle node digest size <paramref name="merkleHash"/> produces; defaults to <see cref="WellKnownMerkleHashParameters.DefaultDigestSizeBytes"/>.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <inheritdoc cref="Create"/>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="extraVariableCount"/> is non-positive, in addition to the base exceptions.</exception>
     public static PolynomialCommitmentProvider CreateZeroKnowledge(
@@ -850,12 +863,26 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
 
 
     //Fills a span with count fresh uniform scalars from the entropy sampler.
+    //Every caller draws hiding material — the per-leaf Merkle salts or a
+    //dimension-lift mask block — so an identically-zero block voids the hiding
+    //property while every proof still verifies. A healthy sampler produces a
+    //zero block with probability at most 2^-255 per scalar, so the post-check
+    //only ever fires on a broken entropy delegate; reject at generation, the
+    //one place the drawn bytes are visible.
     private static void GenerateScalars(Span<byte> destination, int count, ScalarRandomDelegate scalarRandom, CurveParameterSet curve)
     {
         Tag scalarTag = WellKnownAlgebraicTags.ScalarFor(curve);
         for(int i = 0; i < count; i++)
         {
             _ = scalarRandom(destination.Slice(i * ScalarSize, ScalarSize), curve, scalarTag);
+        }
+
+        if(count > 0 && destination[..(count * ScalarSize)].IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new InvalidOperationException(
+                "The sampled hiding block (salts or dimension-lift mask) is identically zero. A zero block voids "
+                + "the hiding property while the commitment and proof remain sound, and can only come from a broken "
+                + "entropy source; check the ScalarRandomDelegate wiring supplied to the provider factory.");
         }
     }
 

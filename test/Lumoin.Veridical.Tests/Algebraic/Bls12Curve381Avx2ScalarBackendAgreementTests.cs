@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// Property-based agreement tests for the AVX2 scalar backend
 /// specifically — not the dispatch facade. On hosts that also have
 /// AVX-512, the facade picks AVX-512 and the AVX2 path goes untested
-/// there unless these tests exist. <see cref="TestInitialize"/> gates
+/// there unless these tests exist. <see cref="TestInitializeAttribute"/> gates
 /// the whole class on <see cref="System.Runtime.Intrinsics.X86.Avx2.IsSupported"/>.
 /// </summary>
 [TestClass]

@@ -95,6 +95,7 @@ public sealed class ScalarArithmeticBackend: IDisposable
     /// <param name="random">Random-sampling backend.</param>
     /// <param name="batchAdd">Batch-add backend.</param>
     /// <param name="batchSubtract">Batch-subtract backend.</param>
+    /// <param name="batchMultiply">Batch-multiply backend.</param>
     /// <param name="hashToScalar">Optional hash-to-scalar backend; <see langword="null"/> when the curve has no baked-in expand-message function.</param>
     /// <param name="isHardwareAccelerated">Whether the bundled operations use host SIMD acceleration.</param>
     /// <param name="ownedResource">An optional resource the bundle disposes when disposed (for backends holding accelerator handles); <see langword="null"/> when the caller retains ownership.</param>

@@ -97,6 +97,37 @@ since invalid producer inputs are caller bugs, not protocol-level
 invalid data, and surfacing them as exceptions is the right
 default at that boundary.
 
+### Deserialization validation
+
+`Verify`, `VerifyProof`, and `GenerateProof` validate every
+deserialized point per the IETF deserialization procedures before
+using it: `octets_to_signature` (Section 4.2.4.3) for the signature
+point `A`, `octets_to_proof` (Section 4.2.4.5) for the proof points
+`Abar`, `Bbar`, and `D`, and `octets_to_pubkey` (Section 4.2.4.6,
+whose steps 2 to 5 are the public-key validity check) for the public
+key `W`. Each point must decode onto
+its curve, must not be the identity, and must lie in the
+prime-order subgroup; scalar canonicity (range and non-zero) is
+enforced earlier, at container construction. Both BLS12-381 groups
+have non-trivial cofactors, so an on-curve point is not
+automatically a subgroup member.
+
+`GenerateProof` validates the Prover's own signature rather than
+trusting the Signer: an `A` outside the prime-order subgroup
+carries a cofactor component that survives blinding into `Abar`
+and `Bbar`, handing a malicious Signer a covert channel that
+breaks proof unlinkability. The verifier surfaces reject the same
+inputs with a `false` return per the decode-error contract above.
+
+The validation predicates travel as backend delegates
+(`G1IsOnCurveDelegate`, `G1IsInPrimeOrderSubgroupDelegate`, and
+their G2 counterparts) alongside the arithmetic delegates. The
+reference subgroup check is `[r] P == O` by a full scalar
+multiplication per point; endomorphism-based acceleration
+(Bowe 19 / Scott 21) is a known deferred-performance item under
+the project's correctness-first rule. The checks run on public
+data only, so they carry no constant-time requirement.
+
 ## § 3 Ciphersuites
 
 Two ciphersuites are shipping, per IETF Sections 7.2.1 and 7.2.2:
