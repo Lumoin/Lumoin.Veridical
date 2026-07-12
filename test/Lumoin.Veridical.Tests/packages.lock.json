@@ -8,6 +8,21 @@
         "resolved": "4.7.0",
         "contentHash": "j1ddNwZJHtuXJo0haeDtEX/j/iDJYLlZdIvaEmb7ftxTN9p4e5/jn6hYGXH/Em6RFfDRGWaNQ17LOMR3MhYWwA=="
       },
+      "dotNetRdf.Core": {
+        "type": "Direct",
+        "requested": "[3.5.2, )",
+        "resolved": "3.5.2",
+        "contentHash": "rHp/RXZelasYYuWLdqAlXuN7bPx6zkxBZ5fOi2WV5tG1plb2muaZCDgnHb8CBwtrsQyCH+oBOICfF33IxIKBjg==",
+        "dependencies": {
+          "AngleSharp": "1.4.0",
+          "HtmlAgilityPack": "1.12.4",
+          "Microsoft.Extensions.Configuration": "10.0.8",
+          "Newtonsoft.Json": "13.0.4",
+          "System.Configuration.ConfigurationManager": "10.0.8",
+          "System.Reflection.TypeExtensions": "4.7.0",
+          "VDS.Common": "3.0.1"
+        }
+      },
       "LiquidTestReports.Markdown": {
         "type": "Direct",
         "requested": "[2.0.0-beta.6, )",
@@ -185,10 +200,20 @@
         "resolved": "10.0.9",
         "contentHash": "1iRjljxTMvQ1EtArg6kkj+9PV5LthrtlH//GM+MLez5L9jmZFDXGoH9lNiUpOeYY3sB60CgFVRnGctcmHEKqRw=="
       },
+      "AngleSharp": {
+        "type": "Transitive",
+        "resolved": "1.4.0",
+        "contentHash": "6ph8mpaQx0KL0COYRt0kI8MB9gSp1PtKijKMhJU//+aVFgKAJLKDesG/+26JSaVCOrHNgPf12wpfoyRcMYOeXg=="
+      },
       "DotLiquid": {
         "type": "Transitive",
         "resolved": "2.2.692",
         "contentHash": "99vthJizf3mzMamLonWRhYICnKMCS+Xiz+mPojgSIIxa5ry42LE5P1s3i1OviL0/rtxXiZor8kYq5iZVCZ/RPA=="
+      },
+      "HtmlAgilityPack": {
+        "type": "Transitive",
+        "resolved": "1.12.4",
+        "contentHash": "ljqvBabvFwKoLniuoQKO8b5bJfJweKLs4fUNS/V5dsvpo0A8MlJqxxn9XVmP2DaskbUXty6IYaWAi1SArGIMeQ=="
       },
       "LiquidTestReports.Core": {
         "type": "Transitive",
@@ -600,6 +625,11 @@
         "resolved": "4.2.3",
         "contentHash": "dxOZt8/LWuiox7rugInJoIa5Mmu3pBmXdfaoZOx/mxx8+sUFFpjBXPlWXQXGeWzpkVPNC3x1Jf7rt2h2Zjyvvg=="
       },
+      "Newtonsoft.Json": {
+        "type": "Transitive",
+        "resolved": "13.0.4",
+        "contentHash": "pdgNNMai3zv51W5aq268sujXUyx7SNdE2bj1wZcWjAQrKMFZV260lbqYop1d2GM67JI1huLRwxo9ZqnfF/lC6A=="
+      },
       "NuGet.Frameworks": {
         "type": "Transitive",
         "resolved": "6.12.1",
@@ -617,11 +647,11 @@
       },
       "System.Configuration.ConfigurationManager": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "PdkuMrwDhXoKFo/JxISIi9E8L+QGn9Iquj2OKDWHB6Y/HnUOuBouF7uS3R4Hw3FoNmwwMo6hWgazQdyHIIs27A==",
+        "resolved": "10.0.8",
+        "contentHash": "QG+HHwJjLyUiRuA9axr5pDqHAxboo7FXCTRakxMABE9CUAUij/tsd/MsgQPJUEppkf+YBLT+F/P/wKIVCAIcNg==",
         "dependencies": {
-          "System.Diagnostics.EventLog": "9.0.0",
-          "System.Security.Cryptography.ProtectedData": "9.0.0"
+          "System.Diagnostics.EventLog": "10.0.8",
+          "System.Security.Cryptography.ProtectedData": "10.0.8"
         }
       },
       "System.Diagnostics.EventLog": {
@@ -633,6 +663,11 @@
         "type": "Transitive",
         "resolved": "9.0.0",
         "contentHash": "F/6tNE+ckmdFeSQAyQo26bQOqfPFKEfZcuqnp4kBE6/7jP26diP+QTHCJJ6vpEfaY6bLy+hBLiIQUSxSmNwLkA=="
+      },
+      "System.Reflection.TypeExtensions": {
+        "type": "Transitive",
+        "resolved": "4.7.0",
+        "contentHash": "VybpaOQQhqE6siHppMktjfGBw1GCwvCqiufqmP8F1nj7fTUNtW35LOEt3UZTEsECfo+ELAl/9o9nJx3U91i7vA=="
       },
       "System.Resources.Extensions": {
         "type": "Transitive",
@@ -649,8 +684,8 @@
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "CJW+x/F6fmRQ7N6K8paasTw9PDZp4t7G76UjGNlSDgoHPF0h08vTzLYbLZpOLEJSg35d5wy2jCXGo84EN05DpQ=="
+        "resolved": "10.0.8",
+        "contentHash": "/ldVgSfImIBp6fLWS7sLH0BnmtFj0ZwGlZo4Xx2q0K3ZhJNDbW45kj2f6zPoC+L+BTINuHdMzTsopuwmkbgcNA=="
       },
       "System.Security.Permissions": {
         "type": "Transitive",
@@ -664,6 +699,11 @@
         "type": "Transitive",
         "resolved": "8.0.0",
         "contentHash": "Obg3a90MkOw9mYKxrardLpY2u0axDMrSmy4JCdq2cYbelM2cUwmUir5Bomvd1yxmPL9h5LVHU1tuKBZpUjfASg=="
+      },
+      "VDS.Common": {
+        "type": "Transitive",
+        "resolved": "3.0.1",
+        "contentHash": "37Xq3UfF7gbcKhFhx2dgRIatLCrbkg/99XVSkIi9pJtttmHEfGX483Ix52mO3PPPZI6YNbZjzHfH5hQwwb+X2g=="
       },
       "lumoin.veridical.analysis": {
         "type": "Project",

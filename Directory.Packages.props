@@ -34,6 +34,10 @@
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.7" />
     <!-- Test-only: parse real mdoc DeviceResponse CBOR (the tests mimic a consuming application). -->
     <PackageVersion Include="System.Formats.Cbor" Version="10.0.9" />
+    <!-- Test-only, TEMPORARY: a real RDFC-1.0 canonicalizer injected into the data-integrity seam
+         until the sibling canonicalizer is consumable. Drags in third-party transitive owners that
+         are temporarily added to nuget.config trusted-signers; remove both together. -->
+    <PackageVersion Include="dotNetRdf.Core" Version="3.5.2" />
     <!-- The Lumoin.Veridical CLI / MCP tool. -->
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageVersion Include="System.CommandLine" Version="2.0.9" />

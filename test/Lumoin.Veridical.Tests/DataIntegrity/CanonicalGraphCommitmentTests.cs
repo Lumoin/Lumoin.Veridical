@@ -2,51 +2,65 @@ using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.DataIntegrity;
 using Lumoin.Veridical.Hashing;
 using System;
-using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using VDS.RDF;
+using VDS.RDF.Parsing;
 
 namespace Lumoin.Veridical.Tests.DataIntegrity;
 
 /// <summary>
 /// End-to-end tests for the canonicalize-then-commit selective-disclosure flow:
-/// a canonical RDF quad set is committed through <see cref="CanonicalGraphCommitment"/>,
-/// a subset of quads is disclosed with membership proofs, and each disclosed quad
-/// authenticates against the single committed root while tampering is rejected.
+/// an RDF credential is canonicalized (RDFC-1.0), committed through
+/// <see cref="CanonicalGraphCommitment"/>, and a subset of its quads is disclosed
+/// with membership proofs — each disclosed quad authenticates against the single
+/// committed root while tampering is rejected.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The RDF canonicalization is the injected seam. Here it is exercised with a
-/// fixture that is already a canonical N-Quads document, so the delegate only
-/// splits it into its per-quad lines — no RDF parsing or canonicalization logic
-/// lives in the library or the test. A production consumer wires a real RDFC-1.0
-/// canonicalizer (the sibling data-integrity library, or an RDF toolkit) into the
-/// same delegate; the crypto exercised here is unchanged by that swap.
+/// RDF canonicalization is the injected seam. Here it is wired to dotNetRDF's
+/// <see cref="RdfCanonicalizer"/> (RDFC-1.0, SHA-256) — a real, external
+/// canonicalizer standing in for the sibling data-integrity library until that is
+/// consumable. The library under test holds no RDF shapes or algorithm; it commits
+/// the opaque canonical quads. The blank node in the fixture makes canonicalization
+/// do genuine deterministic blank-node labeling, so the isomorphism test exercises
+/// the property, not just line sorting.
 /// </para>
 /// </remarks>
 [TestClass]
 internal sealed class CanonicalGraphCommitmentTests
 {
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
-
-    //A small fixture already in canonical N-Quads form: a product-passport-shaped
-    //credential with a handful of statements. Each line is one canonical quad.
-    private const string CanonicalCredential =
-        "<https://example.com/products/battery-42> <https://example.com/vocab/manufacturer> <https://example.com/orgs/acme> .\n" +
-        "<https://example.com/products/battery-42> <https://example.com/vocab/recycledContent> \"35\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n" +
-        "<https://example.com/products/battery-42> <https://example.com/vocab/carbonFootprint> \"12\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n" +
-        "<https://example.com/products/battery-42> <https://example.com/vocab/batchNumber> \"AC-2026-0042\" .\n" +
-        "<https://example.com/products/battery-42> <https://example.com/vocab/originCountry> <https://example.com/countries/fi> .\n";
-
     private const int CredentialQuadCount = 5;
+
+    //A product-passport-shaped credential in N-Quads, with the manufacturer as a
+    //blank node so canonicalization must label it deterministically.
+    private const string CredentialNQuads =
+        "<https://example.com/products/battery-42> <https://example.com/vocab/manufacturer> _:mfr .\n" +
+        "_:mfr <https://example.com/vocab/name> \"ACME Batteries\" .\n" +
+        "_:mfr <https://example.com/vocab/country> <https://example.com/countries/fi> .\n" +
+        "<https://example.com/products/battery-42> <https://example.com/vocab/recycledContent> \"35\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n" +
+        "<https://example.com/products/battery-42> <https://example.com/vocab/carbonFootprint> \"12\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n";
+
+    //The same graph, blank node relabeled and statements reordered: isomorphic, so
+    //RDFC-1.0 canonicalizes it identically and it must commit to the same root.
+    private const string IsomorphicCredentialNQuads =
+        "<https://example.com/products/battery-42> <https://example.com/vocab/carbonFootprint> \"12\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n" +
+        "_:org <https://example.com/vocab/country> <https://example.com/countries/fi> .\n" +
+        "<https://example.com/products/battery-42> <https://example.com/vocab/recycledContent> \"35\"^^<http://www.w3.org/2001/XMLSchema#integer> .\n" +
+        "_:org <https://example.com/vocab/name> \"ACME Batteries\" .\n" +
+        "<https://example.com/products/battery-42> <https://example.com/vocab/manufacturer> _:org .\n";
 
 
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
-    //An injected canonicalizer stand-in: the fixture is already canonical, so the
-    //delegate splits the document into its per-quad lines. Production wires a real
-    //RDFC-1.0 canonicalizer into this same seam.
-    private static RdfCanonicalizeDelegate SplitCanonicalNQuads { get; } = SplitLines;
+    //The injected canonicalizer: dotNetRDF's RDFC-1.0 implementation.
+    private static RdfCanonicalizeDelegate Canonicalize { get; } = CanonicalizeWithRdfc;
+
+    //Returns an empty quad set, to exercise the commitment's empty-graph guard
+    //independently of the canonicalizer.
+    private static RdfCanonicalizeDelegate EmptyCanonicalization { get; } = static _ => Array.Empty<ReadOnlyMemory<byte>>();
 
     private List<IDisposable> Disposables { get; } = [];
 
@@ -66,7 +80,7 @@ internal sealed class CanonicalGraphCommitmentTests
     [TestMethod]
     public void EveryQuadOfTheCommittedGraphAuthenticatesAgainstTheRoot()
     {
-        CanonicalGraphCommitment commitment = Commit(CanonicalCredential);
+        CanonicalGraphCommitment commitment = Commit(CredentialNQuads);
         Assert.AreEqual(CredentialQuadCount, commitment.QuadCount, "The five canonical quads must all be committed.");
 
         for(int i = 0; i < commitment.QuadCount; i++)
@@ -83,14 +97,14 @@ internal sealed class CanonicalGraphCommitmentTests
     [TestMethod]
     public void ADisclosedSubsetVerifiesWhileTheRestStayHidden()
     {
-        CanonicalGraphCommitment commitment = Commit(CanonicalCredential);
+        CanonicalGraphCommitment commitment = Commit(CredentialNQuads);
 
-        //Disclose only the manufacturer and origin-country statements; the
-        //recycled-content, carbon, and batch quads are never revealed.
-        int manufacturerIndex = IndexOfQuadContaining(commitment, "manufacturer");
-        int originIndex = IndexOfQuadContaining(commitment, "originCountry");
+        //Disclose only the environmental claims; the manufacturer identity quads
+        //are never revealed.
+        int recycledIndex = IndexOfQuadContaining(commitment, "recycledContent");
+        int carbonIndex = IndexOfQuadContaining(commitment, "carbonFootprint");
 
-        foreach(int index in new[] { manufacturerIndex, originIndex })
+        foreach(int index in new[] { recycledIndex, carbonIndex })
         {
             MerkleAuthenticationPath path = Track(commitment.ProveMembership(index, BaseMemoryPool.Shared));
             bool authenticated = CanonicalGraphCommitment.VerifyMembership(
@@ -104,22 +118,18 @@ internal sealed class CanonicalGraphCommitmentTests
     [TestMethod]
     public void IsomorphicInputCommitsToTheSameRoot()
     {
-        //The same statements in a different document order must yield the same
-        //root: the commitment orders the set by content digest.
-        string reordered = ReverseLines(CanonicalCredential);
-
-        CanonicalGraphCommitment first = Commit(CanonicalCredential);
-        CanonicalGraphCommitment second = Commit(reordered);
+        CanonicalGraphCommitment first = Commit(CredentialNQuads);
+        CanonicalGraphCommitment second = Commit(IsomorphicCredentialNQuads);
 
         Assert.IsTrue(first.Root.AsReadOnlySpan().SequenceEqual(second.Root.AsReadOnlySpan()),
-            "The same quad set in a different order must commit to the same root.");
+            "An isomorphic graph (relabeled blank node, reordered statements) must commit to the same root.");
     }
 
 
     [TestMethod]
     public void AQuadPresentedAtTheWrongIndexIsRejected()
     {
-        CanonicalGraphCommitment commitment = Commit(CanonicalCredential);
+        CanonicalGraphCommitment commitment = Commit(CredentialNQuads);
         int index = 0;
         int otherIndex = commitment.QuadCount - 1;
         MerkleAuthenticationPath path = Track(commitment.ProveMembership(index, BaseMemoryPool.Shared));
@@ -136,13 +146,14 @@ internal sealed class CanonicalGraphCommitmentTests
     [TestMethod]
     public void ATamperedQuadIsRejected()
     {
-        CanonicalGraphCommitment commitment = Commit(CanonicalCredential);
+        CanonicalGraphCommitment commitment = Commit(CredentialNQuads);
         int index = IndexOfQuadContaining(commitment, "recycledContent");
         MerkleAuthenticationPath path = Track(commitment.ProveMembership(index, BaseMemoryPool.Shared));
 
-        //Claim a different value for the disclosed quad than the committed one.
-        byte[] tampered = Encoding.UTF8.GetBytes(
-            "<https://example.com/products/battery-42> <https://example.com/vocab/recycledContent> \"95\"^^<http://www.w3.org/2001/XMLSchema#integer> .");
+        //Alter one byte of the committed canonical quad; its digest no longer
+        //matches the committed leaf.
+        byte[] tampered = commitment.GetQuad(index).ToArray();
+        tampered[^3] ^= 0x01;
 
         bool authenticated = CanonicalGraphCommitment.VerifyMembership(
             commitment.Root, index, tampered, path, Blake3TwoToOne);
@@ -154,7 +165,7 @@ internal sealed class CanonicalGraphCommitmentTests
     [TestMethod]
     public void AForeignRootRejectsAMembershipProof()
     {
-        CanonicalGraphCommitment commitment = Commit(CanonicalCredential);
+        CanonicalGraphCommitment commitment = Commit(CredentialNQuads);
         MerkleAuthenticationPath path = Track(commitment.ProveMembership(0, BaseMemoryPool.Shared));
 
         Span<byte> tamperedRootBytes = stackalloc byte[DigestSizeBytes];
@@ -172,15 +183,17 @@ internal sealed class CanonicalGraphCommitmentTests
     [TestMethod]
     public void CommittingAnEmptyGraphIsRejected()
     {
-        Assert.ThrowsExactly<ArgumentException>(() => Commit(string.Empty).Dispose());
+        byte[] document = Encoding.UTF8.GetBytes(CredentialNQuads);
+        Assert.ThrowsExactly<ArgumentException>(
+            () => CanonicalGraphCommitment.Commit(document, EmptyCanonicalization, Blake3TwoToOne, BaseMemoryPool.Shared).Dispose());
     }
 
 
-    private CanonicalGraphCommitment Commit(string canonicalNQuads)
+    private CanonicalGraphCommitment Commit(string nQuads)
     {
-        byte[] document = Encoding.UTF8.GetBytes(canonicalNQuads);
+        byte[] document = Encoding.UTF8.GetBytes(nQuads);
 
-        return Track(CanonicalGraphCommitment.Commit(document, SplitCanonicalNQuads, Blake3TwoToOne, BaseMemoryPool.Shared));
+        return Track(CanonicalGraphCommitment.Commit(document, Canonicalize, Blake3TwoToOne, BaseMemoryPool.Shared));
     }
 
 
@@ -198,19 +211,17 @@ internal sealed class CanonicalGraphCommitmentTests
     }
 
 
-    private static string ReverseLines(string document)
-    {
-        string[] lines = document.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Array.Reverse(lines);
-
-        return string.Join('\n', lines) + '\n';
-    }
-
-
-    private static IReadOnlyList<ReadOnlyMemory<byte>> SplitLines(ReadOnlyMemory<byte> document)
+    //Injects dotNetRDF's RDFC-1.0 canonicalizer: parse the N-Quads dataset,
+    //canonicalize, and return each canonical N-Quads line as opaque bytes.
+    private static IReadOnlyList<ReadOnlyMemory<byte>> CanonicalizeWithRdfc(ReadOnlyMemory<byte> document)
     {
         string text = Encoding.UTF8.GetString(document.Span);
-        string[] lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        using TripleStore store = new();
+        new NQuadsParser().Load(store, new StringReader(text));
+
+        RdfCanonicalizer.CanonicalizedRdfDataset canonical = new RdfCanonicalizer().Canonicalize(store);
+        string[] lines = canonical.SerializedNQuads.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
         var quads = new List<ReadOnlyMemory<byte>>(lines.Length);
         foreach(string line in lines)
         {
