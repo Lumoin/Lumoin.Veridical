@@ -57,7 +57,7 @@ internal static class LongfellowZkProver
     /// <c>ZkProof::write</c>.
     /// </summary>
     /// <param name="circuit">The circuit shape with its per-layer Quad terms; must have <c>nc == 1</c>, <c>logc == 0</c>.</param>
-    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters"/>).</param>
+    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters(LongfellowSumcheckCircuit, int, int, int, int, int)"/>).</param>
     /// <param name="witnessColumn">The full input wire column <c>W</c> (one + public + private), <see cref="LongfellowSumcheckCircuit.InputCount"/> · 32 canonical bytes.</param>
     /// <param name="subFieldBytes">The subfield element byte size (2 for GF(2^16)).</param>
     /// <param name="subfieldBoundary">The reference's <c>subfield_boundary</c> rebased to start at <c>npub_in</c>; the commit draws subfield padding for witness rows below it.</param>
@@ -128,7 +128,7 @@ internal static class LongfellowZkProver
     /// <see cref="LongfellowGf2k128Encoding"/>.
     /// </summary>
     /// <param name="circuit">The circuit shape with its per-layer Quad terms; must have <c>nc == 1</c>, <c>logc == 0</c>.</param>
-    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters"/>).</param>
+    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters(LongfellowSumcheckCircuit, int, int, int, int, int)"/>).</param>
     /// <param name="witnessColumn">The full input wire column <c>W</c> (one + public + private), <see cref="LongfellowSumcheckCircuit.InputCount"/> · 32 canonical bytes.</param>
     /// <param name="subfieldBoundary">The reference's <c>subfield_boundary</c> rebased to start at <c>npub_in</c>; the commit draws subfield padding for witness rows below it.</param>
     /// <param name="random">The raw-byte entropy source, consumed in the reference's fixed order (pad draws, then the Ligero commit draws).</param>
@@ -207,7 +207,7 @@ internal static class LongfellowZkProver
     /// (<see cref="LongfellowZkVerifier.RecvCommitment"/>) before <see cref="ProveFromCommitment"/>.
     /// </summary>
     /// <param name="circuit">The circuit shape with its per-layer Quad terms; must have <c>nc == 1</c>, <c>logc == 0</c>.</param>
-    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters"/>).</param>
+    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters(LongfellowSumcheckCircuit, int, int, int, int, int)"/>).</param>
     /// <param name="witnessColumn">The full input wire column <c>W</c> (one + public + private), <see cref="LongfellowSumcheckCircuit.InputCount"/> · 32 canonical bytes; only the private tail <c>[npub_in..]</c> is committed.</param>
     /// <param name="subfieldBoundary">The reference's <c>subfield_boundary</c> rebased to start at <c>npub_in</c>; the commit draws subfield padding for witness rows below it.</param>
     /// <param name="random">The raw-byte entropy source, consumed in the reference's fixed order (pad draws, then the Ligero commit draws).</param>
@@ -340,7 +340,7 @@ internal static class LongfellowZkProver
     /// caller has already absorbed <paramref name="commitment"/>'s root into <paramref name="transcript"/>.
     /// </summary>
     /// <param name="circuit">The circuit shape with its per-layer Quad terms; must have <c>nc == 1</c>, <c>logc == 0</c>.</param>
-    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters"/>).</param>
+    /// <param name="parameters">The circuit-derived Ligero parameters (<see cref="LongfellowZkVerifier.DeriveParameters(LongfellowSumcheckCircuit, int, int, int, int, int)"/>).</param>
     /// <param name="commitment">The standing commitment from <see cref="Commit"/>.</param>
     /// <param name="witnessColumn">The FULL input wire column <c>W</c>, with the public mac/av region already PATCHED by the driver; the FS setup and the circuit evaluation read the patched public region.</param>
     /// <param name="transcript">The shared transcript with the commitment root already absorbed.</param>

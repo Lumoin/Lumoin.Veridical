@@ -12,6 +12,13 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// malformed opening bytes — it returns <see langword="false"/> rather than
 /// throwing.
 /// </summary>
+/// <remarks>
+/// Statement-binding is the caller's obligation, exactly as for
+/// <see cref="PolynomialVerifyEvaluationDelegate"/>: the argument binds
+/// <paramref name="weights"/> and <paramref name="claimedValue"/> only through
+/// the shared <paramref name="transcript"/>. A composing protocol absorbs them
+/// before calling; a standalone caller must absorb them itself.
+/// </remarks>
 /// <param name="commitment">The vector commitment being checked.</param>
 /// <param name="weights">The public weight vector, carried as an MLE.</param>
 /// <param name="claimedValue">The claimed inner-product value.</param>

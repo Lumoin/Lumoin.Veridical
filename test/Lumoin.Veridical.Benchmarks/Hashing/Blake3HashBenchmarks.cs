@@ -38,6 +38,7 @@ public class Blake3HashBenchmarks
     private readonly byte[] output = new byte[32];
 
 
+    /// <summary>Fills the deterministic input buffer sized for the current input size.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -47,6 +48,7 @@ public class Blake3HashBenchmarks
     }
 
 
+    /// <summary>Benchmarks the managed BLAKE3 implementation's auto-selected backend.</summary>
     [Benchmark(Baseline = true, Description = "Managed (auto-selected backend)")]
     public void Managed()
     {
@@ -54,6 +56,7 @@ public class Blake3HashBenchmarks
     }
 
 
+    /// <summary>Benchmarks the xoofx Rust-FFI BLAKE3 implementation.</summary>
     [Benchmark(Description = "Xoofx (Rust FFI)")]
     public void Xoofx()
     {

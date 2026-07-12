@@ -1,4 +1,5 @@
 # 26 genuine ISO/IEC 18013-5 mdoc DeviceResponse credentials sourced from google/longfellow-zk (Apache-2.0), lib/circuits/mdoc/mdoc_examples.h mdoc_tests[].
+# Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
 # issuerKeyX is the issuer DS P-256 public key x (hex); empty when the entry references the key indirectly (it is also inside each credential's x5chain).
 index	namespace	docTypeId	validityNow	byteLength	issuerKeyX
 00	org.iso.18013.5.1	kMDLDocType	2024-01-30T09:00:00Z	1451	2c80c10bf70f63bddcc41ea20d76a22ecba2a97fa8811bf19d572433b12c0c1f

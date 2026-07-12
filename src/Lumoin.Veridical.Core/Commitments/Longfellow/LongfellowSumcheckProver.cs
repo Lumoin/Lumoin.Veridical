@@ -170,6 +170,7 @@ internal static class LongfellowSumcheckProver
     /// <param name="curve">The curve parameter the delegates take.</param>
     /// <param name="pool">The pool the working buffers rent from.</param>
     /// <param name="gatherMultiplyAccumulate">The optional gather/scatter fused multiply-accumulate primitive the per-round <c>QW</c> corner precompute routes through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
+    /// <param name="broadcastMultiplyAccumulate">The optional broadcast-scalar fused multiply-accumulate primitive the per-layer <c>bind_g</c> routes through; <see langword="null"/> selects the scalar fallback.</param>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the circuit has copies or a length is wrong.</exception>
     public static void Prove(

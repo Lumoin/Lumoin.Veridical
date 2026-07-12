@@ -641,8 +641,16 @@ internal static class Bn254BigIntegerG1Reference
         int tag = bytes[0] & 0xC0;
         if(tag == 0x40)
         {
-            //Point at infinity.
+            //The canonical infinity encoding is exactly the infinity tag with every
+            //other bit zero. Any other infinity-tagged pattern is non-canonical and
+            //rejected rather than aliased onto the identity.
+            if(bytes[0] != 0x40 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                return false;
+            }
+
             result = AffinePoint.Identity;
+
             return true;
         }
 

@@ -14,7 +14,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </summary>
 /// <remarks>
 /// The arithmetic is field-generic: <c>1 − x</c> is the real subtraction (the <see cref="OneMinus"/>
-/// helper threads <paramref name="subtract"/>), which over GF(2^128) coincides with <c>1 ⊕ x</c> and over
+/// helper threads <c>subtract</c>), which over GF(2^128) coincides with <c>1 ⊕ x</c> and over
 /// Fp256 is genuine field subtraction. The delegates are injected to match the library's
 /// primitive-agnostic commitment infrastructure.
 /// </remarks>

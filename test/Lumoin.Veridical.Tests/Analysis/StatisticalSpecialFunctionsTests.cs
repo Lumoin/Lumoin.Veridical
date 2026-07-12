@@ -58,6 +58,72 @@ internal sealed class StatisticalSpecialFunctionsTests
     }
 
 
+    [TestMethod]
+    public void IncompleteBetaBoundaryValues()
+    {
+        //I_0(a,b) = 0 and I_1(a,b) = 1 for all positive a, b.
+        Assert.AreEqual(0.0, StatisticalSpecialFunctions.RegularizedIncompleteBeta(2.0, 3.0, 0.0), 1e-15);
+        Assert.AreEqual(1.0, StatisticalSpecialFunctions.RegularizedIncompleteBeta(2.0, 3.0, 1.0), 1e-15);
+    }
+
+
+    [TestMethod]
+    public void IncompleteBetaMatchesClosedForms()
+    {
+        //I_x(1,1) = x; I_x(a,1) = x^a; I_x(1,b) = 1 − (1−x)^b.
+        Assert.AreEqual(0.42, StatisticalSpecialFunctions.RegularizedIncompleteBeta(1.0, 1.0, 0.42), 1e-12);
+        Assert.AreEqual(Math.Pow(0.3, 3.0), StatisticalSpecialFunctions.RegularizedIncompleteBeta(3.0, 1.0, 0.3), 1e-12);
+        Assert.AreEqual(1.0 - Math.Pow(0.7, 4.0), StatisticalSpecialFunctions.RegularizedIncompleteBeta(1.0, 4.0, 0.3), 1e-12);
+    }
+
+
+    [TestMethod]
+    public void IncompleteBetaMatchesKnownValue()
+    {
+        //∫₀^0.5 t(1−t)² dt / B(2,3) = 0.0572916… / (1/12) = 0.6875.
+        Assert.AreEqual(0.6875, StatisticalSpecialFunctions.RegularizedIncompleteBeta(2.0, 3.0, 0.5), 1e-12);
+    }
+
+
+    [TestMethod]
+    public void IncompleteBetaSatisfiesReflectionSymmetry()
+    {
+        //I_x(a,b) = 1 − I_{1−x}(b,a).
+        double left = StatisticalSpecialFunctions.RegularizedIncompleteBeta(2.5, 4.0, 0.37);
+        double right = 1.0 - StatisticalSpecialFunctions.RegularizedIncompleteBeta(4.0, 2.5, 0.63);
+        Assert.AreEqual(left, right, 1e-12);
+    }
+
+
+    [TestMethod]
+    public void StudentTTwoTailedMatchesFivePercentCriticalValues()
+    {
+        //The 5% two-tailed Student-t critical values t* satisfy
+        //I_{v/(v+t*²)}(v/2, 1/2) = 0.05. Published: v=2 → 4.302653,
+        //v=5 → 2.570582, v=8 → 2.306004, v=10 → 2.228139.
+        AssertStudentTTwoTailed(2, 4.302653);
+        AssertStudentTTwoTailed(5, 2.570582);
+        AssertStudentTTwoTailed(8, 2.306004);
+        AssertStudentTTwoTailed(10, 2.228139);
+    }
+
+
+    [TestMethod]
+    public void IncompleteBetaThrowsOnNonPositiveParameters()
+    {
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => StatisticalSpecialFunctions.RegularizedIncompleteBeta(0.0, 1.0, 0.5));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => StatisticalSpecialFunctions.RegularizedIncompleteBeta(1.0, -1.0, 0.5));
+    }
+
+
+    private static void AssertStudentTTwoTailed(int degreesOfFreedom, double criticalT)
+    {
+        double x = degreesOfFreedom / (degreesOfFreedom + (criticalT * criticalT));
+        double p = StatisticalSpecialFunctions.RegularizedIncompleteBeta(degreesOfFreedom / 2.0, 0.5, x);
+        Assert.AreEqual(0.05, p, 1e-4, $"The two-tailed t p-value at the 5% critical value for {degreesOfFreedom} dof must be 0.05.");
+    }
+
+
     private static void AssertChiSquaredSurvival(int degreesOfFreedom, double criticalValue)
     {
         double survival = StatisticalSpecialFunctions.RegularizedUpperIncompleteGamma(degreesOfFreedom / 2.0, criticalValue / 2.0);

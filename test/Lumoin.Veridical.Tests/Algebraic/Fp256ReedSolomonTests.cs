@@ -1,8 +1,11 @@
+using CsCheck;
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -57,7 +60,22 @@ internal sealed class Fp256ReedSolomonTests
 
     private static ScalarInvertDelegate Invert { get; } = P256BaseFieldMontgomeryBackend.GetInvert();
 
+    private static ScalarReduceDelegate Reduce { get; } = P256BaseFieldMontgomeryBackend.GetReduce();
+
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors();
+
+    //Boundary-blended base-field draws for the property tests below: the
+    //canonical-domain corpus (0, 1, 2, the midpoint, the top neighbours, and
+    //limb-boundary patterns folded into the field) blended with uniform
+    //32-byte draws.
+    private static Gen<byte[]> BoundaryFieldBytesGen { get; } = BoundaryCorpusGen.CanonicalDomain(FieldOrder);
+
+    //cw5x16's dimensions: the smallest interpolator shape the fixed anchors
+    //exercise, kept here so the property sweep below stays fast per
+    //iteration while still driving the real FFT convolution.
+    private const int PropertyMessageDimension = 5;
+    private const int PropertyBlockLength = 16;
+    private const long PropertyIterationCount = 40;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -195,6 +213,61 @@ internal sealed class Fp256ReedSolomonTests
             P256BaseFieldMontgomeryBackend.FromMontgomery(montEval.AsSpan(i * ScalarSize, ScalarSize), dropped);
             Assert.IsTrue(canonicalEval.AsSpan(i * ScalarSize, ScalarSize).SequenceEqual(dropped), $"Montgomery interpolation element {i} must drop to the canonical value (canonical {Convert.ToHexString(canonicalEval.AsSpan(i * ScalarSize, ScalarSize).ToArray())}, dropped {Convert.ToHexString(dropped)}).");
         }
+    }
+
+
+    [TestMethod]
+    public void InterpolateOfBoundarySeededMessagesMatchesDirectEvaluationEverywhere()
+    {
+        //Round trip plus the systematic property in one identity: for a
+        //degree-(<N) polynomial whose coefficients are boundary-seeded
+        //rather than the anchor's fixed formula, every one of the M
+        //interpolated outputs (the first N systematic, the remaining M-N
+        //extended) must equal that same polynomial evaluated directly via
+        //Horner. No anchor lookup is needed — the oracle is the polynomial
+        //itself — only the anchor's root of unity is reused, since that is
+        //the one value the FFT convolution cannot be correct without.
+        byte[] rootX = ParseElement(Anchors["rootx"]);
+        byte[] rootY = ParseElement(Anchors["rooty"]);
+
+        BoundaryFieldBytesGen.Array[PropertyMessageDimension].Sample(rawCoefficients =>
+        {
+            var coefficients = new byte[PropertyMessageDimension][];
+            for(int i = 0; i < PropertyMessageDimension; i++)
+            {
+                var coefficient = new byte[ScalarSize];
+                Reduce(rawCoefficients[i], coefficient, CurveParameterSet.None);
+                coefficients[i] = coefficient;
+            }
+
+            using IMemoryOwner<byte> evaluationsOwner = BaseMemoryPool.Shared.Rent(PropertyBlockLength * ScalarSize);
+            Span<byte> evaluations = evaluationsOwner.Memory.Span[..(PropertyBlockLength * ScalarSize)];
+            evaluations.Clear();
+            for(int i = 0; i < PropertyMessageDimension; i++)
+            {
+                byte[] value = EvaluatePolynomial(coefficients, OfScalar((ulong)i));
+                value.CopyTo(evaluations.Slice(i * ScalarSize, ScalarSize));
+            }
+
+            byte[] rootOfUnity = new byte[Fp256QuadraticExtension.ElementSize];
+            rootX.CopyTo(rootOfUnity.AsSpan(0, ScalarSize));
+            rootY.CopyTo(rootOfUnity.AsSpan(ScalarSize, ScalarSize));
+
+            var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+            using var rs = new Fp256ReedSolomon(PropertyMessageDimension, PropertyBlockLength, fft, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+            rs.Interpolate(evaluations);
+
+            for(int i = 0; i < PropertyBlockLength; i++)
+            {
+                byte[] expected = EvaluatePolynomial(coefficients, OfScalar((ulong)i));
+                if(!evaluations.Slice(i * ScalarSize, ScalarSize).SequenceEqual(expected))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }, iter: PropertyIterationCount);
     }
 
 

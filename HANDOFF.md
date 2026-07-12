@@ -380,9 +380,12 @@ with the repo. Two things normally live there on the original machine:
 
 2. **The Longfellow reference (study-only, optional)** — only needed to
    disambiguate the spec in §5; the implementation is independent (no mechanical
-   translation, per the project rule). To fetch it on a new machine:
+   translation, per the project rule). To fetch it on a new machine, check out the
+   pinned oracle commit the committed fixtures were dumped from (see the
+   "Longfellow upstream pin" section of SECURITY.md):
    ```
    git clone https://github.com/google/longfellow-zk tempdocs/longfellow-zk-reference
+   git -C tempdocs/longfellow-zk-reference checkout d8ad8f65187c7c364a3c2181ad484bcab03f0ec2
    ```
    Relevant files: `lib/ligero/{ligero_param,ligero_prover,ligero_verifier}.h`,
    `lib/algebra/{reed_solomon,crt_convolution}.h` (the latter two are the CRT-FFT

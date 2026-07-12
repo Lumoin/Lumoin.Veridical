@@ -125,6 +125,20 @@ public sealed class R1csMatrix: SensitiveMemory
 
         ValidateTriplesSortedAndInRange(rowIndices, columnIndices, rowCount, columnCount);
 
+        //Reject non-canonical field elements at the construction boundary: every
+        //interop reader (Circom .r1cs, ZkInterface) funnels through here, and a
+        //value at or above the order would diverge between its transcript-absorb
+        //bytes and its reduced arithmetic value.
+        for(int i = 0; i < nnz; i++)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(values.Slice(i * scalarSize, scalarSize), curve))
+            {
+                throw new ArgumentException(
+                    $"Matrix value at triple {i} (row {rowIndices[i]}, column {columnIndices[i]}) encodes an integer at or above the scalar field order of {curve}.",
+                    nameof(values));
+            }
+        }
+
         int bufferSize = ComputeBufferSize(nnz, curve);
         IMemoryOwner<byte> owner = pool.Rent(bufferSize);
         Span<byte> buffer = owner.Memory.Span[..bufferSize];

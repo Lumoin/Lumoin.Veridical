@@ -500,6 +500,39 @@ public static class WellKnownCurves
         CultureInfo.InvariantCulture);
 
 
+    //Pre-calculated canonical big-endian byte forms of the scalar field orders
+    //above, stored directly (like the compressed generator constants below) so
+    //IsCanonicalScalar compares allocation-free. Each is the byte spelling of the
+    //same-named *ScalarFieldOrderValue hex literal; to regenerate, write the
+    //BigInteger with TryWriteBytes(destination, out _, isUnsigned: true,
+    //isBigEndian: true) at that curve's scalar width. The canonicity gates in the
+    //rejection tests pin these against GetScalarFieldOrder, so drift fails loudly.
+
+    private static readonly byte[] Bls12Curve381ScalarFieldOrderBytes =
+    [
+        0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48,
+        0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05,
+        0x53, 0xbd, 0xa4, 0x02, 0xff, 0xfe, 0x5b, 0xfe,
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01
+    ];
+
+    private static readonly byte[] Bn254ScalarFieldOrderBytes =
+    [
+        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
+        0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+        0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91,
+        0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01
+    ];
+
+    private static readonly byte[] P256ScalarFieldOrderBytes =
+    [
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84,
+        0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63, 0x25, 0x51
+    ];
+
+
     /// <summary>
     /// Returns the scalar field order (the prime modulus <c>r</c> the witness
     /// elements and coefficients are reduced modulo) for the specified curve.
@@ -515,6 +548,39 @@ public static class WellKnownCurves
                 : curve.Code == CurveParameterSet.P256.Code
                     ? P256ScalarFieldOrderValue
                     : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="canonicalBytes"/> is a
+    /// canonical scalar encoding for <paramref name="curve"/>: exactly the scalar
+    /// size in canonical big-endian layout and strictly less than the scalar field
+    /// order. Deserialisation boundaries use this to reject non-canonical field
+    /// elements (a value at or above the order has a second byte encoding of the
+    /// same residue, the malleability class of snarkjs CVE-2023-33252) before the
+    /// bytes reach transcript absorbs or arithmetic.
+    /// </summary>
+    /// <param name="canonicalBytes">The candidate scalar bytes in canonical big-endian layout.</param>
+    /// <param name="curve">The curve whose scalar field order bounds the value.</param>
+    /// <returns><see langword="true"/> when the encoding is canonical; otherwise <see langword="false"/>.</returns>
+    /// <exception cref="ArgumentException">When the curve has no scalar field order entry.</exception>
+    public static bool IsCanonicalScalar(ReadOnlySpan<byte> canonicalBytes, CurveParameterSet curve)
+    {
+        ReadOnlySpan<byte> order = curve.Code == CurveParameterSet.Bls12Curve381.Code
+            ? Bls12Curve381ScalarFieldOrderBytes
+            : curve.Code == CurveParameterSet.Bn254.Code
+                ? Bn254ScalarFieldOrderBytes
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256ScalarFieldOrderBytes
+                    : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+
+        if(canonicalBytes.Length != order.Length)
+        {
+            return false;
+        }
+
+        //Big-endian lexicographic comparison equals numeric comparison at equal width.
+        return canonicalBytes.SequenceCompareTo(order) < 0;
+    }
 
 
     /// <summary>

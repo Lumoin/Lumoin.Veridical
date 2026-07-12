@@ -554,7 +554,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
-    //--- Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS, 8-wide) ---
+    //Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS, 8-wide)
 
     private const int Limb32Count = 8;
 

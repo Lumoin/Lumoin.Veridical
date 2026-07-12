@@ -286,7 +286,24 @@ public static class CircomR1csReader
             throw new ArgumentException("R1CS header declares nConstraints = 0; constraint section is mandatory.");
         }
 
-        if(nPubOut + nPubIn + nPrvIn + 1 > nWires)
+        //nWires and nConstraints are attacker-controlled uint32 fields that index Int32-based
+        //buffers during construction. A header declaring either above Int32.MaxValue must be
+        //rejected here as malformed rather than surface later as an OverflowException from the
+        //checked (int) casts in ParseConstraintsAndBuild (a fuzz finding, W1-c).
+        if(nWires > int.MaxValue)
+        {
+            throw new ArgumentException($"R1CS header declares nWires = {nWires}, exceeding the maximum supported wire count ({int.MaxValue}).");
+        }
+
+        if(nConstraints > int.MaxValue)
+        {
+            throw new ArgumentException($"R1CS header declares nConstraints = {nConstraints}, exceeding the maximum supported constraint count ({int.MaxValue}).");
+        }
+
+        //The sum is computed in ulong: in uint arithmetic a crafted header
+        //(e.g. nPubOut = 0xFFFFFFFF, nPubIn = 1) wraps mod 2^32 and slips
+        //past this consistency check.
+        if((ulong)nPubOut + nPubIn + nPrvIn + 1 > nWires)
         {
             throw new ArgumentException(
                 $"R1CS header inconsistency: nPubOut ({nPubOut}) + nPubIn ({nPubIn}) + nPrvIn ({nPrvIn}) + 1 (constant) exceeds nWires ({nWires}).");

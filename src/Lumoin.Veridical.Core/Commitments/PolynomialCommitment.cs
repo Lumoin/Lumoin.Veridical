@@ -39,7 +39,6 @@ public sealed class PolynomialCommitment: SensitiveMemory
 
     internal PolynomialCommitment(
         IMemoryOwner<byte> owner,
-        int length,
         CurveParameterSet curve,
         CommitmentScheme scheme,
         Tag tag)
@@ -66,11 +65,10 @@ public sealed class PolynomialCommitment: SensitiveMemory
     /// </summary>
     internal static PolynomialCommitment Create(
         IMemoryOwner<byte> owner,
-        int length,
         CurveParameterSet curve,
         CommitmentScheme scheme)
     {
-        return new PolynomialCommitment(owner, length, curve, scheme, CreateTag(curve, scheme));
+        return new PolynomialCommitment(owner, curve, scheme, CreateTag(curve, scheme));
     }
 
 
@@ -98,6 +96,6 @@ public sealed class PolynomialCommitment: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(commitmentBytes.Length);
         commitmentBytes.CopyTo(owner.Memory.Span[..commitmentBytes.Length]);
 
-        return Create(owner, commitmentBytes.Length, curve, scheme);
+        return Create(owner, curve, scheme);
     }
 }

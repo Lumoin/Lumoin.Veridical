@@ -43,6 +43,7 @@ internal static class EvalPublicAndOneComputation
     /// <param name="scalarAdd">The scalar-add backend.</param>
     /// <param name="scalarSubtract">The scalar-subtract backend.</param>
     /// <param name="scalarMultiply">The scalar-multiply backend.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">The pool to rent scratch and the result buffer from.</param>
     /// <returns>A canonical-form scalar holding the evaluation.</returns>
     /// <exception cref="ArgumentNullException">When any delegate or pool reference is <see langword="null"/>.</exception>

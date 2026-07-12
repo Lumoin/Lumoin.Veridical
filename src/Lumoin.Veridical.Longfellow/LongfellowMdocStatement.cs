@@ -20,9 +20,6 @@ public sealed class LongfellowMdocStatement
     //One canonical big-endian field element per 32-byte slot.
     private const int ScalarSizeBytes = 32;
 
-    /// <summary>The element count of the hash public-input template (the circuit's public-input count minus the seven MAC/key slots).</summary>
-    public const int HashTemplateElementCount = 945;
-
     /// <summary>The little-endian wire width of one GF(2^128) hash template element.</summary>
     public const int HashTemplateElementBytes = 16;
 
@@ -30,14 +27,18 @@ public sealed class LongfellowMdocStatement
     public const int SignatureTemplateElementCount = 4;
 
 
-    private LongfellowMdocStatement(ReadOnlyMemory<byte> hashTemplate, ReadOnlyMemory<byte> signatureTemplateCanonical)
+    private LongfellowMdocStatement(LongfellowMdocZkSpec spec, ReadOnlyMemory<byte> hashTemplate, ReadOnlyMemory<byte> signatureTemplateCanonical)
     {
+        Spec = spec;
         HashTemplate = hashTemplate;
         SignatureTemplateCanonical = signatureTemplateCanonical;
     }
 
 
-    /// <summary>The GF(2^128) hash public-input template, <see cref="HashTemplateElementCount"/> · 16 little-endian bytes.</summary>
+    /// <summary>The proof specification the templates were assembled for; the verify path is parameterized by it.</summary>
+    public LongfellowMdocZkSpec Spec { get; }
+
+    /// <summary>The GF(2^128) hash public-input template, <see cref="LongfellowMdocZkSpec.HashTemplateElementCount"/> · 16 little-endian bytes.</summary>
     public ReadOnlyMemory<byte> HashTemplate { get; }
 
     /// <summary>The canonical big-endian signature public-input template, <see cref="SignatureTemplateElementCount"/> · 32 bytes.</summary>
@@ -47,15 +48,20 @@ public sealed class LongfellowMdocStatement
     /// <summary>
     /// Validates and wraps the caller-assembled public-input templates.
     /// </summary>
-    /// <param name="hashTemplate">The hash template; <see cref="HashTemplateElementCount"/> · <see cref="HashTemplateElementBytes"/> bytes.</param>
+    /// <param name="spec">The proof specification the templates are assembled for.</param>
+    /// <param name="hashTemplate">The hash template; <see cref="LongfellowMdocZkSpec.HashTemplateElementCount"/> · <see cref="HashTemplateElementBytes"/> bytes.</param>
     /// <param name="signatureTemplateCanonical">The canonical big-endian signature template; <see cref="SignatureTemplateElementCount"/> · 32 bytes.</param>
     /// <returns>A validated statement view over the supplied buffers.</returns>
+    /// <exception cref="ArgumentNullException">When <paramref name="spec"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a template length is invalid.</exception>
     public static LongfellowMdocStatement FromComponents(
+        LongfellowMdocZkSpec spec,
         ReadOnlyMemory<byte> hashTemplate,
         ReadOnlyMemory<byte> signatureTemplateCanonical)
     {
-        int expectedHash = HashTemplateElementCount * HashTemplateElementBytes;
+        ArgumentNullException.ThrowIfNull(spec);
+
+        int expectedHash = spec.HashTemplateElementCount * HashTemplateElementBytes;
         if(hashTemplate.Length != expectedHash)
         {
             throw new ArgumentException($"The hash template must be {expectedHash} bytes; received {hashTemplate.Length}.", nameof(hashTemplate));
@@ -67,6 +73,6 @@ public sealed class LongfellowMdocStatement
             throw new ArgumentException($"The signature template must be {expectedSignature} bytes; received {signatureTemplateCanonical.Length}.", nameof(signatureTemplateCanonical));
         }
 
-        return new LongfellowMdocStatement(hashTemplate, signatureTemplateCanonical);
+        return new LongfellowMdocStatement(spec, hashTemplate, signatureTemplateCanonical);
     }
 }

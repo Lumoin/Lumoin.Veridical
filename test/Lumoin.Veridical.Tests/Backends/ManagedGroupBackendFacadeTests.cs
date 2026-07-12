@@ -92,8 +92,12 @@ internal sealed class ManagedGroupBackendFacadeTests
             g1.Add,
             g1.MultiScalarMultiply,
             g1HashToCurve,
+            g1.IsOnCurve!,
+            g1.IsInPrimeOrderSubgroup!,
             g2.Add,
             g2.ScalarMultiply,
+            g2.IsOnCurve!,
+            g2.IsInPrimeOrderSubgroup!,
             pairing.Pairing,
             TestSetup.Pool);
 

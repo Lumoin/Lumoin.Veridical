@@ -34,6 +34,7 @@ public class LigeroEncoderBenchmarks
 
     //The RS message length (a Ligero row's witness block). BlockEncoded =
     //(2 + InverseRate)·Block − 1; DoubleBlock = 2·Block − 1.
+    /// <summary>Reed-Solomon message lengths (witness-block rows) the benchmark sweeps.</summary>
     [Params(16, 64, 256)]
     public int Block { get; set; }
 
@@ -52,6 +53,7 @@ public class LigeroEncoderBenchmarks
     private int DoubleBlock => (2 * Block) - 1;
 
 
+    /// <summary>Resolves the Fp256 op delegates, fills a random reduced message row, and sizes the codeword buffers.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -78,11 +80,13 @@ public class LigeroEncoderBenchmarks
     }
 
 
+    /// <summary>Benchmarks Reed-Solomon encoding a row to the extended tableau codeword length.</summary>
     [Benchmark(Baseline = true, Description = "Encode Block -> BlockEncoded (tableau row)")]
     public void EncodeToBlockEncoded() => LigeroReedSolomonEncoder.Encode(
         message, Block, codewordExtended, BlockEncoded, add, subtract, multiply, invert, Curve, Pool);
 
 
+    /// <summary>Benchmarks Reed-Solomon encoding a row to the double-block response codeword length.</summary>
     [Benchmark(Description = "Encode Block -> DoubleBlock (response row)")]
     public void EncodeToDoubleBlock() => LigeroReedSolomonEncoder.Encode(
         message, Block, codewordDouble, DoubleBlock, add, subtract, multiply, invert, Curve, Pool);

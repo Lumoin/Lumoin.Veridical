@@ -34,6 +34,7 @@ public static class BbsProofGenerationExtensions
         /// <param name="presentationHeader">Optional presentation-context bytes the Prover binds into this specific proof. May be empty.</param>
         /// <param name="messages">The full message vector. The signer signed this exact vector under <paramref name="header"/>.</param>
         /// <param name="disclosedIndices">Strictly ascending, deduplicated, all in <c>[0, messages.Length)</c>. The verifier learns only the messages at these positions.</param>
+        /// <param name="expandMessage">The RFC 9380 expand_message hash-to-field delegate.</param>
         /// <param name="hashToScalar">Backend hash-to-scalar.</param>
         /// <param name="scalarAdd">Backend scalar addition.</param>
         /// <param name="scalarSubtract">Backend scalar subtraction.</param>
@@ -45,9 +46,21 @@ public static class BbsProofGenerationExtensions
         /// <param name="g1ScalarMultiply">Backend G1 scalar multiplication.</param>
         /// <param name="g1MultiScalarMultiply">Backend G1 multi-scalar multiplication.</param>
         /// <param name="g1HashToCurve">Backend G1 hash-to-curve (used during generator derivation).</param>
+        /// <param name="g1IsOnCurve">Backend G1 on-curve validation for the signature point <c>A</c>.</param>
+        /// <param name="g1IsInPrimeOrderSubgroup">Backend G1 prime-order-subgroup validation for the signature point <c>A</c>.</param>
         /// <param name="pool">The pool to rent destination buffers from.</param>
         /// <returns>A proof wrapping a pool-rented byte buffer of size <c>272 + 32 * (messages.Length - disclosedIndices.Length)</c>.</returns>
-        /// <exception cref="ArgumentException">When <paramref name="disclosedIndices"/> is not strictly ascending, contains a negative or out-of-range value, or has more entries than <paramref name="messages"/>; or when <paramref name="publicKey"/>'s ciphersuite differs from <paramref name="signature"/>'s.</exception>
+        /// <exception cref="ArgumentException">When <paramref name="disclosedIndices"/> is not strictly ascending, contains a negative or out-of-range value, or has more entries than <paramref name="messages"/>; when <paramref name="publicKey"/>'s ciphersuite differs from <paramref name="signature"/>'s; or when the signature point <c>A</c> is off-curve, the identity, or outside the prime-order subgroup.</exception>
+        /// <remarks>
+        /// The signature is deserialized per the spec's <c>octets_to_signature</c>
+        /// (Section 4.2.4.3): <c>A</c> must decode onto the curve, must not be the
+        /// identity, and must lie in the prime-order subgroup. The subgroup check
+        /// protects the Prover: an <c>A</c> outside the prime-order subgroup would
+        /// carry a cofactor component that survives blinding into <c>Abar</c> and
+        /// <c>Bbar</c>, giving a malicious Signer a covert channel that breaks
+        /// proof unlinkability.
+        /// </remarks>
+        [SuppressMessage("Usage", "CA2208", Justification = "C# 14 extension blocks surface the receiver as a regular parameter; 'signature' is the receiver parameter whose point A fails validation.")]
         public BbsProof GenerateProof(
             BbsPublicKey publicKey,
             BbsHeader header,
@@ -66,6 +79,8 @@ public static class BbsProofGenerationExtensions
             G1ScalarMultiplyDelegate g1ScalarMultiply,
             G1MultiScalarMultiplyDelegate g1MultiScalarMultiply,
             G1HashToCurveDelegate g1HashToCurve,
+            G1IsOnCurveDelegate g1IsOnCurve,
+            G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup,
             BaseMemoryPool pool)
         {
             ArgumentNullException.ThrowIfNull(signature);
@@ -82,6 +97,8 @@ public static class BbsProofGenerationExtensions
             ArgumentNullException.ThrowIfNull(g1ScalarMultiply);
             ArgumentNullException.ThrowIfNull(g1MultiScalarMultiply);
             ArgumentNullException.ThrowIfNull(g1HashToCurve);
+            ArgumentNullException.ThrowIfNull(g1IsOnCurve);
+            ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
             ArgumentNullException.ThrowIfNull(pool);
 
             if(signature.Ciphersuite != publicKey.Ciphersuite)
@@ -108,9 +125,17 @@ public static class BbsProofGenerationExtensions
 
             string apiId = signature.Ciphersuite.Identifier;
 
-            //Decode signature into (A, e).
+            //Decode signature into (A, e), then validate A per octets_to_signature
+            //steps 5-7 (Section 4.2.4.3): on-curve, not the identity, in the
+            //prime-order subgroup. See the remarks for why the Prover must check
+            //this rather than trust the Signer.
             using G1Point a = G1Point.FromCanonical(signature.GetABytes(), CurveParameterSet.Bls12Curve381, pool);
             using Scalar e = Scalar.FromCanonical(signature.GetEBytes(), CurveParameterSet.Bls12Curve381, pool);
+
+            if(!a.IsOnCurve(g1IsOnCurve) || a.IsIdentity || !a.IsInPrimeOrderSubgroup(g1IsInPrimeOrderSubgroup))
+            {
+                throw new ArgumentException("BBS+ signature point A must be a non-identity point in the prime-order subgroup.", nameof(signature));
+            }
 
             ImmutableArray<Scalar> messageScalars = BbsAlgorithm.MessagesToScalars(messages, apiId, hashToScalar, pool);
             ImmutableArray<G1Point> generators = BbsAlgorithm.CreateGenerators(totalMessages + 1, apiId, expandMessage, g1HashToCurve, pool);
@@ -126,52 +151,24 @@ public static class BbsProofGenerationExtensions
                     randoms[i] = Scalar.FromRandom(randomScalars, CurveParameterSet.Bls12Curve381, pool);
                 }
 
-                Scalar r1 = randoms[0];
-                Scalar r2 = randoms[1];
-                Scalar eTilde = randoms[2];
-                Scalar r1Tilde = randoms[3];
-                Scalar r3Tilde = randoms[4];
-                ReadOnlySpan<Scalar> mTildes = randoms.AsSpan(5);
-
-                G1Point q1 = generators[0];
-                ReadOnlySpan<G1Point> hPoints = generators.AsSpan()[1..];
-
-                //domain = calculate_domain(PK, Q_1, (H_1, ..., H_L), header, api_id).
-                using Scalar domain = BbsAlgorithm.CalculateDomain(publicKey, q1, hPoints, header.Bytes, apiId, hashToScalar, pool);
-
-                //ProofInit step 2: B = P1 + Q_1 * domain + sum H_i * msg_i.
-                using G1Point p1 = BbsP1Generator.GetForCiphersuite(signature.Ciphersuite, pool);
-                using G1Point b = BbsAlgorithm.ComputeMessageCommitment(p1, q1, domain, hPoints, messageScalars.AsSpan(), g1Add, g1MultiScalarMultiply, pool);
-
-                //ProofInit step 3: D = B * r2.
-                using G1Point d = b.ScalarMultiply(r2, g1ScalarMultiply, pool);
-
-                //ProofInit step 4: Abar = A * (r1 * r2).
-                using Scalar r1TimesR2 = r1.Multiply(r2, scalarMultiply, pool);
-                using G1Point aBar = a.ScalarMultiply(r1TimesR2, g1ScalarMultiply, pool);
-
-                //ProofInit step 5: Bbar = D * r1 - Abar * e = MSM([D, Abar], [r1, -e]).
-                using Scalar negE = e.Negate(scalarNegate, pool);
-                G1Point[] bBarPoints = [d, aBar];
-                Scalar[] bBarScalars = [r1, negE];
-                using G1Point bBar = BbsProofAlgorithm.MultiScalarMultiply(bBarPoints, bBarScalars, g1MultiScalarMultiply, pool);
-
-                //ProofInit step 6: T1 = Abar * e~ + D * r1~ = MSM([Abar, D], [e~, r1~]).
-                G1Point[] t1Points = [aBar, d];
-                Scalar[] t1Scalars = [eTilde, r1Tilde];
-                using G1Point t1 = BbsProofAlgorithm.MultiScalarMultiply(t1Points, t1Scalars, g1MultiScalarMultiply, pool);
-
-                //ProofInit step 7: T2 = D * r3~ + sum_{j in undisclosed} H_j * m~_j.
-                G1Point[] t2Points = new G1Point[1 + undisclosedCount];
-                Scalar[] t2Scalars = new Scalar[1 + undisclosedCount];
-                t2Points[0] = d;
-                t2Scalars[0] = r3Tilde;
-                for(int i = 0; i < undisclosedCount; i++)
-                {
-                    t2Points[1 + i] = hPoints[undisclosed[i]];
-                    t2Scalars[1 + i] = mTildes[i];
-                }
-                using G1Point t2 = BbsProofAlgorithm.MultiScalarMultiply(t2Points, t2Scalars, g1MultiScalarMultiply, pool);
+                //ProofInit (Section 3.7.1): (Abar, Bbar, D, T1, T2, domain).
+                using BbsProofInitResult initResult = BbsProofAlgorithm.ProofInit(
+                    publicKey,
+                    a,
+                    e,
+                    generators.AsSpan(),
+                    header.Bytes,
+                    messageScalars.AsSpan(),
+                    undisclosed,
+                    randoms,
+                    apiId,
+                    hashToScalar,
+                    scalarMultiply,
+                    scalarNegate,
+                    g1Add,
+                    g1ScalarMultiply,
+                    g1MultiScalarMultiply,
+                    pool);
 
                 //Collect disclosed message scalars for the challenge calc.
                 Scalar[] disclosedScalars = new Scalar[r];
@@ -184,77 +181,46 @@ public static class BbsProofGenerationExtensions
                 using Scalar challenge = BbsProofAlgorithm.CalculateChallenge(
                     disclosed,
                     disclosedScalars,
-                    aBar, bBar, d, t1, t2, domain,
+                    initResult.ABar, initResult.BBar, initResult.D, initResult.T1, initResult.T2, initResult.Domain,
                     presentationHeader.Bytes,
                     apiId,
                     hashToScalar,
                     pool);
 
-                //ProofFinalize step 1: r3 = r2^-1.
-                using Scalar r3 = r2.Invert(scalarInvert, pool);
+                //Collect undisclosed message scalars for ProofFinalize; the
+                //references stay owned by messageScalars.
+                Scalar[] undisclosedScalars = new Scalar[undisclosedCount];
+                for(int i = 0; i < undisclosedCount; i++)
+                {
+                    undisclosedScalars[i] = messageScalars[undisclosed[i]];
+                }
 
-                //ProofFinalize step 2: e^ = e~ + e * c.
-                using Scalar eTimesC = e.Multiply(challenge, scalarMultiply, pool);
-                using Scalar eHat = eTilde.Add(eTimesC, scalarAdd, pool);
-
-                //ProofFinalize step 3: r1^ = r1~ - r1 * c.
-                using Scalar r1TimesC = r1.Multiply(challenge, scalarMultiply, pool);
-                using Scalar r1Hat = r1Tilde.Subtract(r1TimesC, scalarSubtract, pool);
-
-                //ProofFinalize step 4: r3^ = r3~ - r3 * c.
-                using Scalar r3TimesC = r3.Multiply(challenge, scalarMultiply, pool);
-                using Scalar r3Hat = r3Tilde.Subtract(r3TimesC, scalarSubtract, pool);
-
-                //ProofFinalize step 5: m^_j = m~_j + undisclosed_msg_j * c.
-                Scalar[] mHats = new Scalar[undisclosedCount];
+                //ProofFinalize (Section 3.7.2): responses + serialised proof bytes.
+                IMemoryOwner<byte> proofOwner = BbsProofAlgorithm.ProofFinalize(
+                    initResult,
+                    challenge,
+                    e,
+                    randoms,
+                    undisclosedScalars,
+                    scalarAdd,
+                    scalarSubtract,
+                    scalarMultiply,
+                    scalarInvert,
+                    pool);
                 try
                 {
-                    for(int i = 0; i < undisclosedCount; i++)
-                    {
-                        using Scalar msgTimesC = messageScalars[undisclosed[i]].Multiply(challenge, scalarMultiply, pool);
-                        mHats[i] = mTildes[i].Add(msgTimesC, scalarAdd, pool);
-                    }
-
-                    //ProofFinalize step 6 + 7: serialise the proof as Abar || Bbar || D || e^ || r1^ || r3^ || m^_j... || c.
-                    int proofSize = BbsProof.ComputeSizeBytes(undisclosedCount);
-                    IMemoryOwner<byte> proofOwner = pool.Rent(proofSize);
-                    try
-                    {
-                        Span<byte> dst = proofOwner.Memory.Span[..proofSize];
-                        aBar.AsReadOnlySpan().CopyTo(dst[BbsProof.ABarOffset..]);
-                        bBar.AsReadOnlySpan().CopyTo(dst[BbsProof.BBarOffset..]);
-                        d.AsReadOnlySpan().CopyTo(dst[BbsProof.DOffset..]);
-                        eHat.AsReadOnlySpan().CopyTo(dst.Slice(BbsProof.EHatOffset, Scalar.SizeBytes));
-                        r1Hat.AsReadOnlySpan().CopyTo(dst.Slice(BbsProof.R1HatOffset, Scalar.SizeBytes));
-                        r3Hat.AsReadOnlySpan().CopyTo(dst.Slice(BbsProof.R3HatOffset, Scalar.SizeBytes));
-                        for(int i = 0; i < undisclosedCount; i++)
-                        {
-                            mHats[i].AsReadOnlySpan()
-                                .CopyTo(dst.Slice(BbsProof.CommitmentsOffset + Scalar.SizeBytes * i, Scalar.SizeBytes));
-                        }
-                        challenge.AsReadOnlySpan()
-                            .CopyTo(dst.Slice(BbsProof.CommitmentsOffset + Scalar.SizeBytes * undisclosedCount, Scalar.SizeBytes));
-
-                        Tag proofTag = ProviderInstrumentation.StampTag(
-                            BbsProof.GetAlgebraicTag(signature.Ciphersuite),
-                            WellKnownBbsProviderIdentities.Library,
-                            WellKnownBbsProviderIdentities.Crypto,
-                            WellKnownBbsProviderIdentities.Class,
-                            ProviderOperation.SignatureGenerateProof);
-                        return new BbsProof(proofOwner, undisclosedCount, proofTag);
-                    }
-                    catch
-                    {
-                        proofOwner.Dispose();
-                        throw;
-                    }
+                    Tag proofTag = ProviderInstrumentation.StampTag(
+                        BbsProof.GetAlgebraicTag(signature.Ciphersuite),
+                        WellKnownBbsProviderIdentities.Library,
+                        WellKnownBbsProviderIdentities.Crypto,
+                        WellKnownBbsProviderIdentities.Class,
+                        ProviderOperation.SignatureGenerateProof);
+                    return new BbsProof(proofOwner, undisclosedCount, proofTag);
                 }
-                finally
+                catch
                 {
-                    for(int i = 0; i < mHats.Length; i++)
-                    {
-                        mHats[i]?.Dispose();
-                    }
+                    proofOwner.Dispose();
+                    throw;
                 }
             }
             finally

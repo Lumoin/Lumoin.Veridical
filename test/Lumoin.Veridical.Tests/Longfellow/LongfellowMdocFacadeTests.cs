@@ -90,15 +90,16 @@ internal sealed class LongfellowMdocFacadeTests
 
         //The public statement: the hash template is the column prefix in GF wire framing; the signature
         //template is the canonical [one, pkX, pkY, e2] prefix the facade frames into the Montgomery wire form.
-        int hashTemplateBytes = LongfellowMdocStatement.HashTemplateElementCount * LongfellowMdocStatement.HashTemplateElementBytes;
+        LongfellowMdocZkSpec spec = LongfellowMdocZkSpec.Version7OneAttribute;
+        int hashTemplateBytes = spec.HashTemplateElementCount * LongfellowMdocStatement.HashTemplateElementBytes;
         using IMemoryOwner<byte> hashTemplateOwner = pool.Rent(hashTemplateBytes);
         Memory<byte> hashTemplate = hashTemplateOwner.Memory[..hashTemplateBytes];
         BuildHashTemplate(hashColumn, hashTemplate.Span);
 
         ReadOnlyMemory<byte> signatureTemplate = new ReadOnlyMemory<byte>(signatureColumn, 0, LongfellowMdocStatement.SignatureTemplateElementCount * ScalarSize);
-        LongfellowMdocStatement statement = LongfellowMdocStatement.FromComponents(hashTemplate, signatureTemplate);
+        LongfellowMdocStatement statement = LongfellowMdocStatement.FromComponents(spec, hashTemplate, signatureTemplate);
 
-        using LongfellowMdocProof proof = LongfellowMdoc.Prove(witness, circuits, SessionSeed, pool);
+        using LongfellowMdocProof proof = LongfellowMdoc.Prove(witness, circuits, spec, SessionSeed, pool);
         LongfellowMdocVerdict verdict = LongfellowMdoc.Verify(proof, statement, circuits, SessionSeed, pool);
 
         Assert.AreEqual(LongfellowMdocVerdict.Accepted, verdict, "The facade must accept its own prove over the real credential.");
@@ -133,7 +134,7 @@ internal sealed class LongfellowMdocFacadeTests
     private static void BuildHashTemplate(byte[] hashColumn, Span<byte> template)
     {
         int elementBytes = LongfellowMdocStatement.HashTemplateElementBytes;
-        for(int i = 0; i < LongfellowMdocStatement.HashTemplateElementCount; i++)
+        for(int i = 0; i < LongfellowMdocZkSpec.Version7OneAttribute.HashTemplateElementCount; i++)
         {
             ReadOnlySpan<byte> element = hashColumn.AsSpan(i * ScalarSize, ScalarSize);
             Span<byte> wire = template.Slice(i * elementBytes, elementBytes);

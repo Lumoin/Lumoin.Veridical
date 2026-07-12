@@ -79,6 +79,18 @@ internal static class InnerProductArgument
     /// <param name="finalScalarDestination">Destination for the final folded <c>f</c> scalar. Length 32.</param>
     /// <param name="initialLength">The starting vector length. Must be a positive power of two.</param>
     /// <param name="ipaRoundLabelPrefix">The transcript label prefix for IPA rounds, typically <c>"hyrax.ipa.round"</c>. Each round absorbs L and R under labels <c>{prefix}.{i}.l</c> and <c>{prefix}.{i}.r</c>, and squeezes the challenge under <c>{prefix}.{i}.challenge</c>.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript.</param>
+    /// <param name="scalarAdd">Backend scalar addition.</param>
+    /// <param name="scalarMul">Backend scalar multiplication.</param>
+    /// <param name="scalarInvert">Backend scalar inversion.</param>
+    /// <param name="scalarReduce">Backend scalar reduction.</param>
+    /// <param name="g1Add">Backend G1 addition.</param>
+    /// <param name="g1ScalarMul">Backend G1 scalar multiplication.</param>
+    /// <param name="g1Msm">Backend G1 multi-scalar multiplication.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="curve">The curve the code is over.</param>
+    /// <param name="pool">The pool to rent the working buffers from.</param>
     public static void Prove(
         Span<byte> f,
         Span<byte> g,

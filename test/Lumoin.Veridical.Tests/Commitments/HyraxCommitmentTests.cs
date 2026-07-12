@@ -140,7 +140,7 @@ internal sealed class HyraxCommitmentTests
 
     /// <summary>
     /// Returns a <see cref="ScalarRandomDelegate"/> backed by a fixed
-    /// <see cref="ChaCha20"/>-shaped stream — the same seed produces the
+    /// <c>ChaCha20</c>-shaped stream — the same seed produces the
     /// same sequence of "random" scalars, making tests reproducible.
     /// Implemented as SHA-256 of (seed counter) reduced into the field.
     /// </summary>

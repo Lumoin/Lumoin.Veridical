@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// The contract is canonical-in / canonical-out: inputs and outputs are
-/// <see cref="Scalar.SizeBytes"/> big-endian bytes and the Montgomery form lives
+/// <see cref="Lumoin.Veridical.Core.Algebraic.Scalar.SizeBytes"/> big-endian bytes and the Montgomery form lives
 /// only inside these methods. Constants come from
 /// <see cref="Bls12Curve381MontgomeryParameters"/>.
 /// </para>
