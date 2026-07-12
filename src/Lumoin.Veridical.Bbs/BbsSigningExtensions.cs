@@ -30,6 +30,7 @@ public static class BbsSigningExtensions
         /// <param name="publicKey">The public key corresponding to <paramref name="secretKey"/>; required by the spec because <c>domain</c> includes PK.</param>
         /// <param name="header">Optional application-context bytes bound into the signature; may be empty.</param>
         /// <param name="messages">The message vector to sign.</param>
+        /// <param name="expandMessage">The RFC 9380 expand_message hash-to-field delegate.</param>
         /// <param name="hashToScalar">Backend hash-to-scalar.</param>
         /// <param name="scalarAdd">Backend scalar addition.</param>
         /// <param name="scalarInvert">Backend scalar inverse.</param>

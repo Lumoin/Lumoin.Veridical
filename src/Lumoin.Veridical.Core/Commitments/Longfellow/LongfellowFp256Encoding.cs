@@ -19,7 +19,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// element <c>kRootX + i·kRootY</c> (<c>p256_2.of_string(kRootX, kRootY)</c>, mdoc_zk.cc:478) of
 /// multiplicative order <c>2^31</c> (<c>FftExtConvolutionFactory(..., 1ull &lt;&lt; 31)</c>,
 /// mdoc_zk.cc:479). The two decimal constants are pinned below as their canonical 32-byte big-endian
-/// bytes; both lie below the P-256 base-field modulus. The <see cref="LongfellowFp256EncodingTests"/>
+/// bytes; both lie below the P-256 base-field modulus. The <c>LongfellowFp256EncodingTests</c>
 /// gate the pinned hex against the decimal parse so the two cannot drift.
 /// </para>
 /// <para>

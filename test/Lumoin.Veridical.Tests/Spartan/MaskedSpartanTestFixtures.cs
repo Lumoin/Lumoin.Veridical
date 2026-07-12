@@ -246,6 +246,35 @@ internal static class MaskedSpartanTestFixtures
     }
 
 
+    /// <summary>
+    /// A different 2×8 instance wired so that a valid proof for
+    /// <see cref="BuildTwoMultiplyInstance"/> is not also a valid proof for
+    /// this one: constraint 0 <c>z[2]·z[3] = z[4]</c>, constraint 1
+    /// <c>z[5]·z[6] = z[7]</c>. Same dimensions, so the verifier's shape
+    /// guards pass and the statement-binding check is what rejects.
+    /// </summary>
+    public static RawR1csInstance BuildDifferentTwoMultiplyInstance()
+    {
+        int scalarSize = Scalar.SizeBytes;
+        int[] aRows = [0, 1];
+        int[] aCols = [2, 5];
+        int[] bRows = [0, 1];
+        int[] bCols = [3, 6];
+        int[] cRows = [0, 1];
+        int[] cCols = [4, 7];
+
+        byte[] onesValues = new byte[2 * scalarSize];
+        WriteCanonical(BigInteger.One, onesValues.AsSpan(0, scalarSize));
+        WriteCanonical(BigInteger.One, onesValues.AsSpan(scalarSize, scalarSize));
+
+        R1csMatrix a = R1csMatrix.FromSortedTriples(aRows, aCols, onesValues, 2, 8, CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
+        R1csMatrix b = R1csMatrix.FromSortedTriples(bRows, bCols, onesValues, 2, 8, CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
+        R1csMatrix c = R1csMatrix.FromSortedTriples(cRows, cCols, onesValues, 2, 8, CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
+
+        return RawR1csInstance.Create(a, b, c, ReadOnlySpan<byte>.Empty, BaseMemoryPool.Shared);
+    }
+
+
     public static RawR1csWitness BuildTwoMultiplyWitness()
     {
         int scalarSize = Scalar.SizeBytes;

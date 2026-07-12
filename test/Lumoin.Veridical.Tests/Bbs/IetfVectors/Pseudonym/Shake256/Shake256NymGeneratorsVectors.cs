@@ -1,0 +1,59 @@
+using Lumoin.Veridical.Bbs;
+namespace Lumoin.Veridical.Tests.Bbs.IetfVectors.Pseudonym.Shake256;
+
+/// <summary>
+/// Per-verifier-linkability generator-derivation primitive vectors
+/// for the BLS12-381-SHAKE-256 ciphersuite, transcribed verbatim
+/// from <c>draft-irtf-cfrg-bbs-per-verifier-linkability-03</c>
+/// Section 12.2.1/12.2.2.
+/// </summary>
+internal static class Shake256NymGeneratorsVectors
+{
+    /// <summary>
+    /// Signer-message generators (H_0..H_9) under the pseudonym
+    /// interface api_id (draft-irtf-cfrg-bbs-per-verifier-linkability-03, §12.2.1).
+    /// </summary>
+    public static NymGeneratorsVector Vector001 { get; } = new(
+        Id: "shake256-nym-generators-001",
+        Description: "signer-message generators under the pseudonym interface api_id",
+        ApiId: "4242535f424c53313233383147315f584f463a5348414b452d3235365f535357555f524f5f4832475f484d32535f50534555444f4e594d5f",
+        P1: "8929dfbc7e6642c4ed9cba0856e493f8b9d7d5fcb0c31ef8fdcd34d50648a56c795e106e9eada6e0bda386b414150755",
+        Q1: "8c6f8b5efd544cb72ffc140a4585031ebbb8f25acb881ff559c42b94b8ba867be23b183069032ea18c50910c9b7d3fcf",
+        MessageGenerators: new[]
+        {
+            "896962df2851d1b83640182052fc49d07e9492347aee5ba8cbbf6414249367a175d3e09f812dc2ff7d22618e7f0cb630",
+            "80562c843a305661c2588da3ae2e3b96a5faab147fe6a58ff456648b42407af5beddc2009b4078288e2a8e6a73d4ae4b",
+            "896dabeba9bb98ef48d665cfaa894857cac7ed41f2c4b55bb64fd318dde0a8b0350578d9c37010dd266629d6bc9f8e70",
+            "b3941ebfc0a011c442c8902d1e654b19d184385691aba1aeec60d87bfbedbcbf5d23ea3075126842522638613921240c",
+            "8619d28414b303bc8accde9989b3caf9c9036303c9b8178d25a6fcd738b74c779b0a27c867e1a7f0e9b80c5cae3f4e7a",
+            "85d6077858f8ad500df7e928a25cd0e5dbfc43aff4d761852d42feea68123212ff7d41978280be66e56724e98f776c9c",
+            "adc477c6cf52b8aaaf055734c12dca89305937001e10e34e9007accb374d16d540c97fa3ba026d6020f64319ce8d52c2",
+            "ad24e98787eb7318cf04fd58793e77d41707e95fb5ab357237f88e2c9566400cb085748a3593e2f838caaf3a5223a7ac",
+            "879db6d14a3ead2a81763f4909a6c4633cbd4e20c602e344e1f7d9891b517a329f72df0b516c4bbfa4f05c6204c242af",
+            "8f01fc380b30f177090dba078af493e76c51e867f9f5f8f23b1ac162149d58264b1e262fbeaaa2f26624de592cc1ae4c",
+        });
+
+
+    /// <summary>
+    /// Blind/commitment generators (J_0..J_5) used by CommitWithNym
+    /// (draft-irtf-cfrg-bbs-per-verifier-linkability-03, §12.2.2).
+    /// </summary>
+    public static NymGeneratorsVector Vector002 { get; } = new(
+        Id: "shake256-nym-generators-002",
+        Description: "blind/commitment generators used by CommitWithNym",
+        ApiId: "424c494e445f4242535f424c53313233383147315f584f463a5348414b452d3235365f535357555f524f5f4832475f484d32535f50534555444f4e594d5f",
+        P1: "8929dfbc7e6642c4ed9cba0856e493f8b9d7d5fcb0c31ef8fdcd34d50648a56c795e106e9eada6e0bda386b414150755",
+        Q1: "986e83f847c8c3fe1ad9d3efd0265b66268fc80f4add90b3e96192616364016bfe73a4005d2d86f841806a3132a0f544",
+        MessageGenerators: new[]
+        {
+            "9536711b4ff6e1038102b1473bd1be23b77ac6e85684662c7f340ca522f4e5fb5c02d7cb2c31c712324b29c540c9d7dc",
+            "91611180da0248d8f7279a962c32472fb1e57b21fc41c09e6ab8aad61fcab5bbb51a4095aee80b070d8ca1e80f725339",
+            "ac4f5344e62eafd1e96fc95539db6f568a3cd3dfd8c5cdafdc0bd2f95572c1083800f0f4538449051dd3aa362d33b718",
+            "b823809960dafeb4d405c95d44b38cf868efe320b3c1d995daee411507e672a45a050f0b3a73c0175fa521f549dfac04",
+            "9319ad949d6c5a368ed996732f0a665551604ee4a57cbadcbdd3f538ef2391f44ceef6f3509ead912cf64623da7e12ad",
+            "b755da890d37cb97fc623b228dec163a6138489ff382292f608ac7adabe15856b74a5bed22364744d076b39cfda85faa",
+        });
+
+    /// <summary>Every Shake256-ciphersuite pseudonym-generators primitive vector currently transcribed.</summary>
+    public static IReadOnlyList<NymGeneratorsVector> All { get; } = new[] { Vector001, Vector002 };
+}

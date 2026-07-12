@@ -16,7 +16,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <summary>
 /// The self-consistent Fp256 end-to-end ZK PROVE + VERIFY gate (conformance step C.12, the field-generic
 /// prover seam). It exercises the FULL prover+verifier over the 32-byte P-256 base field through the
-/// field-generic <see cref="LongfellowZkProver.Prove(LongfellowSumcheckCircuit, LongfellowLigeroParameters, ReadOnlySpan{byte}, int, LongfellowRandomByteSource, LongfellowTranscript, LongfellowRowEncoderFactory, LongfellowFieldProfile, LongfellowSubfieldRunCodec, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/>
+/// field-generic <c>LongfellowZkProver.Prove</c>
 /// entry (the prime-field analogue of the GF(2^128) convenience overload), then verifies the produced
 /// envelope with <see cref="LongfellowZkVerifier.VerifyFromAbsorbedRoot"/>.
 /// </summary>
@@ -47,7 +47,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// <para>
 /// The Fp256 base field is BigInteger-backed and slow; the prove+verify is marked
-/// <see cref="TestCategory"/> <c>Slow</c> (it runs in low single-digit seconds on a developer machine) and
+/// <see cref="TestCategoryAttribute"/> <c>Slow</c> (it runs in low single-digit seconds on a developer machine) and
 /// is gated out of the default suite. The GF byte-identity check below it is fast and stays in the default
 /// suite.
 /// </para>

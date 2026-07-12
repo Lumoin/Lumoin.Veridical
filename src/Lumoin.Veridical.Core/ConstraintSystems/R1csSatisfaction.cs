@@ -30,7 +30,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 /// The result type is <see cref="IDisposable"/> because the
 /// <see cref="Violated"/> case carries pool-rented scalars whose
 /// backing buffers must be returned. <see cref="Satisfied"/>'s
-/// <see cref="Dispose"/> is a no-op; callers can <c>using</c> the
+/// <see cref="Dispose()"/> is a no-op; callers can <c>using</c> the
 /// result unconditionally.
 /// </para>
 /// </remarks>
@@ -53,7 +53,7 @@ public abstract record R1csSatisfaction: IDisposable
     /// <summary>
     /// Override in concrete subclasses to release resources.
     /// </summary>
-    /// <param name="disposing"><see langword="true"/> when called from <see cref="Dispose"/>; <see langword="false"/> from a finalizer (the records here have no native resources so finalisation is not used).</param>
+    /// <param name="disposing"><see langword="true"/> when called from <see cref="Dispose()"/>; <see langword="false"/> from a finalizer (the records here have no native resources so finalisation is not used).</param>
     protected virtual void Dispose(bool disposing) { }
 
 

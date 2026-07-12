@@ -34,6 +34,11 @@ public static class MultilinearSumcheck
     private static readonly FiatShamirOperationLabel ChallengeLabel = new("veridical.gkr.sumcheck.challenge");
 
 
+    /// <summary>
+    /// Proves <c>H = Σ_{x∈{0,1}^v} f(x)</c> for the multilinear <c>f</c> given by its
+    /// <c>2^variableCount</c> hypercube <paramref name="evaluations"/>, folding the table in half each
+    /// round and emitting the per-round polynomials and the final evaluation <c>f(r)</c>.
+    /// </summary>
     public static MultilinearSumcheckProof Prove(
         ReadOnlySpan<byte> evaluations,
         int variableCount,
@@ -107,6 +112,11 @@ public static class MultilinearSumcheck
     }
 
 
+    /// <summary>
+    /// Verifies a multilinear sumcheck proof against <paramref name="claimedSum"/>, replaying each
+    /// round's consistency check and reducing the claim to a single evaluation at the Fiat-Shamir
+    /// challenge point the caller then checks <c>f</c> against.
+    /// </summary>
     public static MultilinearSumcheckVerification Verify(
         ReadOnlySpan<byte> claimedSum,
         MultilinearSumcheckProof proof,

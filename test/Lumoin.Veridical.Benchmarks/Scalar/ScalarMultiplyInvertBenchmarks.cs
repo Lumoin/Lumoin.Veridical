@@ -59,6 +59,7 @@ public class ScalarMultiplyInvertBenchmarks
     private ScalarInvertDelegate bnSimdInvert = null!;
 
 
+    /// <summary>Resolves the BigInteger and SIMD multiply/invert delegates for both curves and prepares reduced operands.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -114,27 +115,35 @@ public class ScalarMultiplyInvertBenchmarks
     }
 
 
+    /// <summary>Benchmarks BLS12-381 scalar multiplication using the BigInteger reference backend.</summary>
     [Benchmark(Baseline = true, Description = "BLS BigInteger Multiply")]
     public void BlsBigIntegerMultiply() => blsBigIntegerMultiply(blsA, blsB, resultBytes, Bls);
 
+    /// <summary>Benchmarks BLS12-381 scalar multiplication using the SIMD backend.</summary>
     [Benchmark(Description = "BLS SIMD Multiply")]
     public void BlsSimdMultiply() => blsSimdMultiply(blsA, blsB, resultBytes, Bls);
 
+    /// <summary>Benchmarks BLS12-381 scalar inversion using the BigInteger reference backend.</summary>
     [Benchmark(Description = "BLS BigInteger Invert")]
     public void BlsBigIntegerInvert() => blsBigIntegerInvert(blsA, resultBytes, Bls);
 
+    /// <summary>Benchmarks BLS12-381 scalar inversion using the SIMD backend.</summary>
     [Benchmark(Description = "BLS SIMD Invert")]
     public void BlsSimdInvert() => blsSimdInvert(blsA, resultBytes, Bls);
 
+    /// <summary>Benchmarks BN254 scalar multiplication using the BigInteger reference backend.</summary>
     [Benchmark(Description = "BN254 BigInteger Multiply")]
     public void BnBigIntegerMultiply() => bnBigIntegerMultiply(bnA, bnB, resultBytes, Bn);
 
+    /// <summary>Benchmarks BN254 scalar multiplication using the SIMD backend.</summary>
     [Benchmark(Description = "BN254 SIMD Multiply")]
     public void BnSimdMultiply() => bnSimdMultiply(bnA, bnB, resultBytes, Bn);
 
+    /// <summary>Benchmarks BN254 scalar inversion using the BigInteger reference backend.</summary>
     [Benchmark(Description = "BN254 BigInteger Invert")]
     public void BnBigIntegerInvert() => bnBigIntegerInvert(bnA, resultBytes, Bn);
 
+    /// <summary>Benchmarks BN254 scalar inversion using the SIMD backend.</summary>
     [Benchmark(Description = "BN254 SIMD Invert")]
     public void BnSimdInvert() => bnSimdInvert(bnA, resultBytes, Bn);
 }

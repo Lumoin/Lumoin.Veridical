@@ -55,6 +55,19 @@ public static class MerkleAuthenticationPathExtensions
                 return false;
             }
 
+            //The leaf index addresses a leaf at the tree's fixed depth: each of
+            //its low bits selects the left-or-right turn at one level, and the
+            //path carries exactly one sibling per level. An index with a set bit
+            //at or above the path length names no leaf this path reaches; folding
+            //it would silently ignore those bits and authenticate it as the
+            //aliased in-range index, collapsing two positions onto one opening.
+            //Binding the position to the path's fixed depth is what keeps the
+            //commitment position-binding, so an out-of-range index is a non-match.
+            if((leafIndex >> path.SiblingCount) != 0)
+            {
+                return false;
+            }
+
             Span<byte> current = stackalloc byte[WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
             Span<byte> next = stackalloc byte[WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
             current = current[..digestSize];

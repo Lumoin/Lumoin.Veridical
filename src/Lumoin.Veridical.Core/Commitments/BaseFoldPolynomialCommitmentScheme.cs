@@ -64,6 +64,7 @@ public static class BaseFoldPolynomialCommitmentScheme
     /// <param name="invert">Scalar inversion backend.</param>
     /// <param name="hashToScalar">Hash-to-scalar backend the code derivation uses for its diagonal entries.</param>
     /// <param name="digestSizeBytes">The Merkle node digest size <paramref name="merkleHash"/> produces; defaults to <see cref="WellKnownMerkleHashParameters.DefaultDigestSizeBytes"/>.</param>
+    /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <returns>A provider whose commit / open / verify route to the BaseFold evaluation protocol.</returns>
     /// <exception cref="ArgumentNullException">When any reference argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive.</exception>

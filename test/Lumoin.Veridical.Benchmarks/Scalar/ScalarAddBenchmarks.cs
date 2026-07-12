@@ -49,6 +49,7 @@ public class ScalarAddBenchmarks
     private ScalarSubtractDelegate simdSubtract = null!;
 
 
+    /// <summary>Resolves the BigInteger and SIMD add/subtract delegates and prepares two reduced scalars.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -93,6 +94,7 @@ public class ScalarAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger addition over the BLS12-381 scalar field.</summary>
     [Benchmark(Baseline = true, Description = "BigInteger Add")]
     public void BigIntegerAdd()
     {
@@ -100,6 +102,7 @@ public class ScalarAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks SIMD addition over the BLS12-381 scalar field via the dispatch facade.</summary>
     [Benchmark(Description = "SIMD Add (AVX2 or NEON via dispatch)")]
     public void SimdAdd()
     {
@@ -107,6 +110,7 @@ public class ScalarAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks BigInteger subtraction over the BLS12-381 scalar field.</summary>
     [Benchmark(Description = "BigInteger Subtract")]
     public void BigIntegerSubtract()
     {
@@ -114,6 +118,7 @@ public class ScalarAddBenchmarks
     }
 
 
+    /// <summary>Benchmarks SIMD subtraction over the BLS12-381 scalar field via the dispatch facade.</summary>
     [Benchmark(Description = "SIMD Subtract")]
     public void SimdSubtract()
     {

@@ -273,6 +273,29 @@ internal sealed class Bls12Curve381G1PointArithmeticTests
 
 
     [TestMethod]
+    public void NonCanonicalInfinityEncodingRejected()
+    {
+        //The canonical identity encoding is exactly 0xC0 followed by zeros. An
+        //infinity-flagged encoding with an extra flag bit or trailing garbage
+        //must be rejected at decode rather than aliased onto the identity:
+        //aliasing would pass the on-curve and subgroup checks while evading
+        //byte-compare identity detection.
+        Span<byte> probe = stackalloc byte[WellKnownCurves.Bls12Curve381G1CompressedSizeBytes];
+        WellKnownCurves.GetG1IdentityCompressed(CurveParameterSet.Bls12Curve381).CopyTo(probe);
+        probe[0] |= 0x20;
+        Assert.IsFalse(IsOnCurveDelegate(probe, CurveParameterSet.Bls12Curve381), "An infinity encoding with the y-parity flag set must be rejected.");
+        Assert.IsFalse(IsInPrimeOrderSubgroupDelegate(probe, CurveParameterSet.Bls12Curve381), "The subgroup check must reject an infinity encoding with the y-parity flag set.");
+
+        WellKnownCurves.GetG1IdentityCompressed(CurveParameterSet.Bls12Curve381).CopyTo(probe);
+        probe[^1] = 0x01;
+        Assert.IsFalse(IsOnCurveDelegate(probe, CurveParameterSet.Bls12Curve381), "An infinity encoding with a non-zero trailing byte must be rejected.");
+        Assert.IsFalse(IsInPrimeOrderSubgroupDelegate(probe, CurveParameterSet.Bls12Curve381), "The subgroup check must reject an infinity encoding with a non-zero trailing byte.");
+
+        Assert.IsTrue(IsOnCurveDelegate(WellKnownCurves.GetG1IdentityCompressed(CurveParameterSet.Bls12Curve381), CurveParameterSet.Bls12Curve381), "The canonical identity encoding must still decode.");
+    }
+
+
+    [TestMethod]
     public void HashToCurveResultIsOnCurve()
     {
         //Post-condition of FromHashToCurve: the output satisfies the curve

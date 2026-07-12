@@ -20,9 +20,11 @@ namespace Lumoin.Veridical.Tests.Secdsa;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This gate carries the full EUDI Wallet SECDSA flow narrative (Verheul, "SECDSA: Mobile signing and
-/// authentication under classical sole control"), so the cryptographic steps below read against the protocol they
-/// implement. Every value crosses the WSCA surface as a tagged broad carrier; the mod-<c>n</c> scalar and group
+/// This gate carries the full EUDI Wallet SECDSA flow narrative (Verheul, "An HSM-based EUDI wallet using
+/// Split-ECDSA (SECDSA) providing verifiable sole control", version 21 June 2026 — the paper-map numbering below
+/// follows that revision; the underlying construction is Verheul's "SECDSA: Mobile signing and authentication
+/// under classical sole control", eprint 2021/910), so the cryptographic steps below read against the protocol
+/// they implement. Every value crosses the WSCA surface as a tagged broad carrier; the mod-<c>n</c> scalar and group
 /// arithmetic is wired from the BigInteger references, the same reuse-by-injection the other SECDSA gates use.
 /// This library implements the WSCA-side cryptography only; the device raw-sign of <c>u</c>, the relying-party
 /// exchange (OID4VP), and the application orchestration are out of scope (the boundary is stated in
@@ -130,7 +132,8 @@ namespace Lumoin.Veridical.Tests.Secdsa;
 ///   Proposition 3.3         R' = e*G'' + r*Y'' = aU*R           ComputeVerificationPoint
 ///   Equation 7 / Alg 9-10   control relation evidence           ProveControlRelation
 ///   Algorithm 36 / 37       instruction / signed transcript     carriers (application layer)
-///   Algorithm 21            Schnorr challenge Chal(SN)          instruction authenticity
+///   Algorithm 21            trusted-party challenge Chal(SN)    instruction authenticity
+///                           (ECDH-MAC transferable proof)
 ///   Section 4 / Alg 11      split-key architecture              separate gate (SplitKey...)
 ///
 ///   Scalars:  P = PIN-key,  u = NCH hardware key,  t = wallet one-time blinding,  aU = HSM/WSCD blinding key.

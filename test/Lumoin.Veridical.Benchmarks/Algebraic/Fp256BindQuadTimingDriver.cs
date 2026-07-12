@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 /// <summary>
 /// Stage-3 go/no-go measurement for wiring the AVX2 lane-parallel Fp256 batch multiply
 /// (<see cref="P256BaseFieldMontgomeryBatchBackendAvx2.GetBatchMultiplyMontgomery"/>) into the Longfellow
-/// <c>bind_quad</c> reduction (the dominant Fp256 cost, <see cref="LongfellowZkConstraintBuilder"/>'s
+/// <c>bind_quad</c> reduction (the dominant Fp256 cost, <see cref="Lumoin.Veridical.Core.Commitments.Longfellow.LongfellowZkConstraintBuilder"/>'s
 /// <c>ReduceRange</c>). The scalar path forms, per term, the four-way CHAINED Montgomery product
 /// <c>(zero ? beta : coef) · eqg[g] · eqh0[h0] · eqh1[h1]</c> as three sequential single-CIOS multiplies
 /// plus a field-add accumulate. The candidate path GATHERS each term's scattered operands into chunked

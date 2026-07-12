@@ -38,7 +38,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </para>
 /// <para>
 /// Disposable: <see cref="Dispose"/> clears the node buffer and returns it to the pool. The root
-/// bytes are copied out via <see cref="Root"/> before disposal. The node hash is delegate-injected
+/// bytes are copied out via <see cref="CopyRoot"/> before disposal. The node hash is delegate-injected
 /// (it must be SHA-256 to match the reference) so the construction stays consistent with the
 /// library's hash-agnostic commitment infrastructure.
 /// </para>

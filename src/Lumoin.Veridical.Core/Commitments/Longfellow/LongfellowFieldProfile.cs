@@ -201,7 +201,7 @@ internal sealed class LongfellowFieldProfile
     /// <summary>
     /// The non-throwing <c>of_bytes_field</c> the parse-safe proof readers use: as
     /// <see cref="FromBytesField"/>, but an out-of-range Fp256 element returns <see langword="false"/>
-    /// (with <paramref name="canonical"/> cleared) instead of throwing — the reference's
+    /// (with <paramref name="working"/> cleared) instead of throwing — the reference's
     /// <c>read_sc_proof</c>/<c>read_elt</c> turn the <c>std::nullopt</c> into a graceful
     /// <c>return false</c>, never a panic, because the wire bytes are attacker-controlled there.
     /// </summary>

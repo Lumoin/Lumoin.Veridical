@@ -22,6 +22,7 @@ public sealed class MultilinearSumcheckProof: IDisposable
     private readonly IMemoryOwner<byte> buffer;
 
 
+    /// <summary>The number of variables, equal to the number of sumcheck rounds the proof carries.</summary>
     public int VariableCount { get; }
 
     /// <summary>The round polynomials: <c>VariableCount</c> pairs <c>s(0), s(1)</c>, 32 bytes each.</summary>
@@ -66,5 +67,6 @@ public sealed class MultilinearSumcheckProof: IDisposable
     }
 
 
+    /// <inheritdoc/>
     public void Dispose() => buffer.Dispose();
 }

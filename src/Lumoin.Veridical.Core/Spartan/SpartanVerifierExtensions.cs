@@ -134,11 +134,12 @@ public static class SpartanVerifierExtensions
 
             CryptographicOperationCounters.Increment(CryptographicOperationKind.SpartanVerifierVerify, curve);
 
-            //Malformed proof bytes (a bit-flipped G1 point that fails
-            //subgroup decoding, an unreduced scalar) surface as
-            //InvalidOperationException from the inner crypto backends.
-            //Catch and convert to a false return so the verifier
-            //surface stays exception-safe against tampering.
+            //Malformed proof bytes are caught and converted to a false return so the
+            //verifier surface stays exception-safe against tampering: a bit-flipped
+            //G1 point that fails on-curve or subgroup decoding surfaces as
+            //InvalidOperationException from the crypto backends, and a non-canonical
+            //scalar — a round-polynomial coefficient at or above the field order —
+            //surfaces as ArgumentException from round-polynomial reconstruction.
             try
             {
                 return VerifyCore(
@@ -148,7 +149,7 @@ public static class SpartanVerifierExtensions
                     proof.GetHyraxOpeningProofBytes(),
                     instance, transcript, scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool, rowVariableCount, columnVariableCount, pcs);
             }
-            catch(InvalidOperationException)
+            catch(Exception ex) when (ex is InvalidOperationException or ArgumentException)
             {
                 return false;
             }
@@ -302,7 +303,7 @@ public static class SpartanVerifierExtensions
                     proof.GetWitnessOpeningProofBytes(),
                     instance, transcript, scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool, rowVariableCount, columnVariableCount, pcs);
             }
-            catch(InvalidOperationException)
+            catch(Exception ex) when (ex is InvalidOperationException or ArgumentException)
             {
                 return false;
             }
@@ -352,7 +353,7 @@ public static class SpartanVerifierExtensions
 
         /// <summary>
         /// Verifies a Ligero-backed Spartan2 proof against a relaxed R1CS
-        /// instance. The Ligero-shaped sibling of <see cref="VerifyBaseFold(BaseFoldSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>;
+        /// instance. The Ligero-shaped sibling of <see cref="VerifyBaseFold(SpartanVerifier, BaseFoldSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>;
         /// the opening verification lives in the provider's delegate, so the body is the same scheme-neutral core.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
@@ -423,7 +424,7 @@ public static class SpartanVerifierExtensions
                     proof.GetWitnessOpeningProofBytes(),
                     instance, transcript, scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool, rowVariableCount, columnVariableCount, pcs);
             }
-            catch(InvalidOperationException)
+            catch(Exception ex) when (ex is InvalidOperationException or ArgumentException)
             {
                 return false;
             }

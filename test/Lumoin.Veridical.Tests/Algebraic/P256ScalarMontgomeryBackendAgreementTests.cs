@@ -218,7 +218,7 @@ internal sealed class P256ScalarMontgomeryBackendAgreementTests
     }
 
 
-    //--- Shared harness ---
+    //Shared harness
 
     private static void AssertBinaryAgrees(BinaryScalarOp reference, BinaryScalarOp candidate, string candidateName)
     {

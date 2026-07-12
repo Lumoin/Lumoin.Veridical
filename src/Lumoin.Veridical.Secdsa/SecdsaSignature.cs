@@ -47,7 +47,7 @@ public sealed class SecdsaSignature: SensitiveMemory
     /// <param name="tag">An optional tag carrying provenance entries; merged with the algebraic-identity tag.</param>
     /// <returns>A signature wrapping a pool-rented copy of the supplied bytes.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> has the wrong length.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> has the wrong length, or <c>r</c> or <c>s</c> is zero or not below the group order.</exception>
     public static SecdsaSignature FromCanonical(
         ReadOnlySpan<byte> canonicalBytes,
         BaseMemoryPool pool,
@@ -58,6 +58,19 @@ public sealed class SecdsaSignature: SensitiveMemory
         {
             throw new ArgumentException(
                 $"SECDSA signature must be exactly {SizeBytes} bytes; received {canonicalBytes.Length}.",
+                nameof(canonicalBytes));
+        }
+
+        //Enforce the documented invariant: r and s are each in [1, n-1]. A
+        //component at or above n is the classic non-canonical malleability
+        //encoding and verifiers reject it, so it never enters a container.
+        ReadOnlySpan<byte> r = canonicalBytes.Slice(ROffset, RSizeBytes);
+        ReadOnlySpan<byte> s = canonicalBytes.Slice(SOffset, SSizeBytes);
+        if(!WellKnownCurves.IsCanonicalScalar(r, CurveParameterSet.P256) || r.IndexOfAnyExcept((byte)0) < 0
+            || !WellKnownCurves.IsCanonicalScalar(s, CurveParameterSet.P256) || s.IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new ArgumentException(
+                "ECDSA signature components r and s must each be in [1, n-1]; received zero or a value at or above the group order.",
                 nameof(canonicalBytes));
         }
 

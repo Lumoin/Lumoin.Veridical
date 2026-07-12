@@ -152,9 +152,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Fp12 Frobenius — tower-structured x ↦ x^p.
-    //------------------------------------------------------------------
     private static Fp12Value Fp12Frobenius(Fp12Value v)
     {
         Bls12Curve381BigIntegerFp6Reference.Fp6Value c0 = Fp6Frobenius(v.C0);
@@ -176,9 +174,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Miller loop — BLS12-381 over |x| with M-twist line evaluations.
-    //------------------------------------------------------------------
     private static Fp12Value MillerLoop(G1Affine p, G2Affine q)
     {
         G2Affine accumulator = q;
@@ -278,9 +274,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Final exponentiation — (p^12 − 1)/r as easy · hard.
-    //------------------------------------------------------------------
     private static Fp12Value FinalExponentiation(Fp12Value f)
     {
         //Easy part: f^(p^6 - 1) · (p^2 + 1).
@@ -321,9 +315,7 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //Fp2 exponentiation — for Frobenius-constant computation at init.
-    //------------------------------------------------------------------
     private static Fp2BigInt.Value Fp2Pow(Fp2BigInt.Value baseValue, BigInteger exponent)
     {
         Fp2BigInt.Value result = Fp2BigInt.One;
@@ -346,10 +338,8 @@ internal static class Bls12Curve381BigIntegerPairingReference
     }
 
 
-    //------------------------------------------------------------------
     //G1 / G2 affine decode (inline, minimal — re-uses the complex Fp2
     //sqrt formula from the H.2 G2 reference).
-    //------------------------------------------------------------------
 
     /// <summary>An affine G1 point over Fp.</summary>
     internal readonly record struct G1Affine(BigInteger X, BigInteger Y, bool IsInfinity);
@@ -371,6 +361,14 @@ internal static class Bls12Curve381BigIntegerPairingReference
 
         if(isInfinity)
         {
+            //The canonical identity encoding is exactly the compression and infinity
+            //flags set with every other bit zero. Any other infinity-flagged pattern
+            //is non-canonical and rejected rather than aliased onto the identity.
+            if(headerByte != 0xC0 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                throw new InvalidOperationException("Non-canonical BLS12-381 G1 infinity encoding.");
+            }
+
             return new G1Affine(BigInteger.Zero, BigInteger.Zero, IsInfinity: true);
         }
 
@@ -378,11 +376,25 @@ internal static class Bls12Curve381BigIntegerPairingReference
         bytes.CopyTo(xBytes);
         xBytes[0] &= 0x1f;
         BigInteger x = new(xBytes, isUnsigned: true, isBigEndian: true);
+        if(x >= Prime)
+        {
+            //A masked x at or above the base-field prime is a non-canonical encoding;
+            //reject it rather than reduce it, matching the G1 reference TryDecode boundary.
+            throw new InvalidOperationException("Non-canonical BLS12-381 G1 x-coordinate.");
+        }
 
         //y = ±sqrt(x³ + 4) in Fp; sign determined by ZCash sgn0 (2y > p ↔ parity = 1).
         BigInteger xCubed = (x * x % Prime) * x % Prime;
         BigInteger rhs = (xCubed + 4) % Prime;
-        BigInteger ySqrt = ModSqrtFp(rhs);
+        if(!TryModSqrtFp(rhs, out BigInteger ySqrt))
+        {
+            //rhs is a quadratic non-residue, so x is not the abscissa of any curve point.
+            //ModSqrtFp is the a^((p+1)/4) shortcut that returns a value for every input;
+            //verifying the root squares back rejects an off-curve x instead of decoding
+            //it to a bogus point that the pairing would then consume.
+            throw new InvalidOperationException("BLS12-381 G1 point is not on the curve.");
+        }
+
         BigInteger otherY = (Prime - ySqrt) % Prime;
         bool sqrtParity = (2 * ySqrt) > Prime;
         BigInteger y = (sqrtParity == yParity) ? ySqrt : otherY;
@@ -404,6 +416,14 @@ internal static class Bls12Curve381BigIntegerPairingReference
 
         if(isInfinity)
         {
+            //The canonical identity encoding is exactly the compression and infinity
+            //flags set with every other bit zero. Any other infinity-flagged pattern
+            //is non-canonical and rejected rather than aliased onto the identity.
+            if(headerByte != 0xC0 || bytes[1..].IndexOfAnyExcept((byte)0) >= 0)
+            {
+                throw new InvalidOperationException("Non-canonical BLS12-381 G2 infinity encoding.");
+            }
+
             return new G2Affine(Fp2BigInt.Zero, Fp2BigInt.Zero, IsInfinity: true);
         }
 
@@ -413,6 +433,13 @@ internal static class Bls12Curve381BigIntegerPairingReference
         c1Bytes[0] &= 0x1f;
         BigInteger xC1 = new(c1Bytes, isUnsigned: true, isBigEndian: true);
         BigInteger xC0 = new(bytes.Slice(FpComponentSize, FpComponentSize), isUnsigned: true, isBigEndian: true);
+        if(xC1 >= Prime || xC0 >= Prime)
+        {
+            //Either Fp2 component at or above the base-field prime is non-canonical;
+            //reject rather than reduce, matching the G2 reference TryDecode boundary.
+            throw new InvalidOperationException("Non-canonical BLS12-381 G2 x-coordinate.");
+        }
+
         Fp2BigInt.Value x = new(xC0, xC1);
 
         //y² = x³ + 4·(1 + u).
@@ -420,7 +447,13 @@ internal static class Bls12Curve381BigIntegerPairingReference
         Fp2BigInt.Value xCubed = Fp2BigInt.Mul(xSquared, x);
         Fp2BigInt.Value rhs = Fp2BigInt.Add(xCubed, TwistCurveB);
 
-        Fp2BigInt.Value ySqrt = ModSqrtFp2(rhs);
+        if(!TryModSqrtFp2(rhs, out Fp2BigInt.Value ySqrt))
+        {
+            //rhs is not a quadratic residue in Fp2, so x is not the abscissa of any
+            //twist-curve point. Reject instead of decoding to an off-curve point.
+            throw new InvalidOperationException("BLS12-381 G2 point is not on the curve.");
+        }
+
         Fp2BigInt.Value otherY = Fp2BigInt.Neg(ySqrt);
 
         bool sqrtParity = Fp2YParityZcash(ySqrt);
@@ -439,28 +472,110 @@ internal static class Bls12Curve381BigIntegerPairingReference
 
 
     /// <summary>
-    /// Square root in Fp2 via the complex-sqrt formula (the field has
-    /// q = p² ≡ 1 mod 4 so the simple (q+1)/4 shortcut does not apply;
-    /// reduce to two Fp sqrt steps via the norm).
+    /// Square root in Fp with square-back verification. Returns <see langword="false"/>
+    /// when <paramref name="a"/> is a quadratic non-residue, so a decoder rejects an
+    /// off-curve abscissa instead of accepting the a^((p+1)/4) shortcut's bogus output.
     /// </summary>
-    private static Fp2BigInt.Value ModSqrtFp2(Fp2BigInt.Value a)
+    private static bool TryModSqrtFp(BigInteger a, out BigInteger root)
+    {
+        if(a.IsZero)
+        {
+            root = BigInteger.Zero;
+
+            return true;
+        }
+
+        BigInteger candidate = ModSqrtFp(a);
+        if(candidate * candidate % Prime != a)
+        {
+            root = BigInteger.Zero;
+
+            return false;
+        }
+
+        root = candidate;
+
+        return true;
+    }
+
+
+    /// <summary>
+    /// Square root in Fp2 with square-back verification, mirroring the G2 reference
+    /// decode path: the field has q = p² ≡ 1 mod 4 so the simple (q+1)/4 shortcut does
+    /// not apply; reduce to Fp square roots via the complex-conjugate norm and return
+    /// <see langword="false"/> when <paramref name="a"/> is a non-residue. Handles the
+    /// pure-real and pure-imaginary axes the naive complex formula alone mishandles.
+    /// </summary>
+    private static bool TryModSqrtFp2(Fp2BigInt.Value a, out Fp2BigInt.Value root)
     {
         if(Fp2BigInt.IsZero(a))
         {
-            return Fp2BigInt.Zero;
+            root = Fp2BigInt.Zero;
+
+            return true;
         }
 
-        BigInteger norm = (a.C0 * a.C0 + a.C1 * a.C1) % Prime;
-        BigInteger alpha = ModSqrtFp(norm);
-        BigInteger delta = ((a.C0 + alpha) * ModInverse(BigInteger.One + BigInteger.One)) % Prime;
-        BigInteger deltaCheck = BigInteger.ModPow(delta, (Prime - 1) / 2, Prime);
-        if(deltaCheck != BigInteger.One)
+        if(a.C1.IsZero)
         {
-            delta = ((a.C0 - alpha + Prime) * ModInverse(BigInteger.One + BigInteger.One)) % Prime;
+            //Pure-real case: y² = a.c0 is either an Fp residue (y on the real axis) or
+            //−a.c0 is (y on the imaginary axis, since (i·c)² = −c² with u² = −1).
+            if(TryModSqrtFp(a.C0, out BigInteger realRoot))
+            {
+                root = new Fp2BigInt.Value(realRoot, BigInteger.Zero);
+
+                return true;
+            }
+
+            if(TryModSqrtFp(Mod(-a.C0), out BigInteger imaginaryRoot))
+            {
+                root = new Fp2BigInt.Value(BigInteger.Zero, imaginaryRoot);
+
+                return true;
+            }
+
+            root = Fp2BigInt.Zero;
+
+            return false;
         }
-        BigInteger c0 = ModSqrtFp(delta);
-        BigInteger c1 = (a.C1 * ModInverse((BigInteger.One + BigInteger.One) * c0 % Prime)) % Prime;
-        return new Fp2BigInt.Value(c0, c1);
+
+        BigInteger norm = Mod((a.C0 * a.C0) + (a.C1 * a.C1));
+        if(!TryModSqrtFp(norm, out BigInteger alpha))
+        {
+            root = Fp2BigInt.Zero;
+
+            return false;
+        }
+
+        BigInteger twoInverse = ModInverse(BigInteger.One + BigInteger.One);
+        BigInteger x0;
+        if(!TryModSqrtFp(Mod((a.C0 + alpha) * twoInverse), out x0))
+        {
+            //Exactly one of (a.c0 ± α)/2 is an Fp residue for p ≡ 3 mod 4.
+            if(!TryModSqrtFp(Mod((a.C0 - alpha) * twoInverse), out x0))
+            {
+                root = Fp2BigInt.Zero;
+
+                return false;
+            }
+        }
+
+        BigInteger twoX0Inverse = ModInverse(Mod(x0 + x0));
+        BigInteger x1 = Mod(a.C1 * twoX0Inverse);
+        root = new Fp2BigInt.Value(x0, x1);
+
+        return true;
+    }
+
+
+    private static BigInteger Mod(BigInteger value)
+    {
+        BigInteger result = value % Prime;
+        if(result.Sign < 0)
+        {
+            result += Prime;
+        }
+
+        return result;
     }
 
 

@@ -78,6 +78,7 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
     /// Constructs a relaxed instance from matrices, public inputs,
     /// the relaxation scalar <c>u</c>, and the error-vector commitment.
     /// </summary>
+    /// <exception cref="ArgumentException">When matrix shapes, curves, or buffer lengths do not satisfy the constraints, or a public input or <c>u</c> is at or above the scalar field order.</exception>
     public static RelaxedR1csInstance Create(
         R1csMatrix a,
         R1csMatrix b,
@@ -122,7 +123,29 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
                 nameof(publicInputs));
         }
 
+        //Reject non-canonical field elements at the construction boundary: u and
+        //the public inputs are transcript-absorbed as bytes and enter the folded
+        //relation, so a value at or above the order would diverge between its
+        //absorb bytes and its reduced arithmetic value — the same class the
+        //matrix and witness factories reject.
+        if(!WellKnownCurves.IsCanonicalScalar(uBytes, a.Curve))
+        {
+            throw new ArgumentException(
+                $"u encodes an integer at or above the scalar field order of {a.Curve}.",
+                nameof(uBytes));
+        }
+
         int publicInputCount = publicInputs.Length / scalarSize;
+        for(int i = 0; i < publicInputCount; i++)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(publicInputs.Slice(i * scalarSize, scalarSize), a.Curve))
+            {
+                throw new ArgumentException(
+                    $"Public input {i} encodes an integer at or above the scalar field order of {a.Curve}.",
+                    nameof(publicInputs));
+            }
+        }
+
         int bufferSize = ComputeBufferSize(publicInputCount, a.Curve);
         IMemoryOwner<byte> owner = pool.Rent(bufferSize);
         Span<byte> buffer = owner.Memory.Span[..bufferSize];

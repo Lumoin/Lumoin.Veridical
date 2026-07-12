@@ -19,7 +19,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <c>mdoc-circuit-raw.gz</c> the crown gate parses (field id 1, 32-byte elements), fills the genuine
 /// 3739-element witness column with <see cref="MdocSignatureWitnessFiller"/> (the REAL credential's issuer
 /// signature plus the synthesized device half, coordinator decision OQ1), then runs OUR field-generic Fp256
-/// <see cref="LongfellowZkProver.Prove(LongfellowSumcheckCircuit, LongfellowLigeroParameters, ReadOnlySpan{byte}, int, LongfellowRandomByteSource, LongfellowTranscript, LongfellowRowEncoderFactory, LongfellowFieldProfile, LongfellowSubfieldRunCodec, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/>
+/// <c>LongfellowZkProver.Prove</c>
 /// and confirms OUR <see cref="LongfellowZkVerifier.VerifyFromAbsorbedRoot"/> ACCEPTS it; a tamper dual (a
 /// flipped proof byte AND a flipped public input) rejects with the Ligero soundness cause.
 /// </summary>
@@ -49,7 +49,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// <para>
 /// The full prove over the 21-layer circuit is the expensive Ligero-over-the-whole-R1CS path, so the
-/// prove-&gt;verify gate is marked <see cref="TestCategory"/> <c>Slow</c>. The cheap pre-check
+/// prove-&gt;verify gate is marked <see cref="TestCategoryAttribute"/> <c>Slow</c>. The cheap pre-check
 /// (<see cref="TheWitnessSatisfiesTheImportedSigCircuit"/>) evaluates the circuit on the witness through
 /// <c>EvaluateCircuit</c> (the reference's <c>eval_circuit</c>: every layer's quad form, the output-zero
 /// assertion and every assert-zero gate) and stays in the default suite to catch filler/sign bugs without

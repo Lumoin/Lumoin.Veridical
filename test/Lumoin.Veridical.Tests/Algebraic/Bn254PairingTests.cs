@@ -33,6 +33,9 @@ internal sealed class Bn254PairingTests
     private static readonly Fp12MultiplyDelegate Fp12Mul = Bn254BigIntegerFp12Reference.GetMultiply();
     private static readonly ScalarReduceDelegate Reduce = Bn254BigIntegerScalarReference.GetReduce();
 
+    private static readonly G1IsOnCurveDelegate G1IsOnCurve = Bn254BigIntegerG1Reference.GetIsOnCurve();
+    private static readonly G2IsOnCurveDelegate G2IsOnCurve = Bn254BigIntegerG2Reference.GetIsOnCurve();
+
     private static readonly BigInteger BaseFieldPrime = Bn254BigIntegerG1Reference.BaseFieldPrime;
     private const int CompSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
     private const int Fp12Size = 12 * WellKnownCurves.Bn254BaseFieldSizeBytes;
@@ -206,6 +209,110 @@ internal sealed class Bn254PairingTests
             using Fp12Element regSq = a.Square(RegularSquare, Pool);
             return cycSq.AsReadOnlySpan().SequenceEqual(regSq.AsReadOnlySpan());
         }, iter: FrobeniusIterationCount);
+    }
+
+
+    [TestMethod]
+    public void PairingRejectsOffCurveG1Point()
+    {
+        //The pairing-reference G1 decode must reject an off-curve abscissa rather than
+        //fabricate a y with the unverified a^((p+1)/4) shortcut and pair against it. The
+        //probe is pinned off-curve through the reference on-curve predicate, and the good
+        //operand is a generator so no identity short-circuit can hide the off-curve decode.
+        byte[] offCurveG1 = BuildOffCurveG1();
+        byte[] validG2 = GeneratorG2Compressed();
+        Assert.IsFalse(G1IsOnCurve(offCurveG1, CurveParameterSet.Bn254), "The probe must be off-curve for the test to be meaningful.");
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => PairInto(offCurveG1, validG2));
+    }
+
+
+    [TestMethod]
+    public void PairingRejectsOffCurveG2Point()
+    {
+        byte[] validG1 = GeneratorG1Compressed();
+        byte[] offCurveG2 = BuildOffCurveG2();
+        Assert.IsFalse(G2IsOnCurve(offCurveG2, CurveParameterSet.Bn254), "The probe must be off-curve for the test to be meaningful.");
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => PairInto(validG1, offCurveG2));
+    }
+
+
+    [TestMethod]
+    public void PairingRejectsNonCanonicalG1XCoordinate()
+    {
+        //A masked x at or above the base-field prime is a non-canonical encoding; the
+        //decode must reject it rather than reduce it. All-ones x bytes exceed q.
+        byte[] validG2 = GeneratorG2Compressed();
+        byte[] nonCanonicalG1 = new byte[WellKnownCurves.Bn254G1CompressedSizeBytes];
+        nonCanonicalG1.AsSpan().Fill(0xFF);
+        nonCanonicalG1[0] = 0xBF;  //Compressed tag (0x80), infinity clear, low six x bits all one.
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => PairInto(nonCanonicalG1, validG2));
+    }
+
+
+    private static void PairInto(byte[] p, byte[] q)
+    {
+        Span<byte> result = stackalloc byte[Fp12Size];
+        Pair(p, q, result, CurveParameterSet.Bn254);
+    }
+
+
+    private static byte[] GeneratorG1Compressed()
+    {
+        using G1Point g1 = G1Point.Generator(CurveParameterSet.Bn254, Pool);
+
+        return g1.AsReadOnlySpan().ToArray();
+    }
+
+
+    private static byte[] GeneratorG2Compressed()
+    {
+        using G2Point g2 = G2Point.Generator(CurveParameterSet.Bn254, Pool);
+
+        return g2.AsReadOnlySpan().ToArray();
+    }
+
+
+    private static byte[] BuildOffCurveG1()
+    {
+        //Scan small abscissas for the first whose x³ + 3 is a quadratic non-residue,
+        //gnark-compressed with the smaller-root tag (0x80).
+        byte[] encoded = new byte[WellKnownCurves.Bn254G1CompressedSizeBytes];
+        for(int candidate = 1; candidate < 256; candidate++)
+        {
+            encoded.AsSpan().Clear();
+            encoded[^1] = (byte)candidate;
+            encoded[0] = 0x80;
+            if(!G1IsOnCurve(encoded, CurveParameterSet.Bn254))
+            {
+                return encoded;
+            }
+        }
+
+        throw new InvalidOperationException("No off-curve G1 abscissa found in the scan range.");
+    }
+
+
+    private static byte[] BuildOffCurveG2()
+    {
+        //Scan small x.c0 with x.c1 = 0 for the first off the twist curve. Layout is
+        //[x.c1 : 32 BE][x.c0 : 32 BE] with the tag in the leading c1 byte, so the
+        //trailing byte carries x.c0.
+        byte[] encoded = new byte[WellKnownCurves.Bn254G2CompressedSizeBytes];
+        for(int candidate = 1; candidate < 256; candidate++)
+        {
+            encoded.AsSpan().Clear();
+            encoded[^1] = (byte)candidate;
+            encoded[0] = 0x80;
+            if(!G2IsOnCurve(encoded, CurveParameterSet.Bn254))
+            {
+                return encoded;
+            }
+        }
+
+        throw new InvalidOperationException("No off-curve G2 abscissa found in the scan range.");
     }
 
 

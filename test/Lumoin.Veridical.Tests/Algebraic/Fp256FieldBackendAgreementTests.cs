@@ -261,7 +261,7 @@ internal sealed class Fp256FieldBackendAgreementTests
         AssertBinaryAgrees(Binary(P256BaseFieldMontgomeryBackend.GetMultiply()), Binary(P256BaseFieldSolinasBackend.GetMultiply()));
 
 
-    //--- Shared agreement harness ---
+    //Shared agreement harness
 
     private static void AssertBinaryAgrees(BinaryFieldOp reference, BinaryFieldOp candidate)
     {

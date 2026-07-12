@@ -331,6 +331,45 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind BbsVerifyProof { get; } = new(164);
 
 
+    //BBS blind-signature (draft-irtf-cfrg-bbs-blind-signatures-03) and
+    //per-verifier-pseudonym (draft-irtf-cfrg-bbs-per-verifier-linkability-03)
+    //extension operations: 165-175, immediately following the core BBS+
+    //block (160-164) and before the next allocated block (Fp6, 200-209).
+
+    /// <summary>Blind BBS commitment to a set of prover-chosen messages (<c>Commit</c>/<c>CoreCommit</c>), producing the Pedersen commitment plus its Schnorr proof of opening.</summary>
+    public static CryptographicOperationKind BbsCommit { get; } = new(165);
+
+    /// <summary>Blind BBS signing over a deserialized-and-validated commitment plus signer-known messages (<c>BlindSign</c>).</summary>
+    public static CryptographicOperationKind BbsBlindSign { get; } = new(166);
+
+    /// <summary>Blind BBS signature verification on the prover side, after unblinding (<c>VerifyBlindSign</c> / the core <c>Verify</c> called on the finalized signature).</summary>
+    public static CryptographicOperationKind BbsBlindVerify { get; } = new(167);
+
+    /// <summary>Blind BBS selective-disclosure proof generation, including committed-disclosure messages (<c>BlindProofGen</c>).</summary>
+    public static CryptographicOperationKind BbsBlindGenerateProof { get; } = new(168);
+
+    /// <summary>Blind BBS selective-disclosure proof verification (<c>BlindProofVerify</c>).</summary>
+    public static CryptographicOperationKind BbsBlindVerifyProof { get; } = new(169);
+
+    /// <summary>Per-verifier-pseudonym commitment to the prover's <c>nym_secrets</c> alongside any blind messages (<c>CommitWithNym</c>).</summary>
+    public static CryptographicOperationKind BbsNymCommit { get; } = new(170);
+
+    /// <summary>Per-verifier-pseudonym blind signing over a commitment carrying <c>nym_secrets</c> (<c>BlindSignWithNym</c>).</summary>
+    public static CryptographicOperationKind BbsNymBlindSign { get; } = new(171);
+
+    /// <summary>Per-verifier-pseudonym signature finalization/verification on the prover side (<c>VerifyFinalizeWithNym</c>).</summary>
+    public static CryptographicOperationKind BbsNymVerifyFinalize { get; } = new(172);
+
+    /// <summary>Per-verifier-pseudonym selective-disclosure proof generation, including the pseudonym computation (<c>ProofGenWithNym</c>).</summary>
+    public static CryptographicOperationKind BbsNymGenerateProof { get; } = new(173);
+
+    /// <summary>Per-verifier-pseudonym selective-disclosure proof verification (<c>ProofVerifyWithNym</c>).</summary>
+    public static CryptographicOperationKind BbsNymVerifyProof { get; } = new(174);
+
+    /// <summary>Blind BBS commitment verification on the signer side (the standalone <c>Verify</c> gate over a commitment-with-proof, mirroring <c>deserialize_and_validate_commit</c>).</summary>
+    public static CryptographicOperationKind BbsCommitVerify { get; } = new(175);
+
+
     private static readonly List<CryptographicOperationKind> kinds =
     [
         None,
@@ -351,7 +390,10 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
         Fp12Add, Fp12Subtract, Fp12Multiply, Fp12Square, Fp12Negate, Fp12Invert, Fp12Conjugate,
         Fp12Frobenius, Fp12CyclotomicSquare, Pairing,
         HashToScalar,
-        BbsGenerate, BbsSign, BbsVerify, BbsGenerateProof, BbsVerifyProof
+        BbsGenerate, BbsSign, BbsVerify, BbsGenerateProof, BbsVerifyProof,
+        BbsCommit, BbsBlindSign, BbsBlindVerify, BbsBlindGenerateProof, BbsBlindVerifyProof,
+        BbsNymCommit, BbsNymBlindSign, BbsNymVerifyFinalize, BbsNymGenerateProof, BbsNymVerifyProof,
+        BbsCommitVerify
     ];
 
 
@@ -497,6 +539,17 @@ public static class CryptographicOperationKindNames
         var c when c == CryptographicOperationKind.BbsVerify.Code => nameof(CryptographicOperationKind.BbsVerify),
         var c when c == CryptographicOperationKind.BbsGenerateProof.Code => nameof(CryptographicOperationKind.BbsGenerateProof),
         var c when c == CryptographicOperationKind.BbsVerifyProof.Code => nameof(CryptographicOperationKind.BbsVerifyProof),
+        var c when c == CryptographicOperationKind.BbsCommit.Code => nameof(CryptographicOperationKind.BbsCommit),
+        var c when c == CryptographicOperationKind.BbsBlindSign.Code => nameof(CryptographicOperationKind.BbsBlindSign),
+        var c when c == CryptographicOperationKind.BbsBlindVerify.Code => nameof(CryptographicOperationKind.BbsBlindVerify),
+        var c when c == CryptographicOperationKind.BbsBlindGenerateProof.Code => nameof(CryptographicOperationKind.BbsBlindGenerateProof),
+        var c when c == CryptographicOperationKind.BbsBlindVerifyProof.Code => nameof(CryptographicOperationKind.BbsBlindVerifyProof),
+        var c when c == CryptographicOperationKind.BbsNymCommit.Code => nameof(CryptographicOperationKind.BbsNymCommit),
+        var c when c == CryptographicOperationKind.BbsNymBlindSign.Code => nameof(CryptographicOperationKind.BbsNymBlindSign),
+        var c when c == CryptographicOperationKind.BbsNymVerifyFinalize.Code => nameof(CryptographicOperationKind.BbsNymVerifyFinalize),
+        var c when c == CryptographicOperationKind.BbsNymGenerateProof.Code => nameof(CryptographicOperationKind.BbsNymGenerateProof),
+        var c when c == CryptographicOperationKind.BbsNymVerifyProof.Code => nameof(CryptographicOperationKind.BbsNymVerifyProof),
+        var c when c == CryptographicOperationKind.BbsCommitVerify.Code => nameof(CryptographicOperationKind.BbsCommitVerify),
         _ => $"Custom ({code})"
     };
 }

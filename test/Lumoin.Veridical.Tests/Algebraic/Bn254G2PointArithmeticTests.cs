@@ -284,6 +284,29 @@ internal sealed class Bn254G2PointArithmeticTests
     }
 
 
+    [TestMethod]
+    public void NonCanonicalInfinityEncodingRejected()
+    {
+        //The canonical infinity encoding is exactly the 0x40 tag followed by
+        //zeros. An infinity-tagged encoding with an extra non-tag bit or
+        //trailing garbage must be rejected at decode rather than aliased onto
+        //the identity: aliasing would pass the on-curve and subgroup checks
+        //while evading byte-compare identity detection.
+        Span<byte> probe = stackalloc byte[WellKnownCurves.Bn254G2CompressedSizeBytes];
+        WellKnownCurves.GetG2IdentityCompressed(CurveParameterSet.Bn254).CopyTo(probe);
+        probe[0] |= 0x20;
+        Assert.IsFalse(IsOnCurveDelegate(probe, CurveParameterSet.Bn254), "An infinity encoding with an extra non-tag bit must be rejected.");
+        Assert.IsFalse(IsInPrimeOrderSubgroupDelegate(probe, CurveParameterSet.Bn254), "The subgroup check must reject an infinity encoding with an extra non-tag bit.");
+
+        WellKnownCurves.GetG2IdentityCompressed(CurveParameterSet.Bn254).CopyTo(probe);
+        probe[^1] = 0x01;
+        Assert.IsFalse(IsOnCurveDelegate(probe, CurveParameterSet.Bn254), "An infinity encoding with a non-zero trailing byte must be rejected.");
+        Assert.IsFalse(IsInPrimeOrderSubgroupDelegate(probe, CurveParameterSet.Bn254), "The subgroup check must reject an infinity encoding with a non-zero trailing byte.");
+
+        Assert.IsTrue(IsOnCurveDelegate(WellKnownCurves.GetG2IdentityCompressed(CurveParameterSet.Bn254), CurveParameterSet.Bn254), "The canonical infinity encoding must still decode.");
+    }
+
+
     private static Scalar ScalarFromByte(byte value)
     {
         ReadOnlySpan<byte> source = [value];

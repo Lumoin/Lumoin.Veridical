@@ -34,7 +34,6 @@ public sealed class PolynomialCommitmentBlind: SensitiveMemory
 
     internal PolynomialCommitmentBlind(
         IMemoryOwner<byte> owner,
-        int length,
         CurveParameterSet curve,
         CommitmentScheme scheme,
         Tag tag)
@@ -57,11 +56,10 @@ public sealed class PolynomialCommitmentBlind: SensitiveMemory
     /// <summary>Wraps a pool-rented buffer a scheme has populated with blind bytes; takes ownership of <paramref name="owner"/>.</summary>
     internal static PolynomialCommitmentBlind Create(
         IMemoryOwner<byte> owner,
-        int length,
         CurveParameterSet curve,
         CommitmentScheme scheme)
     {
-        return new PolynomialCommitmentBlind(owner, length, curve, scheme, CreateTag(curve, scheme));
+        return new PolynomialCommitmentBlind(owner, curve, scheme, CreateTag(curve, scheme));
     }
 
 
@@ -91,7 +89,7 @@ public sealed class PolynomialCommitmentBlind: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(blindBytes.Length);
         blindBytes.CopyTo(owner.Memory.Span[..blindBytes.Length]);
 
-        return Create(owner, blindBytes.Length, curve, scheme);
+        return Create(owner, curve, scheme);
     }
 
 
@@ -119,6 +117,6 @@ public sealed class PolynomialCommitmentBlind: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(lengthBytes);
         owner.Memory.Span[..lengthBytes].Clear();
 
-        return Create(owner, lengthBytes, curve, scheme);
+        return Create(owner, curve, scheme);
     }
 }

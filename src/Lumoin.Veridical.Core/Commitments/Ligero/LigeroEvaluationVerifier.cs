@@ -145,7 +145,7 @@ internal static class LigeroEvaluationVerifier
     {
         IMemoryOwner<byte> pathOwner = pool.Rent(Math.Max(1, pathSpan.Length));
         pathSpan.CopyTo(pathOwner.Memory.Span[..pathSpan.Length]);
-        using MerkleAuthenticationPath path = MerkleAuthenticationPath.Create(pathOwner, pathSpan.Length, digestSizeBytes);
+        using MerkleAuthenticationPath path = MerkleAuthenticationPath.Create(pathOwner, digestSizeBytes);
 
         return path.Verify(root, leafIndex, leaf, merkleHash);
     }

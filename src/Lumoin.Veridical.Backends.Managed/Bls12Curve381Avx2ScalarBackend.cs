@@ -687,7 +687,7 @@ internal static class Bls12Curve381Avx2ScalarBackend
     }
 
 
-    //--- Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS) ---
+    //Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS)
 
     /// <summary>The number of 32-bit limbs that compose a scalar (256 bits / 32 bits).</summary>
     private const int Limb32Count = 8;

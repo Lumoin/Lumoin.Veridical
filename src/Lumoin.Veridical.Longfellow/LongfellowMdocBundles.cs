@@ -12,8 +12,9 @@ namespace Lumoin.Veridical.Longfellow;
 /// drift: the pinned reference constants, the GF(2^128) hash-side and P-256 signature-side arithmetic
 /// delegates, the field FFT/profile/codec/encoder-factory builders, the canonical-to-Montgomery column lift
 /// and signature-template framing, and the four <see cref="LongfellowMdocFieldProver"/> /
-/// <see cref="LongfellowMdocFieldVerifier"/> builders. Every value here is the reference v7 one-attribute
-/// instantiation the driver test pins.
+/// <see cref="LongfellowMdocFieldVerifier"/> builders. The per-specification circuit-shape and
+/// block-encoding values ride in the <see cref="LongfellowMdocZkSpec"/> the builders take; the values fixed
+/// across every supported specification stay pinned here.
 /// </summary>
 /// <remarks>
 /// The hash side runs over GF(2^128) and its quad-term coefficients are NOT lifted; the signature side runs
@@ -35,25 +36,12 @@ internal static class LongfellowMdocBundles
     internal const int Gf2128FieldId = 4;
     internal const int Gf2128ElementBytes = 16;
 
-    //The GF(2^128) hash circuit: 16-byte full field over the GF(2^16) = Production16 subfield (2 bytes), with
-    //the reference v7 pinned block_enc 4151.
+    //The GF(2^128) hash circuit: 16-byte full field over the GF(2^16) = Production16 subfield (2 bytes).
+    //The per-specification block-encoding lengths ride in the LongfellowMdocZkSpec.
     internal const int HashFieldBytes = 16;
     internal const int HashSubFieldBytes = 2;
-    internal const int HashBlockEncoded = 4151;
-
-    //The P-256 signature circuit's reference v7 pinned block_enc; its subfield IS the base field, so the
-    //subfield byte size is LongfellowFp256Encoding.SignatureSubFieldBytes (32).
-    internal const int SigBlockEncoded = 4096;
-
-    //The reference's ZkProver rebases subfield_boundary by npub_in: hash 85112 - 952.
-    internal const int HashSubfieldBoundary = 85112 - 952;
-
-    //The first public MAC wire index in each column: hash macs then av at 945 (npub_in = 952); sig macs at wire 4.
-    internal const int HashMacIndex = 945;
-    internal const int SigMacIndex = 4;
 
     //The transcript is baked at the GF/a_v width 16; the sig side passes its 32-byte profile per op.
-    internal const int TranscriptVersion = 7;
     internal const int TranscriptElementBytes = 16;
 
 
@@ -203,19 +191,20 @@ internal static class LongfellowMdocBundles
 
 
     /// <summary>Builds the GF(2^128) hash-circuit prove bundle.</summary>
+    /// <param name="spec">The proof specification supplying the block-encoding length and the rebased subfield boundary.</param>
     /// <param name="circuit">The parsed hash circuit.</param>
     /// <param name="profile">The hash field profile (shared with the codec).</param>
     /// <param name="fft">The shared LCH14 additive-FFT engine.</param>
     /// <param name="codec">The hash subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
-    internal static LongfellowMdocFieldProver BuildHashProver(LongfellowSumcheckCircuit circuit, LongfellowFieldProfile profile, Lch14AdditiveFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
+    internal static LongfellowMdocFieldProver BuildHashProver(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit circuit, LongfellowFieldProfile profile, Lch14AdditiveFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
+        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, spec.HashBlockEncoded);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, pool);
 
         return new LongfellowMdocFieldProver(
             circuit, parameters, encoderFactory, profile, codec,
-            GfAdd, GfSubtract, GfMultiply, GfInvert, HashSubfieldBoundary, CurveParameterSet.None,
+            GfAdd, GfSubtract, GfMultiply, GfInvert, spec.HashSubfieldBoundary, CurveParameterSet.None,
             Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate(),
             Gf2k128BatchBackend.GetBindQuadReduce(),
             Gf2k128BatchBackend.GetGatherMultiplyAccumulate());
@@ -223,14 +212,15 @@ internal static class LongfellowMdocBundles
 
 
     /// <summary>Builds the P-256 base-field signature-circuit prove bundle over the Montgomery-lifted circuit.</summary>
+    /// <param name="spec">The proof specification supplying the signature block-encoding length.</param>
     /// <param name="canonicalCircuit">The parsed signature circuit (coefficients canonical; lifted internally).</param>
     /// <param name="profile">The Montgomery sig profile (shared with the codec and FFT).</param>
     /// <param name="fft">The Montgomery-domain real-FFT engine.</param>
     /// <param name="codec">The sig subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
-    internal static LongfellowMdocFieldProver BuildSigProver(LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
+    internal static LongfellowMdocFieldProver BuildSigProver(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
+        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, spec.SignatureBlockEncoded);
         ScalarBatchMultiplyDelegate? batchMultiply = Fp256BatchMontgomery();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, pool, batchMultiply);
@@ -244,14 +234,15 @@ internal static class LongfellowMdocBundles
 
 
     /// <summary>Builds the GF(2^128) hash-circuit verification bundle (note the verifier record's optional order: BindQuad before Broadcast, no Gather, no SubfieldBoundary).</summary>
+    /// <param name="spec">The proof specification supplying the block-encoding length.</param>
     /// <param name="circuit">The parsed hash circuit.</param>
     /// <param name="profile">The hash field profile (shared with the codec).</param>
     /// <param name="fft">The shared LCH14 additive-FFT engine.</param>
     /// <param name="codec">The hash subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
-    internal static LongfellowMdocFieldVerifier BuildHashVerifier(LongfellowSumcheckCircuit circuit, LongfellowFieldProfile profile, Lch14AdditiveFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
+    internal static LongfellowMdocFieldVerifier BuildHashVerifier(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit circuit, LongfellowFieldProfile profile, Lch14AdditiveFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
+        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, spec.HashBlockEncoded);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, pool);
 
         return new LongfellowMdocFieldVerifier(
@@ -263,14 +254,15 @@ internal static class LongfellowMdocBundles
 
 
     /// <summary>Builds the P-256 base-field signature-circuit verification bundle over the Montgomery-lifted circuit.</summary>
+    /// <param name="spec">The proof specification supplying the signature block-encoding length.</param>
     /// <param name="canonicalCircuit">The parsed signature circuit (coefficients canonical; lifted internally).</param>
     /// <param name="profile">The Montgomery sig profile (shared with the codec and FFT).</param>
     /// <param name="fft">The Montgomery-domain real-FFT engine.</param>
     /// <param name="codec">The sig subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
-    internal static LongfellowMdocFieldVerifier BuildSigVerifier(LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
+    internal static LongfellowMdocFieldVerifier BuildSigVerifier(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
+        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, spec.SignatureBlockEncoded);
         ScalarBatchMultiplyDelegate? batchMultiply = Fp256BatchMontgomery();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, pool, batchMultiply);

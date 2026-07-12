@@ -11,8 +11,8 @@ namespace Lumoin.Veridical.Longfellow;
 /// <remarks>
 /// This is a validated view over caller-owned buffers — the caller owns the secret material's lifetime and
 /// clears it. The signature column is supplied in CANONICAL big-endian form; the facade lifts it to the
-/// Montgomery working domain internally and clears its own lifted copy. The MAC indices are fixed by the
-/// circuit shape and default to the version-7 one-attribute values.
+/// Montgomery working domain internally and clears its own lifted copy. The MAC wire indices are circuit-shape
+/// facts and ride in the <see cref="LongfellowMdocZkSpec"/> the prove call is parameterized by, not here.
 /// </remarks>
 public sealed class LongfellowMdocWitness
 {
@@ -25,27 +25,17 @@ public sealed class LongfellowMdocWitness
     //Six per-credential MAC values bind the hash and signature circuits together.
     private const int MacCount = 6;
 
-    /// <summary>The hash circuit's first public MAC wire index for a version-7 one-attribute proof.</summary>
-    public const int DefaultHashMacIndex = 945;
-
-    /// <summary>The signature circuit's first public MAC wire index for a version-7 one-attribute proof.</summary>
-    public const int DefaultSignatureMacIndex = 4;
-
 
     private LongfellowMdocWitness(
         ReadOnlyMemory<byte> hashColumn,
         ReadOnlyMemory<byte> signatureColumnCanonical,
         ReadOnlyMemory<byte> commonValues,
-        ReadOnlyMemory<byte> apKeys,
-        int hashMacIndex,
-        int signatureMacIndex)
+        ReadOnlyMemory<byte> apKeys)
     {
         HashColumn = hashColumn;
         SignatureColumn = signatureColumnCanonical;
         CommonValues = commonValues;
         ApKeys = apKeys;
-        HashMacIndex = hashMacIndex;
-        SignatureMacIndex = signatureMacIndex;
     }
 
 
@@ -61,12 +51,6 @@ public sealed class LongfellowMdocWitness
     /// <summary>The six shared MAC keys, canonical big-endian.</summary>
     public ReadOnlyMemory<byte> ApKeys { get; }
 
-    /// <summary>The hash circuit's first public MAC wire index.</summary>
-    public int HashMacIndex { get; }
-
-    /// <summary>The signature circuit's first public MAC wire index.</summary>
-    public int SignatureMacIndex { get; }
-
 
     /// <summary>
     /// Validates and wraps the caller-assembled witness regions.
@@ -75,17 +59,13 @@ public sealed class LongfellowMdocWitness
     /// <param name="signatureColumnCanonical">The canonical big-endian signature witness column; a non-zero multiple of 32 bytes.</param>
     /// <param name="commonValues">The three common values; <see cref="CommonValueCount"/> · 32 bytes.</param>
     /// <param name="apKeys">The six shared MAC keys; <see cref="MacCount"/> · 32 bytes.</param>
-    /// <param name="hashMacIndex">The hash circuit's first public MAC wire index.</param>
-    /// <param name="signatureMacIndex">The signature circuit's first public MAC wire index.</param>
     /// <returns>A validated witness view over the supplied buffers.</returns>
     /// <exception cref="ArgumentException">When a region length is invalid.</exception>
     public static LongfellowMdocWitness FromComponents(
         ReadOnlyMemory<byte> hashColumn,
         ReadOnlyMemory<byte> signatureColumnCanonical,
         ReadOnlyMemory<byte> commonValues,
-        ReadOnlyMemory<byte> apKeys,
-        int hashMacIndex = DefaultHashMacIndex,
-        int signatureMacIndex = DefaultSignatureMacIndex)
+        ReadOnlyMemory<byte> apKeys)
     {
         if(hashColumn.Length == 0 || hashColumn.Length % ScalarSizeBytes != 0)
         {
@@ -107,6 +87,6 @@ public sealed class LongfellowMdocWitness
             throw new ArgumentException($"The MAC keys must be {MacCount * ScalarSizeBytes} bytes; received {apKeys.Length}.", nameof(apKeys));
         }
 
-        return new LongfellowMdocWitness(hashColumn, signatureColumnCanonical, commonValues, apKeys, hashMacIndex, signatureMacIndex);
+        return new LongfellowMdocWitness(hashColumn, signatureColumnCanonical, commonValues, apKeys);
     }
 }

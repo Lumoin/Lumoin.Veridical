@@ -11,6 +11,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
@@ -62,6 +63,38 @@ internal sealed class CircomR1csReaderTests
         (int cRow0, int cCol0) = instance.C.GetTriplePosition(0);
         Assert.AreEqual((0, 3), (bRow0, bCol0), "B[0] expected at constraint 0, wire 3 (b)");
         Assert.AreEqual((0, 1), (cRow0, cCol0), "C[0] expected at constraint 0, wire 1 (c)");
+    }
+
+
+    //The .r1cs header section stores nWires as a little-endian uint32 at byte offset 60
+    //(12 file header + 12 section header + 4 field_size + 32 prime) and nConstraints at
+    //offset 84. Both are attacker-controlled; a value above int.MaxValue must be rejected
+    //as malformed rather than overflow the checked (int) cast during construction. Offsets
+    //are the ones a fuzz sweep of this committed fixture triggered the overflow through.
+    private const int NWiresLittleEndianOffset = 60;
+    private const int NConstraintsLittleEndianOffset = 84;
+
+
+    [TestMethod]
+    [DataRow(NWiresLittleEndianOffset)]
+    [DataRow(NConstraintsLittleEndianOffset)]
+    public void R1csRejectsHeaderCountAboveInt32Range(int littleEndianOffset)
+    {
+        //Sanity: the untampered fixture parses, so the single tamper below is the only
+        //change under test (and a fixture drift that moved the field would fail loudly here).
+        using(RawR1csInstance _ = ReadFixture(CircomR1csFixtures.Multiplier2Bytes))
+        {
+        }
+
+        byte[] tampered = CircomR1csFixtures.Multiplier2Bytes;
+        BinaryPrimitives.WriteUInt32LittleEndian(tampered.AsSpan(littleEndianOffset, sizeof(uint)), uint.MaxValue);
+
+        //Before the upper-bound guard this surfaced as an OverflowException from the
+        //checked (int) cast; ThrowsExactly<ArgumentException> pins the documented rejection.
+        Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance _ = ReadFixture(tampered);
+        });
     }
 
 

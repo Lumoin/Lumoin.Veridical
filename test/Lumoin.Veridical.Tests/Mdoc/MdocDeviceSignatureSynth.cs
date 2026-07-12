@@ -22,11 +22,11 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// A fixed device private key <c>d2</c> (distinct from the issuer-test key so the two halves are visibly
 /// independent) gives <c>Q2 = d2·G</c> via <see cref="EcdsaNonceRecovery.ScalarMultiply"/>; the device hash is
 /// <c>e2 = SHA256(deviceMessage)</c>; and the signature is a DETERMINISTIC ECDSA over a fixed nonce <c>k</c> —
-/// <c>r2 = (k·G).x mod n</c>, <c>s2 = k⁻¹·(e2 + r2·d2) mod n</c> — NOT <see cref="ECDsa.SignData"/>, whose
+/// <c>r2 = (k·G).x mod n</c>, <c>s2 = k⁻¹·(e2 + r2·d2) mod n</c> — NOT <see cref="ECDsa.SignData(byte[], HashAlgorithmName)"/>, whose
 /// random nonce made the synthesized signature (and therefore the witness column and the whole proof envelope)
 /// vary run-to-run. A fixed <c>k</c> is sound for this fixture (one fixed message under one fixed key, so no
 /// nonce reuse across messages). The tuple is a genuine ECDSA verification (<c>R2.x mod n == r2</c>), confirmed
-/// by <see cref="Verify"/> through .NET's own <see cref="ECDsa.VerifyData"/>.
+/// by <see cref="Verify"/> through .NET's own <see cref="ECDsa.VerifyData(byte[], byte[], HashAlgorithmName)"/>.
 /// </para>
 /// <para>
 /// The fixed device message stands in for the full <c>compute_transcript_hash</c> CBOR construction

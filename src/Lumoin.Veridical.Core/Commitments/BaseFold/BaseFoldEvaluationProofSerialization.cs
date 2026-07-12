@@ -411,7 +411,7 @@ internal static class BaseFoldEvaluationProofSerialization
         IMemoryOwner<byte> owner = pool.Rent(pathBytes.Length);
         pathBytes.CopyTo(owner.Memory.Span[..pathBytes.Length]);
 
-        return MerkleAuthenticationPath.Create(owner, pathBytes.Length, digestSize);
+        return MerkleAuthenticationPath.Create(owner, digestSize);
     }
 
 

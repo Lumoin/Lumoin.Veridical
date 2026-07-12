@@ -663,7 +663,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
-    //--- Affine P-256 arithmetic over Fp256 (test oracle; mirrors the reference's formulas) ---
+    //Affine P-256 arithmetic over Fp256 (test oracle; mirrors the reference's formulas)
 
     private static BigInteger Mod(BigInteger v) => ((v % P) + P) % P;
 
@@ -699,8 +699,8 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
-    //--- Identity-aware oracle (null = the point at infinity O) for full-scale
-    //    Alg.4 verification, where intermediate and final sums may be O ---
+    //Identity-aware oracle (null = the point at infinity O) for full-scale
+    //    Alg.4 verification, where intermediate and final sums may be O
 
     private static readonly BigInteger N = WellKnownCurves.GetScalarFieldOrder(CurveParameterSet.P256);
 

@@ -258,7 +258,7 @@ public sealed class MerkleTree: IDisposable
         ReadOnlySpan<byte> rootBytes = buffer.Slice((totalNodes - 1) * nodeSize, nodeSize);
         IMemoryOwner<byte> rootOwner = pool.Rent(nodeSize);
         rootBytes.CopyTo(rootOwner.Memory.Span[..nodeSize]);
-        MerkleRoot builtRoot = MerkleRoot.Create(rootOwner, nodeSize);
+        MerkleRoot builtRoot = MerkleRoot.Create(rootOwner);
 
         return new MerkleTree(owner, builtRoot, leafCount, depth, nodeSize, layerStart, totalNodes);
     }

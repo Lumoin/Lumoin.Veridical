@@ -31,7 +31,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <para>
 /// The MAC key <c>a_v = generate_mac_key</c> is deliberately NOT a <c>sample</c> draw — it is a raw 16-byte
 /// <c>of_bytes_field</c> read (<c>t.bytes(buf, kBytes)</c>, <c>mdoc_zk.cc:277-282</c>) that never rejects;
-/// the gate confirms <see cref="LongfellowTranscript.SqueezeFieldElementBytes"/> consumes exactly 16 PRF
+/// the gate confirms <see cref="LongfellowTranscript.SqueezeFieldElementBytes(System.Span{byte})"/> consumes exactly 16 PRF
 /// bytes and maps through <c>of_bytes_field</c>, distinct from the <c>sample</c> path.
 /// </para>
 /// </remarks>

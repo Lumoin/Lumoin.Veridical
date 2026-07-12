@@ -48,6 +48,18 @@ public static class AggregatedBulletproofRangeProver
     /// <param name="blindingsConcatenated">The commitment blindings, <c>values.Length</c> canonical scalars back to back.</param>
     /// <param name="valueCommitmentsDestination">Receives the compressed commitments, one G1 point per value.</param>
     /// <param name="transcript">The live Fiat-Shamir transcript; the caller binds it to the statement context beforehand.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
+    /// <param name="random">Backend random scalar generation.</param>
+    /// <param name="g1Add">Backend G1 addition.</param>
+    /// <param name="g1ScalarMul">Backend G1 scalar multiplication.</param>
+    /// <param name="g1Msm">Backend G1 multi-scalar multiplication.</param>
+    /// <param name="pool">The pool to rent the working buffers from.</param>
     /// <returns>The aggregated proof; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When a value does not fit the bit width, or a count is out of shape.</exception>

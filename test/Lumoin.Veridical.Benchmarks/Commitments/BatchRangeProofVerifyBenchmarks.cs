@@ -55,6 +55,7 @@ public class BatchRangeProofVerifyBenchmarks
     private List<RangeProof> proofs = null!;
 
 
+    /// <summary>Derives the range-proof key and produces the batch of commitments and proofs to verify.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -78,6 +79,7 @@ public class BatchRangeProofVerifyBenchmarks
     }
 
 
+    /// <summary>Disposes the proofs, the range-proof key, and the pooled commitments buffer the setup rented.</summary>
     [GlobalCleanup]
     public void Cleanup()
     {
@@ -91,6 +93,7 @@ public class BatchRangeProofVerifyBenchmarks
     }
 
 
+    /// <summary>Benchmarks verifying the range proofs one at a time.</summary>
     [Benchmark(Baseline = true)]
     public int IndividualVerify()
     {
@@ -112,6 +115,7 @@ public class BatchRangeProofVerifyBenchmarks
     }
 
 
+    /// <summary>Benchmarks verifying all range proofs together in one combined multiexponentiation.</summary>
     [Benchmark]
     public bool BatchVerify()
     {

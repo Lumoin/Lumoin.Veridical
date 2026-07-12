@@ -31,7 +31,7 @@ namespace Lumoin.Veridical.Core.Telemetry;
 /// </para>
 /// <para>
 /// Process-wide aggregation means tests that depend on specific counts
-/// need to opt out of MSTest parallelism (<see cref="DoNotParallelizeAttribute"/>
+/// need to opt out of MSTest parallelism (<c>DoNotParallelizeAttribute</c>
 /// on the class) and surround their measurement scope with
 /// <see cref="Reset"/> at start and <see cref="Snapshot"/> at finish.
 /// </para>

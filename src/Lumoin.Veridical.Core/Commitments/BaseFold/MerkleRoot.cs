@@ -27,7 +27,7 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// </remarks>
 public sealed class MerkleRoot: SensitiveMemory
 {
-    internal MerkleRoot(IMemoryOwner<byte> owner, int length, Tag tag)
+    internal MerkleRoot(IMemoryOwner<byte> owner, Tag tag)
         : base(owner, tag)
     {
     }
@@ -41,9 +41,9 @@ public sealed class MerkleRoot: SensitiveMemory
 
 
     /// <summary>Wraps a pool-rented buffer that holds a root digest; takes ownership of <paramref name="owner"/>.</summary>
-    internal static MerkleRoot Create(IMemoryOwner<byte> owner, int length)
+    internal static MerkleRoot Create(IMemoryOwner<byte> owner)
     {
-        return new MerkleRoot(owner, length, CreateTag());
+        return new MerkleRoot(owner, CreateTag());
     }
 
 
@@ -69,6 +69,6 @@ public sealed class MerkleRoot: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(rootBytes.Length);
         rootBytes.CopyTo(owner.Memory.Span[..rootBytes.Length]);
 
-        return Create(owner, rootBytes.Length);
+        return Create(owner);
     }
 }

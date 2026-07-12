@@ -85,7 +85,7 @@ public static class MaskedSpartanProverExtensions
         /// <see cref="BaseFoldMaskedSpartanProof"/>. <b>Hiding caveat:</b> BaseFold
         /// is not a hiding commitment, so this is a sound argument of knowledge but
         /// does not achieve the masked variant's zero-knowledge privacy; use the
-        /// full-ZK provider (<see cref="ProveZkBaseFold(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, PolynomialCommitmentProvider, BaseMemoryPool)"/>)
+        /// full-ZK provider (<see cref="ProveZkBaseFold(MaskedSpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, PolynomialCommitmentProvider, BaseMemoryPool, ScalarArithmeticBackend)"/>)
         /// for that. The proving key's provider must be a BaseFold provider.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
@@ -131,7 +131,7 @@ public static class MaskedSpartanProverExtensions
 
         /// <summary>
         /// Produces a genuinely zero-knowledge BaseFold-backed masked Spartan2
-        /// proof. Identical flow to <see cref="ProveBaseFoldSound(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>,
+        /// proof. Identical flow to <see cref="ProveBaseFoldSound(MaskedSpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/>,
         /// but the proving key's provider must be a full-ZK BaseFold provider
         /// (<see cref="Commitments.ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge"/>):
         /// the witness and error openings are then hiding, simulatable full-ZK
@@ -139,7 +139,26 @@ public static class MaskedSpartanProverExtensions
         /// and their weighted openings are filler-laundered — the statistical-ZK
         /// flavor of design v3. It packs a <see cref="ZkBaseFoldMaskedSpartanProof"/>.
         /// </summary>
+        /// <param name="instance">The relaxed R1CS instance to prove satisfaction of.</param>
+        /// <param name="witness">The relaxed R1CS witness (witness scalars plus the error vector).</param>
+        /// <param name="errorOpeningWitness">The commitment blind (per-row blinding factors) for the instance's error commitment. For a raw-prepared instance this is all-zero (<see cref="PolynomialCommitmentBlind.CreateZero"/>); for a folded instance it is the homomorphic combination of the folded instances' blinding factors.</param>
+        /// <param name="transcript">The Fiat-Shamir transcript.</param>
+        /// <param name="hash">The Fiat-Shamir hash.</param>
+        /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+        /// <param name="scalarReduce">Backend scalar reduction.</param>
+        /// <param name="scalarAdd">Backend scalar addition.</param>
+        /// <param name="scalarSubtract">Backend scalar subtraction.</param>
+        /// <param name="scalarMultiply">Backend scalar multiplication.</param>
+        /// <param name="scalarInvert">Backend scalar inversion.</param>
+        /// <param name="scalarRandom">Backend random scalar generation.</param>
+        /// <param name="g1Add">Backend G1 addition.</param>
+        /// <param name="g1ScalarMultiply">Backend G1 scalar multiplication.</param>
+        /// <param name="g1Msm">Backend G1 multi-scalar multiplication.</param>
+        /// <param name="mleEvaluate">Backend multilinear-extension evaluation.</param>
+        /// <param name="mleFold">Backend multilinear-extension fold.</param>
         /// <param name="errorPcs">A plain (non-hiding) BaseFold provider over the same code parameters, used to commit and open the public zero-error vector deterministically while the witness and masks use the hiding provider.</param>
+        /// <param name="pool">The pool to rent the working buffers from.</param>
+        /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         /// <exception cref="InvalidOperationException">When the provider does not carry the BaseFold query count, digest size, and dimension-lift count (i.e. is not a full-ZK BaseFold provider).</exception>
         public ZkBaseFoldMaskedSpartanProof ProveZkBaseFold(
@@ -612,7 +631,7 @@ public static class MaskedSpartanProverExtensions
         /// <summary>
         /// Convenience overload that proves a <em>raw</em> R1CS instance under a
         /// BaseFold provider and forwards to the relaxed masked
-        /// <see cref="ProveBaseFoldSound(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool)"/>.
+        /// <see cref="ProveBaseFoldSound(MaskedSpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/>.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; the proof transfers to the caller.")]
@@ -675,7 +694,7 @@ public static class MaskedSpartanProverExtensions
         /// <summary>
         /// Convenience overload that proves a <em>raw</em> R1CS instance under a
         /// full-ZK BaseFold provider and forwards to the relaxed masked
-        /// <see cref="ProveZkBaseFold(RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, PolynomialCommitmentProvider, BaseMemoryPool)"/>.
+        /// <see cref="ProveZkBaseFold(MaskedSpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, PolynomialCommitmentProvider, BaseMemoryPool, ScalarArithmeticBackend)"/>.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; the proof transfers to the caller.")]
@@ -710,7 +729,7 @@ public static class MaskedSpartanProverExtensions
 
         /// <summary>
         /// The unguarded variant of
-        /// <see cref="ProveZkBaseFold(RawR1csInstance, RawR1csWitness, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, PolynomialCommitmentProvider, BaseMemoryPool)"/>:
+        /// <see cref="ProveZkBaseFold(MaskedSpartanProver, RawR1csInstance, RawR1csWitness, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, PolynomialCommitmentProvider, BaseMemoryPool, ScalarArithmeticBackend)"/>:
         /// the witness-satisfaction fail-fast is skipped. The fail-fast is an
         /// honest-prover convenience, not a soundness control (soundness is the
         /// verifier's), and the zero-knowledge simulator in
@@ -912,6 +931,19 @@ public static class MaskedSpartanProverExtensions
         for(int i = shape.MaskCoefficientCount; i < coordinateCount; i++)
         {
             _ = scalarRandom(vector.Slice(i * scalarSize, scalarSize), curve, scalarTag);
+        }
+
+        //An identically-zero filler block launders no entropy, degrading the
+        //hiding the design's no-zero-weight-coordinates policy provides while
+        //every proof still verifies. A healthy sampler cannot produce it, so it
+        //only ever signals a broken entropy delegate — reject at generation.
+        Span<byte> filler = vector[(shape.MaskCoefficientCount * scalarSize)..];
+        if(!filler.IsEmpty && filler.IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new InvalidOperationException(
+                "The sampled mask-vector filler block is identically zero. A zero filler voids the hiding "
+                + "property while the proof remains sound, and can only come from a broken entropy source; "
+                + "check the ScalarRandomDelegate wiring supplied to Prove.");
         }
 
         return MultilinearExtension.FromEvaluations(vector, shape.CoefficientVariableCount, curve, pool);

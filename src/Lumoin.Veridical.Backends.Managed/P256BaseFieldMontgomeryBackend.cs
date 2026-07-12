@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <see cref="ScalarAddDelegate"/> family. This is one of two reduction-strategy
 /// backends over the shared <see cref="PrimeField256"/> limb core (the other is
 /// <see cref="P256BaseFieldSolinasBackend"/>); both are validated bit-for-bit
-/// against the BigInteger oracle <see cref="P256BaseFieldReference"/>.
+/// against the BigInteger oracle <c>P256BaseFieldReference</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -312,7 +312,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //--- CIOS Montgomery multiply: two reduction strategies over the shared multiply-accumulate column ---
+    //CIOS Montgomery multiply: two reduction strategies over the shared multiply-accumulate column
     //
     //Both compute result = a·b·R⁻¹ mod p; inputs are assumed < p and the output is reduced by one
     //constant-time conditional subtraction. The two methods share the identical multiply-accumulate half
@@ -477,7 +477,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //--- Constant derivation from the base-field prime (static-init only) ---
+    //Constant derivation from the base-field prime (static-init only)
 
     private static ulong[] ComputeModulusLimbs()
     {

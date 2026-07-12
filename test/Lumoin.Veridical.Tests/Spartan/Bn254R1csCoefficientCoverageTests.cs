@@ -22,7 +22,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// multiplier2 prime-swap cannot produce one), not on the reader, which parses
 /// coefficients as field-agnostic 32-byte values. These programmatic tests
 /// close the substantive half of that gap: arbitrary BN254 field-element
-/// coefficients flowing through <see cref="R1csInstanceExtensions.CheckSatisfiedBy"/>
+/// coefficients flowing through <c>CheckSatisfiedBy</c>
 /// (Poseidon's load-bearing assertion) and through the Spartan prover/verifier.
 /// </summary>
 [TestClass]

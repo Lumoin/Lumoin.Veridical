@@ -146,6 +146,20 @@ internal sealed class LongfellowProofPad: IDisposable
                 multiply(wc0, wc1, product, curve);
             }
 
+            //An identically-zero pad encrypts nothing: the padded transcript is
+            //the cleartext transcript and the proof still verifies, so the
+            //zero-knowledge property is silently void. A healthy byte source
+            //cannot produce an all-zero pad (every drawn element would have to
+            //be zero), so this only ever signals a broken entropy source —
+            //reject at generation, the one place the pad is visible.
+            if(totalScalars > 0 && pad.IndexOfAnyExcept((byte)0) < 0)
+            {
+                throw new InvalidOperationException(
+                    "The drawn proof pad is identically zero. A zero pad voids the zero-knowledge (hiding) property "
+                    + "while the proof remains sound, and can only come from a broken entropy source; check the "
+                    + "LongfellowRandomByteSource wiring supplied to Fill.");
+            }
+
             var result = new LongfellowProofPad(handRoundsPerLayer, layerOffset, totalScalars, witnessScalars, buffer);
             transferred = true;
 

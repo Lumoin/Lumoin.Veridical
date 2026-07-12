@@ -20,6 +20,7 @@ public sealed class ProductSumcheckProverResult: IDisposable
     private readonly IMemoryOwner<byte> pointBuffer;
 
 
+    /// <summary>The product sumcheck proof to ship; ownership transfers to the caller.</summary>
     public ProductSumcheckProof Proof { get; }
 
     /// <summary>The challenge point, one 32-byte element per round in round order.</summary>
@@ -33,5 +34,6 @@ public sealed class ProductSumcheckProverResult: IDisposable
     }
 
 
+    /// <inheritdoc/>
     public void Dispose() => pointBuffer.Dispose();
 }

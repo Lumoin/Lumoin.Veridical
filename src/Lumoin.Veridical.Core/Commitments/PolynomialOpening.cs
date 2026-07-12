@@ -33,7 +33,6 @@ public sealed class PolynomialOpening: SensitiveMemory
 
     internal PolynomialOpening(
         IMemoryOwner<byte> owner,
-        int length,
         CurveParameterSet curve,
         CommitmentScheme scheme,
         Tag tag)
@@ -56,11 +55,10 @@ public sealed class PolynomialOpening: SensitiveMemory
     /// <summary>Wraps a pool-rented buffer a scheme has populated with opening bytes; takes ownership of <paramref name="owner"/>.</summary>
     internal static PolynomialOpening Create(
         IMemoryOwner<byte> owner,
-        int length,
         CurveParameterSet curve,
         CommitmentScheme scheme)
     {
-        return new PolynomialOpening(owner, length, curve, scheme, CreateTag(curve, scheme));
+        return new PolynomialOpening(owner, curve, scheme, CreateTag(curve, scheme));
     }
 
 
@@ -87,6 +85,6 @@ public sealed class PolynomialOpening: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(openingBytes.Length);
         openingBytes.CopyTo(owner.Memory.Span[..openingBytes.Length]);
 
-        return Create(owner, openingBytes.Length, curve, scheme);
+        return Create(owner, curve, scheme);
     }
 }

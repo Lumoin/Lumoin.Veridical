@@ -24,6 +24,23 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class MaskedSpartanFailureTests
 {
+    //The masking section carries four scalars after the three commitments:
+    //σ_outer, σ_inner, and the two filler sums.
+    private const int MaskSumScalarCount = 4;
+
+    //The compressed round storage orders (c_0, c_2, …, c_d) with c_1 elided:
+    //the outer degree-3 rounds store three scalars with the cubic term in the
+    //last slot, the inner degree-2 rounds store two with the quadratic term in
+    //the last slot.
+    private const int OuterRoundStoredScalarCount = 3;
+    private const int InnerRoundStoredScalarCount = 2;
+    private const int OuterTopCoefficientSlot = OuterRoundStoredScalarCount - 1;
+    private const int InnerTopCoefficientSlot = InnerRoundStoredScalarCount - 1;
+
+    //The outer terminating section: the three claims (Az, Bz, Cz) and E(r_x).
+    private const int OuterClaimScalarCount = 4;
+
+
     [TestMethod]
     public void WitnessCommitmentTamperRejected()
     {
@@ -123,6 +140,53 @@ internal sealed class MaskedSpartanFailureTests
 
 
     [TestMethod]
+    public void ClaimBzTamperRejected()
+    {
+        VerifyTamperRejected(p => OuterClaimsOffset(p) + Scalar.SizeBytes, "claim_Bz");
+    }
+
+
+    [TestMethod]
+    public void ClaimCzTamperRejected()
+    {
+        VerifyTamperRejected(p => OuterClaimsOffset(p) + (2 * Scalar.SizeBytes), "claim_Cz");
+    }
+
+
+    [TestMethod]
+    public void ErrorEvaluationTamperRejected()
+    {
+        //E(r_x) is the fourth scalar of the outer terminating section, after
+        //the three claims.
+        VerifyTamperRejected(p => OuterClaimsOffset(p) + (3 * Scalar.SizeBytes), "E(r_x)");
+    }
+
+
+    [TestMethod]
+    public void OuterRoundTopCoefficientZeroedRejected()
+    {
+        //Zeroing exactly the degree-3 (top) coefficient of the first blended
+        //outer round polynomial is the coefficient-granular malicious-prover
+        //tamper: the constant term and the transcript framing stay intact, so
+        //only the round identity and the challenge chain can catch it.
+        VerifyZeroedScalarRejected(
+            p => MaskingSectionEndOffset(p) + (OuterTopCoefficientSlot * Scalar.SizeBytes),
+            "outer round polynomial top (degree-3) coefficient");
+    }
+
+
+    [TestMethod]
+    public void InnerRoundTopCoefficientZeroedRejected()
+    {
+        //The inner degree-2 counterpart: zero the quadratic coefficient of the
+        //first blended inner round polynomial.
+        VerifyZeroedScalarRejected(
+            p => InnerRoundsOffset(p) + (InnerTopCoefficientSlot * Scalar.SizeBytes),
+            "inner round polynomial top (degree-2) coefficient");
+    }
+
+
+    [TestMethod]
     public void EvalWTamperRejected()
     {
         //After the outer rounds: the three claims plus E(r_x) (4 scalars),
@@ -176,9 +240,23 @@ internal sealed class MaskedSpartanFailureTests
 
     private delegate int MaskedProofOffsetSelector(MaskedSpartanProof proof);
 
+    private delegate void ProofRegionMutator(Span<byte> region);
+
+
+    private static void VerifyTamperRejected(MaskedProofOffsetSelector offsetSelector, string region)
+    {
+        VerifyMutationRejected(offsetSelector, regionLength: 1, static bytes => bytes[0] ^= 0xFF, $"a flipped byte in the {region} region");
+    }
+
+
+    private static void VerifyZeroedScalarRejected(MaskedProofOffsetSelector offsetSelector, string region)
+    {
+        VerifyMutationRejected(offsetSelector, Scalar.SizeBytes, static bytes => bytes.Clear(), $"a zeroed {region}");
+    }
+
 
     [SuppressMessage("Reliability", "CA2000", Justification = "Test method composes ownership transfers through using declarations.")]
-    private static void VerifyTamperRejected(MaskedProofOffsetSelector offsetSelector, string region)
+    private static void VerifyMutationRejected(MaskedProofOffsetSelector offsetSelector, int regionLength, ProofRegionMutator mutate, string tamperDescription)
     {
         using MaskedSpartanProver prover = BuildMaskedProver(hyraxVectorLength: 4);
         using RawR1csInstance proverInstance = BuildTwoMultiplyInstance();
@@ -192,7 +270,15 @@ internal sealed class MaskedSpartanFailureTests
 
         byte[] tamperedBytes = originalProof.AsReadOnlySpan().ToArray();
         int offset = offsetSelector(originalProof);
-        tamperedBytes[offset] ^= 0xFF;
+        Span<byte> targetRegion = tamperedBytes.AsSpan(offset, regionLength);
+        byte[] regionBeforeMutation = targetRegion.ToArray();
+        mutate(targetRegion);
+
+        //A mutation that leaves the bytes unchanged (e.g. zeroing an
+        //already-zero coefficient) would make the rejection assertion vacuous.
+        Assert.IsFalse(
+            targetRegion.SequenceEqual(regionBeforeMutation),
+            $"The tamper ({tamperDescription}, offset {offset}) must change the proof bytes.");
 
         using MaskedSpartanProof tamperedProof = Rehydrate(tamperedBytes, originalProof);
 
@@ -205,7 +291,36 @@ internal sealed class MaskedSpartanFailureTests
             G1Add, G1ScalarMul, G1Msm, Hash, Squeeze,
             BaseMemoryPool.Shared);
 
-        Assert.IsFalse(verified, $"Verifier must reject a proof with a flipped byte in the {region} region (offset {offset}).");
+        Assert.IsFalse(verified, $"Verifier must reject a proof with {tamperDescription} (offset {offset}).");
+    }
+
+
+    //The masking section ends after the three commitments and the four mask
+    //scalars (σ_outer, σ_inner, and the two filler sums); the outer sumcheck
+    //rounds start here. Computed from the proof's own dimensions so a layout
+    //change moves every derived offset with it.
+    private static int MaskingSectionEndOffset(MaskedSpartanProof proof)
+    {
+        return HyraxCommitment.GetBufferSizeBytes(proof.WitnessCommitmentRowCount, proof.Curve)
+            + HyraxCommitment.GetBufferSizeBytes(proof.OuterMaskCommitmentRowCount, proof.Curve)
+            + HyraxCommitment.GetBufferSizeBytes(proof.InnerMaskCommitmentRowCount, proof.Curve)
+            + (MaskSumScalarCount * Scalar.SizeBytes);
+    }
+
+
+    //The outer terminating claims (claim_Az, claim_Bz, claim_Cz, E(r_x)) start
+    //after the outer round polynomials.
+    private static int OuterClaimsOffset(MaskedSpartanProof proof)
+    {
+        return MaskingSectionEndOffset(proof)
+            + (proof.OuterRoundCount * OuterRoundStoredScalarCount * Scalar.SizeBytes);
+    }
+
+
+    //The inner round polynomials start after the outer claims section.
+    private static int InnerRoundsOffset(MaskedSpartanProof proof)
+    {
+        return OuterClaimsOffset(proof) + (OuterClaimScalarCount * Scalar.SizeBytes);
     }
 
 

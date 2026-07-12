@@ -190,7 +190,10 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
 
     private int TrackVariableId(ulong variableId)
     {
-        if(variableId > int.MaxValue)
+        //The resolved column count is maxVariableId + 1 and must fit in Int32; a variable id at
+        //Int32.MaxValue would need Int32.MaxValue + 1 columns, overflowing the checked cast in
+        //ResolveColumnCount. Reject it here as an out-of-range id rather than as an OverflowException.
+        if(variableId >= int.MaxValue)
         {
             throw new ArgumentException($"ZkInterface variable id {variableId} exceeds the addressable column range.");
         }

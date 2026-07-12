@@ -95,6 +95,22 @@ public sealed class MonomialBasisMask: SensitiveMemory
             _ = random(coefficients.Slice(i * ScalarSize, ScalarSize), curve, scalarTag);
         }
 
+        //An identically-zero coefficient vector blends nothing into the rounds:
+        //every proof still verifies, but the statistical zero-knowledge the mask
+        //exists to provide is silently void. A healthy sampler produces this with
+        //probability at most 2^-255 per coefficient, so it only ever signals a
+        //broken entropy delegate — reject it at the one place the coefficients
+        //are visible, their generation.
+        if(!coefficients.IsEmpty && coefficients.IndexOfAnyExcept((byte)0) < 0)
+        {
+            owner.Dispose();
+
+            throw new InvalidOperationException(
+                "The sampled sumcheck mask is identically zero. A zero mask voids the zero-knowledge (hiding) "
+                + "property while the proof remains sound, and can only come from a broken entropy source; check "
+                + "the ScalarRandomDelegate wiring supplied to MonomialBasisMask.Sample.");
+        }
+
         Tag tag = Tag.Create(AlgebraicRole.PolynomialCoefficients)
             .With(curve);
 
@@ -188,7 +204,14 @@ public sealed class MonomialBasisMask: SensitiveMemory
     /// <paramref name="c3"/> — the shape the Spartan outer sumcheck's
     /// degree-3 round format carries.
     /// </summary>
+    /// <param name="boundVariable">The variable <c>X_k</c> this round binds; rounds run <c>k = d … 1</c> (high variable first, the BaseFold fold order).</param>
+    /// <param name="challengesForVariable">One-based challenge registry: <c>challengesForVariable[j]</c> is the challenge <c>r_j</c> that bound <c>X_j</c>; entries for <c>j &gt; boundVariable</c> must be populated, the rest are unread.</param>
+    /// <param name="rho">The squeezed blend scalar <c>ρ</c>, canonical bytes.</param>
+    /// <param name="c0">The round polynomial's constant coefficient, blended in place.</param>
+    /// <param name="c2">The round polynomial's quadratic coefficient, blended in place.</param>
     /// <param name="c3">The round polynomial's cubic coefficient, blended in place.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
     /// <inheritdoc cref="AddRoundBlend(int, ReadOnlySpan{Scalar}, ReadOnlySpan{byte}, Span{byte}, Span{byte}, ScalarAddDelegate, ScalarMultiplyDelegate)"/>
     public void AddRoundBlend(
         int boundVariable,

@@ -128,6 +128,21 @@ public sealed class CompressedRoundPolynomial: SensitiveMemory
                 nameof(compressedBytes));
         }
 
+        //Reject non-canonical coefficients at the deserialization boundary. Round
+        //polynomials are absorbed into the transcript verbatim, so a coefficient at
+        //or above the scalar order would produce a proof whose transcript bytes and
+        //reduced arithmetic value diverge — a second, byte-distinct encoding of the
+        //same accepted proof.
+        for(int i = 0; i < degree; i++)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(compressedBytes.Slice(i * fieldElementSize, fieldElementSize), curve))
+            {
+                throw new ArgumentException(
+                    $"Compressed round polynomial coefficient {i} encodes an integer at or above the scalar field order of {curve}.",
+                    nameof(compressedBytes));
+            }
+        }
+
         IMemoryOwner<byte> owner = pool.Rent(expectedLength);
         compressedBytes.CopyTo(owner.Memory.Span);
 

@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      Directory.Build.props turns on EnableMSTestRunner and
+      TestingPlatformDotnetTestSupport for every project, which makes the MSTest
+      source generator emit a second entry point and trips CS8892 against this
+      project's own Program.Main. This is a libFuzzer host, not a test app, so
+      turn both off (mirroring Lumoin.Veridical.Benchmarks).
+    -->
+    <EnableMSTestRunner>false</EnableMSTestRunner>
+    <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
+    <IsTestApplication>false</IsTestApplication>
+
+    <!--
+      SharpFuzz rewrites IL to add coverage instrumentation and runs under a
+      native libFuzzer host, so it is incompatible with AOT and trimming. The
+      repository inherits IsAotCompatible=true and EnableTrimAnalyzer=true from
+      Directory.Build.props; opt out here.
+    -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+
+    <!--
+      SharpFuzz is gated behind EnableSharpFuzz so a default restore never pulls
+      it: the SharpFuzz NuGet owner is not yet in the repository trusted-signers
+      allowlist (NuGet.config <owners>), so an unconditional reference would fail
+      restore with NU3034. Activation means (1) adding that owner to NuGet.config
+      and (2) building with -p:EnableSharpFuzz=true. See FUZZING.md. The version
+      pin lives (gated, inert) in Directory.Packages.props under central
+      package management.
+    -->
+    <DefineConstants Condition="'$(EnableSharpFuzz)' == 'true'">$(DefineConstants);ENABLE_SHARPFUZZ</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The fuzz host is a native libFuzzer process, not a browser/WASM target, so
+      back out of the root's SupportedPlatform=browser claim (SupportedPlatform
+      is an item, so this must live in an ItemGroup).
+    -->
+    <SupportedPlatform Remove="browser" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(EnableSharpFuzz)' == 'true'">
+    <!-- Versionless under central package management: the version is pinned in
+         Directory.Packages.props. Activating also needs the lock file regenerated
+         (the default lock omits SharpFuzz); see FUZZING.md for the restore step. -->
+    <PackageReference Include="SharpFuzz" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
+  </ItemGroup>
+
+</Project>

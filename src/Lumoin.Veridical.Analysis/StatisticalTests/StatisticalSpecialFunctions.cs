@@ -87,6 +87,41 @@ internal static class StatisticalSpecialFunctions
 
 
     /// <summary>
+    /// The regularized incomplete beta function <c>I_x(a, b)</c>, the cumulative
+    /// distribution function of the beta distribution. For a Student's t statistic
+    /// <c>t</c> with <c>v</c> degrees of freedom the two-tailed p-value
+    /// <c>P(|T| ≥ |t|)</c> is <c>I_{v/(v+t²)}(v/2, 1/2)</c>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="a"/> or <paramref name="b"/> is not positive.</exception>
+    internal static double RegularizedIncompleteBeta(double a, double b, double x)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(a);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(b);
+
+        if(x <= 0.0)
+        {
+            return 0.0;
+        }
+
+        if(x >= 1.0)
+        {
+            return 1.0;
+        }
+
+        //The normalising factor x^a·(1−x)^b / (a·B(a,b)) in front of both
+        //continued-fraction branches, carried in log space for range.
+        double logFront = LogGamma(a + b) - LogGamma(a) - LogGamma(b) + (a * Math.Log(x)) + (b * Math.Log(1.0 - x));
+        double front = Math.Exp(logFront);
+
+        //The continued fraction converges fastest where x sits below the mode; the
+        //symmetry I_x(a,b) = 1 − I_{1−x}(b,a) reaches the other side.
+        return x < (a + 1.0) / (a + b + 2.0)
+            ? front * BetaContinuedFraction(a, b, x) / a
+            : 1.0 - (front * BetaContinuedFraction(b, a, 1.0 - x) / b);
+    }
+
+
+    /// <summary>
     /// The survival function of the Kolmogorov distribution,
     /// <c>Q_KS(λ) = 2 · Σ_{j≥1} (−1)^{j−1} e^{−2 j² λ²}</c>, used for the
     /// two-sample Kolmogorov-Smirnov p-value. Clamped to <c>[0, 1]</c>.
@@ -178,5 +213,71 @@ internal static class StatisticalSpecialFunctions
         }
 
         return Math.Exp(logNormaliser) * h;
+    }
+
+
+    //The modified Lentz continued fraction for the incomplete beta (Numerical
+    //Recipes' "betacf") — the fraction RegularizedIncompleteBeta multiplies by its
+    //leading factor. Alternating even/odd recurrence steps, guarded against a zero
+    //denominator by the FPMIN floor as elsewhere in this file.
+    private static double BetaContinuedFraction(double a, double b, double x)
+    {
+        double qab = a + b;
+        double qap = a + 1.0;
+        double qam = a - 1.0;
+        double c = 1.0;
+        double d = 1.0 - (qab * x / qap);
+        if(Math.Abs(d) < Tiny)
+        {
+            d = Tiny;
+        }
+
+        d = 1.0 / d;
+        double h = d;
+        for(int m = 1; m < MaximumIterations; m++)
+        {
+            int twoM = 2 * m;
+
+            //Even step d_{2m}.
+            double even = m * (b - m) * x / ((qam + twoM) * (a + twoM));
+            d = 1.0 + (even * d);
+            if(Math.Abs(d) < Tiny)
+            {
+                d = Tiny;
+            }
+
+            c = 1.0 + (even / c);
+            if(Math.Abs(c) < Tiny)
+            {
+                c = Tiny;
+            }
+
+            d = 1.0 / d;
+            h *= d * c;
+
+            //Odd step d_{2m+1}.
+            double odd = -(a + m) * (qab + m) * x / ((a + twoM) * (qap + twoM));
+            d = 1.0 + (odd * d);
+            if(Math.Abs(d) < Tiny)
+            {
+                d = Tiny;
+            }
+
+            c = 1.0 + (odd / c);
+            if(Math.Abs(c) < Tiny)
+            {
+                c = Tiny;
+            }
+
+            d = 1.0 / d;
+            double delta = d * c;
+            h *= delta;
+            if(Math.Abs(delta - 1.0) < RelativeTolerance)
+            {
+                break;
+            }
+        }
+
+        return h;
     }
 }

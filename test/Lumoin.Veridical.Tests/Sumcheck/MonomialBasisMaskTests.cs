@@ -124,6 +124,33 @@ internal sealed class MonomialBasisMaskTests
 
 
     [TestMethod]
+    public void SampleWithZeroEntropyThrows()
+    {
+        //A sampler that returns identically-zero bytes models the RNG wiring
+        //failure that silently voids the statistical zero-knowledge: the mask
+        //blends nothing, yet every proof still verifies. Sample must reject it
+        //at generation with InvalidOperationException.
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 0);
+
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+        {
+            using MonomialBasisMask _ = MonomialBasisMask.Sample(basis, ZeroScalarRandom, Curve, pool);
+        });
+    }
+
+
+    //An entropy delegate with the production signature that always returns
+    //zero bytes — the modelled RNG wiring failure.
+    private static Tag ZeroScalarRandom(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
+    {
+        destination.Clear();
+
+        return inboundTag;
+    }
+
+
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     public void SigmaMatchesDenseHypercubeSum(bool padded)

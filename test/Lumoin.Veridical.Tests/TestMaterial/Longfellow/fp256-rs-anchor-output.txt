@@ -2,6 +2,7 @@ Fp256 Reed-Solomon ground truth from google/longfellow-zk (C.12 oracle, the P-25
 Ligero encoder). The reference instantiates ReedSolomon<Fp256Base, FFTExtConvolutionFactory> with the
 Fp2-extension root of unity (kRootX/kRootY from mdoc_zk.cc) of order 2^31. The C# conformance tests pin
 these bytes so the Fp256 RS port anchors to the C++ rather than to itself.
+Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
 
 Produced by fp256_rs_anchor.cc in tempdocs/longfellow-anchors, run inside the longfellow-ref Docker
 image (development tooling outside this repository):

@@ -32,7 +32,7 @@ public sealed class LongfellowMdocProof: SensitiveMemory
     private static readonly Tag AlgebraicTag = Tag.Create(AlgebraicRole.ZkProof);
 
 
-    private LongfellowMdocProof(IMemoryOwner<byte> owner, int length, Tag tag)
+    private LongfellowMdocProof(IMemoryOwner<byte> owner, Tag tag)
         : base(owner, tag)
     {
     }
@@ -63,7 +63,7 @@ public sealed class LongfellowMdocProof: SensitiveMemory
             ? AlgebraicTag
             : tag.With(AlgebraicRole.ZkProof);
 
-        return new LongfellowMdocProof(owner, envelope.Length, effectiveTag);
+        return new LongfellowMdocProof(owner, effectiveTag);
     }
 
 

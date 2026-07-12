@@ -111,6 +111,8 @@ public static class PoseidonPermutation
     /// <param name="parameters">Parameters whose <c>StateWidth</c> is the input count plus one.</param>
     /// <param name="inputs">The concatenated canonical scalar inputs.</param>
     /// <param name="digest">Receives the digest; one scalar wide.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span argument does not match the parameter shape.</exception>
     public static void Hash(

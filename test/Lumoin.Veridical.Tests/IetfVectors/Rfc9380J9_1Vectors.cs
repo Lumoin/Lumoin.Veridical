@@ -70,7 +70,7 @@ internal static class Rfc9380J9_1Vectors
         ExpectedCompressed: "882aabae8b7dedb0e78aeb619ad3bfd9277a2f77ba7fad20ef6aabdc6c31d19ba5a6d12283553294c1825c4b3ca2dcfe");
 
 
-    /// <summary>Every transcribed vector, in <see cref="Id"/> order, for <c>[DynamicData]</c> consumption.</summary>
+    /// <summary>Every transcribed vector, in <see cref="Rfc9380J9_1Vector.Id"/> order, for <c>[DynamicData]</c> consumption.</summary>
     public static IReadOnlyList<Rfc9380J9_1Vector> All { get; } = new[]
     {
         Vector001, Vector002, Vector003, Vector004, Vector005,

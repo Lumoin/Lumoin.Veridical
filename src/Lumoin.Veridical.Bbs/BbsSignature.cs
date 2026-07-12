@@ -79,7 +79,7 @@ public sealed class BbsSignature: SensitiveMemory
     /// <param name="tag">An optional tag carrying provenance entries.</param>
     /// <returns>A signature wrapping a pool-rented copy of the supplied bytes.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> has the wrong length or <paramref name="ciphersuite"/> is unknown.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> has the wrong length, <paramref name="ciphersuite"/> is unknown, or the scalar <c>e</c> is zero or not below the scalar field order.</exception>
     public static BbsSignature FromCanonical(
         ReadOnlySpan<byte> canonicalBytes,
         BbsCiphersuite ciphersuite,
@@ -91,6 +91,19 @@ public sealed class BbsSignature: SensitiveMemory
         {
             throw new ArgumentException(
                 $"BBS+ signature must be exactly {SizeBytes} bytes; received {canonicalBytes.Length}.",
+                nameof(canonicalBytes));
+        }
+
+        //The spec's octets_to_signature: e must be in [1, r-1]. Rejecting here
+        //keeps a non-canonical second encoding of the same residue from ever
+        //reaching the verifier's arithmetic. The point A is validated (on-curve,
+        //non-identity, prime-order subgroup) at the operation surfaces — Verify
+        //and GenerateProof — before any pairing or scalar multiplication.
+        ReadOnlySpan<byte> e = canonicalBytes.Slice(EOffset, ESizeBytes);
+        if(!WellKnownCurves.IsCanonicalScalar(e, CurveParameterSet.Bls12Curve381) || e.IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new ArgumentException(
+                "BBS+ signature scalar e must be in [1, r-1]; received zero or a value at or above the scalar field order.",
                 nameof(canonicalBytes));
         }
 

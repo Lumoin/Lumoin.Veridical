@@ -44,6 +44,7 @@ public class G1MultiScalarMultiplyBenchmarks
     private byte[] result = null!;
 
 
+    /// <summary>Hashes the benchmark points onto G1, fills the scalars, and warms the cached-Pippenger point cache.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -69,6 +70,7 @@ public class G1MultiScalarMultiplyBenchmarks
     }
 
 
+    /// <summary>Benchmarks the naive per-point double-and-add multi-scalar multiplication.</summary>
     [Benchmark(Baseline = true)]
     public byte NaiveLadder()
     {
@@ -78,6 +80,7 @@ public class G1MultiScalarMultiplyBenchmarks
     }
 
 
+    /// <summary>Benchmarks the Pippenger multi-scalar multiplication.</summary>
     [Benchmark]
     public byte Pippenger()
     {
@@ -87,6 +90,7 @@ public class G1MultiScalarMultiplyBenchmarks
     }
 
 
+    /// <summary>Benchmarks Pippenger multi-scalar multiplication with the decoded-point cache warmed.</summary>
     [Benchmark]
     public byte CachedPippenger()
     {

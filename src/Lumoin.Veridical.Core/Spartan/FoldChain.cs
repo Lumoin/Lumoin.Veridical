@@ -92,7 +92,7 @@ public sealed class FoldChain: IDisposable
     /// <summary>
     /// Starts a fold chain by constructing the blinding accumulator: a
     /// random satisfied relaxed instance over <paramref name="template"/>'s
-    /// coefficient matrices. The chain retains <paramref name="commitmentKey"/>
+    /// coefficient matrices. The chain retains <paramref name="provider"/>
     /// and <paramref name="foldTranscript"/> (both non-owning) for the
     /// subsequent <see cref="Step"/> calls.
     /// </summary>

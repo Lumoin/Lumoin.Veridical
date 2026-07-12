@@ -12,12 +12,25 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// checks out.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Threaded through the Fiat-Shamir transcript, mirroring the
 /// <c>verify</c> method of Microsoft Research's Spartan2
 /// <c>PCSEngineTrait</c>; structural inspiration only, no code dependency.
 /// See microsoft/Spartan2. The implementation is exception-safe against
 /// malformed opening bytes — it returns <see langword="false"/> rather
 /// than throwing.
+/// </para>
+/// <para>
+/// Statement-binding is the caller's obligation. The opening argument binds
+/// <paramref name="evaluationPoint"/> and <paramref name="claimedValue"/>
+/// only through the shared <paramref name="transcript"/>; the sub-protocol
+/// does not itself absorb them. A protocol that composes this delegate (as
+/// Spartan does) absorbs the evaluation point and claimed value into the
+/// transcript before calling it, so those values are bound for the composed
+/// proof. A caller wiring this delegate standalone must do the same
+/// absorption itself before invoking it — otherwise a prover could fix the
+/// challenge first and back-solve the claim.
+/// </para>
 /// </remarks>
 /// <param name="commitment">The commitment being checked.</param>
 /// <param name="evaluationPoint">The point at which the evaluation is claimed.</param>

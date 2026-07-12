@@ -3,8 +3,9 @@ using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Numerics;
+using System.Security.Cryptography;
 using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
+using static Lumoin.Veridical.Secdsa.P256ScalarValidation;
 
 namespace Lumoin.Veridical.Secdsa;
 
@@ -65,13 +66,6 @@ public static class DlEqualityNizk
     private const int MaxTranscriptSizeBytes = 4096;
 
     private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
-
-
-    //The order n as a 32-byte big-endian scalar, used only for the public-order range checks. These range
-    //helpers mirror the private ones in SecdsaAlgorithm; they are duplicated rather than shared so this
-    //security-sensitive new code does not churn the already-verified SecdsaAlgorithm. A later refactor may
-    //promote both onto one internal helper.
-    private static byte[] OrderBytes { get; } = BuildOrderBytes();
 
 
     //Domain-separation label for the deterministic commitment-nonce pre-image. It (a) disjoins this NIZK's nonce
@@ -380,7 +374,7 @@ public static class DlEqualityNizk
             Span<byte> v = stackalloc byte[ScalarSizeBytes];
             hash(fsTranscript, v, WellKnownHashAlgorithms.Sha256);
 
-            return v.SequenceEqual(r);
+            return CryptographicOperations.FixedTimeEquals(v, r);
         }
         catch(InvalidOperationException)
         {
@@ -390,17 +384,6 @@ public static class DlEqualityNizk
         {
             return false;
         }
-    }
-
-
-    private static byte[] BuildOrderBytes()
-    {
-        BigInteger n = WellKnownCurves.GetScalarFieldOrder(Curve);
-        byte[] big = n.ToByteArray(isUnsigned: true, isBigEndian: true);
-        byte[] order = new byte[ScalarSizeBytes];
-        big.CopyTo(order.AsSpan(ScalarSizeBytes - big.Length));
-
-        return order;
     }
 
 
@@ -421,23 +404,5 @@ public static class DlEqualityNizk
         }
 
         return generatorsConcat.Length / CompressedPointSizeBytes;
-    }
-
-
-    private static void RequireScalarInRange(ReadOnlySpan<byte> scalar, string name)
-    {
-        if(IsZero(scalar) || !IsLess(scalar, OrderBytes))
-        {
-            throw new ArgumentException("The scalar must be in [1, n-1] for the P-256 group order.", name);
-        }
-    }
-
-
-    private static void RequireLength(ReadOnlySpan<byte> span, int expected, string name)
-    {
-        if(span.Length != expected)
-        {
-            throw new ArgumentException($"Expected {expected} bytes; received {span.Length}.", name);
-        }
     }
 }

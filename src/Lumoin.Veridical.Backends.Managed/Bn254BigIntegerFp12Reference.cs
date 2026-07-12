@@ -7,7 +7,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 
 /// <summary>
 /// Reference implementation of the BN254 (alt_bn128) Fp12 quadratic
-/// extension-field delegates using <see cref="BigInteger"/> arithmetic over
+/// extension-field delegates using <see cref="System.Numerics.BigInteger"/> arithmetic over
 /// Fp6 element pairs. Parallel in shape to
 /// <see cref="Bls12Curve381BigIntegerFp12Reference"/>; serves as ground truth
 /// at the pairing target field.

@@ -29,8 +29,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
     private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
 
 
-    //==== AssertEqual ====
-
     [TestMethod]
     public void AssertEqualAcceptsEqualValues()
     {
@@ -66,8 +64,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
         }, ("x", 0), ("y", 0));
     }
 
-
-    //==== AssertNotEqual ====
 
     [TestMethod]
     public void AssertNotEqualAcceptsDistinctValuesWithInverse()
@@ -107,8 +103,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
     }
 
 
-    //==== AssertBoolean ====
-
     [TestMethod]
     public void AssertBooleanAcceptsZero()
     {
@@ -129,8 +123,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
         AssertRejected(b => b.AssertBoolean(b.DeclareWitnessVariable("x")), ("x", 2));
     }
 
-
-    //==== AssertRangeCheck ====
 
     [TestMethod]
     public void AssertRangeCheckAcceptsValueInRange()
@@ -174,8 +166,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
             WithBits("v", value, bits, ("v", value)));
     }
 
-
-    //==== AssertLessThanOrEqual / AssertGreaterThanOrEqual ====
 
     [TestMethod]
     public void AssertLessThanOrEqualAcceptsLess()
@@ -258,8 +248,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
     }
 
 
-    //==== AssertInSet ====
-
     [TestMethod]
     public void AssertInSetAcceptsMember()
     {
@@ -299,8 +287,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
     }
 
 
-    //==== Composite ====
-
     [TestMethod]
     public void CompositePredicatesComposeOnOneVariable()
     {
@@ -323,8 +309,6 @@ internal sealed class R1csCircuitBuilderPredicatesTests
             [.. inputs]);
     }
 
-
-    //==== Helpers ====
 
     private static void AssertSatisfied(Action<R1csCircuitBuilder> configure, params (string Name, BigInteger Value)[] inputs)
     {

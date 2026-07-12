@@ -296,11 +296,6 @@ internal static class Blake3Avx2Backend
 
 
     /// <summary>
-    /// Loads message word <paramref name="wordIndex"/> of block
-    /// <paramref name="blockIndex"/> across all eight chunks, packing
-    /// them lane-wise into a single <see cref="Vector256{T}"/>.
-    /// </summary>
-    /// <summary>
     /// Loads the eight chunks' block at <paramref name="blockIndex"/>
     /// and transposes them into the sixteen column-major message
     /// vectors the compression round expects. Each chunk's 64-byte

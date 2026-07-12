@@ -57,7 +57,7 @@ public sealed class DlEqualityProof: SensitiveMemory
     /// <param name="tag">An optional tag carrying provenance entries; merged with the algebraic-identity tag.</param>
     /// <returns>A proof wrapping a pool-rented copy of the supplied bytes.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> has the wrong length.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="canonicalBytes"/> has the wrong length, or <c>s</c> is zero or not below the group order.</exception>
     public static DlEqualityProof FromCanonical(
         ReadOnlySpan<byte> canonicalBytes,
         BaseMemoryPool pool,
@@ -68,6 +68,17 @@ public sealed class DlEqualityProof: SensitiveMemory
         {
             throw new ArgumentException(
                 $"DL-equality proof must be exactly {SizeBytes} bytes; received {canonicalBytes.Length}.",
+                nameof(canonicalBytes));
+        }
+
+        //Enforce the documented invariant on the response scalar s: [1, n-1].
+        //r is deliberately NOT range-checked here — it is the full-width
+        //Fiat-Shamir digest (see the type remarks), not a reduced scalar.
+        ReadOnlySpan<byte> s = canonicalBytes.Slice(SOffset, SSizeBytes);
+        if(!WellKnownCurves.IsCanonicalScalar(s, CurveParameterSet.P256) || s.IndexOfAnyExcept((byte)0) < 0)
+        {
+            throw new ArgumentException(
+                "DL-equality proof response scalar s must be in [1, n-1]; received zero or a value at or above the group order.",
                 nameof(canonicalBytes));
         }
 

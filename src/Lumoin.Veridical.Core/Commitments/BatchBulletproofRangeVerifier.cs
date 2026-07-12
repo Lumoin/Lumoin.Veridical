@@ -62,6 +62,15 @@ public static class BatchBulletproofRangeVerifier
     /// <param name="proofs">The proofs to batch; all single-value over <paramref name="key"/>'s width.</param>
     /// <param name="batchTranscript">The transcript the per-proof batch weights are squeezed from; bound to the batch's statement context by the caller.</param>
     /// <param name="newTranscript">Factory for each proof's verification transcript (the caller binds the statement context inside).</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
+    /// <param name="g1Msm">Backend G1 multi-scalar multiplication.</param>
+    /// <param name="pool">The pool to rent the working buffers from.</param>
     /// <returns><see langword="true"/> iff every proof verifies.</returns>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the counts or shapes do not line up.</exception>
@@ -280,7 +289,7 @@ public static class BatchBulletproofRangeVerifier
 
             ComputeSVector(roundChallenges, rounds, n, sVector, multiply, invert, curve);
 
-            //--- The t̂ equation, weighted by α_p ---
+            //The t̂ equation, weighted by α_p
             //(t̂ − δ)·g + τ_x·h − z²·V − x·T1 − x²·T2 == 0.
             ComputeDelta(yBytes, zBytes, zSquared, powersTwo, yInvPowers, n, delta, add, subtract, multiply, curve, pool);
 
@@ -305,7 +314,7 @@ public static class BatchBulletproofRangeVerifier
             subtract(zero, xSquared, term, curve);
             SetScalar(scalars, proofBase + 2, tWeight, term, multiply, curve);
 
-            //--- The IPA equation, weighted by β_p ---
+            //The IPA equation, weighted by β_p
             //A: +1 ; S: +x ; G_i: −z − a·s_i ; H_i: w_i − b·s_i^{-1}·y^{-i} ;
             //h: −μ ; U: t̂ − a·b ; L_j: w_j² ; R_j: w_j^{-2}.
             //A_p.

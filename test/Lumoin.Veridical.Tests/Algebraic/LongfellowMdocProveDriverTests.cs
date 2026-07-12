@@ -44,7 +44,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// sig template is <c>sigColumn[0..4]</c> as 4·32 little-endian bytes — and the driver/verifier append the
 /// seven mac/av slots themselves. The end-to-end prove+verify over the genuine ~85k-wire hash circuit and the
 /// P-256 sig circuit is the expensive Ligero-over-the-whole-R1CS path, so the accept gate is
-/// <see cref="TestCategory"/> <c>Slow</c>; the fast pre-checks (common-match, EvaluateCircuit after a
+/// <see cref="TestCategoryAttribute"/> <c>Slow</c>; the fast pre-checks (common-match, EvaluateCircuit after a
 /// simulated patch, macs round-trip) stay in the default suite.
 /// </para>
 /// </remarks>
@@ -81,6 +81,18 @@ internal sealed class LongfellowMdocProveDriverTests
     private const int SigMacIndex = 4;
     private const int HashTemplateElementCount = 945;
     private const int SigTemplateElementCount = 4;
+
+    //Private-witness element indices into the version-7 one-attribute hash column, from the fill order in
+    //MdocHashWitnessFiller: [0] one, [1,785) attribute encoding, [785,945) now, [945,952) mac/av (npub_in),
+    //[952,1720) the three mac messages, then FillHashWitness — NumBlocks [1720,1728), the SHA preimage bits
+    //[1728,22064) covering COSE1 bytes [18,2560). The first probe flips the low bit of the first hashed COSE1
+    //content byte (element 1728): the SHA round witnesses were computed for the original byte, so an altered
+    //hashed byte no longer satisfies the SHA gadget — the disclosed MSO content is cryptographically bound.
+    //The second flips the low bit of the last preimage byte (element 1728 + (2559-18)*8 = 22056), which for
+    //this credential's short MSO sits well past the hashed blocks: version 7 verifies those tail bytes are
+    //zero (the circuit-v6 tail-hardening), so making one non-zero is rejected.
+    private const int HashedPreimageBitElement = 1728;
+    private const int HashedPreimageTailBitElement = 22056;
 
     //The transcript is baked at the GF/a_v width 16 (the sig side passes its 32-byte profile per-op).
     private const int TranscriptElementBytes = 16;
@@ -194,6 +206,53 @@ internal sealed class LongfellowMdocProveDriverTests
 
         using LongfellowWireTables sigTables = LongfellowSumcheckProver.EvaluateCircuit(sigCircuit, sigColumn, Fp256Multiply, Fp256Add, CurveParameterSet.None, BaseMemoryPool.Shared);
         AssertOutputZero(sigTables, sigCircuit, "sig");
+    }
+
+
+    [TestMethod]
+    public void AForgingPrivateWitnessBreaksTheImportedVersion7HashCircuit()
+    {
+        //SOUNDNESS PROBE (default suite) for the mdoc attribute-forgery finding family the upstream security
+        //reviews raised: Trail of Bits TOB-LIBZK-10 (assert_attribute compared only the first `len` bytes,
+        //`len` a prover-controlled secret witness — set it small and forge any attribute) and the circuit-v6
+        //under-constraint (the CBOR indices into the MSO and the MSO bytes past the correctly-hashed SHA block
+        //were unconstrained — point the indices into that region and substitute values). Both are fixed IN the
+        //circuit: version 6 added the SHA block-length range checks and the zero-padding check, version 7 is
+        //the current generation this stack imports. Because this stack imports the fixed version-7 circuit
+        //verbatim (mdoc-circuit-raw.gz, raw_rawsha pinned) rather than building circuits, the fix rides in the
+        //imported constraints: a witness that alters a hashed MSO byte, a CBOR key index, or the
+        //prover-controlled attribute compare-length no longer satisfies the circuit. The positive dual is
+        //TheDriverColumnsSatisfyTheirCircuitsAfterASimulatedPatch (the clean witness evaluates to zero); here
+        //each single-bit corruption of a PRIVATE witness element must drive at least one output wire off zero.
+        LongfellowSumcheckCircuit hashCircuit = ParseHashCircuit(out _);
+
+        byte[] av = FixedAv();
+        byte[] common = DriverCommonValues();
+        byte[] ap = MdocSignatureWitnessFiller.ApKeyBytes();
+        byte[] macs = new byte[6 * ScalarSize];
+        byte[] macsBytes = new byte[6 * MacKeyBytes];
+        LongfellowMdocProver.ComputeMacs(common, ap, av, GfAdd, GfMultiply, macs, macsBytes);
+
+        //The private-witness corruption sites, as element indices into the version-7 one-attribute hash
+        //column (past npub_in = 952, so private witness — public-input tampering is the crown gate's separate
+        //probe): a hashed MSO content byte (the disclosed content is bound to the signed SHA digest, so a
+        //prover cannot substitute MSO bytes to forge an attribute — the defense TOB-LIBZK-10 and the
+        //circuit-v6 under-constraint fix protect) and a preimage tail byte past the hashed blocks (version 7's
+        //zero-check on the SHA tail, the concrete circuit-v6 fix).
+        (int element, string finding)[] sites =
+        [
+            (HashedPreimageBitElement, "a hashed MSO content byte (attribute-forgery defense, TOB-LIBZK-10)"),
+            (HashedPreimageTailBitElement, "a non-zero SHA tail byte past the hashed blocks (circuit-v6 tail zero-check)"),
+        ];
+
+        foreach((int element, string finding) in sites)
+        {
+            byte[] forged = BuildHashColumn();
+            PatchHashColumn(forged, macs, av);
+            FlipBitWitness(forged, element);
+
+            AssertForgeryRejected(hashCircuit, forged, $"A forged witness at {finding} must not satisfy the imported version-7 hash circuit.");
+        }
     }
 
 
@@ -519,6 +578,46 @@ internal sealed class LongfellowMdocProveDriverTests
         for(int i = 0; i < circuit.OutputCount; i++)
         {
             Assert.IsTrue(IsZero(output.Slice(i * ScalarSize, ScalarSize)), $"The {side} circuit output wire {i} must be zero (the assert-zero relation).");
+        }
+    }
+
+
+    //A forging witness is rejected either way the reference eval_circuit can surface it: the assert-zero
+    //relation A·w == b is checked at every layer, so an inconsistent witness trips an internal gate (an
+    //InvalidOperationException) or leaves an output wire non-zero. Both are valid rejection signals; only a
+    //clean evaluation with every output wire zero would mean the forgery satisfied the circuit.
+    private static void AssertForgeryRejected(LongfellowSumcheckCircuit circuit, byte[] forgedColumn, string message)
+    {
+        try
+        {
+            using LongfellowWireTables tables = LongfellowSumcheckProver.EvaluateCircuit(circuit, forgedColumn, GfMultiply, GfAdd, CurveParameterSet.None, BaseMemoryPool.Shared);
+            Span<byte> output = tables.OutputTable();
+            for(int i = 0; i < circuit.OutputCount; i++)
+            {
+                if(!IsZero(output.Slice(i * ScalarSize, ScalarSize)))
+                {
+                    return;
+                }
+            }
+
+            Assert.Fail(message);
+        }
+        catch(InvalidOperationException)
+        {
+        }
+    }
+
+
+    //Flips one bit-decomposition witness element between the GF(2^128) one and zero the fillers push (one has
+    //the low byte set, zero is all-zero); a genuine value change at that column position.
+    private static void FlipBitWitness(byte[] column, int element)
+    {
+        Span<byte> slot = column.AsSpan(element * ScalarSize, ScalarSize);
+        bool wasZero = IsZero(slot);
+        slot.Clear();
+        if(wasZero)
+        {
+            slot[ScalarSize - 1] = 0x01;
         }
     }
 

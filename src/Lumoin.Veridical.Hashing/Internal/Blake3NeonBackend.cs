@@ -22,8 +22,8 @@ namespace Lumoin.Veridical.Hashing.Internal;
 /// <para>
 /// NEON has no native 32-bit rotate; the implementation uses the
 /// shift-or-shift composition. The cross-platform
-/// <see cref="Vector128.ShiftRightLogical{T}(Vector128{T}, int)"/> and
-/// <see cref="Vector128.ShiftLeftLogical{T}(Vector128{T}, int)"/>
+/// <c>Vector128.ShiftRightLogical</c> and
+/// <c>Vector128.ShiftLeftLogical</c>
 /// helpers JIT to <c>USHR</c>/<c>SHL</c> instructions on AArch64.
 /// </para>
 /// </remarks>

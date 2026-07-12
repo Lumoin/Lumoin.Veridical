@@ -20,6 +20,12 @@ public static class ProductSumcheck
     private const int ScalarSize = SumcheckChallenge.ScalarSize;
 
 
+    /// <summary>
+    /// Proves <c>H = Σ_{x∈{0,1}^v} Π_k f_k(x)</c> for the <paramref name="factorCount"/> multilinear
+    /// factors given by their hypercube <paramref name="factorTables"/>, folding every factor table in
+    /// half each round and emitting the degree-<c>d</c> round polynomials; returns the proof together
+    /// with the Fiat-Shamir challenge point the prover needs to continue a larger protocol.
+    /// </summary>
     public static ProductSumcheckProverResult Prove(
         ReadOnlySpan<byte> factorTables,
         int factorCount,
@@ -140,6 +146,11 @@ public static class ProductSumcheck
     }
 
 
+    /// <summary>
+    /// Verifies a product sumcheck proof against <paramref name="claimedSum"/>, Lagrange-interpolating
+    /// each round's degree-<c>d</c> polynomial at the squeezed challenge and reducing the claim to the
+    /// single product <c>Π_k f_k(r)</c> the caller checks the real factors against at the challenge point.
+    /// </summary>
     public static MultilinearSumcheckVerification Verify(
         ReadOnlySpan<byte> claimedSum,
         ProductSumcheckProof proof,

@@ -18,10 +18,12 @@ public static class PermutationTest
     //199 relabelings give the permutation p-value a resolution of
     //1/200 = 0.005 at modest cost (each permutation only re-pools the
     //precomputed per-unit histograms).
+    /// <summary>The default number of class-label relabelings drawn to build the permutation null distribution.</summary>
     public const int DefaultPermutationCount = 199;
 
     //A fixed xorshift seed: the permutation null needs reproducibility
     //across runs.
+    /// <summary>The default xorshift seed for the relabeling stream, fixed so the permutation null is reproducible across runs.</summary>
     public const ulong DefaultSeed = 0x5DEECE66DUL;
 
 

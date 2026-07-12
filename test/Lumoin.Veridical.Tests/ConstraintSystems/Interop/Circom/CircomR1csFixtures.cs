@@ -42,7 +42,7 @@ internal static class CircomR1csFixtures
     /// other change; the field byte size stays 32 (both scalar fields are 254
     /// bits). Exercises the CircomR1csReader's BN254 prime dispatch (U.9) and
     /// the U.10 curve-broadened construction path when requested with
-    /// <see cref="CurveParameterSet.Bn254"/>.
+    /// <see cref="Lumoin.Veridical.Core.CurveParameterSet.Bn254"/>.
     /// </summary>
     public static byte[] Bn254Multiplier2Bytes => Convert.FromHexString(
         Multiplier2HexBls12Curve381.Replace(

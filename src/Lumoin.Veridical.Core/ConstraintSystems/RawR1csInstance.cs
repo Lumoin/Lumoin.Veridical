@@ -75,7 +75,7 @@ public sealed class RawR1csInstance: SensitiveMemory
     /// <param name="publicInputs">The canonical big-endian bytes of the public-input scalars; length must be a multiple of the scalar size.</param>
     /// <param name="pool">The pool to rent the public-input buffer from.</param>
     /// <param name="tag">An optional caller-supplied Tag.</param>
-    /// <exception cref="ArgumentException">When matrix shapes, curves, or public-input length do not satisfy the constraints.</exception>
+    /// <exception cref="ArgumentException">When matrix shapes, curves, or public-input length do not satisfy the constraints, or a public input is at or above the scalar field order.</exception>
     public static RawR1csInstance Create(
         R1csMatrix a,
         R1csMatrix b,
@@ -116,6 +116,21 @@ public sealed class RawR1csInstance: SensitiveMemory
             throw new ArgumentException(
                 $"Public-input count + 1 (for the constant) = {publicInputCount + 1} exceeds the variable count {a.ColumnCount}.",
                 nameof(publicInputs));
+        }
+
+        //Reject non-canonical field elements at the construction boundary: the
+        //public inputs are transcript-absorbed as bytes and enter z, so a value
+        //at or above the order would diverge between its absorb bytes and its
+        //reduced arithmetic value — the same class the matrix and witness
+        //factories reject.
+        for(int i = 0; i < publicInputCount; i++)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(publicInputs.Slice(i * scalarSize, scalarSize), a.Curve))
+            {
+                throw new ArgumentException(
+                    $"Public input {i} encodes an integer at or above the scalar field order of {a.Curve}.",
+                    nameof(publicInputs));
+            }
         }
 
         //Rent at least one byte so the pool doesn't reject a zero-length buffer

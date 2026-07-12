@@ -16,8 +16,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// first composing a backend.
 /// </para>
 /// <para>
-/// Identity tests (<see cref="MultilinearExtensionInspectionExtensions.IsZero"/>,
-/// <see cref="MultilinearExtensionInspectionExtensions.IsConstant"/>)
+/// Identity tests (<c>IsZero</c>, <c>IsConstant</c>)
 /// walk every byte with an OR-accumulator rather than returning early
 /// on the first mismatch. MLE evaluations are not secret in most
 /// contexts, but the constant-time walk keeps the timing shape uniform

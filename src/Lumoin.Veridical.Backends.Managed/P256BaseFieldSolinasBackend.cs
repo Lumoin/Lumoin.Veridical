@@ -14,7 +14,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// 2.29) — no Montgomery multiply-based reduction. This is the second
 /// reduction-strategy backend over the shared <see cref="PrimeField256"/> limb core
 /// (the other is <see cref="P256BaseFieldMontgomeryBackend"/>); both are validated
-/// bit-for-bit against <see cref="P256BaseFieldReference"/>.
+/// bit-for-bit against <c>P256BaseFieldReference</c>.
 /// </summary>
 /// <remarks>
 /// Multiplication is the schoolbook 256×256→512 widening multiply

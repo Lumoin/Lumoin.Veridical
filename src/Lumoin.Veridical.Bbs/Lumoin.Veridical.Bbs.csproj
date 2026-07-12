@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Lumoin.Veridical.Bbs</RootNamespace>
+    <EnableConstantTimeEqualityBan>true</EnableConstantTimeEqualityBan>
     <Description>BBS+ signatures (multi-message with selective-disclosure proofs) per the IETF draft draft-irtf-cfrg-bbs-signatures, BLS12-381-SHA-256 ciphersuite.</Description>
     <PackageTags>cryptography bbs bbs-plus selective-disclosure signatures bls12-381</PackageTags>
   </PropertyGroup>

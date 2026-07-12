@@ -9,7 +9,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 /// <see cref="R1csCircuitBuilder"/>. Each method validates eagerly (so errors
 /// surface at the call site), computes any variable index eagerly (so the
 /// caller can reference it immediately), and appends a transformation via
-/// <see cref="R1csBuilder{TResult, TState, TBuilder}.With"/> that writes the
+/// <see cref="Common.R1csBuilder{TResult, TState, TBuilder}.With"/> that writes the
 /// corresponding operation into the accumulating circuit when the builder
 /// folds.
 /// </summary>

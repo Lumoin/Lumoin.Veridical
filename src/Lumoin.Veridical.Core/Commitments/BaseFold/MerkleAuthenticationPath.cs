@@ -41,7 +41,7 @@ public sealed class MerkleAuthenticationPath: SensitiveMemory
     public int SiblingCount => DigestSizeBytes == 0 ? 0 : AsReadOnlySpan().Length / DigestSizeBytes;
 
 
-    internal MerkleAuthenticationPath(IMemoryOwner<byte> owner, int length, int digestSizeBytes, Tag tag)
+    internal MerkleAuthenticationPath(IMemoryOwner<byte> owner, int digestSizeBytes, Tag tag)
         : base(owner, tag)
     {
         DigestSizeBytes = digestSizeBytes;
@@ -56,9 +56,9 @@ public sealed class MerkleAuthenticationPath: SensitiveMemory
 
 
     /// <summary>Wraps a pool-rented buffer holding the bottom-up sibling sequence; takes ownership of <paramref name="owner"/>.</summary>
-    internal static MerkleAuthenticationPath Create(IMemoryOwner<byte> owner, int length, int digestSizeBytes)
+    internal static MerkleAuthenticationPath Create(IMemoryOwner<byte> owner, int digestSizeBytes)
     {
-        return new MerkleAuthenticationPath(owner, length, digestSizeBytes, CreateTag());
+        return new MerkleAuthenticationPath(owner, digestSizeBytes, CreateTag());
     }
 
 

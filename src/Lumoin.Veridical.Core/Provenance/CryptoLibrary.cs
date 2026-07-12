@@ -39,7 +39,7 @@ public readonly record struct CryptoLibrary(string Name, string Version)
     /// </summary>
     /// <remarks>
     /// The version is resolved at type-initialisation time from
-    /// <see cref="Assembly.GetName"/> of the assembly containing
+    /// <see cref="Assembly.GetName()"/> of the assembly containing
     /// <see cref="CryptoLibrary"/> itself. Both BBS+ and Core ship from
     /// the same NuGet versioning scheme so this captures the user-facing
     /// release version regardless of whether the BBS+ assembly is loaded.

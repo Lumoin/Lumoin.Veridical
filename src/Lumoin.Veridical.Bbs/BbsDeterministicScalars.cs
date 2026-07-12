@@ -25,15 +25,15 @@ namespace Lumoin.Veridical.Bbs;
 /// </para>
 /// <para>
 /// In keeping with the rest of the BBS+ surface, the <c>expand_message</c> primitive and the modular
-/// reduction enter as injected delegates. The supplied <paramref name="expandMessage"/> MUST be the
-/// variant the <paramref name="ciphersuite"/> mandates — RFC 9380 XMD-SHA-256 for BLS12-381-SHA-256,
+/// reduction enter as injected delegates. The supplied <c>expandMessage</c> MUST be the
+/// variant the <c>ciphersuite</c> mandates — RFC 9380 XMD-SHA-256 for BLS12-381-SHA-256,
 /// XOF-SHAKE-256 for BLS12-381-SHAKE-256 — exactly the same delegate wired into
 /// <c>GenerateProof</c>; the ciphersuite is used here only to form the DST.
 /// </para>
 /// <para>
 /// ProofGen draws <c>5 + U</c> scalars (U = the number of undisclosed messages), so pass
 /// <c>count = 5 + U</c>. The returned delegate hands out the precomputed scalars in order; a call past
-/// the preset <paramref name="count"/> throws <see cref="InvalidOperationException"/>.
+/// the preset <c>count</c> throws <see cref="InvalidOperationException"/>.
 /// </para>
 /// </remarks>
 public static class BbsDeterministicScalars
@@ -83,11 +83,47 @@ public static class BbsDeterministicScalars
         ExpandMessageDelegate expandMessage,
         ScalarReduceDelegate reduce)
     {
+        return FromSeed(seed, ciphersuite, IetfMockRandomScalarsDstSuffix, count, expandMessage, reduce);
+    }
+
+
+    /// <summary>
+    /// Builds a <see cref="ScalarRandomDelegate"/> exactly as
+    /// <see cref="FromSeed(ReadOnlySpan{byte}, BbsCiphersuite, int, ExpandMessageDelegate, ScalarReduceDelegate)"/>
+    /// does, but with the DST suffix supplied explicitly rather than fixed
+    /// to <see cref="IetfMockRandomScalarsDstSuffix"/>. The BBS extension
+    /// drafts (blind signatures, per-verifier pseudonyms) pin their own
+    /// fixture DSTs — <c>"COMMIT_MOCK_RANDOM_SCALARS_DST_"</c> and
+    /// <c>"PROOF_MOCK_RANDOM_SCALARS_DST_"</c> — composed on the CORE
+    /// Interface api_id rather than the extension api_id (see
+    /// <see cref="WellKnownBbsDomainSeparationTags.CommitMockRandomScalarsDstSuffix"/>
+    /// and <see cref="WellKnownBbsDomainSeparationTags.ProofMockRandomScalarsDstSuffix"/>),
+    /// so this overload keeps <paramref name="ciphersuite"/> and the DST
+    /// suffix as independent inputs.
+    /// </summary>
+    /// <param name="seed">The derivation seed; the IETF canonical value is <see cref="CanonicalSeedBls12Curve381"/>, but a downstream cryptosuite's worked example may pin its own.</param>
+    /// <param name="ciphersuite">The BBS+ ciphersuite the scalars belong to; the DST is <c>ciphersuite.Identifier ‖ dstSuffix</c>.</param>
+    /// <param name="dstSuffix">The ASCII DST suffix appended to <paramref name="ciphersuite"/>'s <c>Identifier</c>.</param>
+    /// <param name="count">Total number of scalars to be drawn (<c>5 + U</c> for a U-undisclosed proof).</param>
+    /// <param name="expandMessage">RFC 9380 <c>expand_message</c> for the ciphersuite's hash (XMD-SHA-256 or XOF-SHAKE-256) — the same delegate wired into <c>GenerateProof</c>.</param>
+    /// <param name="reduce">Scalar reduction, mapping each 48-byte chunk to a canonical scalar mod the BLS12-381 order.</param>
+    /// <returns>A delegate that yields the i-th precomputed scalar on the i-th call.</returns>
+    /// <exception cref="ArgumentNullException">When <paramref name="dstSuffix"/>, <paramref name="expandMessage"/>, or <paramref name="reduce"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="count"/> is negative.</exception>
+    public static ScalarRandomDelegate FromSeed(
+        ReadOnlySpan<byte> seed,
+        BbsCiphersuite ciphersuite,
+        string dstSuffix,
+        int count,
+        ExpandMessageDelegate expandMessage,
+        ScalarReduceDelegate reduce)
+    {
+        ArgumentNullException.ThrowIfNull(dstSuffix);
         ArgumentNullException.ThrowIfNull(expandMessage);
         ArgumentNullException.ThrowIfNull(reduce);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
 
-        byte[] dst = Encoding.UTF8.GetBytes(ciphersuite.Identifier + IetfMockRandomScalarsDstSuffix);
+        byte[] dst = Encoding.UTF8.GetBytes(ciphersuite.Identifier + dstSuffix);
 
         byte[] uniformBytes = new byte[ExpandLengthBytes * count];
         if(count > 0)

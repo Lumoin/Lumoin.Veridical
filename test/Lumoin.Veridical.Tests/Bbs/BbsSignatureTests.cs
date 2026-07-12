@@ -45,8 +45,12 @@ internal sealed class BbsSignatureTests
                     TestSetup.G1Add,
                     TestSetup.G1MultiScalarMultiply,
                     TestSetup.Sha256.G1HashToCurve,
+                    TestSetup.G1IsOnCurve,
+                    TestSetup.G1IsInPrimeOrderSubgroup,
                     TestSetup.G2Add,
                     TestSetup.G2ScalarMultiply,
+                    TestSetup.G2IsOnCurve,
+                    TestSetup.G2IsInPrimeOrderSubgroup,
                     TestSetup.Pairing,
                     TestSetup.Pool);
             }, iter: 2);
@@ -88,8 +92,12 @@ internal sealed class BbsSignatureTests
             TestSetup.G1Add,
             TestSetup.G1MultiScalarMultiply,
             TestSetup.Sha256.G1HashToCurve,
+            TestSetup.G1IsOnCurve,
+            TestSetup.G1IsInPrimeOrderSubgroup,
             TestSetup.G2Add,
             TestSetup.G2ScalarMultiply,
+            TestSetup.G2IsOnCurve,
+            TestSetup.G2IsInPrimeOrderSubgroup,
             TestSetup.Pairing,
             TestSetup.Pool);
         Assert.IsTrue(ok, $"Sign+Verify roundtrip with {messageCount} messages must succeed.");

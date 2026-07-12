@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <see cref="Bn254ManagedScalarBackend"/>. The secret-sensitive operations come from
 /// the constant-time managed <see cref="P256ScalarMontgomeryBackend"/> (closing the
 /// SECDSA/ECDSA timing leak the variable-time <c>BigInteger.ModPow</c> inversion and
-/// branchy <see cref="BigInteger"/> arithmetic carried); this is portable managed code,
+/// branchy <see cref="System.Numerics.BigInteger"/> arithmetic carried); this is portable managed code,
 /// not SIMD, so <see cref="ScalarArithmeticBackend.IsHardwareAccelerated"/> stays
 /// <see langword="false"/>.
 /// </summary>

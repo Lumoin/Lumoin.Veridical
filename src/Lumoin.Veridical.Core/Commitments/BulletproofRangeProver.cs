@@ -50,6 +50,18 @@ public static class BulletproofRangeProver
     /// <param name="blinding">The commitment blinding <c>γ</c>, canonical scalar bytes.</param>
     /// <param name="valueCommitmentDestination">Receives the compressed commitment <c>V</c>; one G1 point wide.</param>
     /// <param name="transcript">The live Fiat-Shamir transcript; the caller binds it to the statement context beforehand.</param>
+    /// <param name="hash">The Fiat-Shamir hash.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
+    /// <param name="reduce">Backend scalar reduction.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="invert">Backend scalar inversion.</param>
+    /// <param name="random">Backend random scalar generation.</param>
+    /// <param name="g1Add">Backend G1 addition.</param>
+    /// <param name="g1ScalarMul">Backend G1 scalar multiplication.</param>
+    /// <param name="g1Msm">Backend G1 multi-scalar multiplication.</param>
+    /// <param name="pool">The pool to rent the working buffers from.</param>
     /// <returns>The range proof; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When the value does not fit the bit width.</exception>
