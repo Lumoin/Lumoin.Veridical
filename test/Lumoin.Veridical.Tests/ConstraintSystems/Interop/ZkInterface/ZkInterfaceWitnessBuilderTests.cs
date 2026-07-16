@@ -24,6 +24,11 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     private const int VariableCount = 4;
     private const int WitnessVariableCount = 3;
 
+    //These tests drive the assembly logic directly, not the source-size
+    //amplification guard, so they pass an unbounded column ceiling; the guard is
+    //pinned separately in ZkInterfaceBuilderBoundaryTests.
+    private const int UnboundedColumnCeiling = int.MaxValue;
+
 
     [TestMethod]
     public void Bls12Curve381InstanceAndWitnessSatisfy()
@@ -48,7 +53,7 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     [TestMethod]
     public void WitnessBuilderRejectsAbsentField()
     {
-        var builder = new ZkInterfaceWitnessBuilder(CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
+        var builder = new ZkInterfaceWitnessBuilder(CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared, UnboundedColumnCeiling);
         IZkInterfaceMessageSink sink = builder;
         sink.OnFreeVariableId(VariableCount);
         PushAssignment(sink, witness: false, variableId: 1, value: 33);
@@ -79,7 +84,7 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     {
         //z = (1, c, a, b) with c public (instance variable), a and b private
         //(witness). The witness reader scatters both into z[1..] = (33, 3, 11).
-        var builder = new ZkInterfaceWitnessBuilder(curve, BaseMemoryPool.Shared);
+        var builder = new ZkInterfaceWitnessBuilder(curve, BaseMemoryPool.Shared, UnboundedColumnCeiling);
         IZkInterfaceMessageSink sink = builder;
         sink.OnFreeVariableId(VariableCount);
 

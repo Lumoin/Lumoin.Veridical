@@ -100,6 +100,15 @@ public sealed class RelaxedR1csWitness: SensitiveMemory
             }
         }
 
+        //The two spans are each at most Int32.MaxValue bytes, so their sum can overflow Int32 to a
+        //negative rent size; reject the combined >2 GiB case with the documented ArgumentException
+        //rather than let pool.Rent surface an ArgumentOutOfRangeException.
+        if((long)witnessBytes.Length + errorBytes.Length > Array.MaxLength)
+        {
+            throw new ArgumentException(
+                $"Relaxed R1CS witness of {witnessBytes.Length} + {errorBytes.Length} bytes exceeds the maximum addressable size.");
+        }
+
         int totalSize = witnessBytes.Length + errorBytes.Length;
         IMemoryOwner<byte> owner = pool.Rent(totalSize);
         Span<byte> buffer = owner.Memory.Span[..totalSize];

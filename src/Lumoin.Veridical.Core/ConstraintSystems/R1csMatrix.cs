@@ -208,7 +208,22 @@ public sealed class R1csMatrix: SensitiveMemory
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(nonzeroCount);
         int scalarSize = GetValueByteSize(curve);
-        return (2 * IndexByteSize + scalarSize) * nonzeroCount;
+
+        //The COO buffer holds two Int32 index arrays and one scalar array; take the
+        //product in Int64 so a large non-zero count cannot wrap the Int32 result to a
+        //negative (a failed pool.Rent) or under-sized (an unsafe short allocation)
+        //value, then reject a buffer no single addressable array can hold. An interop
+        //reader can reach this from an accumulated constraint system before its own
+        //Array.MaxLength intake cap trips, so the descriptive rejection lands here.
+        long bufferSize = (long)(2 * IndexByteSize + scalarSize) * nonzeroCount;
+        if(bufferSize > Array.MaxLength)
+        {
+            throw new ArgumentException(
+                $"R1CS matrix of {nonzeroCount} non-zero entries needs a {bufferSize}-byte COO buffer that exceeds the maximum addressable size.",
+                nameof(nonzeroCount));
+        }
+
+        return (int)bufferSize;
     }
 
 
