@@ -90,6 +90,39 @@ internal sealed class R1csMatrixTests
     }
 
 
+    [TestMethod]
+    public void ComputeBufferSizeRejectsNonzeroCountExceedingAddressableBuffer()
+    {
+        //ComputeBufferSize multiplies the non-zero count by (2 * 4-byte index + 32-byte scalar) = 40.
+        //An interop reader can accumulate enough triples to overflow that Int32 product before the
+        //builders' own Array.MaxLength intake caps trip, so the product is taken in Int64 and a
+        //buffer larger than a single addressable array is rejected here with a documented
+        //ArgumentException — not a negative pool.Rent (ArgumentOutOfRangeException) at Build. The
+        //guard is a pure computation, so it is checked directly without renting the ~2 GB buffer.
+        const int nonzeroCountOverflowingBuffer = 60_000_000;   //40 * 60,000,000 = 2.4e9 > Array.MaxLength.
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+            _ = R1csMatrix.ComputeBufferSize(nonzeroCountOverflowingBuffer, CurveParameterSet.Bls12Curve381));
+
+        Assert.Contains("exceeds the maximum addressable size", exception.Message, "the Int64 buffer-size guard must reject the count");
+    }
+
+
+    [TestMethod]
+    public void ComputeBufferSizeReturnsExactByteCountForARepresentableCount()
+    {
+        //A representable count returns the exact COO byte size: two Int32 index arrays plus the
+        //scalar array. Locks the boundary so the Int64 widening cannot drift the normal-path result.
+        const int indexByteSize = 4;
+        const int nonzeroCount = 4;
+        int expected = ((2 * indexByteSize) + Scalar.SizeBytes) * nonzeroCount;
+
+        int bufferSize = R1csMatrix.ComputeBufferSize(nonzeroCount, CurveParameterSet.Bls12Curve381);
+
+        Assert.AreEqual(expected, bufferSize, "COO buffer size = (2*IndexByteSize + scalarSize) * nnz");
+    }
+
+
     /// <summary>
     /// Test helper. <see cref="System.Span{T}"/> is a ref struct and
     /// cannot be carried across the lambda boundary that

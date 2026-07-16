@@ -239,6 +239,19 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
 
         public void Add(int row, int column, ReadOnlySpan<byte> coefficientLittleEndian)
         {
+            //Bound the byte accumulator at intake, mirroring the witness builder's Assign cap:
+            //each term appends scalarSizeBytes into valueBytes, and the decode-work budget bounds
+            //the number of terms by the source byte length, not by the bytes they accrue. Because
+            //an aliased constraints/ids vector amortises one 4-byte offset element across many
+            //terms, a bounded stream can still drive valueBytes past Array.MaxLength, where the
+            //List<byte> backing-array resize throws an undocumented OutOfMemoryException mid-decode.
+            //Reject with the documented ArgumentException first; a conformant constraint system's
+            //per-matrix non-zero count stays far below this ceiling.
+            if((long)(rows.Count + 1) * scalarSizeBytes > Array.MaxLength)
+            {
+                throw new ArgumentException("ZkInterface constraint system accumulates more coefficient bytes than an addressable buffer can hold.");
+            }
+
             rows.Add(row);
             columns.Add(column);
 

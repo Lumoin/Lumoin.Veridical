@@ -73,7 +73,11 @@ public static class ZkInterfaceWitnessReader
 
         try
         {
-            var builder = new ZkInterfaceWitnessBuilder(curve, pool);
+            //The dense witness is sized from attacker-controlled counts; the
+            //source byte length is the ceiling on how many columns those counts
+            //can legitimately declare, keeping the allocation bounded by input.
+            int maxColumnCount = (int)Math.Min(buffer.Length, int.MaxValue);
+            var builder = new ZkInterfaceWitnessBuilder(curve, pool, maxColumnCount);
             decoder(buffer, builder, cancellationToken);
             return builder.Build();
         }

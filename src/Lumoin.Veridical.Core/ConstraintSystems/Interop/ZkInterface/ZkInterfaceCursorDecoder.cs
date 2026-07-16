@@ -64,9 +64,27 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
+    //Decodes one already-resolved message body (CircuitHeader, ConstraintSystem, or Witness)
+    //into the sink under the shared work budget; the three body decoders share this shape so the
+    //union discriminator can select one by pattern match.
+    private delegate void MessageBodyDecoder(FlatBufferTable value, IZkInterfaceMessageSink sink, DecodeBudget budget);
+
+
     private static void DecodeContiguous(ReadOnlySpan<byte> file, IZkInterfaceMessageSink sink, CancellationToken cancellationToken)
     {
         IReadOnlyList<ZkInterfaceMessageSpan> messages = LocateMessages(file);
+
+        //Bound the total decode work by the source length. FlatBuffers offsets are
+        //attacker-controlled and may alias — many vector elements pointing at one
+        //shared table — so a bounded-length message could otherwise re-expand the same
+        //object to drive an unbounded, even quadratic, number of decoded events, and
+        //re-scan one shared over-long coefficient across many terms for quadratic byte
+        //work. The budget charges both axes — one unit per decoded event and one per
+        //coefficient byte scanned — against the source length, so a valid stream stays
+        //well under the ceiling while an aliasing amplification is rejected. This keeps
+        //decode work linear in input for every sink, complementing the builders' own
+        //allocation ceilings.
+        var budget = new DecodeBudget(file.Length);
 
         foreach(ZkInterfaceMessageSpan message in messages)
         {
@@ -77,28 +95,21 @@ public static class ZkInterfaceCursorDecoder
             if(!root.TryGetSubTable(RootMessageValueSlot, out FlatBufferTable value))
             {
                 //LocateMessages already rejects a missing union value; this
-                //keeps the switch total without an unguarded dereference.
+                //keeps the dispatch total without an unguarded dereference.
                 continue;
             }
 
-            switch(message.Type)
+            //The union discriminator selects the body decoder; a null step ignores
+            //Command (gadget-flow control), which the R1CS reader does not interpret.
+            MessageBodyDecoder? decodeBody = message.Type switch
             {
-                case ZkInterfaceMessageType.CircuitHeader:
-                    DecodeCircuitHeader(value, sink);
-                    break;
+                ZkInterfaceMessageType.CircuitHeader => DecodeCircuitHeader,
+                ZkInterfaceMessageType.ConstraintSystem => DecodeConstraintSystem,
+                ZkInterfaceMessageType.Witness => DecodeWitness,
+                _ => null,
+            };
 
-                case ZkInterfaceMessageType.ConstraintSystem:
-                    DecodeConstraintSystem(value, sink);
-                    break;
-
-                case ZkInterfaceMessageType.Witness:
-                    DecodeWitness(value, sink);
-                    break;
-
-                //Command (gadget-flow control) is not interpreted by the R1CS reader.
-                default:
-                    break;
-            }
+            decodeBody?.Invoke(value, sink, budget);
         }
     }
 
@@ -166,7 +177,7 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
-    private static void DecodeCircuitHeader(FlatBufferTable header, IZkInterfaceMessageSink sink)
+    private static void DecodeCircuitHeader(FlatBufferTable header, IZkInterfaceMessageSink sink, DecodeBudget budget)
     {
         sink.OnFreeVariableId(header.ReadUInt64Field(HeaderFreeVariableIdSlot));
 
@@ -177,12 +188,12 @@ public static class ZkInterfaceCursorDecoder
 
         if(header.TryGetSubTable(HeaderInstanceVariablesSlot, out FlatBufferTable instanceVariables))
         {
-            DecodeAssignments(instanceVariables, sink, witness: false);
+            DecodeAssignments(instanceVariables, sink, witness: false, budget);
         }
     }
 
 
-    private static void DecodeConstraintSystem(FlatBufferTable system, IZkInterfaceMessageSink sink)
+    private static void DecodeConstraintSystem(FlatBufferTable system, IZkInterfaceMessageSink sink, DecodeBudget budget)
     {
         if(!system.TryGetVector(ConstraintSystemConstraintsSlot, out FlatBufferVector constraints))
         {
@@ -191,26 +202,31 @@ public static class ZkInterfaceCursorDecoder
 
         for(int i = 0; i < constraints.Length; i++)
         {
+            //Spend before decoding each constraint so an aliased constraints vector — every
+            //offset element pointing at one shared table — cannot re-run this loop past the
+            //source length.
+            budget.SpendEvent();
+
             FlatBufferTable constraint = constraints.ElementTable(i);
             sink.BeginConstraint();
-            DecodeLinearCombination(constraint, ConstraintLcASlot, ZkInterfaceConstraintMatrix.A, sink);
-            DecodeLinearCombination(constraint, ConstraintLcBSlot, ZkInterfaceConstraintMatrix.B, sink);
-            DecodeLinearCombination(constraint, ConstraintLcCSlot, ZkInterfaceConstraintMatrix.C, sink);
+            DecodeLinearCombination(constraint, ConstraintLcASlot, ZkInterfaceConstraintMatrix.A, sink, budget);
+            DecodeLinearCombination(constraint, ConstraintLcBSlot, ZkInterfaceConstraintMatrix.B, sink, budget);
+            DecodeLinearCombination(constraint, ConstraintLcCSlot, ZkInterfaceConstraintMatrix.C, sink, budget);
             sink.EndConstraint();
         }
     }
 
 
-    private static void DecodeWitness(FlatBufferTable witness, IZkInterfaceMessageSink sink)
+    private static void DecodeWitness(FlatBufferTable witness, IZkInterfaceMessageSink sink, DecodeBudget budget)
     {
         if(witness.TryGetSubTable(WitnessAssignedVariablesSlot, out FlatBufferTable assigned))
         {
-            DecodeAssignments(assigned, sink, witness: true);
+            DecodeAssignments(assigned, sink, witness: true, budget);
         }
     }
 
 
-    private static void DecodeAssignments(FlatBufferTable variables, IZkInterfaceMessageSink sink, bool witness)
+    private static void DecodeAssignments(FlatBufferTable variables, IZkInterfaceMessageSink sink, bool witness, DecodeBudget budget)
     {
         if(!variables.TryGetVector(VariablesIdsSlot, out FlatBufferVector ids) || ids.Length == 0)
         {
@@ -227,6 +243,12 @@ public static class ZkInterfaceCursorDecoder
 
         for(int i = 0; i < ids.Length; i++)
         {
+            //Spend before each assignment: one event so an aliased assigned_variables table
+            //cannot push more values than the source length across all messages, and the value
+            //bytes so an over-long assignment coefficient cannot drive scan work past the input.
+            budget.SpendEvent();
+            budget.SpendScan(elementSize);
+
             ulong id = ids.ElementUInt64(i);
             ReadOnlySpan<byte> value = hasValues ? valueBytes.Slice(i * elementSize, elementSize) : default;
             if(witness)
@@ -245,7 +267,8 @@ public static class ZkInterfaceCursorDecoder
         FlatBufferTable constraint,
         int slot,
         ZkInterfaceConstraintMatrix matrix,
-        IZkInterfaceMessageSink sink)
+        IZkInterfaceMessageSink sink,
+        DecodeBudget budget)
     {
         //An absent linear combination contributes no terms (a zero row).
         if(!constraint.TryGetSubTable(slot, out FlatBufferTable combination))
@@ -268,6 +291,13 @@ public static class ZkInterfaceCursorDecoder
 
         for(int i = 0; i < ids.Length; i++)
         {
+            //Spend before each term: one event so an aliased ids vector shared across many
+            //constraints cannot append O(constraints x ids) triples from a linear-sized
+            //message, and the coefficient bytes so re-reading one shared over-long coefficient
+            //across aliased constraints cannot drive quadratic scan work under the event count.
+            budget.SpendEvent();
+            budget.SpendScan(elementSize);
+
             sink.OnConstraintTerm(matrix, ids.ElementUInt64(i), valueBytes.Slice(i * elementSize, elementSize));
         }
     }
@@ -283,5 +313,52 @@ public static class ZkInterfaceCursorDecoder
         }
 
         return valueByteCount / idCount;
+    }
+
+
+    /// <summary>
+    /// A decode-work budget: the total decode work one stream may drive is capped at
+    /// its own byte length. Work is charged on two axes — one unit per decoded event
+    /// (a constraint, a constraint term, or a variable assignment) and one unit per
+    /// coefficient/value byte a term or assignment hands the sink to scan. Because a
+    /// genuine event costs several source bytes (a constraint is a 4-byte offset
+    /// element, a variable id an 8-byte vector element) and a genuine coefficient is
+    /// physically present once, a well-formed stream's charge sits comfortably below
+    /// its length; a stream that exceeds it is re-expanding aliased offsets — the same
+    /// bytes decoded or re-scanned many times — and is turned away before the
+    /// amplification can grow a sink's buffers or spend super-linear scan time.
+    /// </summary>
+    private sealed class DecodeBudget
+    {
+        private long remaining;
+
+
+        public DecodeBudget(int sourceByteLength)
+        {
+            remaining = sourceByteLength;
+        }
+
+
+        //Charge one decoded event (a constraint, a term, or an assignment), bounding
+        //the number of decoded events by the source byte length.
+        public void SpendEvent() => Spend(1);
+
+
+        //Charge the coefficient/value bytes a term or assignment hands to the sink,
+        //bounding the total scan work by the source byte length. An aliased vector whose
+        //over-long coefficient is re-read across many terms exhausts the budget here
+        //rather than driving quadratic scan work through the canonical-scalar writer.
+        public void SpendScan(int byteCount) => Spend(byteCount);
+
+
+        private void Spend(long units)
+        {
+            remaining -= units;
+            if(remaining < 0)
+            {
+                throw new ArgumentException(
+                    "ZkInterface stream decodes more work than its byte length can account for; rejecting a likely offset-aliasing amplification.");
+            }
+        }
     }
 }
