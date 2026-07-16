@@ -24,11 +24,13 @@ is in that range", "prove this id is one of these") that you would rather
 express in code than compile from a separate circuit language. It is the
 natural choice for small to medium circuits whose logic you own.
 
-Use the Circom adapter instead when you already have an audited circuit —
-a circomlib Poseidon hash, an ECDSA gadget, a Merkle-path verifier — that is
-written in Circom and compiled by the real toolchain. The builder does not
-reimplement those; it gives you the primitives (arithmetic constraints and a
-small predicate library) to compose your own.
+For the Poseidon hash and Poseidon Merkle-path membership the builder now
+provides native gadgets (§ 11) — no Circom toolchain needed. Use the Circom
+adapter instead when you already have a different audited circuit — an ECDSA
+gadget, a bespoke arithmetic circuit — that is written in Circom and compiled by
+the real toolchain. For everything the gadgets and the predicate library do not
+cover, the builder gives you the primitives (arithmetic constraints and a small
+predicate library) to compose your own.
 
 The builder deliberately stops short of a circuit DSL. There is no symbolic
 execution, no AST, no operator sugar on variables themselves — it is
@@ -507,3 +509,61 @@ The example proves the *composition* — that a rolled-up total is the faithful 
 independently verified tier footprints and is under a cap — and is honest that the
 *comparability* of what is summed is established upstream, in the data layer, not
 here.
+
+## § 11 Poseidon and Merkle gadgets
+
+`R1csCircuitBuilderPoseidonGadget` adds two composable gadgets on top of the
+primitives: the Poseidon hash and a Poseidon Merkle-path membership proof. Both
+express, as R1CS constraints, computations that are otherwise imported from an
+audited Circom circuit — so a prover can show in zero knowledge that a hidden
+leaf is a member of a committed set.
+
+The Poseidon permutation's linear layers are free in R1CS: adding a round
+constant is a constant term on a linear combination, and the MDS mix is a linear
+combination of the previous lanes. Only the `x^5` S-box costs constraints (three
+each, through `x2 = x·x`, `x4 = x2·x2`, `x5 = x4·x`). `AssertPoseidonHash` folds
+the rounds exactly as the plaintext `PoseidonPermutation.Permute` does and
+returns a materialised digest wire; the auxiliaries come from
+`R1csPoseidonWitness`, whose `BigInteger` trace is gated equal to
+`PoseidonPermutation.Hash` (itself byte-compatible with circomlib over BN254).
+
+```csharp
+PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
+    inputCount: 2, curve, add, invert);
+
+var builder = new R1csCircuitBuilder(curve);
+R1csVariableIndex expected = builder.DeclarePublicInput("expected");
+R1csVariableIndex a = builder.DeclareWitnessVariable("a");
+R1csVariableIndex b = builder.DeclareWitnessVariable("b");
+R1csVariableIndex digest = builder.AssertPoseidonHash([From(a), From(b)], parameters, "h");
+builder.AssertEqual(From(digest), From(expected));
+R1csCircuit circuit = builder.Build();
+
+var bindings = new Dictionary<string, BigInteger> { ["a"] = 7, ["b"] = 11, ["expected"] = /* the hash */ };
+R1csPoseidonWitness.AddPoseidonHashWitness(bindings, "h", [7, 11], parameters);
+```
+
+`AssertMerkleMembership` authenticates a leaf against a (public) root through a
+binary Merkle path under a two-to-one Poseidon compression — the in-circuit form
+of `MerkleAuthenticationPath.Verify`. At each level a boolean path bit (bit
+`level` of the leaf index) drives a conditional swap realised with a single
+multiplication — `swap = bit·(sibling − current)`, `left = current + swap`,
+`right = sibling − swap` — so `bit = 0` hashes `(current, sibling)` (the running
+node is the left child) and `bit = 1` hashes `(sibling, current)`, matching the
+out-of-circuit convention. It follows that a `MerkleSetCommitment` membership
+proof built with `PoseidonPermutation.GetMerkleHash` (the Poseidon shadow root)
+verifies unchanged inside the circuit: feed the leaf digest, the index bits, and
+the path siblings, bind the auxiliaries with
+`R1csPoseidonWitness.AddMerkleMembershipWitness`, and the recomputed root is
+asserted equal to the committed one.
+
+```csharp
+builder.AssertMerkleMembership(From(leaf), pathBits, siblings, From(root), parameters, "m");
+```
+
+Both gadgets are curve-parameterised through `PoseidonParameters` (BN254 and
+BLS12-381 are wired). A full statement composes them: hash `(key, value)` to a
+leaf with one `AssertPoseidonHash`, then prove that leaf's membership. As with
+every predicate, the compile-time satisfaction check is the rejection mechanism
+— a wrong leaf, sibling, root, direction bit, or under-constrained intermediate
+fails to compile.
