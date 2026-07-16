@@ -1,4 +1,5 @@
 using Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
+using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -98,6 +99,184 @@ internal sealed class ZkInterfaceCursorDecoderTests
         //Witness.
         CollectionAssert.AreEqual(new ulong[] { 4, 5 }, sink.WitnessVariableIds, "witness variable ids");
         CollectionAssert.AreEqual(new uint[] { 9, 16 }, sink.WitnessVariableValues, "witness variable values");
+    }
+
+
+    [TestMethod]
+    public void DecoderRejectsOffsetAliasingAmplification()
+    {
+        //A ConstraintSystem whose `constraints` vector holds many offset elements ALL aliased to
+        //one BilinearConstraint — whose lc_a shares a single variable_ids vector — decodes
+        //O(aliases x ids) terms from a linear-sized message. The decode-work budget, bounded by
+        //the source byte length, rejects it before a sink's accumulators can grow: a valid stream's
+        //decode work sits far below its byte length, so only aliasing exceeds it. Coefficient width
+        //is 1 here, so both budget axes contribute; the zero-width and wide-coefficient siblings
+        //isolate the event and scan axes respectively.
+        const int constraintAliases = 32;
+        const int idsPerConstraint = 32;
+        const int coefficientByteWidth = 1;
+
+        AssertAliasedConstraintSystemRejected(constraintAliases, idsPerConstraint, coefficientByteWidth);
+    }
+
+
+    [TestMethod]
+    public void DecoderRejectsTermCountAmplificationWithoutCoefficientBytes()
+    {
+        //Isolates the per-term EVENT charge: zero-width coefficients (an empty `values` vector, so
+        //elementSize resolves to 0) make the scan charge contribute nothing, leaving only the
+        //per-term event unit to bound the aliased term count. Revert that per-term SpendEvent and the
+        //term count slips under budget, so this pins the event axis specifically, not the scan axis.
+        const int constraintAliases = 32;
+        const int idsPerConstraint = 32;
+        const int coefficientByteWidth = 0;
+
+        AssertAliasedConstraintSystemRejected(constraintAliases, idsPerConstraint, coefficientByteWidth);
+    }
+
+
+    [TestMethod]
+    public void DecoderRejectsCoefficientScanAmplification()
+    {
+        //The amplification also travels the per-term BYTE axis: a `constraints` vector aliasing a
+        //few offsets onto one BilinearConstraint whose lc_a carries a single id but an over-long
+        //(zero-padded) coefficient makes each aliased term re-scan the whole coefficient span in
+        //the canonical-scalar writer — O(aliases x coefficient) byte work from a linear message,
+        //while the event count stays far under the source length. The budget charges the scanned
+        //coefficient bytes, so this is rejected too. Reverting that charge lets the low event count
+        //slip through, so this pins the byte axis specifically, not the event axis.
+        const int constraintAliases = 8;
+        const int idsPerConstraint = 1;
+        const int coefficientByteWidth = 64;
+
+        AssertAliasedConstraintSystemRejected(constraintAliases, idsPerConstraint, coefficientByteWidth);
+    }
+
+
+    //Encodes an aliased ConstraintSystem of the given shape and asserts the decode-work budget
+    //rejects it with its own message, so a mis-encoded buffer tripping a bounds check would fail
+    //this test rather than pass for the wrong reason.
+    private static void AssertAliasedConstraintSystemRejected(int constraintAliases, int idsPerConstraint, int coefficientByteWidth)
+    {
+        int streamLength = AliasedConstraintSystemStreamLength(constraintAliases, idsPerConstraint, coefficientByteWidth);
+        using IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
+        ReadOnlyMemory<byte> stream = owner.Memory[..streamLength];
+        WriteAliasedConstraintSystemStream(owner.Memory.Span[..streamLength], constraintAliases, idsPerConstraint, coefficientByteWidth);
+
+        var sink = new RecordingSink();
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None));
+
+        Assert.Contains("more work than its byte length", exception.Message, "the decode-work budget must be what rejects the aliased stream");
+    }
+
+
+    //The packed stream length for the aliased fixture, mirroring WriteAliasedConstraintSystemStream:
+    //the size prefix, the fixed table/vtable framing, and the three data vectors (constraint
+    //offsets, variable ids, coefficient values — the values vector holds idsPerConstraint elements
+    //of coefficientByteWidth bytes each).
+    private static int AliasedConstraintSystemStreamLength(int constraintAliases, int idsPerConstraint, int coefficientByteWidth)
+    {
+        const int tablesAndVtablesBytes = 69;   //root uoffset + Root/ConstraintSystem/BilinearConstraint/Variables tables and their vtables.
+        int constraintsVectorBytes = 4 + (4 * constraintAliases);
+        int idsVectorBytes = 4 + (8 * idsPerConstraint);
+        int valuesVectorBytes = 4 + (idsPerConstraint * coefficientByteWidth);
+
+        return SizePrefixBytes + tablesAndVtablesBytes + constraintsVectorBytes + idsVectorBytes + valuesVectorBytes;
+    }
+
+
+    /// <summary>
+    /// Fills <paramref name="destination"/> — exactly <see cref="AliasedConstraintSystemStreamLength"/>
+    /// bytes — with a single size-prefixed ConstraintSystem message whose <c>constraints</c> vector
+    /// aliases <paramref name="constraintAliases"/> offset elements onto one shared BilinearConstraint
+    /// with an <paramref name="idsPerConstraint"/>-element <c>lc_a</c> whose coefficients are
+    /// <paramref name="coefficientByteWidth"/> bytes each (zero-filled, so an over-long width is a
+    /// tolerated encoding). The reader assumes no field alignment, so the layout is packed and every
+    /// offset points forward.
+    /// </summary>
+    private static void WriteAliasedConstraintSystemStream(Span<byte> destination, int constraintAliases, int idsPerConstraint, int coefficientByteWidth)
+    {
+        destination.Clear();
+
+        int k = constraintAliases;
+        int l = idsPerConstraint;
+        int valueByteCount = idsPerConstraint * coefficientByteWidth;
+
+        //The message body follows the 4-byte size prefix; positions below are relative to it.
+        Span<byte> m = destination[SizePrefixBytes..];
+
+        //Positions, low -> high address. Each vtable sits immediately before its table.
+        const int pRootOffset = 0;                  //uoffset -> T_root (4 bytes).
+        const int pVtRoot = 4;                       //8 bytes.
+        const int pTRoot = 12;                       //9 bytes: soffset(4) msgType(1) msg-uoffset(4).
+        const int pVtCs = 21;                        //6 bytes.
+        const int pTCs = 27;                         //8 bytes: soffset(4) constraints-uoffset(4).
+        const int pVConstraints = 35;                //4 + 4k.
+        int pVtBc = pVConstraints + 4 + (4 * k);     //6 bytes.
+        int pTBc = pVtBc + 6;                        //8 bytes: soffset(4) lcA-uoffset(4).
+        int pVtVars = pTBc + 8;                      //8 bytes.
+        int pTVars = pVtVars + 8;                    //12 bytes: soffset(4) ids-uoffset(4) values-uoffset(4).
+        int pVIds = pTVars + 12;                     //4 + 8l.
+        int pVValues = pVIds + 4 + (8 * l);          //4 + valueByteCount.
+        int messageLength = pVValues + 4 + valueByteCount;
+
+        //Root uoffset -> T_root.
+        BinaryPrimitives.WriteUInt32LittleEndian(m[pRootOffset..], (uint)(pTRoot - pRootOffset));
+
+        //VT_root: [vtableSize=8][tableSize=9][msgTypeOff=4][msgOff=5].
+        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtRoot..], 8);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + 2)..], 9);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + 4)..], 4);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + 6)..], 5);
+        BinaryPrimitives.WriteInt32LittleEndian(m[pTRoot..], pTRoot - pVtRoot);
+        m[pTRoot + 4] = (byte)ZkInterfaceMessageType.ConstraintSystem;
+        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTRoot + 5)..], (uint)(pTCs - (pTRoot + 5)));
+
+        //VT_cs: [6][8][constraintsOff=4].
+        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtCs..], 6);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtCs + 2)..], 8);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtCs + 4)..], 4);
+        BinaryPrimitives.WriteInt32LittleEndian(m[pTCs..], pTCs - pVtCs);
+        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTCs + 4)..], (uint)(pVConstraints - (pTCs + 4)));
+
+        //V_constraints: length k, then k uoffsets all -> T_bc (the aliasing).
+        BinaryPrimitives.WriteUInt32LittleEndian(m[pVConstraints..], (uint)k);
+        for(int i = 0; i < k; i++)
+        {
+            int elemPos = pVConstraints + 4 + (4 * i);
+            BinaryPrimitives.WriteUInt32LittleEndian(m[elemPos..], (uint)(pTBc - elemPos));
+        }
+
+        //VT_bc: [6][8][lcAOff=4] — lc_b, lc_c absent.
+        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtBc..], 6);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtBc + 2)..], 8);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtBc + 4)..], 4);
+        BinaryPrimitives.WriteInt32LittleEndian(m[pTBc..], pTBc - pVtBc);
+        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTBc + 4)..], (uint)(pTVars - (pTBc + 4)));
+
+        //VT_vars: [8][12][idsOff=4][valuesOff=8].
+        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtVars..], 8);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + 2)..], 12);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + 4)..], 4);
+        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + 6)..], 8);
+        BinaryPrimitives.WriteInt32LittleEndian(m[pTVars..], pTVars - pVtVars);
+        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + 4)..], (uint)(pVIds - (pTVars + 4)));
+        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + 8)..], (uint)(pVValues - (pTVars + 8)));
+
+        //V_ids: length l (uint64 element count), then l ids. V_values: length valueByteCount (a
+        //ubyte vector, so its length prefix is a byte count), then that many zero bytes — element
+        //size resolves to valueByteCount / l = coefficientByteWidth.
+        BinaryPrimitives.WriteUInt32LittleEndian(m[pVIds..], (uint)l);
+        for(int i = 0; i < l; i++)
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(m[(pVIds + 4 + (8 * i))..], (ulong)i);
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(m[pVValues..], (uint)valueByteCount);
+
+        //The 4-byte little-endian size prefix carries the message length.
+        BinaryPrimitives.WriteUInt32LittleEndian(destination, (uint)messageLength);
     }
 
 

@@ -27,12 +27,35 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 /// <c>field_maximum</c> must match the curve, and an undeclared field is
 /// rejected. Constraint callbacks are ignored.
 /// </para>
+/// <para>
+/// The dense <c>z[1..]</c> vector is sized purely from the declared
+/// <c>free_variable_id</c> and the referenced variable ids, both of which a
+/// hostile stream controls independently of how many bytes it actually
+/// carries. To keep the allocation bounded by the input, the reader supplies
+/// the source byte length as the <c>maxColumnCount</c> ceiling: a stream of
+/// <c>N</c> bytes cannot describe more than <c>N</c> columns — a complete
+/// witness assigns every non-constant variable, and each assignment costs at
+/// least its 8-byte id — so a larger declared column space is rejected as a
+/// memory-amplification attempt rather than rented. The effective memory
+/// ceiling is therefore <c>scalarSizeBytes × N</c> (the dense buffer holds one
+/// scalar per column), capped to a single addressable span. The ceiling assumes
+/// the decoder reads the same uncompressed bytes it is measured against; the
+/// built-in decoder does, and a swapped-in decoder must not expand its input.
+/// </para>
+/// <para>
+/// A consequence is that Veridical requires dense-ish variable ids: a witness
+/// whose <c>free_variable_id</c> or referenced ids sit far above the count of
+/// assigned variables (a legal but sparse encoding) is rejected. Conformant
+/// producers do not emit such streams, and the dense-scatter model would serve
+/// them poorly regardless.
+/// </para>
 /// </remarks>
 internal sealed class ZkInterfaceWitnessBuilder: IZkInterfaceMessageSink
 {
     private readonly CurveParameterSet curve;
     private readonly BaseMemoryPool pool;
     private readonly int scalarSizeBytes;
+    private readonly int maxColumnCount;
 
     private readonly List<int> columns = new();
     private readonly List<byte> valueBytes = new();
@@ -43,12 +66,21 @@ internal sealed class ZkInterfaceWitnessBuilder: IZkInterfaceMessageSink
     private long maxColumn = -1;
 
 
-    public ZkInterfaceWitnessBuilder(CurveParameterSet curve, BaseMemoryPool pool)
+    /// <param name="curve">The curve identifying the scalar field.</param>
+    /// <param name="pool">The pool the dense witness buffer is rented from.</param>
+    /// <param name="maxColumnCount">
+    /// The largest column count the source can justify — the reader passes the
+    /// source byte length so the dense witness allocation stays bounded by the
+    /// input. See the type remarks.
+    /// </param>
+    public ZkInterfaceWitnessBuilder(CurveParameterSet curve, BaseMemoryPool pool, int maxColumnCount)
     {
         ArgumentNullException.ThrowIfNull(pool);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxColumnCount);
 
         this.curve = curve;
         this.pool = pool;
+        this.maxColumnCount = maxColumnCount;
         scalarSizeBytes = R1csMatrix.GetValueByteSize(curve);
     }
 
@@ -135,7 +167,30 @@ internal sealed class ZkInterfaceWitnessBuilder: IZkInterfaceMessageSink
         }
 
         int fromAssignedIds = maxColumn < 0 ? 0 : checked((int)(maxColumn + 1));
-        return Math.Max(fromFreeVariableId, fromAssignedIds);
+        int columnCount = Math.Max(fromFreeVariableId, fromAssignedIds);
+
+        //Anti-amplification: the dense z[1..] vector is (columnCount - 1) scalars
+        //wide, sized from the declared free_variable_id and the referenced ids
+        //alone — both decoupled from how many bytes arrived. A source of
+        //maxColumnCount bytes cannot describe more columns than that, so a larger
+        //count is a memory-amplification attempt; reject it as malformed rather
+        //than rent an unbounded buffer.
+        if(columnCount > maxColumnCount)
+        {
+            throw new ArgumentException(
+                $"ZkInterface witness declares a {columnCount}-column variable space that the {maxColumnCount}-byte source cannot describe; rejecting to bound witness allocation.");
+        }
+
+        //Even for a source large enough to justify this many columns, the dense
+        //buffer is (columnCount - 1) * scalarSizeBytes bytes and must be
+        //addressable as one span; guard the Int32 product before pool.Rent.
+        if((long)(columnCount - 1) * scalarSizeBytes > Array.MaxLength)
+        {
+            throw new ArgumentException(
+                $"ZkInterface witness variable space of {columnCount} columns exceeds the addressable dense-buffer size.");
+        }
+
+        return columnCount;
     }
 
 
@@ -147,6 +202,19 @@ internal sealed class ZkInterfaceWitnessBuilder: IZkInterfaceMessageSink
         if(variableId >= int.MaxValue)
         {
             throw new ArgumentException($"ZkInterface variable id {variableId} exceeds the addressable column range.");
+        }
+
+        //Bound the accumulator here, at intake, not only the dense buffer in Build:
+        //assignments accrue scalarSizeBytes into valueBytes each, and a variable_ids
+        //vector padded to tens of millions of entries (even all aliasing one column)
+        //would grow valueBytes past Array.MaxLength and throw an undocumented
+        //OutOfMemoryException mid-decode, before Build's ceiling is ever consulted. A
+        //well-formed witness assigns at most columnCount - 1 values, and a columnCount
+        //that large is itself rejected in ResolveColumnCount, so this never trips on a
+        //valid stream.
+        if((long)(columns.Count + 1) * scalarSizeBytes > Array.MaxLength)
+        {
+            throw new ArgumentException("ZkInterface witness assigns more values than an addressable buffer can hold.");
         }
 
         int column = (int)variableId;

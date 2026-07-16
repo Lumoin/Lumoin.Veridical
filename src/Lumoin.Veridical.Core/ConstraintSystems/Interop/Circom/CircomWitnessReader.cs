@@ -241,6 +241,18 @@ public static class CircomWitnessReader
             throw new ArgumentException(".wtns header declares nWitness = 0; witness must have at least the constant.");
         }
 
+        //The witness vector is (nWitness - 1) dense scalars; reject a declared count whose buffer
+        //cannot be addressed as a single array before (nWitness - 1) * scalarSizeBytes overflows the
+        //Int32 allocation in BuildWitness (an undocumented OverflowException). Mirrors the
+        //nWires/nConstraints int-range guard in CircomR1csReader. A genuine witness this large would
+        //need a multi-gigabyte section that fails the section-length cross-check anyway, so this only
+        //rejects a hostile declaration early — from the header alone.
+        if((long)(nWitness - 1) * scalarSizeBytes > Array.MaxLength)
+        {
+            throw new ArgumentException(
+                $".wtns header declares nWitness = {nWitness}; the witness vector exceeds the maximum addressable size.");
+        }
+
         return nWitness;
     }
 

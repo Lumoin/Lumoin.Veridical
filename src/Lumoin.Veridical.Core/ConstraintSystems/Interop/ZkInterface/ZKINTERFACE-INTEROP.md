@@ -114,6 +114,20 @@ into one dense vector keyed by column = id. A practical consequence: a witness
 the full witness vector. (Promoting instance variables to first-class public
 inputs is deferred work, the same item the Circom adapter notes.)
 
+Because that vector is **dense** (one scalar slot per column, from `0` to
+`free_variable_id − 1`), the witness reader requires **dense-ish ids**: it bounds
+the resolved column count by the source byte length. Although the schema permits
+arbitrary, gappy ids (§ 3), a stream that declares a column space far larger than
+the values it carries — via a huge `free_variable_id` or a lone high id — would
+size a witness of gigabytes from a few bytes, so the reader rejects it with an
+`ArgumentException` rather than allocate unboundedly (a memory-amplification
+guard). A complete witness assigns every non-constant variable, so a conformant
+producer's column count is always well within its byte length; only pathological
+sparse encodings, which the dense-scatter model serves poorly regardless, are
+turned away. The R1CS *instance* reader has no such bound: its matrices are stored
+sparsely (by non-zero, § 4), so its column count is metadata that drives no
+allocation.
+
 ## § 6 What the fixture tests demonstrate, and reproducibility
 
 The fixture gate proves **interop correctness** against the reference

@@ -108,6 +108,29 @@ internal sealed class CircomWitnessReaderTests
 
 
     [TestMethod]
+    public void Multiplier2WitnessRejectsNWitnessAboveAddressableRange()
+    {
+        //nWitness sits at file header (12) + section header (12) + field_size (4) + prime (32) = 60.
+        //A declared nWitness whose (nWitness - 1) * 32-byte dense vector exceeds the maximum array
+        //size is rejected at header parse with the reader's documented ArgumentException, not an
+        //OverflowException from the allocation. Asserting the guard's OWN message distinguishes it
+        //from the section-length mismatch that also rejects this (small) input.
+        const int nWitnessOffset = 12 + 12 + 4 + 32;
+        const uint hugeNWitness = 100_000_000;   //(nWitness - 1) * 32 ~= 3.2 GB > Array.MaxLength.
+
+        byte[] mutated = (byte[])CircomWitnessFixtures.Multiplier2Bytes.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(mutated.AsSpan(nWitnessOffset), hugeNWitness);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessFixture(mutated);
+        });
+
+        Assert.Contains("exceeds the maximum addressable size", exception.Message, "the nWitness range guard must be what rejects the header");
+    }
+
+
+    [TestMethod]
     public void Multiplier2EndToEndProvesAndVerifiesWithStandardSpartan()
     {
         //The capability gate: both files parsed through the adapter,
