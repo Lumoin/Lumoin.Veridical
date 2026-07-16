@@ -262,3 +262,123 @@ Fiat-Shamir transcript, the multilinear-extension delegates — is shown in the
 `Spartan/` tests and the [`Spartan/README.md`](../Spartan/README.md); the
 builder changes nothing about it. What the builder gives you is the front end:
 a constraint system authored in C# instead of compiled from Circom.
+
+## § 9 Supply-chain predicates and fixed-point encoding
+
+Regulatory claims about a product — "the recycled content is at least 30 %",
+"the carbon footprint is at most 12.5 kg CO₂e" — are comparisons over decimal
+quantities, but the constraint system compares field integers. Three types turn
+one into the other: `FixedPointScale` and `FixedPointDomain` pin how a decimal
+becomes a field integer, and `R1csCircuitBuilderSupplyChainPredicates` names the
+comparisons. They add no op types — a supply-chain predicate is a range check
+plus an ordering check on the primitives of § 6 — and hold no credential, RDF, or
+serialization concern: the input is a `System.Decimal`, the output a proof.
+
+### Exact-or-reject encoding
+
+`FixedPointScale.OfFractionalDigits(d)` fixes a scale whose factor is `10^d`, and
+`Encode` maps a non-negative decimal to `value · 10^d` as an exact integer. It
+never rounds: a value carrying finer resolution than the scale (`32.567` at one
+digit) is rejected, not truncated. That is a soundness choice, not fastidiousness
+— rounding a measured value up, or a "≥" threshold down, is exactly how a
+sub-threshold quantity would clear the bar. Because one scale encodes both
+operands, `encode(a) ≥ encode(b)` in the field holds precisely when `a ≥ b` as
+decimals. Any quantisation of noisier source data is the caller's explicit
+decision upstream, never a silent property here.
+
+### One domain per comparison, and a field-safe width
+
+A bare scale is not enough to compare safely: the range check that underlies "≥"
+and "≤" reduces a difference modulo the scalar field, and a difference sized too
+close to the field order can wrap and read as in-range. `FixedPointDomain.Create`
+pairs a scale with an inclusive maximum and derives the range-check width from the
+encoded maximum, capped at `FixedPointScale.MaximumEncodedBits` (252). The cap is
+the decisive number: the difference range check rejects a negative (false)
+difference only when `r ≥ 2^(bits+1)`, and the smaller wired scalar field
+(BN254, `r ≈ 2^253.6`) satisfies that at 252 bits but not at 253. Every
+supply-chain predicate takes a domain, so both operands of a comparison are
+encoded at one scale and sized within one field-safe width — a mismatched scale
+is not expressible.
+
+### The named predicates
+
+`AssertQuantityAtLeast(measured, threshold, name)` proves the measured quantity is
+at least the threshold; `AssertQuantityAtMost(measured, cap, name)` proves it is at
+most the cap. The bound is a `FixedPointBound`, which carries its domain and is
+either of two forms. `FixedPointBound.Constant(domain, value)` bakes the value into
+the circuit id, so a proof attests against the regulatory number structurally
+rather than against a prover-suppliable input. `FixedPointBound.PublicInput(domain,
+value, variable)` carries the bound in a public input the verifier supplies, so one
+circuit serves many thresholds. A constant is validated at compile time to lie
+within the exact domain maximum; a public input is range-checked in-circuit into
+the field-safe width `[0, 2^Bits)` (auxiliaries under `{name}_bound`) — enough to
+keep the difference from wrapping, though not clamped to the exact maximum the way
+a constant is.
+
+Each predicate also range-checks the measured value into `[0, 2^Bits)` under
+`{name}_domain`. That is load-bearing for "≤": without it, a measured value bound
+to the field element just below the modulus reads as a small positive difference
+and clears a bare cap check. Range-checking the measured value for "≥" as well
+(where it is self-bounding under the 252 cap) keeps the soundness argument
+independent of the operands' magnitudes and of which curve compiles the circuit.
+
+```csharp
+var builder = new R1csCircuitBuilder(CurveParameterSet.Bls12Curve381);
+FixedPointDomain percent = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(1), 100.0m);
+R1csVariableIndex recycled = builder.DeclareWitnessVariable("recycled");
+builder.AssertQuantityAtLeast(recycled, FixedPointBound.Constant(percent, 30.0m), "recycled");
+R1csCircuit circuit = builder.Build();
+
+var bindings = new Dictionary<string, BigInteger>(StringComparer.Ordinal);
+R1csSupplyChainWitness.AddQuantityAtLeastBindings(
+    bindings, "recycled", "recycled", FixedPointBound.Constant(percent, 30.0m), measured: 32.5m, circuit.Curve);
+```
+
+`R1csSupplyChainWitness` fills the auxiliaries like `R1csPredicateWitness` does,
+and additionally binds the measured variable itself — encoding the caller's decimal
+at the domain's scale — so the compared value cannot be bound at a mismatched
+scale. The helper owns the measured and auxiliary bindings. For a
+`FixedPointBound.PublicInput` bound the caller binds the declared bound variable to
+its encoding in the instance, since a public input is part of the statement the
+caller assembles, not a witness the helper derives.
+
+### The battery-passport bundle
+
+A `SupplyChainClaim` is one named comparison as data — a caller-declared measured
+variable, a domain, a public bound, and a direction. `AssertBatteryPassport` over
+a span of claims is their conjunction: the bundle proves only when every claim
+holds, each claim contributing its own `{name}_domain` and `{name}` auxiliaries
+under a distinct name. Naming a claim is therefore data, not a new method per
+claim shape.
+
+```csharp
+SupplyChainClaim[] claims =
+[
+    SupplyChainClaim.AtLeast("recycled", recycled, FixedPointBound.Constant(percent, 30.0m)),
+    SupplyChainClaim.AtMost("carbon", carbon, FixedPointBound.Constant(kilograms, 12.50m)),
+];
+builder.AssertBatteryPassport(claims);
+// R1csSupplyChainWitness.AddBatteryPassportBindings(bindings, claims, name => measurement(name), circuit.Curve);
+```
+
+The measured variable is one the *caller* declares, not one the bundle
+auto-declares, and the claim carries its index. That is deliberate: a later
+statement can tie the same variable to a commitment — a signed credential digest,
+a Poseidon-Merkle leaf — that binds the proven quantity to its source.
+
+A bundle names one measured quantity per claim (its witness helper keys each
+measured binding by the claim name). To bound a *single* hidden value on two sides
+— a band such as `30 % ≤ recycled ≤ 100 %` — do not bundle two claims over it;
+apply `AssertQuantityAtLeast` and `AssertQuantityAtMost` to the one variable
+directly, binding both through the single-predicate witness helpers, which take
+the measured variable's name separately from the auxiliary-name prefix.
+
+### Scope
+
+As with the range check of § 6, a supply-chain proof binds the predicate over a
+*supplied* measurement. It does not, on its own, tie that in-circuit value to a
+signed credential or a committed graph; binding the measured value to its source
+is a follow-on that composes an in-circuit membership or commitment gadget in
+front of these predicates. What this section adds is the front half: the exact
+encoding convention and the named, field-safe comparisons a compliance statement
+is built from.
