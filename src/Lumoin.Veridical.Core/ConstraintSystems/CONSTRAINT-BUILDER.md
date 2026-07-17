@@ -382,3 +382,128 @@ is a follow-on that composes an in-circuit membership or commitment gadget in
 front of these predicates. What this section adds is the front half: the exact
 encoding convention and the named, field-safe comparisons a compliance statement
 is built from.
+
+## § 10 Multi-tier aggregation by sequential composition
+
+A product's carbon footprint is rarely made in one place. A battery pack's
+cradle-to-gate footprint is its cell makers' footprints plus assembly; each cell's
+is its material suppliers' footprints plus cell production; and so on up the chain.
+Proving the finished product is under a regulatory cap therefore means aggregating
+a footprint that no single party holds in full, out of proofs that each verify on
+their own — every tier's contribution is an independently checkable proof rather
+than a trusted claim. This composes from the § 9 predicates with no new machinery:
+no recursion, and no hashing inside the circuit.
+
+### One tier, one circuit
+
+Model each tier as one circuit of a single shape. Its cradle-to-gate footprint
+`pcf` is a **public output**; the already-proven footprints of its direct suppliers
+enter as **public inputs** `upstream_j`; and the tier's own gate-to-gate emissions
+`direct` are a **witness**. The tier asserts the cradle-to-gate identity and its own
+cap:
+
+```csharp
+R1csVariableIndex pcf = builder.DeclarePublicInput("pcf");
+R1csVariableIndex upstream = builder.DeclarePublicInput("upstream_0");
+R1csVariableIndex direct = builder.DeclareWitnessVariable("direct");
+
+builder.AssertRangeCheck(direct, domain.Bits, "direct_domain");           // own emissions into the field-safe width
+builder.AssertEqual(pcf, R1csLinearCombination.From(direct) + upstream);  // pcf = own emissions + upstream
+builder.AssertQuantityAtMost(pcf, FixedPointBound.Constant(domain, cap), "pcf");
+```
+
+Two range checks carry the anti-wrap guarantee, and both are load-bearing.
+`AssertQuantityAtMost` (§ 9) pins `pcf` itself into the field-safe width
+`[0, 2^Bits)`. The range check on `direct` forces
+`pcf = direct + Σ upstream_j ≥ Σ upstream_j`: without it a prover could bind
+`direct` to a large field element so that the sum wraps to a value below the true
+upstream total, proving a cradle-to-gate footprint smaller than its own verified
+inputs — the most damaging under-report the composition must forbid. A leaf tier is
+the same shape with no `upstream_j`, where `pcf` is just the tier's own emissions.
+
+### The committed output, and how it carries
+
+"Sequential composition" is ordinary orchestration, not an in-circuit verifier.
+Prove and verify each tier on its own. The value the verifier re-checks — the
+transcript-bound public-input scalar, read back from the verified `RawR1csInstance`
+in canonical big-endian — is the tier's **committed output** (here "committed" means
+bound into the proof's Fiat-Shamir transcript and public, not sealed in a hiding
+commitment):
+
+```csharp
+ReadOnlySpan<byte> publicInputs = verifiedInstance.GetPublicInputsBytes();
+int scalarSize = publicInputs.Length / verifiedInstance.PublicInputCount;
+var committed = new BigInteger(publicInputs[..scalarSize], isUnsigned: true, isBigEndian: true);   // pcf is the first public input
+```
+
+That exact scalar is bound into the next tier as an `upstream_j` public input.
+Because one `FixedPointDomain` scale (§ 9) encodes every tier, the field addition is
+the decimal roll-up exactly — `encode(a) + encode(b) = encode(a + b)` at a shared
+scale — and a total sized within one field-safe width cannot wrap. Choose a domain
+whose maximum covers the whole chain's total, not just one tier's.
+
+### What is revealed
+
+This composition reveals everything. A tier's total footprint `pcf` is public — it
+is the value the next tier and the verifier consume — and every carried `upstream_j`
+is public, so the tier's own emissions `direct = pcf − Σ upstream_j` are publicly
+derivable, and a leaf tier's `pcf` is its own emissions outright. `direct` is carried
+as a witness rather than a labelled public field — the seam a later hiding upgrade
+would protect — but it is not confidential here. What the section proves is a
+verifiable multi-tier roll-up under a cap across independently verified tiers, not
+per-tier privacy.
+
+A fully hiding carry — one where a tier's own figures are bound to its proof yet
+never revealed — is out of reach on this stack: it needs either an in-circuit opening
+of a hiding commitment to the carried value, or a discrete-log-equality argument on
+the proof system's own scalar field. Adding that hiding is a later, larger piece; the
+revealed composition here is the part that stands on today's primitives.
+
+### Where the trust sits
+
+Each proof binds only its own public inputs. Nothing inside a parent's proof forces
+its `upstream_j` to be a value some child actually proved — the parent is equally
+happy to aggregate an understated figure. The chain is bound by the orchestrator's
+refusal to carry anything other than the child's committed output, which is a plain
+field-element comparison against the scalar the child's verifier accepted. That
+check is the load-bearing step of the composition; it is not delegated to the
+circuit.
+
+### Binding to a PCF data model
+
+The composition mirrors how product-carbon-footprint data is exchanged in the
+WBCSD Pathfinder / PACT data model, and the mapping is an interoperability note, not
+a schema this layer parses — the § 9 scope boundary holds, the input is a
+`System.Decimal` and the output a proof:
+
+- The additive scalar is a product's **excluding-biogenic PCF per declared unit** —
+  a kilograms-CO₂e figure a supplier already computes and exchanges. Each
+  `upstream_j` is one such supplier record; `direct` is the tier's own gate-to-gate
+  contribution; `pcf` is the tier's cradle-to-gate result to hand its own customer.
+- The exact JSON field spellings differ across PACT Tech Spec major versions (the
+  cross-sectoral-standards key, for one), so a binding maps onto the conceptual
+  attribute, not a pinned key name; consult the live specification for the wire form.
+
+Three things the arithmetic assumes and the crypto does **not** check — they are
+application-layer preconditions the exchanging systems must satisfy before a sum
+means anything:
+
+- **Comparable units.** Summing footprints over a shared declared unit is valid only
+  when the units reconcile; a real roll-up first scales each supplier's per-unit
+  footprint by the quantity of that input embodied in the product (its
+  bill-of-materials amount). The worked example sums per-unit footprints directly
+  (unit amounts of one). A constant embodied quantity is a linear-combination
+  coefficient — free, just a coefficient on `upstream_j` — while a hidden quantity is
+  one product constraint per input; either extends the identity above with no new
+  predicate types, but neither substitutes for the unit reconciliation itself.
+- **Consistent reference period and boundary.** Footprints computed over different
+  reference periods, geographies, or system boundaries are not additively
+  comparable; the crypto sees only the scalars.
+- **Consistent accounting standards.** Whether the inputs used the same
+  cross-sectoral and product-category rules is a data-quality precondition, not a
+  field relation.
+
+The example proves the *composition* — that a rolled-up total is the faithful sum of
+independently verified tier footprints and is under a cap — and is honest that the
+*comparability* of what is summed is established upstream, in the data layer, not
+here.
