@@ -1,5 +1,9 @@
+using Lumoin.Base;
+using Lumoin.Veridical.Core.ConstraintSystems;
 using ModelContextProtocol.Server;
+using System;
 using System.ComponentModel;
+using System.Text.Json;
 
 namespace Lumoin.Veridical.Cli;
 
@@ -33,5 +37,36 @@ internal sealed class VeridicalMcpServer
         (bool _, string report) = VeridicalOperations.RunSelfTest();
 
         return report;
+    }
+
+
+    [McpServerTool(Name = McpToolNames.Prove), Description("Prove a supply-chain predicate bundle (at-least / at-most fixed-point claims, in zero knowledge over Spartan-over-Ligero) from a prove-request JSON string that carries the private measured quantities. Returns the proof artifact JSON on success, or an error message when the request is malformed or the statement is not provable.")]
+    public static string Prove(
+        [Description("The prove-request JSON: the statement parameters and the private measured quantities.")] string request)
+    {
+        try
+        {
+            return PredicateProofOperations.ProveToJson(request, BaseMemoryPool.Shared);
+        }
+        catch(JsonException error)
+        {
+            return $"Error: the request is not valid JSON ({error.Message}).";
+        }
+        catch(R1csCircuitCompilationException error)
+        {
+            return $"Not provable: {error.Message}";
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+    }
+
+
+    [McpServerTool(Name = McpToolNames.Verify), Description("Verify a supply-chain predicate proof artifact (JSON string) and return a one-line report of the statement it proves, or the reason it does not verify. Verification needs no private data — only the artifact.")]
+    public static string Verify(
+        [Description("The proof artifact JSON to verify.")] string artifact)
+    {
+        return PredicateProofOperations.VerifyFromJson(artifact, BaseMemoryPool.Shared).ToReport();
     }
 }

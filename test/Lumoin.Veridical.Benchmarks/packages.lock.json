@@ -652,6 +652,7 @@
           "Lumoin.Veridical.Backends.Managed": "[0.0.0, )",
           "Lumoin.Veridical.Core": "[0.0.0, )",
           "Lumoin.Veridical.Hashing": "[0.0.0, )",
+          "Lumoin.Veridical.Json": "[0.0.0, )",
           "Microsoft.Extensions.Hosting": "[10.0.10, )",
           "ModelContextProtocol": "[1.4.1, )",
           "System.CommandLine": "[2.0.10, )"
@@ -668,6 +669,9 @@
         "dependencies": {
           "Lumoin.Veridical.Core": "[0.0.0, )"
         }
+      },
+      "lumoin.veridical.json": {
+        "type": "Project"
       },
       "lumoin.veridical.longfellow": {
         "type": "Project",
@@ -693,6 +697,7 @@
           "Lumoin.Veridical.Cli": "[0.0.0, )",
           "Lumoin.Veridical.Core": "[0.0.0, )",
           "Lumoin.Veridical.Hashing": "[0.0.0, )",
+          "Lumoin.Veridical.Json": "[0.0.0, )",
           "Lumoin.Veridical.Longfellow": "[0.0.0, )",
           "Lumoin.Veridical.Secdsa": "[0.0.0, )",
           "MSTest.TestAdapter": "[4.2.3, )",

@@ -455,6 +455,9 @@
           "Lumoin.Veridical.Core": "[0.0.0, )"
         }
       },
+      "lumoin.veridical.json": {
+        "type": "Project"
+      },
       "Lumoin.Base": {
         "type": "CentralTransitive",
         "requested": "[0.0.4, )",

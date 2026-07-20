@@ -135,6 +135,110 @@ public static class R1csCircuitCompilation
                 throw;
             }
         }
+
+
+        /// <summary>
+        /// Builds the public <see cref="RawR1csInstance"/> — the three coefficient
+        /// matrices and the public inputs — from the circuit's structure alone,
+        /// with no witness. This is the verifier's counterpart to <c>Compile</c>: a
+        /// counterparty checking a proof holds the public statement (the circuit,
+        /// rebuilt from a trusted descriptor, and the revealed public inputs) but
+        /// not the private assignment, so it cannot use <c>Compile</c>, which binds
+        /// every variable and checks satisfaction.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The <c>A</c>, <c>B</c>, and <c>C</c> matrices are a pure function of the
+        /// circuit's constraint operations — they do not depend on any variable's
+        /// value — so they are identical to the matrices <c>Compile</c> produces for
+        /// the same circuit. Only the public inputs carry values, and they arrive
+        /// here already encoded (canonical big-endian scalars, in public-input
+        /// declaration order), the same bytes the prover's instance exposes through
+        /// <see cref="RawR1csInstance.GetPublicInputsBytes"/>.
+        /// </para>
+        /// <para>
+        /// No satisfaction check is performed and no witness is built: the proof,
+        /// not this instance, is the evidence that a satisfying witness exists.
+        /// </para>
+        /// </remarks>
+        /// <param name="publicInputs">The canonical big-endian bytes of the public-input scalars, in declaration order; length must be <c>PublicInputCount × scalarSize</c>.</param>
+        /// <param name="pool">The pool the matrices and instance rent their buffers from.</param>
+        /// <returns>The public instance a verifier checks a proof against.</returns>
+        /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is null.</exception>
+        /// <exception cref="R1csCircuitCompilationException">When the circuit has no constraints.</exception>
+        /// <exception cref="ArgumentException">When <paramref name="publicInputs"/> does not match the circuit's public-input count, or a public input is not a canonical scalar.</exception>
+        public RawR1csInstance CompileInstance(ReadOnlySpan<byte> publicInputs, BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(circuit);
+            ArgumentNullException.ThrowIfNull(pool);
+
+            CurveParameterSet curve = circuit.Curve;
+            WellKnownCurves.ThrowIfCurveNotWired(curve);
+            BigInteger fieldOrder = WellKnownCurves.GetScalarFieldOrder(curve);
+            int scalarSize = R1csMatrix.GetValueByteSize(curve);
+
+            var constraints = new List<AddConstraintOp>();
+            foreach(IR1csOp op in circuit.Operations)
+            {
+                if(op is AddConstraintOp constraint)
+                {
+                    constraints.Add(constraint);
+                }
+            }
+
+            if(constraints.Count == 0)
+            {
+                throw new R1csCircuitCompilationException(
+                    "Circuit has no constraints; at least one constraint is required to compile an instance.");
+            }
+
+            if(publicInputs.Length != circuit.PublicInputCount * scalarSize)
+            {
+                throw new ArgumentException(
+                    $"Public-input byte length {publicInputs.Length} does not match the circuit's {circuit.PublicInputCount} public input(s) at {scalarSize} bytes each.",
+                    nameof(publicInputs));
+            }
+
+            int columnCount = circuit.VariableCount;
+            R1csMatrix a = BuildMatrix(constraints, static op => op.Left, columnCount, fieldOrder, scalarSize, curve, pool);
+            R1csMatrix b;
+            R1csMatrix c;
+            try
+            {
+                b = BuildMatrix(constraints, static op => op.Middle, columnCount, fieldOrder, scalarSize, curve, pool);
+            }
+            catch
+            {
+                a.Dispose();
+                throw;
+            }
+
+            try
+            {
+                c = BuildMatrix(constraints, static op => op.Right, columnCount, fieldOrder, scalarSize, curve, pool);
+            }
+            catch
+            {
+                a.Dispose();
+                b.Dispose();
+                throw;
+            }
+
+            //RawR1csInstance.Create takes ownership of the matrices on success and
+            //validates the public-input bytes (length + canonical); on a validation
+            //throw it has not taken ownership, so the matrices are disposed here.
+            try
+            {
+                return RawR1csInstance.Create(a, b, c, publicInputs, pool);
+            }
+            catch
+            {
+                a.Dispose();
+                b.Dispose();
+                c.Dispose();
+                throw;
+            }
+        }
     }
 
 

@@ -16,11 +16,19 @@ internal static class McpToolNames
     /// <summary>Run the known-answer conformance vectors.</summary>
     public const string SelfTest = "SelfTest";
 
+    /// <summary>Prove a supply-chain predicate bundle from local data.</summary>
+    public const string Prove = "Prove";
+
+    /// <summary>Verify a supply-chain predicate proof artifact.</summary>
+    public const string Verify = "Verify";
+
     /// <summary>All exposed tool names.</summary>
     public static readonly string[] All =
     [
         Info,
         Hash,
-        SelfTest
+        SelfTest,
+        Prove,
+        Verify
     ];
 }
