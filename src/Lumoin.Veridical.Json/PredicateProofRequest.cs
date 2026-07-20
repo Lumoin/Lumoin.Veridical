@@ -4,10 +4,11 @@ namespace Lumoin.Veridical.Json;
 
 /// <summary>
 /// A request to prove a supply-chain predicate bundle: the statement parameters plus
-/// the private measured quantities. This is prover-local input — it is read from
-/// local data (a file, or an MCP argument) and never leaves the prover; the proof it
-/// yields is a <see cref="PredicateProofArtifact"/>, which carries no measured
-/// values. Serialized to JSON by <see cref="VeridicalPredicateProofJson"/>.
+/// the measured quantities. This is prover-local input — it is read from local data
+/// (a file, or an MCP argument) and is not itself transmitted; the proof it yields is
+/// a <see cref="PredicateProofArtifact"/>, whose openings must nevertheless be
+/// treated as disclosing the measured values to the artifact's recipient (see that
+/// type's remarks). Serialized to JSON by <see cref="VeridicalPredicateProofJson"/>.
 /// </summary>
 public sealed record PredicateProofRequest
 {
@@ -23,9 +24,12 @@ public sealed record PredicateProofRequest
     /// <summary>The Ligero opened-column query count to prove under.</summary>
     public required int QueryCount { get; init; }
 
+    /// <summary>The Ligero inverse code rate <c>c</c> (code rate <c>ρ = 1/c</c>) to prove under.</summary>
+    public required int InverseRate { get; init; }
+
     /// <summary>The Merkle digest size in bytes for the Ligero commitment.</summary>
     public required int DigestBytes { get; init; }
 
-    /// <summary>The ordered claims whose conjunction to prove, each carrying its private measured quantity.</summary>
+    /// <summary>The ordered claims whose conjunction to prove, each carrying its measured quantity.</summary>
     public required IReadOnlyList<PredicateProofRequestClaim> Claims { get; init; }
 }

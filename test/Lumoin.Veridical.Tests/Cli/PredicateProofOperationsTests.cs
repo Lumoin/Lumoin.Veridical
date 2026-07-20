@@ -105,6 +105,18 @@ internal sealed class PredicateProofOperationsTests
 
 
     [TestMethod]
+    public void DowngradedInverseRateIsMalformed()
+    {
+        PredicateProofArtifact artifact = VeridicalPredicateProofJson.DeserializeArtifact(CompliantArtifactJson.Value);
+        string downgraded = VeridicalPredicateProofJson.Serialize(artifact with { InverseRate = 4 });
+
+        VerificationResult result = Verify(downgraded);
+        Assert.AreEqual(VerificationStatus.Malformed, result.Status);
+        Assert.IsTrue(result.Message.Contains("inverse rate", StringComparison.Ordinal), result.Message);
+    }
+
+
+    [TestMethod]
     public void MalformedJsonIsMalformed()
     {
         Assert.AreEqual(VerificationStatus.Malformed, PredicateProofOperations.VerifyFromJson("{ not json", BaseMemoryPool.Shared).Status);
@@ -115,7 +127,7 @@ internal sealed class PredicateProofOperationsTests
     public void NullClaimsArtifactIsMalformed()
     {
         const string json = """
-        { "format": "veridical-supply-chain-predicate-proof/1", "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 32, "digestBytes": 32, "claims": null, "publicInputs": "", "proof": "" }
+        { "format": "veridical-supply-chain-predicate-proof/2", "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 64, "inverseRate": 16, "digestBytes": 32, "claims": null, "publicInputs": "", "proof": "" }
         """;
 
         Assert.AreEqual(VerificationStatus.Malformed, PredicateProofOperations.VerifyFromJson(json, BaseMemoryPool.Shared).Status);
@@ -126,7 +138,7 @@ internal sealed class PredicateProofOperationsTests
     public void NullClaimElementArtifactIsMalformed()
     {
         const string json = """
-        { "format": "veridical-supply-chain-predicate-proof/1", "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 32, "digestBytes": 32, "claims": [ null ], "publicInputs": "", "proof": "" }
+        { "format": "veridical-supply-chain-predicate-proof/2", "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 64, "inverseRate": 16, "digestBytes": 32, "claims": [ null ], "publicInputs": "", "proof": "" }
         """;
 
         Assert.AreEqual(VerificationStatus.Malformed, PredicateProofOperations.VerifyFromJson(json, BaseMemoryPool.Shared).Status);
@@ -176,6 +188,7 @@ internal sealed class PredicateProofOperationsTests
             Curve = PredicateProofOperations.CurveId,
             TranscriptDomain = TranscriptDomain,
             QueryCount = PredicateProofOperations.WiredQueryCount,
+            InverseRate = PredicateProofOperations.WiredInverseRate,
             DigestBytes = PredicateProofOperations.WiredDigestBytes,
             Claims =
             [

@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments;
 using Lumoin.Veridical.Core.Commitments.BaseFold;
+using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.ConstraintSystems;
 using Lumoin.Veridical.Core.Spartan;
 using Lumoin.Veridical.Hashing;
@@ -20,7 +21,7 @@ namespace Lumoin.Veridical.Cli;
 
 /// <summary>
 /// The crypto behind the <c>prove</c> and <c>verify</c> verbs: it turns a
-/// <see cref="PredicateProofRequest"/> (statement parameters plus private measured
+/// <see cref="PredicateProofRequest"/> (statement parameters plus measured
 /// quantities) into a <see cref="PredicateProofArtifact"/>, and checks such an
 /// artifact against the statement it describes. Both surfaces (the CLI subcommands
 /// and the MCP tools) forward here through the JSON boundary, so the two never
@@ -30,11 +31,16 @@ namespace Lumoin.Veridical.Cli;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The statement is the §9 supply-chain predicate bundle: an ordered conjunction of
+/// The statement is the supply-chain predicate bundle: an ordered conjunction of
 /// at-least / at-most fixed-point claims, proven over Spartan-over-Ligero
-/// (transparent, hash-based, no trusted setup). The measured quantities are private
-/// witness inputs and are not included in the artifact; a regulatory bound is either
-/// baked into the circuit (a constant) or revealed as a public input.
+/// (transparent, hash-based, no trusted setup). The measured quantities are witness
+/// inputs and are not written into the artifact's JSON fields — but the wired path is
+/// sound and binding, NOT witness-hiding: the embedded Ligero openings reveal
+/// committed-matrix columns in cleartext, and for the wired circuit sizes those
+/// columns determine the full witness (including the measured quantities) by
+/// interpolation. The artifact must be treated as disclosing the measured values to
+/// its recipient; what the proof adds is integrity, not confidentiality. A regulatory
+/// bound is either baked into the circuit (a constant) or revealed as a public input.
 /// </para>
 /// <para>
 /// Verification rebuilds the identical statement circuit from the artifact's claim
@@ -47,25 +53,42 @@ namespace Lumoin.Veridical.Cli;
 /// compliance claim.
 /// </para>
 /// <para>
-/// The commitment parameters (curve, Ligero query count, digest size) are pinned to
-/// one wired set that both surfaces enforce, so an artifact cannot silently downgrade
-/// them. These are the wired parameters; the formal per-scheme soundness-bits
-/// accounting is tracked separately and is not asserted here.
+/// The commitment parameters (curve, Ligero inverse code rate, query count, digest
+/// size) are pinned to one wired set that both surfaces enforce, so an artifact
+/// cannot silently downgrade them. The wired rate-1/16, 64-column set realises the
+/// 128-bit-classical proximity target under the conservative Johnson list-decoding
+/// regime (<see cref="WellKnownSecurityLevels.ComputeSpartanOverLigero"/> computes
+/// the per-term ledger), and a clamp guard
+/// (<see cref="WellKnownSecurityLevels.ThrowIfLigeroSoundnessClamped"/>) rejects
+/// any circuit too small to open the full column count, so the tool never ships an
+/// under-target proof silently.
 /// </para>
 /// </remarks>
 internal static class PredicateProofOperations
 {
     /// <summary>The format identifier of a prove request this tool accepts.</summary>
-    public const string RequestFormat = "veridical-supply-chain-predicate-request/1";
+    public const string RequestFormat = "veridical-supply-chain-predicate-request/2";
 
     /// <summary>The format identifier this tool stamps on a produced proof artifact.</summary>
-    public const string ArtifactFormat = "veridical-supply-chain-predicate-proof/1";
+    public const string ArtifactFormat = "veridical-supply-chain-predicate-proof/2";
 
     /// <summary>The lowercase curve identifier the wired parameter set proves over.</summary>
     public const string CurveId = "bls12-381";
 
-    /// <summary>The Ligero opened-column query count of the wired parameter set.</summary>
-    public const int WiredQueryCount = 32;
+    /// <summary>
+    /// The Ligero inverse code rate of the wired parameter set. Rate 1/16 gives 2 soundness
+    /// bits per opened column under the Johnson regime and an extension wide enough for the
+    /// small supply-chain circuits to open the full 128-bit column count.
+    /// </summary>
+    public const int WiredInverseRate = 16;
+
+    /// <summary>
+    /// The Ligero opened-column query count of the wired parameter set: derived, not
+    /// hardcoded, so it always matches the 128-bit-classical target at
+    /// <see cref="WiredInverseRate"/> under the wired Johnson regime (64 at rate 1/16).
+    /// </summary>
+    public static readonly int WiredQueryCount =
+        WellKnownLigeroParameters.ClassicalSecurityQueryCount(WiredInverseRate, WellKnownLigeroParameters.ClassicalSecurityRegime);
 
     /// <summary>The Merkle digest size in bytes of the wired parameter set.</summary>
     public const int WiredDigestBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
@@ -82,7 +105,7 @@ internal static class PredicateProofOperations
     /// </summary>
     /// <exception cref="ArgumentNullException">When an argument is null.</exception>
     /// <exception cref="JsonException">When <paramref name="requestJson"/> is not well-formed.</exception>
-    /// <exception cref="ArgumentException">When the request header, a claim, or a decimal value is malformed.</exception>
+    /// <exception cref="ArgumentException">When the request header, a claim, or a decimal value is malformed, or the compiled statement circuit is too small to open the full wired column count (the soundness clamp guard).</exception>
     /// <exception cref="R1csCircuitCompilationException">When the statement is false, so no proof exists.</exception>
     public static string ProveToJson(string requestJson, BaseMemoryPool pool)
     {
@@ -123,10 +146,10 @@ internal static class PredicateProofOperations
 
     /// <summary>
     /// Proves the supply-chain predicate bundle described by <paramref name="request"/>
-    /// against its private measured quantities, returning the transferable artifact.
+    /// against its measured quantities, returning the transferable artifact.
     /// </summary>
     /// <exception cref="ArgumentNullException">When an argument is null.</exception>
-    /// <exception cref="ArgumentException">When the request header, a claim, or a decimal value is malformed.</exception>
+    /// <exception cref="ArgumentException">When the request header, a claim, or a decimal value is malformed, or the compiled statement circuit is too small to open the full wired column count (the soundness clamp guard).</exception>
     /// <exception cref="R1csCircuitCompilationException">When the statement is false (a measured quantity does not satisfy its claim), so no proof exists.</exception>
     [SuppressMessage("Reliability", "CA2000", Justification = "The Spartan proving key owns the commitment provider and disposes it; every other disposable flows through a using declaration.")]
     public static PredicateProofArtifact Prove(PredicateProofRequest request, BaseMemoryPool pool)
@@ -134,7 +157,7 @@ internal static class PredicateProofOperations
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(pool);
 
-        ValidateHeader(request.Format, RequestFormat, request.Curve, request.QueryCount, request.DigestBytes);
+        ValidateHeader(request.Format, RequestFormat, request.Curve, request.QueryCount, request.InverseRate, request.DigestBytes);
 
         ArgumentNullException.ThrowIfNull(request.Claims);
         var descriptors = new List<ClaimDescriptor>(request.Claims.Count);
@@ -164,12 +187,14 @@ internal static class PredicateProofOperations
         using RawR1csInstance instance = compiled.Instance;
         using RawR1csWitness witness = compiled.Witness;
 
+        ThrowIfBelowSoundnessTarget(instance, request.InverseRate, request.QueryCount);
+
         using ScalarArithmeticBackend scalar = Bls12Curve381ManagedScalarBackend.Create();
         using G1ArithmeticBackend g1 = Bls12Curve381ManagedG1Backend.Create();
         MleEvaluateDelegate mleEvaluate = ManagedMultilinearExtensionBackend.CreateEvaluate(scalar, pool);
         MleFoldDelegate mleFold = ManagedMultilinearExtensionBackend.CreateFold(scalar, pool);
 
-        using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider(scalar, request.QueryCount, request.DigestBytes)));
+        using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider(scalar, request.QueryCount, request.InverseRate, request.DigestBytes)));
         using FiatShamirTranscript transcript = FreshTranscript(request.TranscriptDomain, pool);
         using LigeroSpartanProof proof = prover.ProveLigero(
             instance, witness, transcript,
@@ -182,6 +207,7 @@ internal static class PredicateProofOperations
             Curve = CurveId,
             TranscriptDomain = request.TranscriptDomain,
             QueryCount = request.QueryCount,
+            InverseRate = request.InverseRate,
             DigestBytes = request.DigestBytes,
             Claims = BuildArtifactClaims(descriptors),
             PublicInputs = Convert.ToBase64String(instance.GetPublicInputsBytes()),
@@ -204,7 +230,7 @@ internal static class PredicateProofOperations
         ArgumentNullException.ThrowIfNull(artifact);
         ArgumentNullException.ThrowIfNull(pool);
 
-        if(!TryValidateHeader(artifact.Format, ArtifactFormat, artifact.Curve, artifact.QueryCount, artifact.DigestBytes, out string headerError))
+        if(!TryValidateHeader(artifact.Format, ArtifactFormat, artifact.Curve, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes, out string headerError))
         {
             return VerificationResult.Malformed(headerError);
         }
@@ -231,9 +257,11 @@ internal static class PredicateProofOperations
             int outerRoundCount = BitOperations.Log2((uint)instance.A.RowCount);
             int innerRoundCount = BitOperations.Log2((uint)instance.A.ColumnCount);
 
+            ThrowIfBelowSoundnessTarget(instance, artifact.InverseRate, artifact.QueryCount);
+
             using ScalarArithmeticBackend scalar = Bls12Curve381ManagedScalarBackend.Create();
-            using LigeroSpartanProof proof = LigeroSpartanProof.FromBytes(proofBytes, outerRoundCount, innerRoundCount, artifact.QueryCount, artifact.DigestBytes, Curve, pool);
-            using var verifier = new SpartanVerifier(new SpartanVerifyingKey(BuildProvider(scalar, artifact.QueryCount, artifact.DigestBytes)));
+            using LigeroSpartanProof proof = LigeroSpartanProof.FromBytes(proofBytes, outerRoundCount, innerRoundCount, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes, Curve, pool);
+            using var verifier = new SpartanVerifier(new SpartanVerifyingKey(BuildProvider(scalar, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes)));
             using FiatShamirTranscript transcript = FreshTranscript(artifact.TranscriptDomain, pool);
 
             bool verified = verifier.VerifyLigero(proof, instance, transcript, scalar.Add, scalar.Multiply, scalar.Subtract, scalar.Reduce, Hash, Squeeze, pool);
@@ -292,12 +320,27 @@ internal static class PredicateProofOperations
 
 
     [SuppressMessage("Reliability", "CA2000", Justification = "The commitment provider is handed to the Spartan key the caller constructs, which owns and disposes it.")]
-    private static PolynomialCommitmentProvider BuildProvider(ScalarArithmeticBackend scalar, int queryCount, int digestBytes)
+    private static PolynomialCommitmentProvider BuildProvider(ScalarArithmeticBackend scalar, int queryCount, int inverseRate, int digestBytes)
     {
         return LigeroPolynomialCommitmentScheme.Create(
             Curve, queryCount,
             scalar.Add, scalar.Subtract, scalar.Multiply, scalar.Invert, scalar.Reduce,
-            Hash, Squeeze, Hash, HashTwoToOne, WellKnownHashAlgorithms.Blake3, digestBytes);
+            Hash, Squeeze, Hash, HashTwoToOne, WellKnownHashAlgorithms.Blake3, digestBytes, inverseRate);
+    }
+
+
+    //The soundness clamp guard over both embedded openings: the error opening
+    //spans the row variables and the witness opening the column variables, so
+    //each must carry the full opened-column count for the artifact's parameters
+    //to realise their target. Runs at prove AND verify time; the thrown
+    //ArgumentException surfaces as a prover error or a Malformed verdict.
+    private static void ThrowIfBelowSoundnessTarget(RawR1csInstance instance, int inverseRate, int queryCount)
+    {
+        int outerVariableCount = BitOperations.Log2((uint)instance.A.RowCount);
+        int innerVariableCount = BitOperations.Log2((uint)instance.A.ColumnCount);
+
+        WellKnownSecurityLevels.ThrowIfLigeroSoundnessClamped(outerVariableCount, inverseRate, queryCount);
+        WellKnownSecurityLevels.ThrowIfLigeroSoundnessClamped(innerVariableCount, inverseRate, queryCount);
     }
 
 
@@ -505,7 +548,7 @@ internal static class PredicateProofOperations
     }
 
 
-    private static void ValidateHeader(string format, string expectedFormat, string curve, int queryCount, int digestBytes)
+    private static void ValidateHeader(string format, string expectedFormat, string curve, int queryCount, int inverseRate, int digestBytes)
     {
         if(!string.Equals(format, expectedFormat, StringComparison.Ordinal))
         {
@@ -522,6 +565,11 @@ internal static class PredicateProofOperations
             throw new ArgumentException($"Unsupported query count {queryCount}; the wired parameter set uses {WiredQueryCount}.");
         }
 
+        if(inverseRate != WiredInverseRate)
+        {
+            throw new ArgumentException($"Unsupported inverse rate {inverseRate}; the wired parameter set uses {WiredInverseRate}.");
+        }
+
         if(digestBytes != WiredDigestBytes)
         {
             throw new ArgumentException($"Unsupported digest size {digestBytes}; the wired parameter set uses {WiredDigestBytes}.");
@@ -529,11 +577,11 @@ internal static class PredicateProofOperations
     }
 
 
-    private static bool TryValidateHeader(string format, string expectedFormat, string curve, int queryCount, int digestBytes, out string error)
+    private static bool TryValidateHeader(string format, string expectedFormat, string curve, int queryCount, int inverseRate, int digestBytes, out string error)
     {
         try
         {
-            ValidateHeader(format, expectedFormat, curve, queryCount, digestBytes);
+            ValidateHeader(format, expectedFormat, curve, queryCount, inverseRate, digestBytes);
             error = string.Empty;
 
             return true;

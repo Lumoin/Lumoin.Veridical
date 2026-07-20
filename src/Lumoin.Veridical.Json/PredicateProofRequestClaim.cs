@@ -27,6 +27,6 @@ public sealed record PredicateProofRequestClaim
     /// <summary>The bound's decimal value — the regulatory floor or cap — as an invariant-culture decimal string. Required for both bound kinds.</summary>
     public required string BoundValue { get; init; }
 
-    /// <summary>The private measured quantity to prove against the bound, as an invariant-culture decimal string. This value stays local to the prover and never appears in the produced artifact.</summary>
+    /// <summary>The measured quantity to prove against the bound, as an invariant-culture decimal string. This value is not written into the produced artifact's JSON fields, but the artifact's proof bytes must be treated as disclosing it (see <see cref="PredicateProofArtifact"/>).</summary>
     public required string Measured { get; init; }
 }

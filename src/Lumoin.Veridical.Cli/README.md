@@ -34,14 +34,19 @@ computes correct results on each target (including the SIMD paths on ARM).
 *at-least* / *at-most* fixed-point claims (for example, a battery-passport bundle —
 recycled content at or above a minimum **and** carbon footprint at or below a cap),
 proven over Spartan-over-Ligero — a transparent (hash-based) proof system with no
-trusted setup and no key material to distribute. The measured quantities are private
-witness inputs and are not written into the artifact: it carries the statement and
-any public bounds, not the measured values.
+trusted setup and no key material to distribute. The measured quantities are witness
+inputs and are not written into the artifact's JSON fields — but the wired proof path
+is **sound and binding, not witness-hiding**: the embedded Ligero openings reveal
+committed-matrix columns in cleartext, and for the wired circuit sizes those columns
+determine the full witness — including the measured quantities — by interpolation.
+Treat the artifact as disclosing the measured values to whoever receives it. What the
+proof adds is integrity — the recipient can check that the claims verifiably hold and
+that the statement was not altered — with one static binary and no PKI. A hiding
+(masked) configuration is a possible future upgrade, not what ships here.
 
-- **`prove`** reads a request that carries the statement parameters and the *private*
-  measured quantities, and writes a proof artifact. The measured values stay local —
-  they never appear in the artifact. Driven through the MCP server, this is an on-prem
-  prover: the artifact is the only thing that leaves.
+- **`prove`** reads a request that carries the statement parameters and the measured
+  quantities, and writes a proof artifact. Send the artifact only to parties allowed
+  to learn the measured values (see the disclosure note above).
 - **`verify`** needs only the artifact — no private data, no PKI, no platform change.
   It rebuilds the statement circuit from the artifact's claim descriptors, reconstructs
   the public instance from the revealed public inputs (no witness), and checks the
@@ -54,8 +59,8 @@ verification to fail. The proof attests that the *described* statement is satisf
 `verify` prints that statement so an operator confirms it is the compliance claim they
 require.
 
-The commitment parameters (curve, query count, digest size) are pinned to one wired set
-that both verbs enforce, so an artifact cannot silently weaken them.
+The commitment parameters (curve, query count, inverse rate, digest size) are pinned to
+one wired set that both verbs enforce, so an artifact cannot silently weaken them.
 
 ### Example
 
@@ -64,10 +69,11 @@ measurements of 32.5% and 11.20:
 
 ```json
 {
-  "format": "veridical-supply-chain-predicate-request/1",
+  "format": "veridical-supply-chain-predicate-request/2",
   "curve": "bls12-381",
   "transcriptDomain": "veridical.supplychain.batterypassport.v1",
-  "queryCount": 32,
+  "queryCount": 64,
+  "inverseRate": 16,
   "digestBytes": 32,
   "claims": [
     { "name": "recycled_content", "direction": "atLeast", "fractionalDigits": 1, "inclusiveMaximum": "100.0", "bound": "constant", "boundValue": "30.0", "measured": "32.5" },

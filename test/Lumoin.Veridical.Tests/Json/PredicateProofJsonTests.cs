@@ -23,6 +23,7 @@ internal sealed class PredicateProofJsonTests
         Assert.AreEqual(json, VeridicalPredicateProofJson.Serialize(restored), "Re-serializing the round-tripped artifact must reproduce the original JSON.");
         Assert.AreEqual(artifact.Curve, restored.Curve);
         Assert.AreEqual(artifact.QueryCount, restored.QueryCount);
+        Assert.AreEqual(artifact.InverseRate, restored.InverseRate);
         Assert.AreEqual(artifact.Proof, restored.Proof);
         Assert.HasCount(artifact.Claims.Count, restored.Claims);
         Assert.AreEqual(artifact.Claims[0].Name, restored.Claims[0].Name);
@@ -57,7 +58,7 @@ internal sealed class PredicateProofJsonTests
     {
         //A syntactically valid artifact object missing the required "proof" member.
         const string json = """
-        { "format": "veridical-supply-chain-predicate-proof/1", "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 32, "digestBytes": 32, "claims": [], "publicInputs": "" }
+        { "format": "veridical-supply-chain-predicate-proof/2", "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 64, "inverseRate": 16, "digestBytes": 32, "claims": [], "publicInputs": "" }
         """;
 
         Assert.ThrowsExactly<JsonException>(() => VeridicalPredicateProofJson.DeserializeArtifact(json));
@@ -70,7 +71,7 @@ internal sealed class PredicateProofJsonTests
         //A null for a non-nullable member is rejected (RespectNullableAnnotations),
         //so it cannot reach the operations as a null reference.
         const string json = """
-        { "format": null, "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 32, "digestBytes": 32, "claims": [], "publicInputs": "", "proof": "" }
+        { "format": null, "curve": "bls12-381", "transcriptDomain": "d", "queryCount": 64, "inverseRate": 16, "digestBytes": 32, "claims": [], "publicInputs": "", "proof": "" }
         """;
 
         Assert.ThrowsExactly<JsonException>(() => VeridicalPredicateProofJson.DeserializeArtifact(json));
@@ -81,10 +82,11 @@ internal sealed class PredicateProofJsonTests
     {
         return new PredicateProofArtifact
         {
-            Format = "veridical-supply-chain-predicate-proof/1",
+            Format = "veridical-supply-chain-predicate-proof/2",
             Curve = "bls12-381",
             TranscriptDomain = "veridical.supplychain.batterypassport.test.v1",
-            QueryCount = 32,
+            QueryCount = 64,
+            InverseRate = 16,
             DigestBytes = 32,
             Claims =
             [
@@ -101,10 +103,11 @@ internal sealed class PredicateProofJsonTests
     {
         return new PredicateProofRequest
         {
-            Format = "veridical-supply-chain-predicate-request/1",
+            Format = "veridical-supply-chain-predicate-request/2",
             Curve = "bls12-381",
             TranscriptDomain = "veridical.supplychain.batterypassport.test.v1",
-            QueryCount = 32,
+            QueryCount = 64,
+            InverseRate = 16,
             DigestBytes = 32,
             Claims =
             [

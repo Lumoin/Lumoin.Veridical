@@ -40,9 +40,9 @@ internal sealed class VeridicalMcpServer
     }
 
 
-    [McpServerTool(Name = McpToolNames.Prove), Description("Prove a supply-chain predicate bundle (at-least / at-most fixed-point claims, in zero knowledge over Spartan-over-Ligero) from a prove-request JSON string that carries the private measured quantities. Returns the proof artifact JSON on success, or an error message when the request is malformed or the statement is not provable.")]
+    [McpServerTool(Name = McpToolNames.Prove), Description("Prove a supply-chain predicate bundle (at-least / at-most fixed-point claims, over transparent Spartan-over-Ligero — sound and binding, not witness-hiding: treat the artifact as disclosing the measured quantities to its recipient) from a prove-request JSON string that carries the measured quantities. Returns the proof artifact JSON on success, or an error message when the request is malformed or the statement is not provable.")]
     public static string Prove(
-        [Description("The prove-request JSON: the statement parameters and the private measured quantities.")] string request)
+        [Description("The prove-request JSON: the statement parameters and the measured quantities.")] string request)
     {
         try
         {

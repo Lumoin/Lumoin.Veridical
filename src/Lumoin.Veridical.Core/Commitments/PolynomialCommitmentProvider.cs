@@ -61,6 +61,15 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     public int? DigestSizeBytes { get; }
 
     /// <summary>
+    /// The inverse code rate <c>c</c> (rate <c>ρ = 1/c</c>) the scheme encodes
+    /// under, when the scheme is code-based and a consumer needs it to size
+    /// variable-length artifacts (Ligero, whose opening length depends on the
+    /// extension width the rate produces). <see langword="null"/> for schemes
+    /// whose artifact sizes do not depend on a code rate the provider chooses.
+    /// </summary>
+    public int? InverseRate { get; }
+
+    /// <summary>
     /// Whether the scheme's commitment is additively homomorphic — whether two
     /// commitments (and a blind) can be combined into a commitment to the linear
     /// combination of the committed vectors. Pedersen-family schemes (Hyrax) are;
@@ -161,6 +170,7 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     /// <param name="openWeightedSum">The weighted opening; <see langword="null"/> when the scheme has no weighted-opening path.</param>
     /// <param name="verifyWeightedSum">The weighted-opening verification; <see langword="null"/> when the scheme has no weighted-opening path.</param>
     /// <param name="resolveStatisticalMaskShape">The scheme's statistical-mask shape resolution; <see langword="null"/> when the scheme has no weighted-opening path.</param>
+    /// <param name="inverseRate">The inverse code rate the scheme encodes under, when a consumer needs it to size variable-length artifacts (Ligero); <see langword="null"/> when not applicable.</param>
     /// <exception cref="ArgumentNullException">When any operation delegate is null.</exception>
     public PolynomialCommitmentProvider(
         CommitmentScheme scheme,
@@ -177,7 +187,8 @@ public sealed class PolynomialCommitmentProvider: IDisposable
         PolynomialCommitDelegate? commitVector = null,
         PolynomialOpenWeightedSumDelegate? openWeightedSum = null,
         PolynomialVerifyWeightedSumDelegate? verifyWeightedSum = null,
-        StatisticalMaskShapeDelegate? resolveStatisticalMaskShape = null)
+        StatisticalMaskShapeDelegate? resolveStatisticalMaskShape = null,
+        int? inverseRate = null)
     {
         ArgumentNullException.ThrowIfNull(commit);
         ArgumentNullException.ThrowIfNull(open);
@@ -191,6 +202,7 @@ public sealed class PolynomialCommitmentProvider: IDisposable
         this.ownedResource = ownedResource;
         QueryCount = queryCount;
         DigestSizeBytes = digestSizeBytes;
+        InverseRate = inverseRate;
         IsAdditivelyHomomorphic = isAdditivelyHomomorphic;
         IsHiding = isHiding;
         ExtraVariableCount = extraVariableCount;

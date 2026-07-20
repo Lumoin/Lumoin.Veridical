@@ -129,6 +129,18 @@ soundness rests on assumptions a consumer must uphold:
   **truncated algebraic compression** (a native Poseidon shadow root), that compression is not
   collision-resistant and position binding then rests on the eprint 2026/089 argument — the leaf
   pre-hashing that argument requires is already in place and must be preserved.
+- **A parameter set's realised soundness is computed, not assumed.** The per-path knowledge-soundness
+  accounting — the opened-column/query proximity term, the Spartan sumcheck Fiat-Shamir term, and the
+  low-order field terms, with the effective level their minimum — is computed by
+  `WellKnownSecurityLevels` and documented in `src/Lumoin.Veridical.Core/Commitments/SECURITY-BITS.md`.
+  The practically important hazard it closes: a Ligero opening is clamped to the code's extension
+  width, so a small circuit can silently realise far fewer soundness bits than its query count
+  nominally targets; `WellKnownSecurityLevels.ThrowIfLigeroSoundnessClamped` turns that into a loud
+  failure, and the `veridical prove`/`verify` tool enforces it at both prove and verify time. The
+  tool's wired set (BLS12-381, Ligero inverse rate 16, 64 opened columns) realises the
+  128-bit-classical proximity target under the conservative Johnson list-decoding regime
+  (Johnson-radius pricing; the η technicality and its sub-0.1-bit cost are documented in
+  `SECURITY-BITS.md`).
 
 ## Post-quantum posture
 
