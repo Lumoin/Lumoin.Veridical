@@ -259,11 +259,14 @@ internal sealed class BaseFoldIoppTests
         const int InverseRate = WellKnownFoldableCodeParameters.ClassicalSecurityInverseRate;
         const int Lambda = WellKnownBaseFoldIoppParameters.ClassicalSecurityLevelBits;
 
-        //Capacity: δ = 1 - 1/8 = 0.875, ℓ = ⌈128/3⌉ = 43.
+        //Capacity clamps to the code's distance: δ = min(1 - 1/8, 0.728) = 0.728,
+        //ℓ = ⌈128 / -log2(0.272)⌉ = 69 — the unclamped rate-based radius 0.875
+        //exceeds the wired code's relative minimum distance and would price
+        //rejection power no proximity-gap statement reaches.
         Assert.AreEqual(
-            43,
+            69,
             WellKnownBaseFoldIoppParameters.ComputeQueryCount(Lambda, DeltaMin, InverseRate, BaseFoldSoundnessRegime.ConjecturedCapacity),
-            "Conjectured-capacity 128-bit query count.");
+            "Conjectured-capacity 128-bit query count (distance-clamped).");
 
         //Unique decoding: δ = 0.728/2 = 0.364, ℓ = ⌈128 / -log2(0.636)⌉ = 197.
         Assert.AreEqual(
@@ -277,11 +280,44 @@ internal sealed class BaseFoldIoppTests
             WellKnownBaseFoldIoppParameters.ComputeQueryCount(Lambda, DeltaMin, InverseRate, BaseFoldSoundnessRegime.ListDecodingJohnson),
             "List-decoding (double-Johnson) 128-bit query count.");
 
-        //The default preset is the list-decoding count.
+        //One-and-a-half Johnson: δ = 1 - (1 - 0.728)^(1/3) ≈ 0.3521,
+        //ℓ = ⌈128 / -log2(0.6479)⌉ = 205.
+        Assert.AreEqual(
+            205,
+            WellKnownBaseFoldIoppParameters.ComputeQueryCount(Lambda, DeltaMin, InverseRate, BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson),
+            "One-and-a-half-Johnson 128-bit query count.");
+
+        //The default preset is the double-Johnson list-decoding count; the
+        //one-and-a-half-Johnson preset is the named opt-in.
         Assert.AreEqual(
             273,
             WellKnownBaseFoldIoppParameters.ClassicalSecurityDefaultQueryCount,
             "The default query count is the paper-proven list-decoding count.");
+        Assert.AreEqual(
+            205,
+            WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount,
+            "The one-and-a-half-Johnson preset query count.");
+    }
+
+
+    [TestMethod]
+    public void OneAndAHalfJohnsonRadiusMatchesItsDefinition()
+    {
+        //1 - ∛(1 - x): 0 at 0; 1 at 1; 0.5 at 7/8 (∛(1/8) = 1/2).
+        Assert.AreEqual(0.0, WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(0.0), 1e-12);
+        Assert.AreEqual(1.0, WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(1.0), 1e-12);
+        Assert.AreEqual(0.5, WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(0.875), 1e-12);
+
+        //The radius sits between the doubly-applied Johnson radius and the
+        //code distance, and beats the unique-decoding radius exactly when the
+        //distance exceeds 1 - ((√5 - 1)/2)³ ≈ 0.7639 — below the crossover the
+        //regime's value is its proof strength, not its query count.
+        const double DeltaMin = WellKnownBaseFoldIoppParameters.ClassicalSecurityRelativeMinimumDistance;
+        double doubleJohnson = WellKnownBaseFoldIoppParameters.JohnsonRadius(WellKnownBaseFoldIoppParameters.JohnsonRadius(DeltaMin));
+        double oneAndAHalf = WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(DeltaMin);
+
+        Assert.IsGreaterThan(doubleJohnson, oneAndAHalf, "The one-and-a-half-Johnson radius exceeds the doubly-applied Johnson radius.");
+        Assert.IsLessThan(DeltaMin / 2.0, oneAndAHalf, "At the wired distance the radius sits inside the unique-decoding ball.");
     }
 
 

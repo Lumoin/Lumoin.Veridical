@@ -190,6 +190,111 @@ internal sealed class WellKnownSecurityLevelsTests
     }
 
 
+    //Pins that the one-and-a-half-Johnson preset's query count clears the 128-bit target with only a
+    //little headroom, mirroring the wired default's pin.
+    [TestMethod]
+    public void BaseFoldOneAndAHalfJohnsonQueryCountMeetsTarget()
+    {
+        const double LowerBound = 128.0;
+        const double UpperBound = 132.0;
+
+        double bits = WellKnownSecurityLevels.BaseFoldProximitySoundnessBits(
+            WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount,
+            BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson);
+
+        Assert.IsGreaterThanOrEqualTo(LowerBound, bits);
+        Assert.IsLessThan(UpperBound, bits);
+    }
+
+
+    //Pins the Khatam commit-phase term at the largest opening this library commits: the slack-controlled
+    //events must stay clear of the 128-bit query-term bottleneck on both wired curves.
+    [TestMethod]
+    public void BaseFoldOneAndAHalfJohnsonCommitTermStaysAboveTarget()
+    {
+        const int LargestVariableCount = 28;
+        const double TargetBits = 128.0;
+
+        //floor − 2·slack − log2(weight·d): the εη slack budget in bits and the
+        //per-round failure weight, both read off the production constants so a
+        //constant change fails here loudly.
+        const double SlackBudgetBits = 2.0 * WellKnownSecurityLevels.OneAndAHalfJohnsonSlackExponentBits;
+        const double CommitWeight = WellKnownSecurityLevels.OneAndAHalfJohnsonCommitFailureWeight * (double)LargestVariableCount;
+        double expectedBls12Curve381Bits = 254.0 - SlackBudgetBits - Math.Log2(CommitWeight);
+        double expectedBn254Bits = 253.0 - SlackBudgetBits - Math.Log2(CommitWeight);
+
+        double blsBits = WellKnownSecurityLevels.BaseFoldOneAndAHalfJohnsonCommitTermBits(Curve, LargestVariableCount);
+        double bnBits = WellKnownSecurityLevels.BaseFoldOneAndAHalfJohnsonCommitTermBits(CurveParameterSet.Bn254, LargestVariableCount);
+
+        Assert.AreEqual(expectedBls12Curve381Bits, blsBits, Tolerance);
+        Assert.AreEqual(expectedBn254Bits, bnBits, Tolerance);
+        Assert.IsGreaterThanOrEqualTo(TargetBits, bnBits);
+    }
+
+
+    //Pins the full Spartan-over-BaseFold ledger under the one-and-a-half-Johnson preset: the query term is
+    //the bottleneck and the path still clears the 128-bit target.
+    [TestMethod]
+    public void SpartanOverBaseFoldOneAndAHalfJohnsonLedgerMeetsTarget()
+    {
+        const int OuterRoundCount = 6;
+        const int InnerRoundCount = 6;
+        const double ExpectedMinimumEffectiveBits = 128.0;
+
+        SecurityLevelLedger ledger = WellKnownSecurityLevels.ComputeSpartanOverBaseFold(
+            Curve,
+            OuterRoundCount,
+            InnerRoundCount,
+            WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount,
+            BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson);
+
+        Assert.AreEqual(HidingKind.None, ledger.Hiding);
+        Assert.IsGreaterThanOrEqualTo(ExpectedMinimumEffectiveBits, ledger.EffectiveBits);
+        Assert.AreEqual(ledger.ProximityBits, ledger.EffectiveBits, Tolerance);
+    }
+
+
+    //The hiding-budget re-check for the reduced query count: the minimum lift the budget derives at the
+    //one-and-a-half-Johnson count never exceeds the default count's lift (fewer queries reveal fewer
+    //positions), the derived lift meets the budget, and the masked ledger built from it stays
+    //statistically hiding above the target.
+    [TestMethod]
+    public void OneAndAHalfJohnsonQueryCountMeetsHidingBudgetAndMaskLedger()
+    {
+        const int VariableCount = 6;
+        const int OuterRoundCount = 6;
+        const int InnerRoundCount = 6;
+        const int SumcheckVariableCount = 2;
+        const double ExpectedMinimumEffectiveBits = 128.0;
+
+        int reducedQueryCount = WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount;
+        int defaultQueryCount = WellKnownBaseFoldIoppParameters.ClassicalSecurityDefaultQueryCount;
+
+        int reducedLift = ZkBaseFoldPolynomialCommitmentScheme.GetMinimumExtraVariableCount(VariableCount, Curve, reducedQueryCount);
+        int defaultLift = ZkBaseFoldPolynomialCommitmentScheme.GetMinimumExtraVariableCount(VariableCount, Curve, defaultQueryCount);
+
+        Assert.IsLessThanOrEqualTo(defaultLift, reducedLift, "Fewer queries reveal fewer positions, so the reduced count never needs a larger lift.");
+        Assert.IsTrue(
+            ZkBaseFoldPolynomialCommitmentScheme.MeetsHidingBudget(VariableCount, reducedLift, Curve, reducedQueryCount),
+            "The derived minimum lift meets the bounded-independence budget at the reduced query count.");
+
+        StatisticalMaskParameters mask = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(SumcheckVariableCount, Curve, reducedQueryCount);
+
+        Assert.IsGreaterThan(0, mask.ExtraVariableCount, "The mask commitment keeps a positive hiding lift at the reduced query count.");
+
+        SecurityLevelLedger ledger = WellKnownSecurityLevels.ComputeMaskedSpartanOverZkBaseFold(
+            Curve,
+            OuterRoundCount,
+            InnerRoundCount,
+            reducedQueryCount,
+            reducedLift,
+            BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson);
+
+        Assert.AreEqual(HidingKind.Statistical, ledger.Hiding);
+        Assert.IsGreaterThanOrEqualTo(ExpectedMinimumEffectiveBits, ledger.EffectiveBits);
+    }
+
+
     //Pins that the default-inverse-rate opening-size path is byte-identical to explicitly requesting rate 4.
     [TestMethod]
     [DataRow(2)]

@@ -36,11 +36,16 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// re-derived from its own Table-1 / Appendix-C figure.
 /// </para>
 /// <para>
-/// All three regimes are exposed so a deployment can pick its point on the
+/// All four regimes are exposed so a deployment can pick its point on the
 /// proof-size / assumption-strength curve. The wired default is
-/// <see cref="BaseFoldSoundnessRegime.ListDecodingJohnson"/> — the bound the
-/// paper literally proves and the most conservative of the two provable
-/// options in our distance range.
+/// <see cref="BaseFoldSoundnessRegime.ListDecodingJohnson"/> — the radius the
+/// paper literally proves and the only fully peer-reviewed chain for the
+/// wired code.
+/// <see cref="BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson"/> is
+/// the strongest radius with a full written proof for the wired random
+/// foldable code (Zeilberger, "Khatam", IACR ePrint 2024/1843, CRYPTO 2026)
+/// and prices about a quarter fewer queries
+/// (<see cref="ClassicalSecurityOneAndAHalfJohnsonQueryCount"/>).
 /// </para>
 /// </remarks>
 public static class WellKnownBaseFoldIoppParameters
@@ -89,6 +94,26 @@ public static class WellKnownBaseFoldIoppParameters
 
 
     /// <summary>
+    /// The one-and-a-half-Johnson list-decoding radius for a code of relative
+    /// minimum distance <paramref name="relativeMinimumDistance"/>:
+    /// <c>1 - (1 - x)^(1/3)</c> — the radius proven for every linear code by
+    /// the Khatam BaseFold-IOP soundness theorem (Zeilberger, IACR ePrint
+    /// 2024/1843, CRYPTO 2026), in the <c>ε, η → 0</c> limit of its slack
+    /// parameters.
+    /// </summary>
+    /// <param name="relativeMinimumDistance">The relative minimum distance in <c>[0, 1]</c>.</param>
+    /// <returns>The one-and-a-half-Johnson radius <c>1 - ∛(1 - x)</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When the input is outside <c>[0, 1]</c>.</exception>
+    public static double OneAndAHalfJohnsonRadius(double relativeMinimumDistance)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(relativeMinimumDistance, 0.0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(relativeMinimumDistance, 1.0);
+
+        return 1.0 - Math.Cbrt(1.0 - relativeMinimumDistance);
+    }
+
+
+    /// <summary>
     /// The proximity parameter <c>δ</c> for the given regime: the relative
     /// Hamming radius within which the IOPP guarantees rejection of non-close
     /// oracles. A larger <c>δ</c> means fewer queries are needed.
@@ -106,14 +131,19 @@ public static class WellKnownBaseFoldIoppParameters
 
         return regime switch
         {
-            //Capacity: δ → 1 - ρ = 1 - 1/c.
-            BaseFoldSoundnessRegime.ConjecturedCapacity => 1.0 - (1.0 / inverseRate),
+            //Capacity: δ → 1 - ρ = 1 - 1/c, clamped to the code's distance —
+            //for a non-MDS code the distance, not the rate, is the outer limit
+            //any proximity-gap statement reaches.
+            BaseFoldSoundnessRegime.ConjecturedCapacity => Math.Min(1.0 - (1.0 / inverseRate), relativeMinimumDistance),
 
             //Unique decoding: half the relative minimum distance.
             BaseFoldSoundnessRegime.UniqueDecoding => relativeMinimumDistance / 2.0,
 
             //List decoding at the doubly-applied Johnson radius (Theorem 3).
             BaseFoldSoundnessRegime.ListDecodingJohnson => JohnsonRadius(JohnsonRadius(relativeMinimumDistance)),
+
+            //List decoding at the one-and-a-half-Johnson radius (Khatam).
+            BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson => OneAndAHalfJohnsonRadius(relativeMinimumDistance),
 
             _ => throw new ArgumentOutOfRangeException(nameof(regime), regime, "Unrecognised BaseFold soundness regime.")
         };
@@ -174,4 +204,21 @@ public static class WellKnownBaseFoldIoppParameters
     /// list-decoding count. Roughly 273 for the wired parameters.
     /// </summary>
     public static int ClassicalSecurityDefaultQueryCount => ClassicalSecurityQueryCount(ClassicalSecurityRegime);
+
+
+    /// <summary>
+    /// The 128-bit-classical IOPP query count under
+    /// <see cref="BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson"/>:
+    /// the smallest count with a full written proof for the wired random
+    /// foldable code (Zeilberger, "Khatam", IACR ePrint 2024/1843,
+    /// CRYPTO 2026). Roughly 205 for the wired parameters — about a quarter
+    /// fewer repetitions, and proportionally smaller evaluation proofs, than
+    /// <see cref="ClassicalSecurityDefaultQueryCount"/>. An opt-in preset: the
+    /// wired default stays on the peer-reviewed
+    /// <see cref="BaseFoldSoundnessRegime.ListDecodingJohnson"/> count, and a
+    /// provider built with this count produces differently-sized proof bytes,
+    /// so the two presets are distinct parameter sets, never interchangeable
+    /// on one artifact.
+    /// </summary>
+    public static int ClassicalSecurityOneAndAHalfJohnsonQueryCount => ClassicalSecurityQueryCount(BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson);
 }

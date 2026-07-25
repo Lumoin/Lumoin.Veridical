@@ -40,20 +40,62 @@ this library commits, and they should not be quoted as tight bounds.
 
 For a code of rate `ρ = 1/c`, one opened column (Ligero) or query repetition
 (BaseFold) contributes `−log2(1 − δ)` bits, where the proximity parameter `δ`
-depends on the regime:
+depends on the regime. The support behind a regime differs by code family:
+Ligero's row code is Reed-Solomon, where the correlated-agreement literature is
+strongest; BaseFold's wired code is the random foldable code, where several
+RS-only results do not transfer.
 
-- **Unique decoding** (`(1 − ρ)/2`, Ligero; `δ_min/2`, BaseFold) — elementary,
-  most conservative.
-- **Johnson list decoding** (`1 − √ρ`, Ligero; doubly-applied Johnson,
-  BaseFold) — what the Reed-Solomon proximity-gap theorem (Ben-Sasson, Carmon,
-  Ishai, Kopparty, Saraf, FOCS 2020) respectively the BaseFold paper's Theorem 3
-  proves. **This is the wired default everywhere.**
-- **Conjectured capacity** (`1 − ρ`) — the full relative minimum distance;
-  strictly an assumption.
+- **Unique decoding** (`(1 − ρ)/2`, Ligero; `δ_min/2`, BaseFold). For Ligero's
+  Reed-Solomon rows this is fully proven (Ben-Sasson, Carmon, Ishai, Kopparty,
+  Saraf, FOCS 2020 / J.ACM 2023). For BaseFold's random foldable code,
+  correlated agreement at half the minimum distance is an **open conjecture**
+  for general linear codes (Diamond, Posen, IACR CiC 1(1) 2024, Conjecture 1);
+  the uncontested classical general-code radius is `δ_min/3`. BaseFold query
+  counts under this regime rest on that conjecture.
+- **Johnson list decoding** (`1 − √ρ`, Ligero; doubly-applied Johnson
+  `J(J(δ_min))`, BaseFold) — what the Reed-Solomon proximity-gap theorem
+  respectively the BaseFold paper's Theorem 3 proves (the latter over foldable
+  codes, via Ben-Sasson–Kopparty–Saraf correlated agreement for arbitrary
+  linear codes plus the loss-free mutual upgrade of WHIR Lemma 4.10). **This is
+  the wired default everywhere.**
+- **One-and-a-half Johnson** (`1 − (1 − δ_min)^(1/3)`, BaseFold only) — the
+  radius proven for **every linear code**, including the wired random foldable
+  code, by Zeilberger, "Khatam: Proximity Gaps For Multilinear Evaluation For
+  All Linear Codes" (IACR ePrint 2024/1843, CRYPTO 2026), with the same radius
+  reached independently by Gao, Kan, Li (IACR ePrint 2024/1810). Per-query bits
+  price the theorem's `ε, η → 0` limit (same convention as the Johnson pricing
+  below); the slack-controlled commit-phase error `3d/(εη·|F|)` is a separate
+  field-side term — at the wired slacks `ε = η = 2^-55` it stays near `2^-137`
+  for every shape this library commits
+  (`WellKnownSecurityLevels.BaseFoldOneAndAHalfJohnsonCommitTermBits`). At the
+  wired distance (0.728) the radius (≈0.352) lies inside the unique-decoding
+  ball (0.364), so the commitment binds a unique multilinear polynomial and no
+  cross-opening list ambiguity arises; the crossover where this radius passes
+  `δ_min/2` is `δ_min ≈ 0.764`. The theorem covers the folding IOPP and binds
+  the final oracle to the committed polynomial at the folding point; the
+  interleaved sumcheck composes per the BaseFold paper (its `~2d/|F|` term is
+  negligible here), and the library opens each polynomial in its own IOPP
+  invocation, so no batched-opening term arises.
+- **Conjectured capacity** (`min(1 − ρ, δ_min)`) — **the underlying
+  proximity-gaps-to-capacity conjectures are refuted in their plain form** for
+  Reed-Solomon codes (Crites, Stewart, IACR ePrint 2025/2046; Krachun, Kazanin,
+  Haböck, IACR ePrint 2026/782), and no capacity-regime analysis exists for
+  random foldable codes at all. The BaseFold figure is additionally clamped to
+  the code's distance (`δ_min = 0.728 < 1 − ρ = 0.875` for the wired shape).
+  Retained for parameter comparison only; no soundness claim may rest on it.
 
 At rate 1/4, Johnson gives `−log2(√ρ) = 1` bit per opened column; at rate 1/16
 it gives 2. (The capacity figures are 2 and 4 — quote them only with the
-conjecture named.)
+refuted-as-stated conjecture named.)
+
+A Reed-Solomon instantiation of the BaseFold IOPP would unlock the RS-only
+list-decoding analysis of Haböck (IACR ePrint 2024/1571): soundness at
+`θ = 1 − (1 + 1/(2m))·√ρ`, about 86 repetitions at rate 1/8 for 128 bits at
+the analysis' multiplicity parameter `m = 64` (small `m` prices more — 101 at
+`m = 3`) — roughly a third of the wired count. That requires swapping the commitment code
+(an FFT-domain Reed-Solomon encoder over the scalar field), not a parameter
+change, and is out of scope for the foldable-code parameter sets documented
+here.
 
 **Pricing convention (the η technicality).** The proximity-gap theorem proves
 the list-decoding statement for `δ ≤ 1 − √ρ − η` with an error term polynomial
@@ -97,7 +139,13 @@ its query count realises its target for every polynomial size.
   the effective level is 128 bits.
 - **Spartan over BaseFold (plain)** — `ComputeSpartanOverBaseFold`. Binding,
   not hiding. The wired 128-bit Johnson query count is ≈ 273 repetitions
-  (`WellKnownBaseFoldIoppParameters.ClassicalSecurityDefaultQueryCount`).
+  (`WellKnownBaseFoldIoppParameters.ClassicalSecurityDefaultQueryCount`). The
+  named one-and-a-half-Johnson preset
+  (`ClassicalSecurityOneAndAHalfJohnsonQueryCount`, ≈ 205 repetitions) realises
+  the same 128-bit target under the CRYPTO 2026 foldable-code theorem with
+  about a quarter smaller openings; it is a distinct parameter set — its proof
+  bytes differ from the default's — and the ledger prices its commit-phase
+  slack term separately (see the regimes section above).
 - **Masked Spartan over ZK-BaseFold** — `ComputeMaskedSpartanOverZkBaseFold`.
   Same soundness shape at the lifted variable count `d + t`; **statistically
   hiding** under the enforced hiding budget (the lift `t`) with the statistical

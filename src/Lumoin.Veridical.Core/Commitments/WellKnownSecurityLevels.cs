@@ -49,6 +49,30 @@ public static class WellKnownSecurityLevels
     /// <summary>The Spartan inner sumcheck's per-round polynomial degree (the quadratic matrix-evaluation combination).</summary>
     public const int SpartanInnerSumcheckDegree = 2;
 
+    /// <summary>
+    /// The slack exponent for the one-and-a-half-Johnson regime's Khatam
+    /// theorem parameters: <c>ε = η = 2^-55</c>. Chosen so the commit-phase
+    /// failure bound <c>3d/(εη·|F|)</c> keeps roughly nine bits of margin
+    /// under the 128-bit target for every opening shape this library commits
+    /// (<c>d ≤ 28</c>; the margin moves under a bit even tens of variables
+    /// past that, so a hiding lift stays covered) over the ~2^254 scalar
+    /// fields, while the radius shift
+    /// the slacks cause (about <c>2^-50</c>) is far below the pricing
+    /// resolution — the derived query count is identical for any slack
+    /// exponent between about 30 and the failure-bound ceiling near 59.
+    /// </summary>
+    public const int OneAndAHalfJohnsonSlackExponentBits = 55;
+
+    /// <summary>
+    /// The per-round weight multiplier of the one-and-a-half-Johnson regime's
+    /// commit-phase failure bound <c>3d/(εη·|F|)</c>. Three is the bound the
+    /// Khatam theorem's algebra supports (the constant published with the
+    /// CRYPTO 2026 revision; the 2025-06-26 revision's smaller constant does
+    /// not survive its own Lemma-3 expansion), and the ledger uses the larger,
+    /// safe value.
+    /// </summary>
+    public const int OneAndAHalfJohnsonCommitFailureWeight = 3;
+
     //The deliberately loose exponent of the low-order field-event weight: the
     //bad-event weight is taken as codewordLength³, which dominates the
     //polynomial factors of the published proximity-gap error bounds (linear for
@@ -174,6 +198,32 @@ public static class WellKnownSecurityLevels
 
 
     /// <summary>
+    /// The commit-phase failure bound of the one-and-a-half-Johnson regime:
+    /// the Khatam theorem admits the folding challenges a bad draw with
+    /// probability at most <c>3d/(εη·|F|)</c> over the <c>d</c> folding
+    /// rounds, at the wired slacks
+    /// <c>ε = η = 2^-<see cref="OneAndAHalfJohnsonSlackExponentBits"/></c>.
+    /// About 137 bits for a 28-variable opening on BN254 — roughly nine bits
+    /// above the 128-bit query-term target, so the slack-controlled events
+    /// never become the bottleneck for the shapes this library commits. A
+    /// Spartan proof runs two independent openings (the error and witness
+    /// polynomials), which costs at most one further bit against that margin.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the code lives in.</param>
+    /// <param name="roundCount">The folding round count = the opened polynomial's (lifted) variable count; positive.</param>
+    /// <returns>The commit-phase soundness in bits.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="roundCount"/> is non-positive.</exception>
+    public static double BaseFoldOneAndAHalfJohnsonCommitTermBits(CurveParameterSet curve, int roundCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(roundCount);
+
+        double weight = OneAndAHalfJohnsonCommitFailureWeight * (double)roundCount;
+
+        return ScalarFieldSoundnessFloorBits(curve) - (2 * OneAndAHalfJohnsonSlackExponentBits) - Math.Log2(weight);
+    }
+
+
+    /// <summary>
     /// The complete ledger of the unmasked Spartan-over-Ligero path (the
     /// transparent, binding-not-hiding configuration the CLI's predicate proofs
     /// use). The proximity term is the WEAKER of the two embedded openings —
@@ -213,7 +263,11 @@ public static class WellKnownSecurityLevels
     /// The field term bundles the BaseFold evaluation argument's own internal
     /// quadratic sumcheck (<c>2d/r</c> over the larger opening's <c>d</c>
     /// variables) with the commit-phase bad event (<c>2d/(3r)</c>, BaseFold
-    /// paper Theorem 3).
+    /// paper Theorem 3). Under
+    /// <see cref="BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson"/>
+    /// the commit-phase event is instead the Khatam slack bound
+    /// (<see cref="BaseFoldOneAndAHalfJohnsonCommitTermBits"/>), and the field
+    /// term takes the weaker of the two.
     /// </summary>
     /// <param name="curve">The curve whose scalar field the argument works in.</param>
     /// <param name="outerRoundCount">The outer sumcheck round count = the error opening's variable count.</param>
@@ -231,7 +285,7 @@ public static class WellKnownSecurityLevels
     {
         double proximityBits = BaseFoldProximitySoundnessBits(queryCount, regime);
         double sumcheckBits = SpartanSumcheckSoundnessBits(curve, outerRoundCount, innerRoundCount);
-        double fieldTermBits = BaseFoldFieldTermBits(curve, Math.Max(outerRoundCount, innerRoundCount));
+        double fieldTermBits = BaseFoldRegimeFieldTermBits(curve, Math.Max(outerRoundCount, innerRoundCount), regime);
 
         return new SecurityLevelLedger(CommitmentScheme.BaseFold, curve, proximityBits, sumcheckBits, fieldTermBits, HidingKind.None);
     }
@@ -265,7 +319,7 @@ public static class WellKnownSecurityLevels
         double proximityBits = BaseFoldProximitySoundnessBits(queryCount, regime);
         double sumcheckBits = SpartanSumcheckSoundnessBits(curve, outerRoundCount, innerRoundCount);
         int liftedVariableCount = Math.Max(outerRoundCount, innerRoundCount) + extraVariableCount;
-        double fieldTermBits = BaseFoldFieldTermBits(curve, liftedVariableCount);
+        double fieldTermBits = BaseFoldRegimeFieldTermBits(curve, liftedVariableCount, regime);
 
         return new SecurityLevelLedger(CommitmentScheme.BaseFold, curve, proximityBits, sumcheckBits, fieldTermBits, HidingKind.Statistical);
     }
@@ -316,5 +370,19 @@ public static class WellKnownSecurityLevels
         double weight = Math.Max(8.0 * variableCount / 3.0, 2.0);
 
         return ScalarFieldSoundnessFloorBits(curve) - Math.Log2(weight);
+    }
+
+
+    //The regime-aware field term: the one-and-a-half-Johnson regime replaces
+    //the Theorem-3 commit-phase event with the Khatam slack bound 3d/(εη·|F|),
+    //which is far larger than the (8/3)·d/r bundle, so the path's field term
+    //is the weaker of the two; every other regime keeps the bundle alone.
+    private static double BaseFoldRegimeFieldTermBits(CurveParameterSet curve, int variableCount, BaseFoldSoundnessRegime regime)
+    {
+        double bundleBits = BaseFoldFieldTermBits(curve, variableCount);
+
+        return regime is BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson
+            ? Math.Min(bundleBits, BaseFoldOneAndAHalfJohnsonCommitTermBits(curve, variableCount))
+            : bundleBits;
     }
 }

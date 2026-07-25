@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -131,6 +132,76 @@ internal sealed class BaseFoldValidationTests
         try
         {
             Assert.IsTrue(RoundTrips(mle, point, queryCount, pool), $"A round-trip at the full query count ({queryCount}) must verify.");
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    [TestMethod]
+    public void OneAndAHalfJohnsonQueryCountRoundTrips()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 2;
+
+        //The 128-bit one-and-a-half-Johnson preset (≈205 queries): the opt-in
+        //reduced count is a distinct parameter set with its own proof sizes, so
+        //the protocol is exercised end to end at this count like at the wired
+        //default.
+        int queryCount = WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount;
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 9, pool);
+        Scalar[] point = BuildPoint(VariableCount, 10, pool);
+
+        try
+        {
+            Assert.IsTrue(RoundTrips(mle, point, queryCount, pool), $"A round-trip at the one-and-a-half-Johnson query count ({queryCount}) must verify.");
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    [TestMethod]
+    public void OneAndAHalfJohnsonQueryCountTamperRejects()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 2;
+
+        int queryCount = WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount;
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 11, pool);
+        Scalar[] point = BuildPoint(VariableCount, 12, pool);
+
+        try
+        {
+            using PolynomialCommitmentProvider provider = NewProvider(queryCount);
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTranscript = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTranscript, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    //Flip a byte inside the opening (a round-polynomial coefficient):
+                    //the reduced-count parameter set must reject a tampered proof
+                    //exactly like the wired default's count does.
+                    MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[0] ^= 0x01;
+
+                    using FiatShamirTranscript verifyTranscript = NewTranscript();
+                    bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTranscript, pool);
+
+                    Assert.IsFalse(verified, $"A tampered opening at the one-and-a-half-Johnson query count ({queryCount}) must be rejected.");
+                }
+            }
         }
         finally
         {
