@@ -125,7 +125,9 @@ internal static class Bn254Avx2ScalarBackend
         //correct reduced result. Otherwise, if sumMinusR did not borrow then sum >= r
         //and the subtracted value is correct. In both cases we want sumMinusR; only
         //when neither holds do we want sum.
-        bool useReduced = carry || !borrow;
+        //Non-short-circuit `|`: `||` would emit a conditional branch on the secret-derived operands;
+        //both bools are already computed, so `|` combines them branch-free.
+        bool useReduced = carry | !borrow;
         ConditionalSelect(sumMinusR, sum, useReduced, result);
     }
 

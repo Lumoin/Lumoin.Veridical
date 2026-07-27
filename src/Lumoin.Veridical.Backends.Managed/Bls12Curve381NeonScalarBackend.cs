@@ -132,7 +132,9 @@ internal static class Bls12Curve381NeonScalarBackend
         sum.CopyTo(sumMinusR);
         bool borrow = SubtractWithBorrow256(sumMinusR, FieldOrderLimbs);
 
-        bool useReduced = carry || !borrow;
+        //Non-short-circuit `|`: `||` would emit a conditional branch on the secret-derived operands;
+        //both bools are already computed, so `|` combines them branch-free.
+        bool useReduced = carry | !borrow;
         ConditionalSelect(sumMinusR, sum, useReduced, result);
     }
 
