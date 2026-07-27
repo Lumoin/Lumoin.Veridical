@@ -326,6 +326,124 @@ public static class WellKnownSecurityLevels
 
 
     /// <summary>
+    /// The Fiat-Shamir soundness of the LogUp sumcheck (Haböck, ePrint
+    /// 2022/1530, Protocol 2 at chunk size <c>ℓ = M + 1</c>): a cheating
+    /// prover must land a forged degree-<c>(M + 3)</c> round polynomial on the
+    /// verifier's random point in one of the <c>n</c> rounds —
+    /// <c>n·(M + 3)/r</c>.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the sumcheck runs in.</param>
+    /// <param name="variableCount">The hypercube variable count (the round count); positive.</param>
+    /// <param name="witnessColumnCount">The witness-column count <c>M</c>; positive.</param>
+    /// <returns>The soundness bits <c>log2(r) − log2(n·(M + 3))</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When a count is non-positive.</exception>
+    public static double LogUpSumcheckSoundnessBits(CurveParameterSet curve, int variableCount, int witnessColumnCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(variableCount);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(witnessColumnCount);
+
+        double weight = (double)variableCount * (witnessColumnCount + 3);
+
+        return ScalarFieldSoundnessFloorBits(curve) - Math.Log2(weight);
+    }
+
+
+    /// <summary>
+    /// The LogUp field-side term: the Schwartz–Zippel loss of the
+    /// log-derivative identity at the random denominator challenge —
+    /// <c>((M + 1)·2^n − 1)/(r − 2^n)</c>, Haböck ePrint 2022/1530 eq. (22),
+    /// the dominant term — plus the Lagrange-kernel and folding-challenge
+    /// batching events, charged at the conservative <c>(n + 1)/r</c> (the
+    /// paper prints <c>2/r</c> for the single-helper chunking; the standard
+    /// multilinear Schwartz–Zippel argument supports <c>n/r</c> per identity
+    /// and the ledger takes the larger).
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the argument works in.</param>
+    /// <param name="variableCount">The hypercube variable count; positive.</param>
+    /// <param name="witnessColumnCount">The witness-column count <c>M</c>; positive.</param>
+    /// <returns>The field-side soundness in bits, about <c>log2(r) − n − log2(M + 1)</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When a count is non-positive.</exception>
+    public static double LogUpFieldTermBits(CurveParameterSet curve, int variableCount, int witnessColumnCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(variableCount);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(witnessColumnCount);
+
+        double hypercubeSize = Math.Pow(2.0, variableCount);
+        double weight = ((witnessColumnCount + 1) * hypercubeSize) + variableCount + 1;
+
+        return ScalarFieldSoundnessFloorBits(curve) - Math.Log2(weight);
+    }
+
+
+    /// <summary>
+    /// The complete ledger of the standalone LogUp-over-Ligero path. The
+    /// argument runs <c>M + 2</c> openings (witness columns, multiplicity,
+    /// helper), each drawing its own column queries from the evolving
+    /// transcript, and forging any single one suffices — so the proximity
+    /// term charges the union bound: one opening's realised soundness minus
+    /// <c>log2(M + 2)</c> bits. Not hiding: openings disclose the opened
+    /// values.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the argument works in.</param>
+    /// <param name="variableCount">The hypercube variable count.</param>
+    /// <param name="witnessColumnCount">The witness-column count <c>M</c>.</param>
+    /// <param name="inverseRate">The Ligero inverse code rate <c>c ≥ 2</c>.</param>
+    /// <param name="queryCount">The requested opened-column count.</param>
+    /// <param name="regime">The soundness regime; defaults to the conservative provable Johnson bound.</param>
+    /// <returns>The path's ledger.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When an argument is out of range.</exception>
+    public static SecurityLevelLedger ComputeLogUpOverLigero(
+        CurveParameterSet curve,
+        int variableCount,
+        int witnessColumnCount,
+        int inverseRate,
+        int queryCount,
+        LigeroSoundnessRegime regime = WellKnownLigeroParameters.ClassicalSecurityRegime)
+    {
+        double proximityBits = LigeroProximitySoundnessBits(variableCount, inverseRate, queryCount, regime)
+            - Math.Log2(witnessColumnCount + 2.0);
+        double sumcheckBits = LogUpSumcheckSoundnessBits(curve, variableCount, witnessColumnCount);
+        double fieldTermBits = Math.Min(
+            LogUpFieldTermBits(curve, variableCount, witnessColumnCount),
+            LigeroFieldTermBits(curve, variableCount, inverseRate, queryCount));
+
+        return new SecurityLevelLedger(CommitmentScheme.Ligero, curve, proximityBits, sumcheckBits, fieldTermBits, HidingKind.None);
+    }
+
+
+    /// <summary>
+    /// The complete ledger of the standalone LogUp-over-BaseFold path
+    /// (plain, unmasked). The proximity term charges the union bound over the
+    /// <c>M + 2</c> independent IOPP openings, as in
+    /// <see cref="ComputeLogUpOverLigero"/>. Not hiding: openings disclose
+    /// the opened values.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the argument works in.</param>
+    /// <param name="variableCount">The hypercube variable count.</param>
+    /// <param name="witnessColumnCount">The witness-column count <c>M</c>.</param>
+    /// <param name="queryCount">The IOPP query repetition count.</param>
+    /// <param name="regime">The soundness regime; defaults to the paper-proven doubly-applied Johnson bound.</param>
+    /// <returns>The path's ledger.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When an argument is out of range.</exception>
+    public static SecurityLevelLedger ComputeLogUpOverBaseFold(
+        CurveParameterSet curve,
+        int variableCount,
+        int witnessColumnCount,
+        int queryCount,
+        BaseFoldSoundnessRegime regime = WellKnownBaseFoldIoppParameters.ClassicalSecurityRegime)
+    {
+        double proximityBits = BaseFoldProximitySoundnessBits(queryCount, regime)
+            - Math.Log2(witnessColumnCount + 2.0);
+        double sumcheckBits = LogUpSumcheckSoundnessBits(curve, variableCount, witnessColumnCount);
+        double fieldTermBits = Math.Min(
+            LogUpFieldTermBits(curve, variableCount, witnessColumnCount),
+            BaseFoldRegimeFieldTermBits(curve, variableCount, regime));
+
+        return new SecurityLevelLedger(CommitmentScheme.BaseFold, curve, proximityBits, sumcheckBits, fieldTermBits, HidingKind.None);
+    }
+
+
+    /// <summary>
     /// Throws when a Ligero opening for a <paramref name="variableCount"/>-variable
     /// polynomial cannot open the full <paramref name="queryCount"/> columns —
     /// the extension-width clamp would silently realise fewer soundness bits
