@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -35,14 +36,16 @@ internal sealed class Fp256LigeroRowExtenderTests
     private const int MessageFillSalt = 1201;
 
     //The representative shapes: the anchor suite's small shapes, a
-    //power-of-two PCS-style shape, and the tableau's two non-power-of-two
-    //shapes at the age-gadget parameters (block 64, inverse rate 4:
-    //blockEncoded = (2+4)·64 − 1 = 383, doubleBlock = 2·64 − 1 = 127).
+    //power-of-two PCS-style shape, and the tableau's shapes at the age-gadget
+    //parameters (block 64, inverse rate 4: blockEncoded = (2+4)·64 − 1 = 383,
+    //doubleBlock = 2·64 − 1 = 127) — including the (block, doubleBlock) aext
+    //shape, the one family with messageLength < codewordLength < 2·messageLength.
     private static readonly (int MessageLength, int CodewordLength)[] Shapes =
     [
         (5, 16),
         (9, 23),
         (16, 64),
+        (64, 127),
         (64, 383),
         (127, 383),
     ];
@@ -58,7 +61,7 @@ internal sealed class Fp256LigeroRowExtenderTests
         {
             using IMemoryOwner<byte> messageOwner = pool.Rent(messageLength * ScalarSize);
             Span<byte> message = messageOwner.Memory.Span[..(messageLength * ScalarSize)];
-            FillCanonicalFieldElements(message, MessageFillSalt + messageLength);
+            DeterministicScalarFill.FillCanonical(message, MessageFillSalt + messageLength, Reduce, CurveParameterSet.None);
 
             using IMemoryOwner<byte> barycentricOwner = pool.Rent(codewordLength * ScalarSize);
             Span<byte> barycentric = barycentricOwner.Memory.Span[..(codewordLength * ScalarSize)];
@@ -87,7 +90,7 @@ internal sealed class Fp256LigeroRowExtenderTests
         using IMemoryOwner<byte> codewordOwner = pool.Rent(CodewordLength * ScalarSize);
         Span<byte> codeword = codewordOwner.Memory.Span[..(CodewordLength * ScalarSize)];
         codeword.Clear();
-        FillCanonicalFieldElements(codeword[..(MessageLength * ScalarSize)], MessageFillSalt);
+        DeterministicScalarFill.FillCanonical(codeword[..(MessageLength * ScalarSize)], MessageFillSalt, Reduce, CurveParameterSet.None);
         Span<byte> expectedPrefix = stackalloc byte[MessageLength * ScalarSize];
         codeword[..(MessageLength * ScalarSize)].CopyTo(expectedPrefix);
 
@@ -106,21 +109,6 @@ internal sealed class Fp256LigeroRowExtenderTests
         var fft = new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
 
         return new Fp256LigeroRowExtenders(fft, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
-    }
-
-
-    //Deterministic canonical field elements: a seeded counter stream folded
-    //into the field by the reduce delegate, wide enough to kill bias.
-    private static void FillCanonicalFieldElements(Span<byte> destination, int salt)
-    {
-        Span<byte> wide = stackalloc byte[2 * ScalarSize];
-        for(int offset = 0; offset < destination.Length; offset += ScalarSize)
-        {
-            wide.Clear();
-            BinaryPrimitives.WriteInt32BigEndian(wide[..sizeof(int)], salt);
-            BinaryPrimitives.WriteInt32BigEndian(wide.Slice(sizeof(int), sizeof(int)), offset);
-            Reduce(wide, destination.Slice(offset, ScalarSize), CurveParameterSet.None);
-        }
     }
 
 

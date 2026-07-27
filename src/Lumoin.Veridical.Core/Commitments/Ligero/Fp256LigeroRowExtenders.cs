@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Threading;
 
 namespace Lumoin.Veridical.Core.Commitments.Ligero;
@@ -85,7 +86,8 @@ internal sealed class Fp256LigeroRowExtenders: IDisposable
     /// <summary>
     /// The factory method to install as a <see cref="LigeroRowExtenderFactory"/>:
     /// builds or reuses the shape's engine and returns its extender. Never
-    /// declines — every consecutive-integer shape is supported.
+    /// declines — every consecutive-integer shape whose padded transform buffers
+    /// are byte-addressable is supported, and larger shapes are argument errors.
     /// </summary>
     /// <param name="messageLength">The message length; at least 1.</param>
     /// <param name="codewordLength">The codeword length; at least <paramref name="messageLength"/>.</param>
@@ -95,10 +97,22 @@ internal sealed class Fp256LigeroRowExtenders: IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentOutOfRangeException.ThrowIfLessThan(messageLength, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(codewordLength, messageLength);
+        //The engine's padded FFT buffers are byte spans, so the PADDED domain
+        //must stay byte-addressable; the guard also keeps the engine's
+        //power-of-two padding search below its int wraparound.
+        if(BitOperations.RoundUpToPowerOf2((uint)codewordLength) > int.MaxValue / Scalar.SizeBytes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(codewordLength),
+                $"The codeword length {codewordLength} pads to a transform domain whose buffers cannot be addressed as byte spans.");
+        }
 
         Fp256ReedSolomon engine;
         lock(enginesLock)
         {
+            //Re-checked under the lock: a Create racing a Dispose must not cache
+            //an engine nothing will ever release.
+            ObjectDisposedException.ThrowIf(disposed, this);
             if(!engines.TryGetValue((messageLength, codewordLength), out Fp256ReedSolomon? cached))
             {
                 cached = new Fp256ReedSolomon(messageLength, codewordLength, fft, add, subtract, multiply, invert, ofScalar, curve, pool, batchMultiply);

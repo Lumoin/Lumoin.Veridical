@@ -131,6 +131,42 @@ internal sealed class GkrGf2kMacTests
     //The prover's side of the protocol: commit, squeeze the verifier key, compute the macs,
     //build the key-dependent instance, prove. The key and macs are returned to the caller —
     //they are the public statement.
+    [TestMethod]
+    public void ABinaryFieldProveNeverConsultsTheRowExtenderFactory()
+    {
+        //The consecutive-integer convolution engines cannot serve XOR-node
+        //codes, so the node-domain gate must keep a BinaryField prove off any
+        //installed factory; a consulted factory fails the test immediately.
+        using IMemoryOwner<byte> witnessOwner = BaseMemoryPool.Shared.Rent(InputBytes);
+        Span<byte> witness = witnessOwner.Memory.Span[..InputBytes];
+        GkrGf2kMacSupport.PackGfWitness(witness, Value, KeyShares);
+        LigeroQuadraticConstraint[] bitness = GkrGf2kMacSupport.BuildGfBitness();
+        var parameters = new LigeroParameters(CopyCount * InputCount, bitness.Length, InverseRate, OpenedColumns, Block, LigeroNodeDomain.BinaryField);
+
+        LigeroRowExtenderFactory recordingFactory = (messageLength, codewordLength) =>
+        {
+            Assert.Fail($"A BinaryField prove must never consult the row-extender factory; it asked for ({messageLength}, {codewordLength}).");
+
+            return null;
+        };
+
+        //The one-shot prove builds the tableau AND the responses, so both
+        //resolve sites run under the BinaryField domain with a factory installed.
+        using LigeroProof proof = LigeroProver.Prove(
+            parameters,
+            witness,
+            0, [], [],
+            bitness,
+            RandomnessSeed,
+            new MacDeterministicRandom(RandomnessSeed).AsDelegate(),
+            GkrGf2kTestSupport.Add, GkrGf2kTestSupport.Subtract, GkrGf2kTestSupport.Multiply, GkrGf2kTestSupport.Invert, GkrGf2kTestSupport.Reduce,
+            GkrGf2kTestSupport.Hash, GkrGf2kTestSupport.Squeeze, GkrGf2kTestSupport.Hash, GkrTestSupport.Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None,
+            BaseMemoryPool.Shared,
+            recordingFactory);
+    }
+
+
     private static GkrCommittedProof ProveMac(
         ReadOnlySpan<byte> witness,
         LigeroParameters parameters,

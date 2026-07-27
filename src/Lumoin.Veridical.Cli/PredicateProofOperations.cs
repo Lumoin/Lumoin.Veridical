@@ -194,7 +194,11 @@ internal static class PredicateProofOperations
         MleEvaluateDelegate mleEvaluate = ManagedMultilinearExtensionBackend.CreateEvaluate(scalar, pool);
         MleFoldDelegate mleFold = ManagedMultilinearExtensionBackend.CreateFold(scalar, pool);
 
-        using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider(scalar, request.QueryCount, request.InverseRate, request.DigestBytes)));
+        //The NTT row extender accelerates the prover's Ligero encodes; the
+        //codeword bytes are identical to the barycentric path, so artifacts are
+        //unchanged. The verifier re-encodes no rows and takes no factory.
+        using var rowExtenders = new ScalarNttLigeroRowExtenders(scalar.Add, scalar.Subtract, scalar.Multiply, scalar.Invert, Curve, pool, scalar.BatchMultiply);
+        using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider(scalar, request.QueryCount, request.InverseRate, request.DigestBytes, rowExtenders.Create)));
         using FiatShamirTranscript transcript = FreshTranscript(request.TranscriptDomain, pool);
         using LigeroSpartanProof proof = prover.ProveLigero(
             instance, witness, transcript,
@@ -320,12 +324,12 @@ internal static class PredicateProofOperations
 
 
     [SuppressMessage("Reliability", "CA2000", Justification = "The commitment provider is handed to the Spartan key the caller constructs, which owns and disposes it.")]
-    private static PolynomialCommitmentProvider BuildProvider(ScalarArithmeticBackend scalar, int queryCount, int inverseRate, int digestBytes)
+    private static PolynomialCommitmentProvider BuildProvider(ScalarArithmeticBackend scalar, int queryCount, int inverseRate, int digestBytes, LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         return LigeroPolynomialCommitmentScheme.Create(
             Curve, queryCount,
             scalar.Add, scalar.Subtract, scalar.Multiply, scalar.Invert, scalar.Reduce,
-            Hash, Squeeze, Hash, HashTwoToOne, WellKnownHashAlgorithms.Blake3, digestBytes, inverseRate);
+            Hash, Squeeze, Hash, HashTwoToOne, WellKnownHashAlgorithms.Blake3, digestBytes, inverseRate, rowExtenderFactory);
     }
 
 

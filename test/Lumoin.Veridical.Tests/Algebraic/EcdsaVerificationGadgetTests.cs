@@ -470,8 +470,9 @@ internal sealed class EcdsaVerificationGadgetTests
     //row extender removes the encoder's super-linear wall, and the measured
     //run is ~37 minutes on a desktop-class machine — the remaining prover
     //stages walk a ~100k-constraint circuit. Two hours guards a slower runner
-    //without asserting elapsed time; the prove is synchronous, so the
-    //cooperative token is observed only between stages.
+    //without asserting elapsed time; the prove is synchronous and does not
+    //observe the cooperative token, so the guard is sized above the measured
+    //run rather than relied on to interrupt it.
     private const int EndToEndHangGuardMilliseconds = 7_200_000;
 
 

@@ -274,10 +274,10 @@ internal static class LigeroEvaluationProver
     }
 
 
-    //Consults the factory for the matrix's row shape. EncodeMatrix's Encode calls always omit a
-    //node domain, which defaults to LigeroNodeDomain.ConsecutiveIntegers (see
-    //LigeroReedSolomonEncoder.Encode's 6-parameter overload), so this PCS path never runs the
-    //BinaryField domain and needs no domain argument to gate on, unlike LigeroTableau's build.
+    //Consults the factory for the matrix's row shape. EncodeMatrix passes
+    //LigeroNodeDomain.ConsecutiveIntegers explicitly at both of its encode call
+    //sites, so this PCS path never runs the BinaryField domain and needs no
+    //domain argument to gate on, unlike LigeroTableau's build.
     private static LigeroRowExtender? ResolveRowExtender(LigeroRowExtenderFactory? factory, int messageLength, int codewordLength)
     {
         if(factory is null)

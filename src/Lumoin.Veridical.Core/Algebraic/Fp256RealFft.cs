@@ -507,6 +507,13 @@ internal sealed class Fp256RealFft
     //reroot(omega_n, n, r): square omega_n until its order drops to r (the reference's Twiddle::reroot).
     private void Reroot(ReadOnlySpan<byte> omegaN, ulong n, ulong r, Span<byte> result)
     {
+        //A requested order above the root's own would leave the root unchanged
+        //and every twiddle silently wrong; fail as a configuration error instead.
+        if(r > n)
+        {
+            throw new ArgumentOutOfRangeException(nameof(r), $"The requested twiddle order {r} exceeds the root of unity's order {n}.");
+        }
+
         omegaN.CopyTo(result);
         while(r < n)
         {

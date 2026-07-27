@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Commitments.Ligero;
+using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Algebraic;
@@ -198,6 +199,49 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    [TestMethod]
+    public void TheProofIsByteIdenticalWithAndWithoutTheRowExtenderFactory()
+    {
+        //Pins the tableau's block/doubleBlock extender threading and the
+        //dot-response aext branch in the fast suite: without this gate the only
+        //prove that installs a factory is the [Slow] end-to-end credential
+        //test, and a transposed-extender wiring mutation would go unnoticed
+        //until it ran. P-256 base field only — that is the field the FFT
+        //convolution engine serves.
+        FieldBackend backend = Backend("p-256 base");
+        LigeroParameters parameters = NewParameters();
+
+        using LigeroProof reference = BuildProof(backend, parameters);
+        using Fp256LigeroRowExtenders extenders = NewRowExtenders(backend);
+        using LigeroProof accelerated = BuildProof(backend, parameters, RandomnessSeed, LinearTargetValues, extenders.Create);
+
+        Assert.IsTrue(accelerated.Root.AsReadOnlySpan().SequenceEqual(reference.Root.AsReadOnlySpan()), "The commitment root must be byte-identical with and without the extender.");
+        Assert.IsTrue(accelerated.LowDegreeResponse.SequenceEqual(reference.LowDegreeResponse), "y_ldt must be byte-identical with and without the extender.");
+        Assert.IsTrue(accelerated.DotResponse.SequenceEqual(reference.DotResponse), "y_dot must be byte-identical with and without the extender.");
+        Assert.IsTrue(accelerated.QuadraticResponse.SequenceEqual(reference.QuadraticResponse), "y_quad must be byte-identical with and without the extender.");
+
+        bool verified = VerifyProof(backend, parameters, accelerated, QuadraticConstraints, LinearTargetValues, TranscriptSeed);
+        Assert.IsTrue(verified, "The extender-accelerated proof must verify.");
+    }
+
+
+    private static Fp256LigeroRowExtenders NewRowExtenders(FieldBackend backend)
+    {
+        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
+        LongfellowFp256Encoding.RootOfUnity(root);
+        var fft = new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
+
+        return new Fp256LigeroRowExtenders(fft, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
+
+
+    private static void OfScalarCanonical(uint value, Span<byte> destination)
+    {
+        destination.Clear();
+        BinaryPrimitives.WriteUInt32BigEndian(destination[^sizeof(uint)..], value);
+    }
+
+
     private static LigeroParameters NewParameters() =>
         new(WitnessCount, QuadraticConstraints.Length, InverseRate, OpenedColumns, Block);
 
@@ -206,7 +250,7 @@ internal sealed class LigeroArgumentRoundtripTests
         BuildProof(backend, parameters, RandomnessSeed, LinearTargetValues);
 
 
-    private static LigeroProof BuildProof(FieldBackend backend, LigeroParameters parameters, ReadOnlySpan<byte> randomnessSeed, ReadOnlySpan<int> targetValues)
+    private static LigeroProof BuildProof(FieldBackend backend, LigeroParameters parameters, ReadOnlySpan<byte> randomnessSeed, ReadOnlySpan<int> targetValues, LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         Span<byte> witnesses = stackalloc byte[WitnessCount * ScalarSize];
         FillScalars(WitnessValues, witnesses);
@@ -236,7 +280,8 @@ internal sealed class LigeroArgumentRoundtripTests
             Blake3TwoToOne,
             WellKnownHashAlgorithms.Blake3,
             CurveParameterSet.None,
-            BaseMemoryPool.Shared);
+            BaseMemoryPool.Shared,
+            rowExtenderFactory);
     }
 
 
