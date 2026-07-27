@@ -12,17 +12,21 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </summary>
 /// <remarks>
 /// The underlying implementations remain internal — callers compose through this
-/// factory and the <see cref="G1ArithmeticBackend"/> bundle. The arithmetic is
-/// correctness-first BigInteger; it is not constant-time and not hardware-
-/// accelerated. BN254 ships a single hash-to-curve, exposed as
+/// factory and the <see cref="G1ArithmeticBackend"/> bundle. Scalar multiplication —
+/// the one group operation that may take a secret prover-side scalar — runs through
+/// the constant-time ladder; the remaining operations (add, negate, multi-scalar
+/// multiplication, the predicates) stay on the correctness-first BigInteger
+/// reference and the Pippenger bucket method, which are not constant-time. Nothing
+/// is hardware-accelerated. BN254 ships a single hash-to-curve, exposed as
 /// <see cref="GetHashToCurve"/>.
 /// </remarks>
 public static class Bn254ManagedG1Backend
 {
     /// <summary>
-    /// Builds the BN254 G1 backend bundle: add, negate, and scalar-multiply from the
-    /// BigInteger reference, multi-scalar multiplication from the caching Pippenger
-    /// backend, and the on-curve and prime-order-subgroup predicates.
+    /// Builds the BN254 G1 backend bundle: add and negate from the BigInteger
+    /// reference, scalar-multiply from the constant-time ladder (byte-identical to
+    /// the reference, agreement-gated), multi-scalar multiplication from the caching
+    /// Pippenger backend, and the on-curve and prime-order-subgroup predicates.
     /// </summary>
     public static G1ArithmeticBackend Create()
     {
@@ -30,7 +34,7 @@ public static class Bn254ManagedG1Backend
             CurveParameterSet.Bn254,
             Bn254BigIntegerG1Reference.GetAdd(),
             Bn254BigIntegerG1Reference.GetNegate(),
-            Bn254BigIntegerG1Reference.GetScalarMultiply(),
+            Bn254ConstantTimeG1Backend.GetScalarMultiply(),
             Bn254PippengerG1Backend.CreateCachingMultiScalarMultiply(),
             Bn254BigIntegerG1Reference.GetIsOnCurve(),
             Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup());

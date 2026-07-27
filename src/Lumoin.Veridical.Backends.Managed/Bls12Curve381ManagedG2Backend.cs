@@ -11,15 +11,19 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </summary>
 /// <remarks>
 /// The underlying implementation remains internal — callers compose through this
-/// factory and the <see cref="G2ArithmeticBackend"/> bundle. The arithmetic is
-/// correctness-first BigInteger over the Fp2 twist; it is not constant-time and not
-/// hardware-accelerated.
+/// factory and the <see cref="G2ArithmeticBackend"/> bundle. Scalar multiplication —
+/// the one G2 operation that takes a secret scalar at the BBS key-generation seam —
+/// runs through the constant-time ladder; the remaining operations take only public
+/// inputs and stay on the correctness-first BigInteger reference over the Fp2 twist,
+/// which is not constant-time. Nothing is hardware-accelerated.
 /// </remarks>
 public static class Bls12Curve381ManagedG2Backend
 {
     /// <summary>
-    /// Builds the BLS12-381 G2 backend bundle: add, negate, scalar-multiply, and the
-    /// on-curve and prime-order-subgroup predicates, from the BigInteger reference.
+    /// Builds the BLS12-381 G2 backend bundle: add and negate from the BigInteger
+    /// reference, scalar-multiply from the constant-time ladder (byte-identical to
+    /// the reference, agreement-gated), and the on-curve and prime-order-subgroup
+    /// predicates.
     /// </summary>
     public static G2ArithmeticBackend Create()
     {
@@ -27,7 +31,7 @@ public static class Bls12Curve381ManagedG2Backend
             CurveParameterSet.Bls12Curve381,
             Bls12Curve381BigIntegerG2Reference.GetAdd(),
             Bls12Curve381BigIntegerG2Reference.GetNegate(),
-            Bls12Curve381BigIntegerG2Reference.GetScalarMultiply(),
+            Bls12Curve381ConstantTimeG2Backend.GetScalarMultiply(),
             Bls12Curve381BigIntegerG2Reference.GetIsOnCurve(),
             Bls12Curve381BigIntegerG2Reference.GetIsInPrimeOrderSubgroup());
     }

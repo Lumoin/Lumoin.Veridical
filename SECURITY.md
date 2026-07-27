@@ -28,7 +28,21 @@ paths, and is explicit about its limits.
   (Fermat over a *public* exponent), not data-dependent. In particular, NIST P-256 **scalar** arithmetic mod
   the group order `n` — the field SECDSA and ECDSA sign in — runs through a constant-time Montgomery backend
   (`P256ScalarMontgomeryBackend`), so signing does not branch on the nonce, the PIN-key, or the hardware-key
-  blinds.
+  blinds. Secret-scalar **point multiplication** runs through fixed-iteration double-and-add-always ladders
+  over complete addition formulas on constant-time limb base fields: P-256 (`P256ConstantTimeG1Backend` — the
+  ECDSA/SECDSA `k·G`, the split-key derivation, and the DL-equality NIZK commitments), BLS12-381 G1
+  (`Bls12Curve381ConstantTimeG1Backend` — the BBS signature `A = B·(1/(SK+e))` and the proof-init
+  multiplications), BLS12-381 G2 (`Bls12Curve381ConstantTimeG2Backend` — the BBS key-generation
+  `PK = SK·BP2`, over a constant-time Fp2 layer), and BN254 G1 (`Bn254ConstantTimeG1Backend` — prover-side
+  commitment blinds that flow through the single-scalar seam). A deterministic operation-trace gate pins each
+  ladder's field-operation sequence as scalar-independent, and a dudect-style timing pair per ladder is the
+  complementary statistical check.
+- **Multi-scalar multiplication is not constant-time.** The Pippenger bucket method behind the
+  `G1MultiScalarMultiplyDelegate` seam remains variable-time on every curve. On BLS12-381 and BN254 some
+  prover-side multi-scalar calls carry per-proof ephemeral blinds and committed witness rows (BBS proof
+  `Bbar`/`T1`/`T2`; Hyrax and Pedersen commitment openings). These are lower-value, per-invocation secrets —
+  not long-term keys — and a constant-time multi-scalar path is a separate, explicitly open deliverable
+  behind the same delegate seam.
 - **The limit.** This is *best-effort constant-time in managed code*, **not** a hardware-guaranteed
   constant-time bound. .NET does not guarantee that a value-selecting expression (`cond ? ~0UL : 0UL`) compiles
   to a conditional move rather than a branch, and the JIT, GC, and platform may introduce timing variation
