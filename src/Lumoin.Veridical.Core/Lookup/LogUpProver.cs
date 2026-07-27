@@ -371,11 +371,23 @@ public static class LogUpProver
 
     internal static void AbsorbInstanceShape(FiatShamirTranscript transcript, int variableCount, int witnessColumnCount, CurveParameterSet curve, FiatShamirHashDelegate hash)
     {
+        AbsorbShape(transcript, WellKnownLogUpTranscriptLabels.InstanceShape, variableCount, witnessColumnCount, curve, hash);
+    }
+
+
+    internal static void AbsorbGkrInstanceShape(FiatShamirTranscript transcript, int variableCount, int witnessColumnCount, CurveParameterSet curve, FiatShamirHashDelegate hash)
+    {
+        AbsorbShape(transcript, WellKnownLogUpTranscriptLabels.GkrInstanceShape, variableCount, witnessColumnCount, curve, hash);
+    }
+
+
+    private static void AbsorbShape(FiatShamirTranscript transcript, string label, int variableCount, int witnessColumnCount, CurveParameterSet curve, FiatShamirHashDelegate hash)
+    {
         Span<byte> shape = stackalloc byte[3 * sizeof(int)];
         BinaryPrimitives.WriteInt32BigEndian(shape, variableCount);
         BinaryPrimitives.WriteInt32BigEndian(shape[sizeof(int)..], witnessColumnCount);
         BinaryPrimitives.WriteInt32BigEndian(shape[(2 * sizeof(int))..], curve.Code);
-        transcript.AbsorbBytes(new FiatShamirOperationLabel(WellKnownLogUpTranscriptLabels.InstanceShape), shape, hash);
+        transcript.AbsorbBytes(new FiatShamirOperationLabel(label), shape, hash);
     }
 
 

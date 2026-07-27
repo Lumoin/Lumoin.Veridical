@@ -63,4 +63,34 @@ public static class WellKnownLogUpTranscriptLabels
 
     /// <summary>Label for absorbing the claimed helper-column evaluation at the sumcheck point.</summary>
     public const string HelperEvaluation = "logup.helper.evaluation";
+
+    /// <summary>Label for absorbing the GKR variant's instance shape. Distinct from <see cref="InstanceShape"/> so the two protocols' transcripts diverge before any challenge is squeezed.</summary>
+    public const string GkrInstanceShape = "logup.gkr.instance.shape";
+
+    /// <summary>Label for squeezing the GKR variant's denominator challenge.</summary>
+    public const string GkrDenominatorChallenge = "logup.gkr.denominator.challenge";
+
+    /// <summary>Label for absorbing the four root values <c>p₁(0), p₁(1), q₁(0), q₁(1)</c>.</summary>
+    public const string GkrRootValues = "logup.gkr.root.values";
+
+    /// <summary>Label for squeezing each line-merge challenge that combines a layer's two-point claims into one.</summary>
+    public const string GkrLineChallenge = "logup.gkr.line.challenge";
+
+    /// <summary>Label for squeezing each layer's claim-batching challenge.</summary>
+    public const string GkrLayerFoldingChallenge = "logup.gkr.layer.folding.challenge";
+
+    /// <summary>Label for absorbing a layer sumcheck's per-round evaluation message.</summary>
+    public const string GkrLayerRoundPolynomial = "logup.gkr.layer.round.polynomial";
+
+    /// <summary>Label for squeezing a layer sumcheck's per-round challenge.</summary>
+    public const string GkrLayerRoundChallenge = "logup.gkr.layer.round.challenge";
+
+    /// <summary>Label for absorbing a layer sumcheck's four terminating half-table evaluations.</summary>
+    public const string GkrLayerTerminatingValues = "logup.gkr.layer.terminating.values";
+
+    /// <summary>Label for absorbing each claimed witness-column evaluation at the terminal row point, in column order.</summary>
+    public const string GkrWitnessEvaluation = "logup.gkr.witness.evaluation";
+
+    /// <summary>Label for absorbing the claimed multiplicity-column evaluation at the terminal row point.</summary>
+    public const string GkrMultiplicityEvaluation = "logup.gkr.multiplicity.evaluation";
 }

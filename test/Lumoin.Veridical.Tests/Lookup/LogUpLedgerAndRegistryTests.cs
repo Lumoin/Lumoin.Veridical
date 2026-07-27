@@ -95,6 +95,39 @@ internal sealed class LogUpLedgerAndRegistryTests
 
 
     [TestMethod]
+    public void GkrSoundnessTermMatchesHandComputation()
+    {
+        double bits = WellKnownSecurityLevels.LogUpGkrSoundnessBits(Curve, LedgerVariableCount, LedgerWitnessColumnCount);
+
+        //One witness column adds one selector variable: ν = 17, so the
+        //Proposition-1 cascade weight is 17·52/2 = 442.
+        Assert.AreEqual(Bls12ScalarFloorBits - Math.Log2(442.0), bits, 1e-9, "The GKR term must be log2(r) − log2(ν·(3ν+1)/2).");
+    }
+
+
+    [TestMethod]
+    public void GkrLigeroLedgerChargesTheSmallerOpeningUnionBound()
+    {
+        //The CLI's production Ligero shape: rate 1/16 with its derived 64
+        //queries, matching the plain variant's union-bound test above.
+        const int ProductionInverseRate = 16;
+        const int ProductionQueryCount = 64;
+
+        SecurityLevelLedger ledger = WellKnownSecurityLevels.ComputeLogUpGkrOverLigero(
+            Curve, LedgerVariableCount, LedgerWitnessColumnCount, ProductionInverseRate, ProductionQueryCount);
+
+        //The GKR variant opens M + 1 = 2 columns (no helper), so its union
+        //bound costs one bit — half a bit less than the plain variant's
+        //three-opening charge.
+        double singleOpeningBits = WellKnownSecurityLevels.LigeroProximitySoundnessBits(
+            LedgerVariableCount, ProductionInverseRate, ProductionQueryCount);
+        Assert.AreEqual(singleOpeningBits - 1.0, ledger.ProximityBits, 1e-9, "The proximity term must charge the union bound over the two openings.");
+        Assert.AreEqual(ledger.ProximityBits, ledger.EffectiveBits, 1e-9, "Proximity must be the bottleneck term at the production shape.");
+        Assert.AreEqual(HidingKind.None, ledger.Hiding, "Unmasked LogUp-GKR openings disclose the opened values.");
+    }
+
+
+    [TestMethod]
     public void LogUpIsRegisteredInBothIdentifierSurfaces()
     {
         Assert.AreEqual(6, LookupArgument.LogUp.Code, "LogUp takes the next predefined registry code.");
