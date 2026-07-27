@@ -66,6 +66,7 @@ public static class LigeroPolynomialCommitmentScheme
     /// <param name="hashAlgorithm">The canonical hash-function name.</param>
     /// <param name="digestSizeBytes">The Merkle digest size in bytes.</param>
     /// <param name="inverseRate">The inverse code rate <c>c ≥ 2</c> (rate <c>ρ = 1/c</c>); defaults to <see cref="Ligero.WellKnownLigeroParameters.DefaultInverseRate"/>. A lower rate widens the extension (more openable columns) and raises the per-opened-column soundness — the lever that lets a small polynomial reach a full security target (see <see cref="WellKnownSecurityLevels"/>).</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source the commit and open paths consult in place of the barycentric encode; <see langword="null"/> (the default) keeps today's barycentric path.</param>
     /// <returns>The provider; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a backend or the hash-algorithm name is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive, or <paramref name="inverseRate"/> is below 2.</exception>
@@ -83,7 +84,8 @@ public static class LigeroPolynomialCommitmentScheme
         MerkleHashDelegate merkleHash,
         string hashAlgorithm,
         int digestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes,
-        int inverseRate = WellKnownLigeroParameters.DefaultInverseRate)
+        int inverseRate = WellKnownLigeroParameters.DefaultInverseRate,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(subtract);
@@ -106,7 +108,7 @@ public static class LigeroPolynomialCommitmentScheme
 
             LigeroEvaluationDimensions dimensions = LigeroEvaluationDimensions.ForVariableCount(polynomial.VariableCount, inverseRate, queryCount);
             using MerkleTree tree = LigeroEvaluationProver.Commit(
-                polynomial.AsReadOnlySpan(), dimensions, add, subtract, multiply, invert, columnHash, hashAlgorithm, merkleHash, curve, pool);
+                polynomial.AsReadOnlySpan(), dimensions, add, subtract, multiply, invert, columnHash, hashAlgorithm, merkleHash, curve, pool, rowExtenderFactory);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.Ligero, pool);
             PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.CreateZero(ScalarSize, curve, CommitmentScheme.Ligero, pool);
@@ -131,7 +133,7 @@ public static class LigeroPolynomialCommitmentScheme
             LigeroEvaluationProver.Prove(
                 polynomial.AsReadOnlySpan(), evaluationPoint, dimensions, digestSizeBytes,
                 openingSpan, claimedValue,
-                add, subtract, multiply, invert, reduce, hash, squeeze, columnHash, hashAlgorithm, merkleHash, transcript, curve, pool);
+                add, subtract, multiply, invert, reduce, hash, squeeze, columnHash, hashAlgorithm, merkleHash, transcript, curve, pool, rowExtenderFactory);
 
             PolynomialOpening opening = PolynomialOpening.FromBytes(openingSpan, curve, CommitmentScheme.Ligero, pool);
             Scalar claimed = Scalar.FromCanonical(claimedValue, curve, pool);

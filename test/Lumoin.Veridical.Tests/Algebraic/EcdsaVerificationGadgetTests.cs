@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Commitments.Ligero.Gadgets;
+using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Mdoc;
@@ -465,19 +466,27 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    //A generous hang guard for the full real-credential prove+verify: the FFT
+    //row extender removes the encoder's super-linear wall, and the measured
+    //run is ~37 minutes on a desktop-class machine — the remaining prover
+    //stages walk a ~100k-constraint circuit. Two hours guards a slower runner
+    //without asserting elapsed time; the prove is synchronous, so the
+    //cooperative token is observed only between stages.
+    private const int EndToEndHangGuardMilliseconds = 7_200_000;
+
+
     [TestMethod]
-    [Ignore("Documents the end-to-end target. The real-credential circuit is ~100k+ constraints (a "
-        + "~700-byte in-circuit SHA-256), and the Ligero encoder is super-linear at that scale — a single "
-        + "prove ran 6.6h without finishing, even on the Montgomery backend. Un-ignore once the FFT/NTT "
-        + "encoder lands; the IsSatisfied gate ProvesAgeOver18FromARealCredentialInCircuit is today's result.")]
+    [TestCategory(TestCategories.Slow)]
+    [Timeout(EndToEndHangGuardMilliseconds, CooperativeCancellation = true)]
     public async Task ProvesAndVerifiesAgeOver18FromARealCredentialEndToEnd()
     {
         //The end-to-end target: a genuine ISO 18013-5 credential's age_over_18 disclosure proved AND
-        //verified in zero knowledge through the real Ligero prover over the production Montgomery Fp256
-        //backend. Ignored: the circuit is real-credential scale (~700-byte in-circuit SHA-256 over the
-        //COSE Sig_structure, the item hash, and the three-scalar MSM ⇒ ~100k+ constraints), and the
-        //encoder is super-linear there — a single prove ran 6.6h without finishing. The FFT/NTT encoder
-        //is the gate. The seed is bound to the public statement.
+        //verified through the real Ligero prover over the production Montgomery Fp256 backend with the
+        //FFT convolution row extender. The circuit is real-credential scale (a ~700-byte in-circuit
+        //SHA-256 over the COSE Sig_structure, the item hash, and the three-scalar MSM ⇒ ~100k+
+        //constraints); the barycentric encoder was super-linear there — a single prove ran 6.6 hours
+        //without finishing — and the extender's convolution produces the byte-identical codeword in
+        //linearithmic time. The seed is bound to the public statement.
         byte[] credential = await File.ReadAllBytesAsync("../../../TestMaterial/Mdoc/mdoc-00.cbor", TestContext.CancellationToken).ConfigureAwait(false);
         MdocDisclosure disclosure = MdocDisclosure.Extract(credential, "org.iso.18013.5.1", "age_over_18");
 
@@ -589,16 +598,42 @@ internal sealed class EcdsaVerificationGadgetTests
         CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //The same prove/verify over the production Montgomery Fp256 backend (the validated faster
-    //encoder path) — byte-identical to the reference, used for the large real-credential circuit.
-    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, byte[] seed) => LigeroProver.Prove(
-        builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), seed,
-        new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
-        P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(), P256BaseFieldMontgomeryBackend.GetMultiply(),
-        P256BaseFieldMontgomeryBackend.GetInvert(), P256BaseFieldMontgomeryBackend.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    //The same prove/verify over the production Montgomery Fp256 backend with the FFT convolution
+    //row extender installed — byte-identical to the reference (the extender computes the same
+    //integer-node extension; the byte gate is Fp256LigeroRowExtenderTests), used for the large
+    //real-credential circuit where the barycentric loop was the 6.6-hour wall.
+    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, byte[] seed)
+    {
+        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
+        LongfellowFp256Encoding.RootOfUnity(root);
+        var fft = new Fp256RealFft(
+            root, LongfellowFp256Encoding.OmegaOrder,
+            P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),
+            P256BaseFieldMontgomeryBackend.GetMultiply(), P256BaseFieldMontgomeryBackend.GetInvert(),
+            WriteCanonicalUInt, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using var extenders = new Fp256LigeroRowExtenders(
+            fft,
+            P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),
+            P256BaseFieldMontgomeryBackend.GetMultiply(), P256BaseFieldMontgomeryBackend.GetInvert(),
+            WriteCanonicalUInt, CurveParameterSet.None, BaseMemoryPool.Shared);
+
+        return LigeroProver.Prove(
+            builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
+            builder.TargetBytes(), builder.QuadraticConstraints(), seed,
+            new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
+            P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(), P256BaseFieldMontgomeryBackend.GetMultiply(),
+            P256BaseFieldMontgomeryBackend.GetInvert(), P256BaseFieldMontgomeryBackend.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared,
+            rowExtenderFactory: extenders.Create);
+    }
+
+
+    private static void WriteCanonicalUInt(uint value, Span<byte> destination)
+    {
+        destination.Clear();
+        BinaryPrimitives.WriteUInt32BigEndian(destination[(ScalarSize - sizeof(uint))..], value);
+    }
 
 
     private static bool VerifyMontgomery(LigeroConstraintSystemBuilder builder, LigeroProof proof, byte[] seed) => LigeroVerifier.Verify(
