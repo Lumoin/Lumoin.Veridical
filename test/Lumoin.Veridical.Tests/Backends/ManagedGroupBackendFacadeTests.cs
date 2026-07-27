@@ -18,9 +18,9 @@ namespace Lumoin.Veridical.Tests.Backends;
 [TestClass]
 internal sealed class ManagedGroupBackendFacadeTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x10);
-    private static readonly byte[] KeyInfo = "facade-key-info"u8.ToArray();
-    private static readonly byte[] Header = "facade-header"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x10);
+    private static byte[] KeyInfo { get; } = "facade-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "facade-header"u8.ToArray();
 
 
     [TestMethod]

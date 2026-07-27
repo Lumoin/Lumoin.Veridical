@@ -18,7 +18,7 @@ internal sealed class MerkleSetCommitmentTests
 {
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    private static readonly MerkleHashDelegate Hash = HashTwoToOne;
+    private static MerkleHashDelegate Hash { get; } = HashTwoToOne;
 
 
     [TestMethod]

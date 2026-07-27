@@ -76,7 +76,7 @@ public readonly struct Backend: IEquatable<Backend>
     public static Backend Fpga { get; } = new(4);
 
 
-    private static readonly List<Backend> backends = [None, Managed, Native, WebGpu, Fpga];
+    private static List<Backend> backends { get; } = [None, Managed, Native, WebGpu, Fpga];
 
 
     /// <summary>Gets all registered backend values.</summary>

@@ -34,7 +34,7 @@ internal sealed class LogUpLedgerAndRegistryTests
     private const int LedgerVariableCount = 16;
     private const int LedgerWitnessColumnCount = 1;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

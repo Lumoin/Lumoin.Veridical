@@ -30,10 +30,10 @@ internal sealed class LigeroArgumentRoundtripTests
     private const int ScalarSize = Scalar.SizeBytes;
 
     //A satisfying witness: W[2] = W[0]·W[1] (6 = 2·3), W[5] = W[3]·W[4] (20 = 4·5).
-    private static readonly int[] WitnessValues = [2, 3, 6, 4, 5, 20];
+    private static int[] WitnessValues { get; } = [2, 3, 6, 4, 5, 20];
     private const int WitnessCount = 6;
 
-    private static readonly LigeroQuadraticConstraint[] QuadraticConstraints =
+    private static LigeroQuadraticConstraint[] QuadraticConstraints { get; } =
     [
         new LigeroQuadraticConstraint(0, 1, 2),
         new LigeroQuadraticConstraint(3, 4, 5),
@@ -41,13 +41,13 @@ internal sealed class LigeroArgumentRoundtripTests
 
     //Two linear constraints: c0: W[0] + W[1] = 5; c1: 2·W[3] = 8.
     private const int LinearConstraintCount = 2;
-    private static readonly LigeroLinearConstraint[] LinearConstraints =
+    private static LigeroLinearConstraint[] LinearConstraints { get; } =
     [
         new LigeroLinearConstraint(0, 0, Coefficient(1)),
         new LigeroLinearConstraint(0, 1, Coefficient(1)),
         new LigeroLinearConstraint(1, 3, Coefficient(2)),
     ];
-    private static readonly int[] LinearTargetValues = [5, 8];
+    private static int[] LinearTargetValues { get; } = [5, 8];
 
     //Soundness parameters. The interleaved-Reed-Solomon proximity error is about
     //(1 − δ)^OpenedColumns, with δ ≈ 1 − 1/InverseRate the RS relative distance
@@ -60,10 +60,10 @@ internal sealed class LigeroArgumentRoundtripTests
     private const int OpenedColumns = 8;
     private const int Block = 16;
 
-    private static readonly byte[] TranscriptSeed = [0x4C, 0x46, 0x34, 0x62, 0x36]; //"LF4b6"
-    private static readonly byte[] RandomnessSeed = [0x72, 0x61, 0x6E, 0x64];        //"rand"
+    private static byte[] TranscriptSeed { get; } = [0x4C, 0x46, 0x34, 0x62, 0x36]; //"LF4b6"
+    private static byte[] RandomnessSeed { get; } = [0x72, 0x61, 0x6E, 0x64];        //"rand"
 
-    private static readonly MerkleHashDelegate Blake3TwoToOne = HashTwoToOne;
+    private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
 
     [TestMethod]

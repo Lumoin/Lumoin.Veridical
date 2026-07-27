@@ -50,10 +50,10 @@ internal static class DecoderFuzzTargets
     private const int LongfellowFieldId = 4;
     private const int LongfellowElementBytes = 16;
 
-    private static readonly G1IsOnCurveDelegate BlsG1OnCurve = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
-    private static readonly G2IsOnCurveDelegate BlsG2OnCurve = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
-    private static readonly G1IsOnCurveDelegate Bn254G1OnCurve = Bn254BigIntegerG1Reference.GetIsOnCurve();
-    private static readonly G2IsOnCurveDelegate Bn254G2OnCurve = Bn254BigIntegerG2Reference.GetIsOnCurve();
+    private static G1IsOnCurveDelegate BlsG1OnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G2IsOnCurveDelegate BlsG2OnCurve { get; } = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
+    private static G1IsOnCurveDelegate Bn254G1OnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+    private static G2IsOnCurveDelegate Bn254G2OnCurve { get; } = Bn254BigIntegerG2Reference.GetIsOnCurve();
 
 
     /// <summary>The fixed set of decoder fuzz targets, one entry per hand-written binary decoder.</summary>

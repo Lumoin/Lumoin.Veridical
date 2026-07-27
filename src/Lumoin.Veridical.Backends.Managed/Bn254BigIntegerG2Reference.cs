@@ -56,7 +56,7 @@ internal static class Bn254BigIntegerG2Reference
 
     //Declared before CurveB because CurveB's initializer calls Fp2Invert, which
     //reads this exponent; static initializers run in textual order.
-    private static readonly BigInteger ModInverseExponent = BaseFieldPrime - 2;
+    private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
     /// <summary>
     /// The D-twist coefficient <c>b' = 3 / (9 + u)</c>, computed from the base

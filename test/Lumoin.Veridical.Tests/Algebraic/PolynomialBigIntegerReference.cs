@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </remarks>
 internal static class PolynomialBigIntegerReference
 {
-    private static readonly BigInteger FieldOrder = Bls12Curve381BigIntegerScalarReference.FieldOrder;
+    private static BigInteger FieldOrder { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
 
 
     /// <summary>Returns the reference polynomial-evaluate delegate.</summary>

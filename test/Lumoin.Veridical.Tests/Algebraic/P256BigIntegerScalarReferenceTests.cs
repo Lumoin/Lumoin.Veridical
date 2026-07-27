@@ -19,14 +19,14 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 internal sealed class P256BigIntegerScalarReferenceTests
 {
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
-    private static readonly ScalarAddDelegate Add = P256BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarSubtractDelegate Subtract = P256BigIntegerScalarReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Multiply = P256BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarNegateDelegate Negate = P256BigIntegerScalarReference.GetNegate();
-    private static readonly ScalarInvertDelegate Invert = P256BigIntegerScalarReference.GetInvert();
-    private static readonly ScalarReduceDelegate Reduce = P256BigIntegerScalarReference.GetReduce();
+    private static ScalarAddDelegate Add { get; } = P256BigIntegerScalarReference.GetAdd();
+    private static ScalarSubtractDelegate Subtract { get; } = P256BigIntegerScalarReference.GetSubtract();
+    private static ScalarMultiplyDelegate Multiply { get; } = P256BigIntegerScalarReference.GetMultiply();
+    private static ScalarNegateDelegate Negate { get; } = P256BigIntegerScalarReference.GetNegate();
+    private static ScalarInvertDelegate Invert { get; } = P256BigIntegerScalarReference.GetInvert();
+    private static ScalarReduceDelegate Reduce { get; } = P256BigIntegerScalarReference.GetReduce();
 
     //CPython, modulo n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551.
     private const string A = "c1a551f00d2b9e7733a0f1e2d3c4b5a6978869504132231415060708090a0b0c";

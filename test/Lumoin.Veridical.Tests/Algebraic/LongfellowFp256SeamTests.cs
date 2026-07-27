@@ -39,7 +39,7 @@ internal sealed class LongfellowFp256SeamTests
     private const int InverseRate = 4;
     private const int OpenedColumnCount = 2;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("fp256-width-gate");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("fp256-width-gate");
 
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 

@@ -24,22 +24,22 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254ScalarBatchAgreementTests
 {
-    private static readonly ScalarReduceDelegate ReduceDelegate =
+    private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bn254BigIntegerScalarReference.GetReduce();
 
-    private static readonly ScalarBatchAddDelegate BigIntegerBatchAdd =
+    private static ScalarBatchAddDelegate BigIntegerBatchAdd { get; } =
         Bn254BigIntegerScalarReference.GetBatchAdd();
 
-    private static readonly ScalarBatchSubtractDelegate BigIntegerBatchSubtract =
+    private static ScalarBatchSubtractDelegate BigIntegerBatchSubtract { get; } =
         Bn254BigIntegerScalarReference.GetBatchSubtract();
 
-    private static readonly ScalarBatchMultiplyDelegate BigIntegerBatchMultiply =
+    private static ScalarBatchMultiplyDelegate BigIntegerBatchMultiply { get; } =
         Bn254BigIntegerScalarReference.GetBatchMultiply();
 
-    private static readonly Gen<byte[]> RawScalarBytesGen =
+    private static Gen<byte[]> RawScalarBytesGen { get; } =
         Gen.Byte.Array[Scalar.SizeBytes];
 
-    private static readonly int[] BatchSizesToSweep = [1, 3, 4, 5, 8, 17];
+    private static int[] BatchSizesToSweep { get; } = [1, 3, 4, 5, 8, 17];
 
 
     private const long IterationCount = 100;

@@ -29,7 +29,7 @@ internal sealed class Gf2k128BatchBackendAgreementTests
 
     //Edge sizes: empty, single, an odd non-trivial count, and a large run that exercises the
     //per-element loop well past any tail.
-    private static readonly int[] BatchSizes = [0, 1, 2, 3, 7, 64, 257];
+    private static int[] BatchSizes { get; } = [0, 1, 2, 3, 7, 64, 257];
 
     private static ScalarMultiplyDelegate ReferenceMultiply { get; } = Gf2k128Reference.GetMultiply();
 

@@ -32,8 +32,8 @@ internal sealed class LigeroTableauTests
 
     //A satisfying witness vector and its two multiplication constraints:
     //W[2] = W[0]·W[1] (6 = 2·3) and W[5] = W[3]·W[4] (20 = 4·5).
-    private static readonly int[] WitnessValues = [2, 3, 6, 4, 5, 20];
-    private static readonly LigeroQuadraticConstraint[] Constraints =
+    private static int[] WitnessValues { get; } = [2, 3, 6, 4, 5, 20];
+    private static LigeroQuadraticConstraint[] Constraints { get; } =
     [
         new LigeroQuadraticConstraint(0, 1, 2),
         new LigeroQuadraticConstraint(3, 4, 5),
@@ -46,9 +46,9 @@ internal sealed class LigeroTableauTests
 
     //A fixed seed makes the prover randomness reproducible so two builds yield
     //byte-identical commitments.
-    private static readonly byte[] RandomnessSeed = [0x4C, 0x46, 0x34, 0x62]; //"LF4b"
+    private static byte[] RandomnessSeed { get; } = [0x4C, 0x46, 0x34, 0x62]; //"LF4b"
 
-    private static readonly MerkleHashDelegate Blake3TwoToOne = HashTwoToOne;
+    private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
 
     [TestMethod]

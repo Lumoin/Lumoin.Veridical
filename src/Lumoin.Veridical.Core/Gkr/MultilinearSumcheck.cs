@@ -30,8 +30,8 @@ public static class MultilinearSumcheck
     //same width the Ligero challenge squeeze uses.
     private const int SqueezeWideBytes = 64;
 
-    private static readonly FiatShamirOperationLabel RoundPolynomialLabel = new("veridical.gkr.sumcheck.round");
-    private static readonly FiatShamirOperationLabel ChallengeLabel = new("veridical.gkr.sumcheck.challenge");
+    private static FiatShamirOperationLabel RoundPolynomialLabel { get; } = new("veridical.gkr.sumcheck.round");
+    private static FiatShamirOperationLabel ChallengeLabel { get; } = new("veridical.gkr.sumcheck.challenge");
 
 
     /// <summary>

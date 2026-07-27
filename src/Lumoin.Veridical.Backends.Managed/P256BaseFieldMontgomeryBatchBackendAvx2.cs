@@ -89,9 +89,9 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx2
     private const int SparseAddLimbHigh = 8;
 
 
-    private static readonly Vector256<ulong> Low32Mask = Vector256.Create(0xFFFFFFFFUL);
-    private static readonly Vector256<ulong> NPrime32Broadcast = Vector256.Create((ulong)Fp256MontgomeryParameters.NPrime32);
-    private static readonly Vector256<ulong>[] Modulus32Broadcast = BuildBroadcast(Fp256MontgomeryParameters.Modulus32Limbs);
+    private static Vector256<ulong> Low32Mask { get; } = Vector256.Create(0xFFFFFFFFUL);
+    private static Vector256<ulong> NPrime32Broadcast { get; } = Vector256.Create((ulong)Fp256MontgomeryParameters.NPrime32);
+    private static Vector256<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Fp256MontgomeryParameters.Modulus32Limbs);
 
 
     /// <summary>

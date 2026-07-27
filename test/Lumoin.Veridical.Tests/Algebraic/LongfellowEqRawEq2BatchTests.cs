@@ -39,7 +39,7 @@ internal sealed class LongfellowEqRawEq2BatchTests
     //The sizes cover: n == 1 (logn 0, leaf only), even/odd n (the trailing-element trim), the FillEq
     //first-iteration overflow special-case (nl odd, triggered by 3/5/7/9/17/31/100/127/1000), and several
     //binding levels (n up to 4096), with powers AND non-powers of two.
-    private static readonly int[] Sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 17, 31, 32, 33, 63, 64, 65, 100, 127, 128, 511, 512, 513, 1000, 1024, 2047, 2048, 2049, 4095, 4096, 4097];
+    private static int[] Sizes { get; } = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 17, 31, 32, 33, 63, 64, 65, 100, 127, 128, 511, 512, 513, 1000, 1024, 2047, 2048, 2049, 4095, 4096, 4097];
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 

@@ -22,12 +22,12 @@ internal static class RawEq2AttributionDriver
 {
     private const int ScalarSize = 32;
     private const int ElementBytes = 16;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
-    private static readonly ScalarAddDelegate Add = Gf2k128Backend.GetAdd();
-    private static readonly ScalarSubtractDelegate Subtract = Gf2k128Backend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Multiply = Gf2k128Backend.GetMultiply();
-    private static readonly ScalarBroadcastMultiplyAccumulateDelegate BroadcastMultiplyAccumulate = Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate();
+    private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
+    private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
+    private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
+    private static ScalarBroadcastMultiplyAccumulateDelegate BroadcastMultiplyAccumulate { get; } = Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate();
 
 
     public static void Run()

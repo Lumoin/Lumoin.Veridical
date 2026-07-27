@@ -31,7 +31,7 @@ internal sealed class R1csInstanceCanonicityTests
     private const int ColumnCount = 4;
 
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

@@ -23,7 +23,7 @@ internal sealed class PredicateProofOperationsTests
 
     //A compliant constant-bound artifact, proven once and shared by the tests that
     //tamper with an otherwise-valid artifact. Lazy is thread-safe by default.
-    private static readonly Lazy<string> CompliantArtifactJson = new(
+    private static Lazy<string> CompliantArtifactJson { get; } = new(
         () => Prove(CompliantConstantRequest()));
 
 

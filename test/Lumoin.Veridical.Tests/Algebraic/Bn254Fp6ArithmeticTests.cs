@@ -20,14 +20,14 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254Fp6ArithmeticTests
 {
-    private static readonly Fp6AddDelegate Add = Bn254BigIntegerFp6Reference.GetAdd();
-    private static readonly Fp6SubtractDelegate Subtract = Bn254BigIntegerFp6Reference.GetSubtract();
-    private static readonly Fp6MultiplyDelegate Multiply = Bn254BigIntegerFp6Reference.GetMultiply();
-    private static readonly Fp6SquareDelegate Square = Bn254BigIntegerFp6Reference.GetSquare();
-    private static readonly Fp6NegateDelegate Negate = Bn254BigIntegerFp6Reference.GetNegate();
-    private static readonly Fp6InvertDelegate Invert = Bn254BigIntegerFp6Reference.GetInvert();
+    private static Fp6AddDelegate Add { get; } = Bn254BigIntegerFp6Reference.GetAdd();
+    private static Fp6SubtractDelegate Subtract { get; } = Bn254BigIntegerFp6Reference.GetSubtract();
+    private static Fp6MultiplyDelegate Multiply { get; } = Bn254BigIntegerFp6Reference.GetMultiply();
+    private static Fp6SquareDelegate Square { get; } = Bn254BigIntegerFp6Reference.GetSquare();
+    private static Fp6NegateDelegate Negate { get; } = Bn254BigIntegerFp6Reference.GetNegate();
+    private static Fp6InvertDelegate Invert { get; } = Bn254BigIntegerFp6Reference.GetInvert();
 
-    private static readonly BigInteger BaseFieldPrime = Bn254BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger BaseFieldPrime { get; } = Bn254BigIntegerG1Reference.BaseFieldPrime;
     private const int CompSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
     private const int Fp2Size = 2 * WellKnownCurves.Bn254BaseFieldSizeBytes;
     private const int Fp6Size = 6 * WellKnownCurves.Bn254BaseFieldSizeBytes;

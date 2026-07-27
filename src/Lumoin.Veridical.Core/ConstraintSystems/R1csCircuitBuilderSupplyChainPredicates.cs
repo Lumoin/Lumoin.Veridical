@@ -158,7 +158,7 @@ public static class R1csCircuitBuilderSupplyChainPredicates
     //The reserved suffixes a claim's derived witness names begin with, relative to
     //the claim name: {name}_domain..., {name}_bound..., {name}_bit_.... A claim name
     //that extends another by one of these would produce a colliding derived name.
-    private static readonly string[] ReservedAuxiliarySuffixes = ["_domain", "_bound", "_bit_"];
+    private static string[] ReservedAuxiliarySuffixes { get; } = ["_domain", "_bound", "_bit_"];
 
 
     private static void ThrowIfNamesNotDistinct(ReadOnlySpan<SupplyChainClaim> claims)

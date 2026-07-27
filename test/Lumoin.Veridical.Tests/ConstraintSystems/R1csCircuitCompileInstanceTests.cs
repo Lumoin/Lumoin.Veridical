@@ -23,9 +23,9 @@ internal sealed class R1csCircuitCompileInstanceTests
     private const string Recycled = "recycled_content";
     private const string Carbon = "carbon_footprint";
     private const string RecycledMinimum = "recycled_minimum";
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
-    private static readonly FixedPointDomain RecycledDomain = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(1), 100.0m);
-    private static readonly FixedPointDomain CarbonDomain = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(2), 100.00m);
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static FixedPointDomain RecycledDomain { get; } = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(1), 100.0m);
+    private static FixedPointDomain CarbonDomain { get; } = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(2), 100.00m);
 
 
     [TestMethod]

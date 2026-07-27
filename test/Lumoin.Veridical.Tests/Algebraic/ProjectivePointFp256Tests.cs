@@ -16,16 +16,16 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class ProjectivePointFp256Tests
 {
-    private static readonly BigInteger Prime = EcdsaNonceRecovery.P;
-    private static readonly BigInteger A = EcdsaNonceRecovery.A;
-    private static readonly BigInteger B = P256BigIntegerG1Reference.CurveB;
+    private static BigInteger Prime { get; } = EcdsaNonceRecovery.P;
+    private static BigInteger A { get; } = EcdsaNonceRecovery.A;
+    private static BigInteger B { get; } = P256BigIntegerG1Reference.CurveB;
 
     //Deterministic generator seed — no System.Random/Date, so the sampled points are reproducible.
     private const ulong SampleSeed = 0x9E3779B97F4A7C15UL;
     private const int SamplePairCount = 16;
 
     //A handful of small scalars whose k·G the projective ladder must reproduce.
-    private static readonly int[] LadderScalars = [1, 2, 3, 4, 5, 7, 16, 255, 1000, 65537];
+    private static int[] LadderScalars { get; } = [1, 2, 3, 4, 5, 7, 16, 255, 1000, 65537];
 
 
     [TestMethod]

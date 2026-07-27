@@ -57,7 +57,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
         CultureInfo.InvariantCulture);
 
 
-    private static readonly BigInteger ModInverseExponent = BaseFieldPrime - 2;
+    private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
     private const int ComponentSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
     private const int CompressedSize = WellKnownCurves.Bls12Curve381G2CompressedSizeBytes;

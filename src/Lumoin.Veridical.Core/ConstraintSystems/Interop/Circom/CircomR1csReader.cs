@@ -56,7 +56,7 @@ public static class CircomR1csReader
     private const uint HeaderSectionType = 1u;
     private const uint ConstraintSectionType = 2u;
 
-    private static readonly byte[] FileMagic = [(byte)'r', (byte)'1', (byte)'c', (byte)'s'];
+    private static byte[] FileMagic { get; } = [(byte)'r', (byte)'1', (byte)'c', (byte)'s'];
 
     /// <summary>
     /// BLS12-381 scalar field modulus
@@ -66,13 +66,13 @@ public static class CircomR1csReader
     /// Lumoin.Veridical.Backends.Managed, which references Core, not the
     /// other way round.
     /// </summary>
-    private static readonly BigInteger Bls12Curve381ScalarFieldModulus = BigInteger.Parse(
+    private static BigInteger Bls12Curve381ScalarFieldModulus { get; } = BigInteger.Parse(
         "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
     /// <summary>The BN254 (alt_bn128) scalar field order, against which a BN254-declared <c>.r1cs</c> prime is validated.</summary>
-    private static readonly BigInteger Bn254ScalarFieldModulus = BigInteger.Parse(
+    private static BigInteger Bn254ScalarFieldModulus { get; } = BigInteger.Parse(
         "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);

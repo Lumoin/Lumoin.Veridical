@@ -23,10 +23,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381ScalarHashToScalarTests
 {
-    private static readonly ScalarHashToScalarDelegate HashToScalar =
+    private static ScalarHashToScalarDelegate HashToScalar { get; } =
         Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
 
-    private static readonly byte[] DefaultDst = Encoding.ASCII.GetBytes("LUMOIN-VERIDICAL-TEST-HASH-TO-SCALAR");
+    private static byte[] DefaultDst { get; } = Encoding.ASCII.GetBytes("LUMOIN-VERIDICAL-TEST-HASH-TO-SCALAR");
 
     private const long IterationCount = 30;
 

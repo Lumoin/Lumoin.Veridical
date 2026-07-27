@@ -41,7 +41,7 @@ public static class BbsDeterministicScalars
     //The canonical IETF proof-vector seed for BLS12-381 (identical bytes for both ciphersuites): the
     //ASCII of the first 30 digits of pi, "3.141592653589793238462643383279". Held as the locked hex so
     //the source-of-truth matches the draft verbatim.
-    private static readonly byte[] CanonicalSeedValue =
+    private static byte[] CanonicalSeedValue { get; } =
         Convert.FromHexString("332e313431353932363533353839373933323338343632363433333833323739");
 
     /// <summary>
@@ -59,7 +59,7 @@ public static class BbsDeterministicScalars
 
     private const int ExpandLengthBytes = 48;
 
-    private static readonly ProviderOperation DeterministicScalarsOperation = new("BbsDeterministicScalars");
+    private static ProviderOperation DeterministicScalarsOperation { get; } = new("BbsDeterministicScalars");
 
 
     /// <summary>

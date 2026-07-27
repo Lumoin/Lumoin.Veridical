@@ -43,7 +43,7 @@ internal static class EcdsaSignatureWitness
     //per i=0..255 bi_[i] (256) + per i=0..254 int_x/int_y/int_z (3·255 = 765). Total 5+8+256+765 = 1034.
     public const int ElementCount = 5 + 8 + Bits + (3 * (Bits - 1));
 
-    private static readonly BigInteger Prime = EcdsaNonceRecovery.P;
+    private static BigInteger Prime { get; } = EcdsaNonceRecovery.P;
 
 
     /// <summary>

@@ -38,8 +38,8 @@ public class ScalarMultiplyInvertBenchmarks
 {
     private const int ScalarBytes = 32;
     private const int BenchmarkSeed = 0x5EED5EED;
-    private static readonly CurveParameterSet Bls = CurveParameterSet.Bls12Curve381;
-    private static readonly CurveParameterSet Bn = CurveParameterSet.Bn254;
+    private static CurveParameterSet Bls { get; } = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Bn { get; } = CurveParameterSet.Bn254;
 
 
     private byte[] blsA = null!;

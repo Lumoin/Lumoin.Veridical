@@ -25,17 +25,17 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class FoldableCodeTests
 {
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate Multiply = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly ScalarInvertDelegate Invert = TestScalarBackends.Bls12Curve381.Invert;
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarHashToScalarDelegate HashToScalar = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
 
     private const int ScalarSize = 32;
     private const int IterationCount = 60;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

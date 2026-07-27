@@ -62,16 +62,16 @@ internal static class DeterministicMutations
     //rejection paths without exhausting memory or time in a test run.
     private const int HugeButBoundedLengthBytes = 1 << 16;
 
-    private static readonly int[] TruncationLengths =
+    private static int[] TruncationLengths { get; } =
     [
         0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192
     ];
 
-    private static readonly int[] ExtensionLengths = [1, 2, 4, 8, 16, 32, 64, 128];
+    private static int[] ExtensionLengths { get; } = [1, 2, 4, 8, 16, 32, 64, 128];
 
-    private static readonly int[] HeaderWindowSizes = [4, 8, 16];
+    private static int[] HeaderWindowSizes { get; } = [4, 8, 16];
 
-    private static readonly int[] LengthFieldOffsets = BuildLengthFieldOffsets();
+    private static int[] LengthFieldOffsets { get; } = BuildLengthFieldOffsets();
 
 
     /// <summary>

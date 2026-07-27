@@ -58,11 +58,11 @@ public sealed class BbsBlindProof: SensitiveMemory
     public const int MinimumSizeBytes = CoreProofOffset + BbsProof.MinimumSizeBytes + Int64FieldSizeBytes + Int64FieldSizeBytes + Int64FieldSizeBytes;
 
 
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.ZkProof)
+    private static Tag AlgebraicTagSha256 { get; } = Tag.Create(AlgebraicRole.ZkProof)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Sha256Blind);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.ZkProof)
+    private static Tag AlgebraicTagShake256 { get; } = Tag.Create(AlgebraicRole.ZkProof)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Shake256Blind);
 

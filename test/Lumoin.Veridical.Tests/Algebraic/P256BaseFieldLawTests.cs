@@ -25,12 +25,12 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 internal sealed class P256BaseFieldLawTests
 {
     private const long IterationCount = 300;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
-    private static readonly BigInteger FieldOrder = P256BaseFieldReference.FieldOrder;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
+    private static BigInteger FieldOrder { get; } = P256BaseFieldReference.FieldOrder;
 
-    private static readonly ScalarReduceDelegate ReferenceReduce = P256BaseFieldReference.GetReduce();
+    private static ScalarReduceDelegate ReferenceReduce { get; } = P256BaseFieldReference.GetReduce();
 
-    private static readonly Gen<byte[]> BoundaryFieldBytesGen = BoundaryCorpusGen.CanonicalDomain(FieldOrder);
+    private static Gen<byte[]> BoundaryFieldBytesGen { get; } = BoundaryCorpusGen.CanonicalDomain(FieldOrder);
 
 
     [TestMethod]

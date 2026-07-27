@@ -38,29 +38,29 @@ internal sealed class EcdsaVerificationGadgetTests
     private const int OpenedColumns = 4;
     private const int Block = 64;
 
-    private static readonly BigInteger P = EcdsaNonceRecovery.P;
-    private static readonly BigInteger A = EcdsaNonceRecovery.A;
-    private static readonly BigInteger B = P256BigIntegerG1Reference.CurveB;
-    private static readonly BigInteger N = EcdsaNonceRecovery.N;
+    private static BigInteger P { get; } = EcdsaNonceRecovery.P;
+    private static BigInteger A { get; } = EcdsaNonceRecovery.A;
+    private static BigInteger B { get; } = P256BigIntegerG1Reference.CurveB;
+    private static BigInteger N { get; } = EcdsaNonceRecovery.N;
 
-    private static readonly BigInteger Gx = EcdsaNonceRecovery.Gx;
-    private static readonly BigInteger Gy = EcdsaNonceRecovery.Gy;
-    private static readonly (BigInteger X, BigInteger Y) G = EcdsaNonceRecovery.G;
+    private static BigInteger Gx { get; } = EcdsaNonceRecovery.Gx;
+    private static BigInteger Gy { get; } = EcdsaNonceRecovery.Gy;
+    private static (BigInteger X, BigInteger Y) G { get; } = EcdsaNonceRecovery.G;
 
-    private static readonly byte[] CurveABytes = Bytes(A);
-    private static readonly byte[] CurveBBytes = Bytes(B);
+    private static byte[] CurveABytes { get; } = Bytes(A);
+    private static byte[] CurveBBytes { get; } = Bytes(B);
 
     //Fixed test scalars, all < n (the leading nibble keeps them below n = 0xFFFF…).
-    private static readonly BigInteger D = Hex("5b1e9f2c4a7d8e3f0a1b2c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e6f7081");
-    private static readonly BigInteger K = Hex("1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00");
-    private static readonly BigInteger E = Hex("0a1b2c3d4e5f60718293a4b5c6d7e8f9000102030405060708090a0b0c0d0e0f");
+    private static BigInteger D { get; } = Hex("5b1e9f2c4a7d8e3f0a1b2c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e6f7081");
+    private static BigInteger K { get; } = Hex("1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00");
+    private static BigInteger E { get; } = Hex("0a1b2c3d4e5f60718293a4b5c6d7e8f9000102030405060708090a0b0c0d0e0f");
 
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
-    private static readonly byte[] Domain = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.v1");
-    private static readonly byte[] RandomnessSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.rng.v1");
-    private static readonly FiatShamirHashDelegate Hash = Blake3FiatShamirBackend.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = Blake3FiatShamirBackend.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static byte[] Domain { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.v1");
+    private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.rng.v1");
+    private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
     //An 8-bit difference covers any realistic age − threshold gap (0..255).
     private const int AgeDifferenceBits = 8;

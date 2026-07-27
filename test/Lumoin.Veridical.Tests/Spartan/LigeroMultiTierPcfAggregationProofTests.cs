@@ -94,14 +94,14 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     private const string DirectDomain = "direct_domain";
     private const string UpstreamPrefix = "upstream_";
 
-    private static readonly byte[] RandomSeed = System.Text.Encoding.UTF8.GetBytes("veridical.supplychain.pcfaggregation.rng.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static byte[] RandomSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.supplychain.pcfaggregation.rng.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
     //One scale for every tier: kilograms of CO2-equivalent to two decimals. A
     //shared scale is what makes the field sum the decimal roll-up exactly; the
     //inclusive maximum leaves ample headroom for a whole chain's total and sits far
     //below the field-safe width, so no honest sum wraps.
-    private static readonly FixedPointDomain PcfDomain = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(2), 100_000.00m);
+    private static FixedPointDomain PcfDomain { get; } = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(2), 100_000.00m);
 
 
     [TestMethod]

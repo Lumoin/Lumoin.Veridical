@@ -87,15 +87,15 @@ internal static class PredicateProofOperations
     /// hardcoded, so it always matches the 128-bit-classical target at
     /// <see cref="WiredInverseRate"/> under the wired Johnson regime (64 at rate 1/16).
     /// </summary>
-    public static readonly int WiredQueryCount =
+    public static int WiredQueryCount { get; } =
         WellKnownLigeroParameters.ClassicalSecurityQueryCount(WiredInverseRate, WellKnownLigeroParameters.ClassicalSecurityRegime);
 
     /// <summary>The Merkle digest size in bytes of the wired parameter set.</summary>
     public const int WiredDigestBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
-    private static readonly FiatShamirHashDelegate Hash = Blake3FiatShamirBackend.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = Blake3FiatShamirBackend.GetSqueeze();
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
 
 
     /// <summary>

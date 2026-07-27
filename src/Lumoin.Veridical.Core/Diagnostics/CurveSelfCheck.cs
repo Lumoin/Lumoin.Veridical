@@ -73,22 +73,22 @@ public static class CurveSelfCheck
         "08b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1";
 
 
-    private static readonly BigInteger Bls12Curve381BaseFieldPrime = BigInteger.Parse(
+    private static BigInteger Bls12Curve381BaseFieldPrime { get; } = BigInteger.Parse(
         BaseFieldPrimeHex,
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
-    private static readonly BigInteger Bls12Curve381ScalarFieldOrder = BigInteger.Parse(
+    private static BigInteger Bls12Curve381ScalarFieldOrder { get; } = BigInteger.Parse(
         ScalarFieldOrderHex,
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
-    private static readonly BigInteger Bls12Curve381GeneratorX = BigInteger.Parse(
+    private static BigInteger Bls12Curve381GeneratorX { get; } = BigInteger.Parse(
         GeneratorXHex,
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
-    private static readonly BigInteger Bls12Curve381GeneratorY = BigInteger.Parse(
+    private static BigInteger Bls12Curve381GeneratorY { get; } = BigInteger.Parse(
         GeneratorYHex,
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);

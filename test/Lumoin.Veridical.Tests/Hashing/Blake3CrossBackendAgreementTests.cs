@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.Hashing;
 [TestClass]
 internal sealed class Blake3CrossBackendAgreementTests
 {
-    private static readonly Blake3Backend PortableBackend = Blake3PortableBackend.GetBackend();
+    private static Blake3Backend PortableBackend { get; } = Blake3PortableBackend.GetBackend();
     private const long RandomSweepIterations = 100;
 
 

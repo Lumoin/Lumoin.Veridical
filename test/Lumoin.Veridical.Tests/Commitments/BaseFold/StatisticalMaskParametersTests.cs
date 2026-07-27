@@ -20,7 +20,7 @@ internal sealed class StatisticalMaskParametersTests
     //reveals ≈ 2·rounds + 2 functionals, rank-slacked by 8 (design doc §3).
     private const int RankSlack = 8;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

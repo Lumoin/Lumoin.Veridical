@@ -59,14 +59,14 @@ internal sealed class MdocSignatureWitnessFiller
     /// <summary>The public-input count (one,pkX,pkY,e2 + 6 macs + av, each gf2k 128-bit-expanded).</summary>
     public const int PublicInputCount = 900;
 
-    private static readonly BigInteger Prime = P256BaseFieldReference.FieldOrder;
+    private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
     //The six per-element MAC keys ap and the verifier key av, chosen deterministic GF(2^128) constants
     //(OQ2). The MAC relation mac=(av+ap)·m is satisfied by construction for any choice; these are pinned for
     //reproducibility. Each is a fixed 16-byte little-endian polynomial (the gf2k of_bytes_field convention).
-    private static readonly byte[] AvKey = Gf2kFromHexLittleEndian("a3f10e5572c4901bd6883f2147ac55e0");
+    private static byte[] AvKey { get; } = Gf2kFromHexLittleEndian("a3f10e5572c4901bd6883f2147ac55e0");
 
-    private static readonly byte[][] ApKeys =
+    private static byte[][] ApKeys { get; } =
     [
         Gf2kFromHexLittleEndian("11223344556677889900aabbccddeeff"),
         Gf2kFromHexLittleEndian("0102030405060708090a0b0c0d0e0f10"),
@@ -76,9 +76,9 @@ internal sealed class MdocSignatureWitnessFiller
         Gf2kFromHexLittleEndian("cafebabedeadbeef0123456789abcdef"),
     ];
 
-    private static readonly ScalarAddDelegate GfAdd = Gf2k128Backend.GetAdd();
-    private static readonly ScalarMultiplyDelegate GfMultiply = Gf2k128Backend.GetMultiply();
-    private static readonly ScalarSubtractDelegate FpSubtract = P256BaseFieldReference.GetSubtract();
+    private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+    private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
+    private static ScalarSubtractDelegate FpSubtract { get; } = P256BaseFieldReference.GetSubtract();
 
     private readonly byte[] one;
     private readonly byte[] zero;

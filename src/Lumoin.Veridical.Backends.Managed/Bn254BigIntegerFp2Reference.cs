@@ -29,7 +29,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </remarks>
 internal static class Bn254BigIntegerFp2Reference
 {
-    private static readonly BigInteger BaseFieldPrime = Bn254BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger BaseFieldPrime { get; } = Bn254BigIntegerG1Reference.BaseFieldPrime;
     private const int ComponentSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
     private const int ElementSize = 2 * WellKnownCurves.Bn254BaseFieldSizeBytes;
 

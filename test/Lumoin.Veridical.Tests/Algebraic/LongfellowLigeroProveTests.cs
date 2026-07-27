@@ -63,7 +63,7 @@ internal sealed class LongfellowLigeroProveTests
     private const int OpenedColumnCount = 2;
     private const int TranscriptVersion = 6;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("c4");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("c4");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 

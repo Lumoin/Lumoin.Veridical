@@ -64,7 +64,7 @@ internal sealed class LongfellowZkProveTests
     //The anchor's subfield_boundary is 0 (the reference rebases it: 0 < npub_in, so it stays 0).
     private const int SubfieldBoundary = 0;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 

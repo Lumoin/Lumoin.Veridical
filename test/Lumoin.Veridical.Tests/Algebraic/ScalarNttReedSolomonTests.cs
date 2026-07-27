@@ -41,15 +41,15 @@ internal sealed class ScalarNttReedSolomonTests
 
     //The anchored shapes: a power-of-two codeword and a non-power-of-two
     //codeword whose transform pads 23 up to L = 32.
-    private static readonly (int MessageLength, int CodewordLength)[] AnchorShapes =
+    private static (int MessageLength, int CodewordLength)[] AnchorShapes { get; } =
     [
         (5, 16),
         (9, 23),
     ];
 
-    private static readonly Dictionary<string, string> Anchors = LoadAnchors();
+    private static Dictionary<string, string> Anchors { get; } = LoadAnchors();
 
-    private static readonly (string Prefix, CurveParameterSet Curve, ScalarAddDelegate Add, ScalarSubtractDelegate Subtract, ScalarMultiplyDelegate Multiply, ScalarInvertDelegate Invert, ScalarReduceDelegate Reduce)[] Fields =
+    private static (string Prefix, CurveParameterSet Curve, ScalarAddDelegate Add, ScalarSubtractDelegate Subtract, ScalarMultiplyDelegate Multiply, ScalarInvertDelegate Invert, ScalarReduceDelegate Reduce)[] Fields { get; } =
     [
         (
             "bls12381",

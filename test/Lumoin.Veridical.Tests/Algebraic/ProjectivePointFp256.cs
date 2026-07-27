@@ -32,14 +32,14 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </remarks>
 internal readonly struct ProjectivePointFp256
 {
-    private static readonly BigInteger Prime = EcdsaNonceRecovery.P;
+    private static BigInteger Prime { get; } = EcdsaNonceRecovery.P;
 
     //a_ in elliptic_curve.h: the P-256 curve coefficient a = p − 3 (not the literal −3).
-    private static readonly BigInteger A = EcdsaNonceRecovery.A;
+    private static BigInteger A { get; } = EcdsaNonceRecovery.A;
 
     //k3b in elliptic_curve.h:65 — the EllipticCurve constructor sets k3b = mulf(of_scalar(3), b_),
     //i.e. k3b = 3·b mod p, with b the P-256 curve coefficient.
-    private static readonly BigInteger K3b = Mod(3 * P256BigIntegerG1Reference.CurveB);
+    private static BigInteger K3b { get; } = Mod(3 * P256BigIntegerG1Reference.CurveB);
 
 
     private ProjectivePointFp256(BigInteger x, BigInteger y, BigInteger z)

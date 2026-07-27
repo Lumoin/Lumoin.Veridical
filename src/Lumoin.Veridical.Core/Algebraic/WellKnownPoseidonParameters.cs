@@ -19,7 +19,7 @@ public static class WellKnownPoseidonParameters
     public const int CircomlibFullRounds = 8;
 
     //circomlib's partial-round table, indexed by t − 2 (state widths 2…17).
-    private static readonly int[] CircomlibPartialRounds =
+    private static int[] CircomlibPartialRounds { get; } =
     [
         56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68
     ];
@@ -28,10 +28,10 @@ public static class WellKnownPoseidonParameters
     private const int Bn254FieldSizeBits = 254;
     private const int Bls12Curve381FieldSizeBits = 255;
 
-    private static readonly byte[] Bn254Modulus = Convert.FromHexString(
+    private static byte[] Bn254Modulus { get; } = Convert.FromHexString(
         "30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F0000001");
 
-    private static readonly byte[] Bls12Curve381Modulus = Convert.FromHexString(
+    private static byte[] Bls12Curve381Modulus { get; } = Convert.FromHexString(
         "73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001");
 
 

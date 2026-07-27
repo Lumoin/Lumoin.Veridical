@@ -46,8 +46,8 @@ internal sealed class LongfellowMdocVerifierTests
     //sig-proof remainder underflows.
     private const int SigProofTailCutBytes = 5;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("mdoc-driver-gate");
-    private static readonly byte[] AnchorProofSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("mdoc-driver-gate");
+    private static byte[] AnchorProofSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
 

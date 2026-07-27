@@ -16,12 +16,12 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 /// </remarks>
 internal static class ZkInterfaceFieldReconciler
 {
-    private static readonly BigInteger Bls12Curve381ScalarFieldModulus = BigInteger.Parse(
+    private static BigInteger Bls12Curve381ScalarFieldModulus { get; } = BigInteger.Parse(
         "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
-    private static readonly BigInteger Bn254ScalarFieldModulus = BigInteger.Parse(
+    private static BigInteger Bn254ScalarFieldModulus { get; } = BigInteger.Parse(
         "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);

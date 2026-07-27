@@ -24,7 +24,7 @@ internal sealed class BbsSubgroupValidationTests
     //encoded root y = p - 2 is the lexicographically larger one; the x bytes
     //are all zero. Re-derive by walking x upward from 0 and taking the first
     //x whose curve RHS is a quadratic residue and whose point fails [r]P == O.
-    private static readonly byte[] WrongSubgroupG1Compressed = Convert.FromHexString(
+    private static byte[] WrongSubgroupG1Compressed { get; } = Convert.FromHexString(
         "a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
 
     //Pre-calculated wrong-subgroup probe for G2: the point with x = (2, 0) on
@@ -34,7 +34,7 @@ internal sealed class BbsSubgroupValidationTests
     //compression 0x80 plus y-parity 0x20 because y.c1 is the lexicographically
     //larger root component - followed by x.c0 = 2. Re-derive by walking
     //x = (n, 0) upward from n = 0 with the same first-hit rule as G1.
-    private static readonly byte[] WrongSubgroupG2Compressed = Convert.FromHexString(
+    private static byte[] WrongSubgroupG2Compressed { get; } = Convert.FromHexString(
         "a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002");
 
     //Pre-calculated off-curve probes: x = 1 on the G1 side (1 + 4 = 5 is a
@@ -43,17 +43,17 @@ internal sealed class BbsSubgroupValidationTests
     //octets_to_point fails for both, so on-curve validation must reject them.
     //Re-derive by walking x upward from 0 and taking the first x whose curve
     //RHS is a quadratic non-residue.
-    private static readonly byte[] OffCurveG1Compressed = Convert.FromHexString(
+    private static byte[] OffCurveG1Compressed { get; } = Convert.FromHexString(
         "800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
 
-    private static readonly byte[] OffCurveG2Compressed = Convert.FromHexString(
+    private static byte[] OffCurveG2Compressed { get; } = Convert.FromHexString(
         "800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
 
-    private static readonly byte[] Header = "subgroup-validation-header"u8.ToArray();
-    private static readonly byte[] PresentationHeader = "subgroup-validation-ph"u8.ToArray();
-    private static readonly BbsMessage[] Messages = [new BbsMessage("first"u8.ToArray()), new BbsMessage("second"u8.ToArray())];
-    private static readonly int[] DisclosedIndices = [0];
-    private static readonly BbsMessage[] DisclosedMessages = [Messages[0]];
+    private static byte[] Header { get; } = "subgroup-validation-header"u8.ToArray();
+    private static byte[] PresentationHeader { get; } = "subgroup-validation-ph"u8.ToArray();
+    private static BbsMessage[] Messages { get; } = [new BbsMessage("first"u8.ToArray()), new BbsMessage("second"u8.ToArray())];
+    private static int[] DisclosedIndices { get; } = [0];
+    private static BbsMessage[] DisclosedMessages { get; } = [Messages[0]];
 
     //Arbitrary distinct key-material seeds, mirroring the sibling failure tests.
     private const byte KeySeed = 0x30;
@@ -66,13 +66,13 @@ internal sealed class BbsSubgroupValidationTests
         ScalarHashToScalarDelegate HashToScalar,
         G1HashToCurveDelegate G1HashToCurve);
 
-    private static readonly SuiteWiring Sha256Wiring = new(
+    private static SuiteWiring Sha256Wiring { get; } = new(
         BbsCiphersuite.Bls12Curve381Sha256,
         TestSetup.Sha256.ExpandMessage,
         TestSetup.Sha256.HashToScalar,
         TestSetup.Sha256.G1HashToCurve);
 
-    private static readonly SuiteWiring Shake256Wiring = new(
+    private static SuiteWiring Shake256Wiring { get; } = new(
         BbsCiphersuite.Bls12Curve381Shake256,
         TestSetup.Shake256.ExpandMessage,
         TestSetup.Shake256.HashToScalar,

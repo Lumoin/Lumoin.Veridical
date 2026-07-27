@@ -20,12 +20,12 @@ internal sealed class P256BigIntegerG1ReferenceTests
 {
     private const int CompressedSize = 33;
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
-    private static readonly G1AddDelegate Add = P256BigIntegerG1Reference.GetAdd();
-    private static readonly G1NegateDelegate Negate = P256BigIntegerG1Reference.GetNegate();
-    private static readonly G1ScalarMultiplyDelegate ScalarMultiply = P256BigIntegerG1Reference.GetScalarMultiply();
-    private static readonly G1MultiScalarMultiplyDelegate Msm = P256BigIntegerG1Reference.GetMultiScalarMultiply();
+    private static G1AddDelegate Add { get; } = P256BigIntegerG1Reference.GetAdd();
+    private static G1NegateDelegate Negate { get; } = P256BigIntegerG1Reference.GetNegate();
+    private static G1ScalarMultiplyDelegate ScalarMultiply { get; } = P256BigIntegerG1Reference.GetScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate Msm { get; } = P256BigIntegerG1Reference.GetMultiScalarMultiply();
 
     //SEC1 compressed encodings, CPython on P-256.
     private const string GeneratorSec1 = "036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296";

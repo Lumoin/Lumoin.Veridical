@@ -20,9 +20,9 @@ namespace Lumoin.Veridical.Tests.Commitments;
 [TestClass]
 internal sealed class HyraxCommitmentKeyTests
 {
-    private static readonly G1HashToCurveDelegate HashToCurve = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
-    private static readonly G1IsInPrimeOrderSubgroupDelegate IsInSubgroup = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
-    private static readonly G1IsOnCurveDelegate IsOnCurve = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate IsInSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+    private static G1IsOnCurveDelegate IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
 
 
     [TestMethod]

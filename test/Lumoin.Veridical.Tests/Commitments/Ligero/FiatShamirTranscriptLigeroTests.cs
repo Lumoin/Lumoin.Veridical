@@ -26,12 +26,12 @@ internal sealed class FiatShamirTranscriptLigeroTests
     private const int ScalarSize = Scalar.SizeBytes;
     private const int RootSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    private static readonly FiatShamirHashDelegate Hash = Blake3FiatShamirBackend.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = Blake3FiatShamirBackend.GetSqueeze();
-    private static readonly ScalarReduceDelegate Reduce = SmallPrimeFieldScalars.GetReduce();
+    private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+    private static ScalarReduceDelegate Reduce { get; } = SmallPrimeFieldScalars.GetReduce();
 
     //A fixed public-input seed; the transcript binds every challenge to it.
-    private static readonly byte[] Seed = [0x4C, 0x46, 0x34, 0x62, 0x33]; //"LF4b3"
+    private static byte[] Seed { get; } = [0x4C, 0x46, 0x34, 0x62, 0x33]; //"LF4b3"
 
 
     [TestMethod]

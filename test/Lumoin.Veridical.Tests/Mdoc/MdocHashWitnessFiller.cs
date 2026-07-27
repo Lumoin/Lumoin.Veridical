@@ -50,7 +50,7 @@ internal sealed class MdocHashWitnessFiller
     private const int ShaPackedWordElements = (32 + ShaPluckerBits - 1) / ShaPluckerBits;
 
     //The 18-byte COSE1 prefix prepended to the tagged MSO before hashing (mdoc_constants.h kCose1Prefix).
-    private static readonly byte[] Cose1Prefix =
+    private static byte[] Cose1Prefix { get; } =
     [
         0x84, 0x6A, 0x53, 0x69, 0x67, 0x6E, 0x61, 0x74, 0x75,
         0x72, 0x65, 0x31, 0x43, 0xA1, 0x01, 0x26, 0x40, 0x59,

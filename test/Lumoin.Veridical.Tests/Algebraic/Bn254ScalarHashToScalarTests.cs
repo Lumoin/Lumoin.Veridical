@@ -31,10 +31,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254ScalarHashToScalarTests
 {
-    private static readonly ExpandMessageDelegate ExpandSha256 = Rfc9380ExpandMessage.ExpandMessageXmdSha256;
-    private static readonly ScalarHashToScalarDelegate HashToScalar = Bn254BigIntegerScalarReference.GetHashToScalar(ExpandSha256);
+    private static ExpandMessageDelegate ExpandSha256 { get; } = Rfc9380ExpandMessage.ExpandMessageXmdSha256;
+    private static ScalarHashToScalarDelegate HashToScalar { get; } = Bn254BigIntegerScalarReference.GetHashToScalar(ExpandSha256);
 
-    private static readonly BigInteger Order = Bn254BigIntegerG1Reference.ScalarFieldOrder;
+    private static BigInteger Order { get; } = Bn254BigIntegerG1Reference.ScalarFieldOrder;
 
     //Arbitrary fixed message length for the property sweep; the hash-to-scalar
     //properties (determinism, canonical range) are independent of message size.

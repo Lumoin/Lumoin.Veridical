@@ -23,13 +23,13 @@ internal sealed class Bls12Curve381PippengerG1BackendTests
     private const int PointSize = WellKnownCurves.Bls12Curve381G1CompressedSizeBytes;
     private const int ScalarSize = 32;
 
-    private static readonly G1MultiScalarMultiplyDelegate ReferenceMsm = Bls12Curve381BigIntegerG1Reference.GetMultiScalarMultiply();
-    private static readonly G1MultiScalarMultiplyDelegate PippengerMsm = Bls12Curve381PippengerG1Backend.GetMultiScalarMultiply();
-    private static readonly G1HashToCurveDelegate HashToCurve = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static G1MultiScalarMultiplyDelegate ReferenceMsm { get; } = Bls12Curve381BigIntegerG1Reference.GetMultiScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate PippengerMsm { get; } = Bls12Curve381PippengerG1Backend.GetMultiScalarMultiply();
+    private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
-    private static readonly byte[] DomainSeparationTag = Encoding.UTF8.GetBytes("VERIDICAL-PIPPENGER-AGREEMENT-TEST-V1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static byte[] DomainSeparationTag { get; } = Encoding.UTF8.GetBytes("VERIDICAL-PIPPENGER-AGREEMENT-TEST-V1");
 
 
     //Sizes straddle the window-width breakpoints of WindowBitsFor: 1-3 run the

@@ -48,7 +48,7 @@ internal static class LongfellowZkProver
     private const int DigestLength = 32;
 
     //The reference's ZkProver hash_of_A: {0xde, 0xad, 0xbe, 0xef} then zero-filled to 32 bytes.
-    private static readonly byte[] TheoremStatementHash = BuildTheoremStatementHash();
+    private static byte[] TheoremStatementHash { get; } = BuildTheoremStatementHash();
 
 
     /// <summary>

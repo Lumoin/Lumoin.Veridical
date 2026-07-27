@@ -46,7 +46,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     //The P-256 base field prime:
     //p = ffffffff 00000001 00000000 00000000 00000000 ffffffff ffffffff ffffffff
     //Leading "0" keeps the 0xff high byte from being parsed as negative.
-    private static readonly BigInteger Fp256Prime = BigInteger.Parse(
+    private static BigInteger Fp256Prime { get; } = BigInteger.Parse(
         "0ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
         NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 

@@ -29,16 +29,16 @@ internal sealed class BaseFoldEvaluationTests
     //Scalar field ops come from the environment-aware bundle (SIMD when the host
     //supports it, BigInteger otherwise) — byte-identical to the reference, so this
     //exercises the SIMD path end-to-end through BaseFold without changing results.
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate Multiply = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly ScalarInvertDelegate Invert = TestScalarBackends.Bls12Curve381.Invert;
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarHashToScalarDelegate HashToScalar = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
-    private static readonly MleEvaluateDelegate MleEvaluate = MultilinearExtensionBigIntegerReference.GetEvaluate();
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
@@ -48,7 +48,7 @@ internal sealed class BaseFoldEvaluationTests
     private const int TestQueryCount = 12;
     private const int IterationCount = 12;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

@@ -18,17 +18,17 @@ internal sealed class HyraxOpeningProofInspectorTests
 {
     private const string TranscriptDomain = "veridical.test.hyrax.inspector.v1";
 
-    private static readonly G1HashToCurveDelegate HashToCurve = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
-    private static readonly G1AddDelegate G1Add = Bls12Curve381BigIntegerG1Reference.GetAdd();
-    private static readonly G1ScalarMultiplyDelegate G1ScalarMul = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
-    private static readonly G1MultiScalarMultiplyDelegate G1Msm = TestG1Backends.Bls12Curve381Msm;
-    private static readonly ScalarAddDelegate ScalarAdd = Bls12Curve381BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarSubtractDelegate ScalarSubtract = Bls12Curve381BigIntegerScalarReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate ScalarMul = Bls12Curve381BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarInvertDelegate ScalarInvert = Bls12Curve381BigIntegerScalarReference.GetInvert();
-    private static readonly ScalarReduceDelegate ScalarReduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
+    private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+    private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+    private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static ScalarAddDelegate ScalarAdd { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+    private static ScalarSubtractDelegate ScalarSubtract { get; } = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+    private static ScalarMultiplyDelegate ScalarMul { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+    private static ScalarInvertDelegate ScalarInvert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
+    private static ScalarReduceDelegate ScalarReduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
 
 
     [TestMethod]

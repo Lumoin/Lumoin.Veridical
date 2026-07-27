@@ -17,10 +17,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254NeonScalarBackendAgreementTests
 {
-    private static readonly ScalarReduceDelegate ReduceDelegate =
+    private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bn254BigIntegerScalarReference.GetReduce();
 
-    private static readonly Gen<byte[]> RawScalarBytesGen =
+    private static Gen<byte[]> RawScalarBytesGen { get; } =
         Gen.Byte.Array[Scalar.SizeBytes];
 
     private const long IterationCount = 200;

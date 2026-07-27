@@ -39,8 +39,8 @@ internal sealed class BaseFoldFoldChainGuardTests
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
-    private static readonly byte[] CodeSeed = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.foldchain.guard.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.foldchain.guard.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

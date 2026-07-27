@@ -28,15 +28,15 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class MaskedSpartanMaskOrderConventionTests
 {
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate Multiply = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
     private const int ScalarSize = 32;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
-    private static readonly byte[] MaskSeed = Encoding.UTF8.GetBytes("veridical.spartan.mask-order-convention.test.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan.mask-order-convention.test.v1");
 
 
     [TestMethod]

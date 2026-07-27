@@ -46,21 +46,21 @@ internal static class LongfellowMdocBundles
 
 
     //The GF(2^128) hash-side delegates (all public in Backends.Managed). Subtract coincides with add (XOR).
-    private static readonly ScalarAddDelegate GfAdd = Gf2k128Backend.GetAdd();
-    private static readonly ScalarSubtractDelegate GfSubtract = Gf2k128Backend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate GfMultiply = Gf2k128Backend.GetMultiply();
-    private static readonly ScalarInvertDelegate GfInvert = Gf2k128Backend.GetInvert();
+    private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+    private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
+    private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
+    private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
     //The Fp256 sig-side delegates (internal in Backends.Managed, reached through the package's IVT). Add and
     //subtract are domain-linear, so the canonical delegates serve the Montgomery working domain unchanged; the
     //multiply and invert are the Montgomery-domain (single-CIOS) variants.
-    private static readonly ScalarAddDelegate Fp256Add = P256BaseFieldMontgomeryBackend.GetAdd();
-    private static readonly ScalarSubtractDelegate Fp256Subtract = P256BaseFieldMontgomeryBackend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Fp256MultiplyMontgomery = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
-    private static readonly ScalarInvertDelegate Fp256InvertMontgomery = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
+    private static ScalarAddDelegate Fp256Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
+    private static ScalarSubtractDelegate Fp256Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
+    private static ScalarMultiplyDelegate Fp256MultiplyMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
+    private static ScalarInvertDelegate Fp256InvertMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
 
     //The P-256 base-field prime the sig profile's of_scalar reduction and in_range predicate close over.
-    private static readonly BigInteger Fp256Prime = P256BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger Fp256Prime { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
 
 
     /// <summary>

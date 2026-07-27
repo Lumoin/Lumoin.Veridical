@@ -16,7 +16,7 @@ namespace Lumoin.Veridical.Tests.Hashing;
 [TestClass]
 internal sealed class Blake3PortableConformanceTests
 {
-    private static readonly Blake3Backend Backend = Blake3PortableBackend.GetBackend();
+    private static Blake3Backend Backend { get; } = Blake3PortableBackend.GetBackend();
 
 
     public static IEnumerable<object[]> AllVectors =>

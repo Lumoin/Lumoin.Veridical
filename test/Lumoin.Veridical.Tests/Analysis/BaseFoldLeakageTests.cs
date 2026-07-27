@@ -41,9 +41,9 @@ internal sealed class BaseFoldLeakageTests
     private const int VariableCount = 2;
     private const int SampleCount = 40;
 
-    private static readonly byte[] CodeSeed = Encoding.UTF8.GetBytes("veridical.analysis.basefold-leakage.code.v1");
-    private static readonly byte[] RandomSeed = Encoding.UTF8.GetBytes("veridical.analysis.basefold-leakage.rng.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.basefold-leakage.code.v1");
+    private static byte[] RandomSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.basefold-leakage.rng.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

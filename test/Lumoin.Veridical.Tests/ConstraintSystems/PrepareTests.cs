@@ -19,8 +19,8 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 [TestClass]
 internal sealed class PrepareTests
 {
-    private static readonly ScalarAddDelegate Add = Bls12Curve381BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarMultiplyDelegate Multiply = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+    private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+    private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
 
 
     [TestMethod]

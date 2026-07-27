@@ -65,15 +65,15 @@ internal static class Bn254BigIntegerScalarReference
         CultureInfo.InvariantCulture);
 
 
-    private static readonly ProviderLibrary ProviderLibraryIdentity = new(
+    private static ProviderLibrary ProviderLibraryIdentity { get; } = new(
         Name: "Lumoin.Veridical.Backends.Managed",
         Version: typeof(Bn254BigIntegerScalarReference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly CryptoLibrary CryptoLibraryIdentity = new(
+    private static CryptoLibrary CryptoLibraryIdentity { get; } = new(
         Name: "System.Numerics.BigInteger",
         Version: typeof(BigInteger).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly ProviderClass ProviderClassIdentity = new(
+    private static ProviderClass ProviderClassIdentity { get; } = new(
         Name: nameof(Bn254BigIntegerScalarReference));
 
 

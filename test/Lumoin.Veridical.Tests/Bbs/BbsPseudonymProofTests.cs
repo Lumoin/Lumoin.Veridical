@@ -21,7 +21,7 @@ internal sealed class BbsPseudonymProofTests
 {
     private const int ScalarSize = BbsProof.ScalarSizeBytes;
 
-    private static readonly BbsCiphersuite Suite = BbsCiphersuite.Bls12Curve381Sha256Pseudonym;
+    private static BbsCiphersuite Suite { get; } = BbsCiphersuite.Bls12Curve381Sha256Pseudonym;
 
     private static ReadOnlySpan<byte> PointFiller =>
         WellKnownCurves.GetG1GeneratorCompressed(CurveParameterSet.Bls12Curve381);

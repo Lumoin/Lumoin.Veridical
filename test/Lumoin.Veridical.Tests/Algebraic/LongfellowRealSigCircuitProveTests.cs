@@ -81,7 +81,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
     //is no GF/a_v side baking 16). Version 7 matches the deployed sig path.
     private const int TranscriptVersion = 7;
 
-    private static readonly byte[] TranscriptSeed = System.Text.Encoding.ASCII.GetBytes("fp256-real-sig-e2e");
+    private static byte[] TranscriptSeed { get; } = System.Text.Encoding.ASCII.GetBytes("fp256-real-sig-e2e");
 
     //The decompressed real-circuit bytes (~99 MB); decompress once and share across the imports.
     private static byte[] RawCircuitBytes { get; } = DecompressGzip(ReadFixture(RawGzipRelativePath));

@@ -17,10 +17,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class FiatShamirTranscriptDeterminismTests
 {
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly FiatShamirDomainLabel DomainLabel = new("veridical.test.determinism.v1");
-    private static readonly FiatShamirOperationLabel ChallengeLabel = new("test.challenge");
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static FiatShamirDomainLabel DomainLabel { get; } = new("veridical.test.determinism.v1");
+    private static FiatShamirOperationLabel ChallengeLabel { get; } = new("test.challenge");
 
     private const int SqueezeByteCount = 32;
     private const long IterationCount = 30;

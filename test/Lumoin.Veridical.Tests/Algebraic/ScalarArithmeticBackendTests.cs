@@ -14,7 +14,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class ScalarArithmeticBackendTests
 {
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

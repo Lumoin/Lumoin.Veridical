@@ -29,7 +29,7 @@ namespace Lumoin.Veridical.Bbs;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BbsBlindProofGenerationExtensions
 {
-    private static readonly ProviderOperation BlindProofGenOperation = new("BbsBlindGenerateProof");
+    private static ProviderOperation BlindProofGenOperation { get; } = new("BbsBlindGenerateProof");
 
 
     extension(BbsBlindSignature signature)

@@ -47,18 +47,18 @@ internal sealed class Fp256EcGadgetTests
     private const int CompressedSize = 33;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    private static readonly BigInteger P = P256BigIntegerG1Reference.BaseFieldPrime;
-    private static readonly BigInteger A = P256BigIntegerG1Reference.CurveA;
-    private static readonly BigInteger B = P256BigIntegerG1Reference.CurveB;
+    private static BigInteger P { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger A { get; } = P256BigIntegerG1Reference.CurveA;
+    private static BigInteger B { get; } = P256BigIntegerG1Reference.CurveB;
 
     //The curve constants a, b as canonical Fp256 bytes for the Core gadget layer.
-    private static readonly byte[] CurveABytes = ToCanonical(A);
-    private static readonly byte[] CurveBBytes = ToCanonical(B);
+    private static byte[] CurveABytes { get; } = ToCanonical(A);
+    private static byte[] CurveBBytes { get; } = ToCanonical(B);
 
     //The standard P-256 base point (FIPS 186-4 / SEC2 secp256r1).
-    private static readonly BigInteger GeneratorX = BigInteger.Parse(
+    private static BigInteger GeneratorX { get; } = BigInteger.Parse(
         "06b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-    private static readonly BigInteger GeneratorY = BigInteger.Parse(
+    private static BigInteger GeneratorY { get; } = BigInteger.Parse(
         "04fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 
     private const int InverseRate = 4;
@@ -70,12 +70,12 @@ internal sealed class Fp256EcGadgetTests
     //one is fine for gating arithmetic against the reference.
     private const string NonceHex = "1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00";
 
-    private static readonly byte[] TranscriptSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ec-add.v1");
-    private static readonly byte[] RandomnessSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ec-add.rng.v1");
+    private static byte[] TranscriptSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ec-add.v1");
+    private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ec-add.rng.v1");
 
-    private static readonly FiatShamirHashDelegate Hash = Blake3FiatShamirBackend.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = Blake3FiatShamirBackend.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
     [TestMethod]
@@ -702,7 +702,7 @@ internal sealed class Fp256EcGadgetTests
     //Identity-aware oracle (null = the point at infinity O) for full-scale
     //    Alg.4 verification, where intermediate and final sums may be O
 
-    private static readonly BigInteger N = WellKnownCurves.GetScalarFieldOrder(CurveParameterSet.P256);
+    private static BigInteger N { get; } = WellKnownCurves.GetScalarFieldOrder(CurveParameterSet.P256);
 
     private static BigInteger ModOrder(BigInteger v) => ((v % N) + N) % N;
 

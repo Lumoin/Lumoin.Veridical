@@ -48,7 +48,7 @@ public class Gf2kBatchMultiplyBenchmarks
     private const int ElementOffset = 16;
     private const int BenchmarkSeed = 0x6F2C0128;
     private const int MaxBatchSize = 16384;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
 
     /// <summary>Batch sizes the benchmark sweeps: 64 (a small sub-phase), 1024 (a fold step), 16384 (a row encode / layer fold).</summary>

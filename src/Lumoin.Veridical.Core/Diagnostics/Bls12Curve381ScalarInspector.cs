@@ -30,7 +30,7 @@ public static class Bls12Curve381ScalarInspector
     // r = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001.
     // Used by IsInCanonicalRange to compare a scalar's bytes against r
     // lexicographically without paying a BigInteger conversion.
-    private static readonly byte[] ScalarFieldOrderBytes =
+    private static byte[] ScalarFieldOrderBytes { get; } =
     [
         0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48,
         0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05,

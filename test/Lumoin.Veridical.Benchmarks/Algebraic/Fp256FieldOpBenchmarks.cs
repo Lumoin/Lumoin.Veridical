@@ -24,7 +24,7 @@ public class Fp256FieldOpBenchmarks
 {
     private const int ScalarBytes = 32;
     private const int BenchmarkSeed = 0x5EED5EED;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
     private byte[] a = null!;
     private byte[] b = null!;

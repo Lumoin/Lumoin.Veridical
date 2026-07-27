@@ -53,7 +53,7 @@ public static class ManagedShake256
     //Final pad10*1 bit set in the last byte of the rate block.
     private const byte FinalPadBit = 0x80;
 
-    private static readonly ulong[] RoundConstants =
+    private static ulong[] RoundConstants { get; } =
     [
         0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL, 0x8000000080008000UL,
         0x000000000000808bUL, 0x0000000080000001UL, 0x8000000080008081UL, 0x8000000000008009UL,

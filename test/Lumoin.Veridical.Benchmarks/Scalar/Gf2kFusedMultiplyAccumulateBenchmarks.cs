@@ -41,7 +41,7 @@ public class Gf2kFusedMultiplyAccumulateBenchmarks
     private const int ElementOffset = 16;
     private const int BenchmarkSeed = 0x1AC0F2C0;
     private const int MaxBatchSize = 16384;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
 
     /// <summary>Batch sizes the benchmark sweeps: 64, 1024, 16384.</summary>

@@ -36,7 +36,7 @@ internal sealed class ScalarNttLigeroRowExtenderTests
     //The representative shapes: the degenerate and small PCS shapes, the
     //CLI-wired rate-1/16 row shape (8, 128), a rateless no-extension shape and
     //non-power-of-two codeword lengths that pad up to the next transform size.
-    private static readonly (int MessageLength, int CodewordLength)[] Shapes =
+    private static (int MessageLength, int CodewordLength)[] Shapes { get; } =
     [
         (1, 4),
         (2, 8),
@@ -47,7 +47,7 @@ internal sealed class ScalarNttLigeroRowExtenderTests
         (16, 64),
     ];
 
-    private static readonly (string Prefix, CurveParameterSet Curve, ScalarAddDelegate Add, ScalarSubtractDelegate Subtract, ScalarMultiplyDelegate Multiply, ScalarInvertDelegate Invert, ScalarReduceDelegate Reduce)[] Fields =
+    private static (string Prefix, CurveParameterSet Curve, ScalarAddDelegate Add, ScalarSubtractDelegate Subtract, ScalarMultiplyDelegate Multiply, ScalarInvertDelegate Invert, ScalarReduceDelegate Reduce)[] Fields { get; } =
     [
         (
             "bls12381",
@@ -69,9 +69,9 @@ internal sealed class ScalarNttLigeroRowExtenderTests
         ),
     ];
 
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
     [TestMethod]

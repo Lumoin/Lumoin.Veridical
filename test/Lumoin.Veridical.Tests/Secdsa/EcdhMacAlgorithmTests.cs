@@ -38,7 +38,7 @@ internal sealed class EcdhMacAlgorithmTests
 
     //Deterministic (walletShareLabel, wscaShareLabel, baseKeyLabel, verifierEphemeralLabel) tuples for the
     //split-vs-direct agreement gate; no unseeded randomness anywhere in this file.
-    private static readonly (string WalletShareLabel, string WscaShareLabel, string BaseKeyLabel, string VerifierEphemeralLabel)[] SplitVsDirectKeyTuples =
+    private static (string WalletShareLabel, string WscaShareLabel, string BaseKeyLabel, string VerifierEphemeralLabel)[] SplitVsDirectKeyTuples { get; } =
     [
         ("ecdhmac-split-wallet-share-1", "ecdhmac-split-wsca-share-1", "ecdhmac-split-base-key-1", "ecdhmac-split-verifier-ephemeral-1"),
         ("ecdhmac-split-wallet-share-2", "ecdhmac-split-wsca-share-2", "ecdhmac-split-base-key-2", "ecdhmac-split-verifier-ephemeral-2"),
@@ -47,7 +47,7 @@ internal sealed class EcdhMacAlgorithmTests
 
     //(salt, sharedInfo) combinations covering the paper's plain form (both empty) and the ISO 18013-5 EMacKey
     //shape (both non-empty).
-    private static readonly (byte[] Salt, byte[] SharedInfo)[] ContextCombinations =
+    private static (byte[] Salt, byte[] SharedInfo)[] ContextCombinations { get; } =
     [
         ([], []),
         (Encoding.ASCII.GetBytes("session-transcript-hash"), Encoding.ASCII.GetBytes("EMacKey")),

@@ -51,7 +51,7 @@ internal sealed class LongfellowSumcheckTests
     private const int ScalarSize = Scalar.SizeBytes;
     private const int TranscriptVersion = 6;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("sc7");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("sc7");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 

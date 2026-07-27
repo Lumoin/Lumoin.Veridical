@@ -72,8 +72,8 @@ internal sealed class LongfellowFp256ZkProveTests
     private const int GfSubFieldBytes = 2;
     private const int GfSubfieldBoundary = 0;
 
-    private static readonly byte[] Fp256TranscriptSeed = Encoding.ASCII.GetBytes("fp256-zk-e2e");
-    private static readonly byte[] GfTranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] Fp256TranscriptSeed { get; } = Encoding.ASCII.GetBytes("fp256-zk-e2e");
+    private static byte[] GfTranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 

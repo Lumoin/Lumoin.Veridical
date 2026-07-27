@@ -84,7 +84,7 @@ public readonly struct LookupArgument: IEquatable<LookupArgument>
     public static LookupArgument LogUp { get; } = new(6);
 
 
-    private static readonly List<LookupArgument> lookupArguments =
+    private static List<LookupArgument> lookupArguments { get; } =
         [None, Lasso, Jolt, Plookup, Halo2Lookup, CaulkPlus, LogUp];
 
 

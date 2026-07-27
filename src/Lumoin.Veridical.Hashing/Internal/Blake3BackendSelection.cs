@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Hashing.Internal;
 /// </remarks>
 internal static class Blake3BackendSelection
 {
-    private static readonly Blake3Backend Cached = ComputeBest();
+    private static Blake3Backend Cached { get; } = ComputeBest();
 
 
     /// <summary>Returns the cached best-available backend for this process.</summary>

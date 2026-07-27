@@ -122,7 +122,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     /// otherwise recompute it from <see cref="BaseFieldPrime"/> on each
     /// call.
     /// </summary>
-    private static readonly BigInteger SqrtExponent = (BaseFieldPrime + BigInteger.One) >> 2;
+    private static BigInteger SqrtExponent { get; } = (BaseFieldPrime + BigInteger.One) >> 2;
 
 
     /// <summary>
@@ -132,18 +132,18 @@ internal static class Bls12Curve381BigIntegerG1Reference
     /// inversion sits on the hot path through
     /// <see cref="JacobianToAffine"/> and <see cref="PointAdd"/>.
     /// </summary>
-    private static readonly BigInteger ModInverseExponent = BaseFieldPrime - 2;
+    private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
 
-    private static readonly ProviderLibrary ProviderLibraryIdentity = new(
+    private static ProviderLibrary ProviderLibraryIdentity { get; } = new(
         Name: "Lumoin.Veridical.Backends.Managed",
         Version: typeof(Bls12Curve381BigIntegerG1Reference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly CryptoLibrary CryptoLibraryIdentity = new(
+    private static CryptoLibrary CryptoLibraryIdentity { get; } = new(
         Name: "System.Numerics.BigInteger",
         Version: typeof(BigInteger).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly ProviderClass ProviderClassIdentity = new(
+    private static ProviderClass ProviderClassIdentity { get; } = new(
         Name: nameof(Bls12Curve381BigIntegerG1Reference));
 
 
@@ -469,28 +469,28 @@ internal static class Bls12Curve381BigIntegerG1Reference
     //RFC 9380 §8.8.1 + §E.2 constants for BLS12-381 G1 SSWU + 11-isogeny.
 
     /// <summary>The simplified-SWU map parameter Z = 11.</summary>
-    private static readonly BigInteger SswuZ = new(11);
+    private static BigInteger SswuZ { get; } = new(11);
 
     /// <summary>The isogenous curve E' coefficient A'.</summary>
-    private static readonly BigInteger SswuIsoA = BigInteger.Parse(
+    private static BigInteger SswuIsoA { get; } = BigInteger.Parse(
         "00144698a3b8e9433d693a02c96d4982b0ea985383ee66a8d8e8981aefd881ac98936f8da0e0f97f5cf428082d584c1d",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
     /// <summary>The isogenous curve E' coefficient B'.</summary>
-    private static readonly BigInteger SswuIsoB = BigInteger.Parse(
+    private static BigInteger SswuIsoB { get; } = BigInteger.Parse(
         "0012e2908d11688030018b12e8753eee3b2016c1f0f24f4070a0b9c14fcef35ef55a23215a316ceaa5d1cc48e98e172be0",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
     /// <summary>RFC 9380 §8.8.1 cofactor for clear_cofactor on BLS12-381 G1.</summary>
-    private static readonly BigInteger HashToCurveCofactorHEff = BigInteger.Parse(
+    private static BigInteger HashToCurveCofactorHEff { get; } = BigInteger.Parse(
         "0d201000000010001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
 
-    private static readonly BigInteger[] IsogenyXNumCoeffs = new[]
+    private static BigInteger[] IsogenyXNumCoeffs { get; } = new[]
     {
         "011a05f2b1e833340b809101dd99815856b303e88a2d7005ff2627b56cdb4e2c85610c2d5f2e62d6eaeac1662734649b7",
         "017294ed3e943ab2f0588bab22147a81c7c17e75b2f6a8417f565e33c70d1e86b4838f2a6f318c356e834eef1b3cb83bb",
@@ -506,7 +506,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
         "006e08c248e260e70bd1e962381edee3d31d79d7e22c837bc23c0bf1bc24c6b68c24b1b80b64d391fa9c8ba2e8ba2d229",
     }.Select(h => BigInteger.Parse(h, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
 
-    private static readonly BigInteger[] IsogenyXDenCoeffs = new[]
+    private static BigInteger[] IsogenyXDenCoeffs { get; } = new[]
     {
         "008ca8d548cff19ae18b2e62f4bd3fa6f01d5ef4ba35b48ba9c9588617fc8ac62b558d681be343df8993cf9fa40d21b1c",
         "012561a5deb559c4348b4711298e536367041e8ca0cf0800c0126c2588c48bf5713daa8846cb026e9e5c8276ec82b3bff",
@@ -521,7 +521,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
         "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
     }.Select(h => BigInteger.Parse(h, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
 
-    private static readonly BigInteger[] IsogenyYNumCoeffs = new[]
+    private static BigInteger[] IsogenyYNumCoeffs { get; } = new[]
     {
         "0090d97c81ba24ee0259d1f094980dcfa11ad138e48a869522b52af6c956543d3cd0c7aee9b3ba3c2be9845719707bb33",
         "0134996a104ee5811d51036d776fb46831223e96c254f383d0f906343eb67ad34d6c56711962fa8bfe097e75a2e41c696",
@@ -541,7 +541,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
         "015e6be4e990f03ce4ea50b3b42df2eb5cb181d8f84965a3957add4fa95af01b2b665027efec01c7704b456be69c8b604",
     }.Select(h => BigInteger.Parse(h, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
 
-    private static readonly BigInteger[] IsogenyYDenCoeffs = new[]
+    private static BigInteger[] IsogenyYDenCoeffs { get; } = new[]
     {
         "016112c4c3a9c98b252181140fad0eae9601a6de578980be6eec3232b5be72e7a07f3688ef60c206d01479253b03663c1",
         "01962d75c2381201e1a0cbd6c43c348b885c84ff731c4d59ca4a10356f453e01f78a4260763529e3532f6102c2e49a03d",

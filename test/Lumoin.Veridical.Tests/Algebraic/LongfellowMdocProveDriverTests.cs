@@ -98,11 +98,11 @@ internal sealed class LongfellowMdocProveDriverTests
     private const int TranscriptElementBytes = 16;
     private const int TranscriptVersion = 7;
 
-    private static readonly byte[] Now = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
+    private static byte[] Now { get; } = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
 
     //A deterministic dual-field session seed (the same seed both ends; the driver and verifier each build a
     //fresh transcript from it).
-    private static readonly byte[] SessionSeed = Encoding.ASCII.GetBytes("mdoc-dual-field-prove-driver");
+    private static byte[] SessionSeed { get; } = Encoding.ASCII.GetBytes("mdoc-dual-field-prove-driver");
 
     private static System.Collections.Generic.Dictionary<string, string> Fixture { get; } = LoadFixture(FixtureRelativePath);
 

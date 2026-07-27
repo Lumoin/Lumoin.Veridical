@@ -472,7 +472,7 @@ public static class WellKnownCurves
     /// BLS12-381 scalar field order
     /// <c>r = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001</c>.
     /// </summary>
-    private static readonly BigInteger Bls12Curve381ScalarFieldOrderValue = BigInteger.Parse(
+    private static BigInteger Bls12Curve381ScalarFieldOrderValue { get; } = BigInteger.Parse(
         "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
@@ -481,7 +481,7 @@ public static class WellKnownCurves
     /// BN254 (alt_bn128) scalar field order
     /// <c>r = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001</c>.
     /// </summary>
-    private static readonly BigInteger Bn254ScalarFieldOrderValue = BigInteger.Parse(
+    private static BigInteger Bn254ScalarFieldOrderValue { get; } = BigInteger.Parse(
         "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
@@ -494,7 +494,7 @@ public static class WellKnownCurves
     /// P-256, value <c>n</c>; SEC 2 v2.0 §2.4.2 secp256r1; FIPS 186-4 Appendix
     /// D.1.2.3.
     /// </summary>
-    private static readonly BigInteger P256ScalarFieldOrderValue = BigInteger.Parse(
+    private static BigInteger P256ScalarFieldOrderValue { get; } = BigInteger.Parse(
         "0ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
@@ -508,7 +508,7 @@ public static class WellKnownCurves
     //isBigEndian: true) at that curve's scalar width. The canonicity gates in the
     //rejection tests pin these against GetScalarFieldOrder, so drift fails loudly.
 
-    private static readonly byte[] Bls12Curve381ScalarFieldOrderBytes =
+    private static byte[] Bls12Curve381ScalarFieldOrderBytes { get; } =
     [
         0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48,
         0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05,
@@ -516,7 +516,7 @@ public static class WellKnownCurves
         0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01
     ];
 
-    private static readonly byte[] Bn254ScalarFieldOrderBytes =
+    private static byte[] Bn254ScalarFieldOrderBytes { get; } =
     [
         0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
         0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
@@ -524,7 +524,7 @@ public static class WellKnownCurves
         0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01
     ];
 
-    private static readonly byte[] P256ScalarFieldOrderBytes =
+    private static byte[] P256ScalarFieldOrderBytes { get; } =
     [
         0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -632,7 +632,7 @@ public static class WellKnownCurves
     //G1Point/G2Point wrapper types look them up rather than embedding any one
     //curve's bytes. Per-curve entries are added as each curve is wired.
 
-    private static readonly byte[] Bls12Curve381G1GeneratorCompressed =
+    private static byte[] Bls12Curve381G1GeneratorCompressed { get; } =
     [
         0x97, 0xf1, 0xd3, 0xa7, 0x31, 0x97, 0xd7, 0x94,
         0x26, 0x95, 0x63, 0x8c, 0x4f, 0xa9, 0xac, 0x0f,
@@ -642,7 +642,7 @@ public static class WellKnownCurves
         0xfb, 0x3a, 0xf0, 0x0a, 0xdb, 0x22, 0xc6, 0xbb
     ];
 
-    private static readonly byte[] Bls12Curve381G1IdentityCompressed =
+    private static byte[] Bls12Curve381G1IdentityCompressed { get; } =
     [
         0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -652,7 +652,7 @@ public static class WellKnownCurves
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     ];
 
-    private static readonly byte[] Bls12Curve381G2GeneratorCompressed =
+    private static byte[] Bls12Curve381G2GeneratorCompressed { get; } =
     [
         0x93, 0xe0, 0x2b, 0x60, 0x52, 0x71, 0x9f, 0x60,
         0x7d, 0xac, 0xd3, 0xa0, 0x88, 0x27, 0x4f, 0x65,
@@ -668,7 +668,7 @@ public static class WellKnownCurves
         0xd4, 0x80, 0x56, 0xc8, 0xc1, 0x21, 0xbd, 0xb8
     ];
 
-    private static readonly byte[] Bls12Curve381G2IdentityCompressed =
+    private static byte[] Bls12Curve381G2IdentityCompressed { get; } =
     [
         0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -693,7 +693,7 @@ public static class WellKnownCurves
     //(0x80) and the encoding is 0x80 followed by x = 1. The identity carries
     //the 0b01 (0x40) infinity tag with all x bits zero.
 
-    private static readonly byte[] Bn254G1GeneratorCompressed =
+    private static byte[] Bn254G1GeneratorCompressed { get; } =
     [
         0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -701,7 +701,7 @@ public static class WellKnownCurves
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01
     ];
 
-    private static readonly byte[] Bn254G1IdentityCompressed =
+    private static byte[] Bn254G1IdentityCompressed { get; } =
     [
         0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -716,11 +716,11 @@ public static class WellKnownCurves
     //canonical alt_bn128 G2 point (py_ecc / EIP-197); its y is the smaller root,
     //so its tag is 0b10 (0x80). The identity carries the 0b01 (0x40) tag.
 
-    private static readonly byte[] Bn254G2GeneratorCompressed = Convert.FromHexString(
+    private static byte[] Bn254G2GeneratorCompressed { get; } = Convert.FromHexString(
         "998e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2"
         + "1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed");
 
-    private static readonly byte[] Bn254G2IdentityCompressed = Convert.FromHexString(
+    private static byte[] Bn254G2IdentityCompressed { get; } = Convert.FromHexString(
         "40" + new string('0', 126));
 
 

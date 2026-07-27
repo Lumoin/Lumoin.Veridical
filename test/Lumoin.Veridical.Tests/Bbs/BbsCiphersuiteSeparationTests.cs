@@ -13,9 +13,9 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsCiphersuiteSeparationTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0xA0);
-    private static readonly byte[] KeyInfo = "ciphersuite-separation-key-info"u8.ToArray();
-    private static readonly byte[] Header = "ciphersuite-separation-header"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0xA0);
+    private static byte[] KeyInfo { get; } = "ciphersuite-separation-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "ciphersuite-separation-header"u8.ToArray();
 
 
     [TestMethod]

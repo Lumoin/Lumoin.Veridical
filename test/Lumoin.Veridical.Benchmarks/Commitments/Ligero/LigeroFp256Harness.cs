@@ -33,23 +33,23 @@ internal static class LigeroFp256Harness
 
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    public static readonly BigInteger P = P256BigIntegerG1Reference.BaseFieldPrime;
+    public static BigInteger P { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
 
     //The standard P-256 base point (FIPS 186-4 / SEC2 secp256r1).
-    public static readonly BigInteger GeneratorX = BigInteger.Parse(
+    public static BigInteger GeneratorX { get; } = BigInteger.Parse(
         "06b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-    public static readonly BigInteger GeneratorY = BigInteger.Parse(
+    public static BigInteger GeneratorY { get; } = BigInteger.Parse(
         "04fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 
-    public static readonly byte[] CurveABytes = ToCanonical(P256BigIntegerG1Reference.CurveA);
-    public static readonly byte[] CurveBBytes = ToCanonical(P256BigIntegerG1Reference.CurveB);
+    public static byte[] CurveABytes { get; } = ToCanonical(P256BigIntegerG1Reference.CurveA);
+    public static byte[] CurveBBytes { get; } = ToCanonical(P256BigIntegerG1Reference.CurveB);
 
-    private static readonly byte[] TranscriptSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.bench.v1");
-    private static readonly byte[] RandomnessSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.bench.rng.v1");
+    private static byte[] TranscriptSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.bench.v1");
+    private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.bench.rng.v1");
 
-    private static readonly FiatShamirHashDelegate Hash = Blake3FiatShamirBackend.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = Blake3FiatShamirBackend.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
     public static (LigeroConstraintSystemBuilder Builder, WeierstrassCurve Curve) NewGadget(

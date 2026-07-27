@@ -43,7 +43,7 @@ internal sealed class LongfellowSampleTests
     private const int Fp256SampleBytes = 32;
     private const int TranscriptVersion = 6;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("sample-gate");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("sample-gate");
 
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 

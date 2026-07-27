@@ -35,7 +35,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </remarks>
 internal static class Bls12Curve381BigIntegerFp2Reference
 {
-    private static readonly BigInteger BaseFieldPrime = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger BaseFieldPrime { get; } = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
     private const int ComponentSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
     private const int ElementSize = WellKnownCurves.Bls12Curve381Fp2SizeBytes;
 

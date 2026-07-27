@@ -29,9 +29,9 @@ internal sealed class ScalarNttTests
     //A fill salt distinct from the streams other algebraic tests draw.
     private const int DataFillSalt = 4101;
 
-    private static readonly Dictionary<string, string> Anchors = LoadAnchors();
+    private static Dictionary<string, string> Anchors { get; } = LoadAnchors();
 
-    private static readonly (string Prefix, CurveParameterSet Curve, ScalarAddDelegate Add, ScalarSubtractDelegate Subtract, ScalarMultiplyDelegate Multiply, ScalarInvertDelegate Invert, ScalarReduceDelegate Reduce)[] Fields =
+    private static (string Prefix, CurveParameterSet Curve, ScalarAddDelegate Add, ScalarSubtractDelegate Subtract, ScalarMultiplyDelegate Multiply, ScalarInvertDelegate Invert, ScalarReduceDelegate Reduce)[] Fields { get; } =
     [
         (
             "bls12381",

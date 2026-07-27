@@ -31,13 +31,13 @@ internal sealed class R1csPoseidonGadgetTests
 
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 
-    private static readonly ScalarAddDelegate Bn254Add = Bn254BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarMultiplyDelegate Bn254Multiply = Bn254BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarInvertDelegate Bn254Invert = Bn254BigIntegerScalarReference.GetInvert();
-    private static readonly ScalarReduceDelegate Bn254Reduce = Bn254BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarAddDelegate BlsAdd = Bls12Curve381BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarMultiplyDelegate BlsMultiply = Bls12Curve381BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarInvertDelegate BlsInvert = Bls12Curve381BigIntegerScalarReference.GetInvert();
+    private static ScalarAddDelegate Bn254Add { get; } = Bn254BigIntegerScalarReference.GetAdd();
+    private static ScalarMultiplyDelegate Bn254Multiply { get; } = Bn254BigIntegerScalarReference.GetMultiply();
+    private static ScalarInvertDelegate Bn254Invert { get; } = Bn254BigIntegerScalarReference.GetInvert();
+    private static ScalarReduceDelegate Bn254Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
+    private static ScalarAddDelegate BlsAdd { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+    private static ScalarMultiplyDelegate BlsMultiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+    private static ScalarInvertDelegate BlsInvert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
 
 
     [TestMethod]

@@ -40,7 +40,7 @@ internal sealed class Fp256LigeroRowExtenderTests
     //parameters (block 64, inverse rate 4: blockEncoded = (2+4)·64 − 1 = 383,
     //doubleBlock = 2·64 − 1 = 127) — including the (block, doubleBlock) aext
     //shape, the one family with messageLength < codewordLength < 2·messageLength.
-    private static readonly (int MessageLength, int CodewordLength)[] Shapes =
+    private static (int MessageLength, int CodewordLength)[] Shapes { get; } =
     [
         (5, 16),
         (9, 23),

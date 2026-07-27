@@ -26,7 +26,7 @@ internal sealed class Sha256GadgetTests
     private const int OpenedColumns = 4;
     private const int Block = 64;
 
-    private static readonly (uint A, uint B)[] Vectors =
+    private static (uint A, uint B)[] Vectors { get; } =
     [
         (0xDEADBEEFu, 0x12345678u),
         (0x00000000u, 0xFFFFFFFFu),

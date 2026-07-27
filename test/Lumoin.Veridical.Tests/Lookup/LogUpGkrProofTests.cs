@@ -69,11 +69,11 @@ internal sealed class LogUpGkrProofTests
     private const int WitnessRowStride = 5;
     private const int WitnessColumnStride = 3;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
     //Domain-separated from the transcript label so the Hyrax Pedersen
     //blinding stream is independent of the Fiat-Shamir stream.
-    private static readonly byte[] HyraxBlindSeed = Encoding.UTF8.GetBytes("veridical.logup.gkr.test.hyrax.blind.v1");
+    private static byte[] HyraxBlindSeed { get; } = Encoding.UTF8.GetBytes("veridical.logup.gkr.test.hyrax.blind.v1");
 
 
     [TestMethod]

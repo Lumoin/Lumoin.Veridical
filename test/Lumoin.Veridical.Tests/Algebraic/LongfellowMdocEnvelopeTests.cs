@@ -52,7 +52,7 @@ internal sealed class LongfellowMdocEnvelopeTests
     private const int OpenedColumnCount = 2;
     private const int SubfieldBoundary = 0;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 

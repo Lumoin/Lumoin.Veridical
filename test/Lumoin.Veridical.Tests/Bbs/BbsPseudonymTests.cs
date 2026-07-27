@@ -13,12 +13,12 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsPseudonymTests
 {
-    private static readonly BbsCiphersuite Suite = BbsCiphersuite.Bls12Curve381Sha256Pseudonym;
+    private static BbsCiphersuite Suite { get; } = BbsCiphersuite.Bls12Curve381Sha256Pseudonym;
 
     //Neither the identity nor BP1: an arbitrary 48-byte pattern. FromCanonical
     //performs no on-curve check (deferred to the operation surfaces), so this
     //is a valid probe for "everything except the two forbidden values".
-    private static readonly byte[] NeitherIdentityNorBp1 = BuildArbitraryPattern();
+    private static byte[] NeitherIdentityNorBp1 { get; } = BuildArbitraryPattern();
 
 
     [TestMethod]

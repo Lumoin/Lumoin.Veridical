@@ -178,8 +178,7 @@ internal static class Bls12Curve381BaseFieldMontgomeryBackend
         Span<ulong> reduced = stackalloc ulong[LimbCount];
         t[..LimbCount].CopyTo(reduced);
         bool borrow = PrimeField384.SubtractWithBorrow(reduced, n);
-        //Non-short-circuit `|`: `||` would emit a conditional branch on the secret-derived operands
-        //before the branch-free Select; both bools are already computed, so `|` combines them branch-free.
+        //Branch-free combination of the secret-derived carry and borrow flags.
         PrimeField384.Select(reduced, t[..LimbCount], (t[LimbCount] != 0UL) | !borrow, result);
     }
 

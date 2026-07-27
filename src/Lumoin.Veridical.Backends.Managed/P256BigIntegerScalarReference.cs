@@ -70,15 +70,15 @@ internal static class P256BigIntegerScalarReference
         CultureInfo.InvariantCulture);
 
 
-    private static readonly ProviderLibrary ProviderLibraryIdentity = new(
+    private static ProviderLibrary ProviderLibraryIdentity { get; } = new(
         Name: "Lumoin.Veridical.Backends.Managed",
         Version: typeof(P256BigIntegerScalarReference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly CryptoLibrary CryptoLibraryIdentity = new(
+    private static CryptoLibrary CryptoLibraryIdentity { get; } = new(
         Name: "System.Numerics.BigInteger",
         Version: typeof(BigInteger).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly ProviderClass ProviderClassIdentity = new(
+    private static ProviderClass ProviderClassIdentity { get; } = new(
         Name: nameof(P256BigIntegerScalarReference));
 
 

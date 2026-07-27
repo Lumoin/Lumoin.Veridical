@@ -79,7 +79,7 @@ public readonly struct CurveParameterSet: IEquatable<CurveParameterSet>
     public static CurveParameterSet P521 { get; } = new(10);
 
 
-    private static readonly List<CurveParameterSet> parameterSets =
+    private static List<CurveParameterSet> parameterSets { get; } =
         [None, Bls12Curve381, Bn254, Pallas, Vesta, Grumpkin, Secp256k1, Ed25519, P256, P384, P521];
 
 

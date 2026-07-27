@@ -21,7 +21,7 @@ internal static class TestSetup
 {
     //Secret keys request the native (locked) tier; with no native backing wired on the test host the pool must
     //allow degradation to the pinned tier (BaseMemoryPool.Shared is strict and would reject a Native rent).
-    private static readonly BaseMemoryPool DegradingPool = new(allowNativeDegradation: true);
+    private static BaseMemoryPool DegradingPool { get; } = new(allowNativeDegradation: true);
 
     public static BaseMemoryPool Pool => DegradingPool;
 

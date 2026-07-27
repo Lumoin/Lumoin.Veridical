@@ -36,13 +36,13 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254G1HashToCurveTests
 {
-    private static readonly G1HashToCurveDelegate HashToCurveDelegate =
+    private static G1HashToCurveDelegate HashToCurveDelegate { get; } =
         Bn254BigIntegerG1Reference.GetHashToCurve();
 
-    private static readonly G1IsOnCurveDelegate IsOnCurveDelegate =
+    private static G1IsOnCurveDelegate IsOnCurveDelegate { get; } =
         Bn254BigIntegerG1Reference.GetIsOnCurve();
 
-    private static readonly G1IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroupDelegate =
+    private static G1IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroupDelegate { get; } =
         Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
 
 

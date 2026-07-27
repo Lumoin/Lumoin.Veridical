@@ -18,9 +18,9 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsBlindSignVerifyTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x42);
-    private static readonly byte[] KeyInfo = "blind-sign-verify-key-info"u8.ToArray();
-    private static readonly byte[] Header = "blind-sign-verify-header"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x42);
+    private static byte[] KeyInfo { get; } = "blind-sign-verify-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "blind-sign-verify-header"u8.ToArray();
 
 
     private sealed record SuiteWiring(
@@ -47,8 +47,8 @@ internal sealed class BbsBlindSignVerifyTests
     }
 
 
-    private static readonly SuiteWiring Sha256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Blind);
-    private static readonly SuiteWiring Shake256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Blind);
+    private static SuiteWiring Sha256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Blind);
+    private static SuiteWiring Shake256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Blind);
 
 
     [TestMethod]

@@ -19,7 +19,7 @@ internal sealed class P256EcdsaReferenceTests
 {
     private const int ScalarSize = 32;
     private const int CompressedSize = 33;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
     //A fixed valid nonce in [1, n−1] (well below n); ECDSA security forbids
     //nonce reuse across distinct messages with the same key in production, but

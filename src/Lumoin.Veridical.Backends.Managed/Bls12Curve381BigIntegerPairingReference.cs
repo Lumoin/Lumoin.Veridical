@@ -54,7 +54,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </remarks>
 internal static class Bls12Curve381BigIntegerPairingReference
 {
-    private static readonly BigInteger Prime = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger Prime { get; } = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
 
     private const int FpComponentSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
     private const int G1ElementSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
@@ -73,23 +73,23 @@ internal static class Bls12Curve381BigIntegerPairingReference
         CultureInfo.InvariantCulture);
 
     /// <summary>The G2 curve coefficient <c>b' = 4·(1 + u)</c> for the twist <c>y² = x³ + 4·(1 + u)</c>.</summary>
-    private static readonly Fp2BigInt.Value TwistCurveB = new(new BigInteger(4), new BigInteger(4));
+    private static Fp2BigInt.Value TwistCurveB { get; } = new(new BigInteger(4), new BigInteger(4));
 
     //Frobenius constants — computed at static init via Fp2 exponentiation
     //rather than transcribed, so any sign mistake on ξ surfaces here as a
     //Frobenius-identity-test failure rather than a hand-typed typo.
 
     /// <summary>ξ^((p-1)/3) ∈ Fp2 — applied to the v-coefficient of an Fp6 Frobenius.</summary>
-    private static readonly Fp2BigInt.Value FrobeniusGamma_6_1 = Fp2Pow(Fp2BigInt.NonResidue, (Bls12Curve381BigIntegerG1Reference.BaseFieldPrime - 1) / 3);
+    private static Fp2BigInt.Value FrobeniusGamma_6_1 { get; } = Fp2Pow(Fp2BigInt.NonResidue, (Bls12Curve381BigIntegerG1Reference.BaseFieldPrime - 1) / 3);
 
     /// <summary>ξ^(2(p-1)/3) ∈ Fp2 — applied to the v²-coefficient.</summary>
-    private static readonly Fp2BigInt.Value FrobeniusGamma_6_2 = Fp2Pow(Fp2BigInt.NonResidue, 2 * (Bls12Curve381BigIntegerG1Reference.BaseFieldPrime - 1) / 3);
+    private static Fp2BigInt.Value FrobeniusGamma_6_2 { get; } = Fp2Pow(Fp2BigInt.NonResidue, 2 * (Bls12Curve381BigIntegerG1Reference.BaseFieldPrime - 1) / 3);
 
     /// <summary>ξ^((p-1)/6) ∈ Fp2 — applied to π(c1) · w when raising an Fp12 element to the p-th power.</summary>
-    private static readonly Fp2BigInt.Value FrobeniusGamma_12_1 = Fp2Pow(Fp2BigInt.NonResidue, (Bls12Curve381BigIntegerG1Reference.BaseFieldPrime - 1) / 6);
+    private static Fp2BigInt.Value FrobeniusGamma_12_1 { get; } = Fp2Pow(Fp2BigInt.NonResidue, (Bls12Curve381BigIntegerG1Reference.BaseFieldPrime - 1) / 6);
 
     /// <summary>The hard-part exponent <c>(p^4 − p^2 + 1)/r</c>.</summary>
-    private static readonly BigInteger HardPartExponent = ComputeHardPartExponent();
+    private static BigInteger HardPartExponent { get; } = ComputeHardPartExponent();
 
 
     private static BigInteger ComputeHardPartExponent()

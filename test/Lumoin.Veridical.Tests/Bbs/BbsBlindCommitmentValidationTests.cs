@@ -27,14 +27,14 @@ internal sealed class BbsBlindCommitmentValidationTests
     //Pre-calculated wrong-subgroup probe shared with
     //BbsSubgroupValidationTests: the BLS12-381 G1 point with x = 0 is on
     //the curve but outside the r-order subgroup.
-    private static readonly byte[] WrongSubgroupG1Compressed = Convert.FromHexString(
+    private static byte[] WrongSubgroupG1Compressed { get; } = Convert.FromHexString(
         "a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
 
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x51);
-    private static readonly byte[] KeyInfo = "blind-commitment-validation-key-info"u8.ToArray();
-    private static readonly byte[] Header = "blind-commitment-validation-header"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x51);
+    private static byte[] KeyInfo { get; } = "blind-commitment-validation-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "blind-commitment-validation-header"u8.ToArray();
 
-    private static readonly BbsCiphersuite BlindSuite = BbsCiphersuite.Bls12Curve381Sha256Blind;
+    private static BbsCiphersuite BlindSuite { get; } = BbsCiphersuite.Bls12Curve381Sha256Blind;
 
 
     [TestMethod]

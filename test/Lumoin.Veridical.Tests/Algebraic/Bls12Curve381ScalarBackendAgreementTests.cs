@@ -46,16 +46,16 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381ScalarBackendAgreementTests
 {
-    private static readonly ScalarReduceDelegate ReduceDelegate =
+    private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bls12Curve381BigIntegerScalarReference.GetReduce();
 
-    private static readonly ScalarAddDelegate BigIntegerAdd =
+    private static ScalarAddDelegate BigIntegerAdd { get; } =
         Bls12Curve381BigIntegerScalarReference.GetAdd();
 
-    private static readonly ScalarSubtractDelegate BigIntegerSubtract =
+    private static ScalarSubtractDelegate BigIntegerSubtract { get; } =
         Bls12Curve381BigIntegerScalarReference.GetSubtract();
 
-    private static readonly Gen<byte[]> RawScalarBytesGen =
+    private static Gen<byte[]> RawScalarBytesGen { get; } =
         Gen.Byte.Array[Scalar.SizeBytes];
 
 

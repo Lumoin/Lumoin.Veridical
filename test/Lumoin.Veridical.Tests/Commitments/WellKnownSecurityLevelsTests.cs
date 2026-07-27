@@ -18,7 +18,7 @@ internal sealed class WellKnownSecurityLevelsTests
     //The model is exact for these shapes; compare the floating-point figures within a small tolerance.
     private const double Tolerance = 1e-9;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     //Pins the conservative scalar-field-size floor for both wired curves.

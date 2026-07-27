@@ -23,7 +23,7 @@ internal static class McpToolNames
     public const string Verify = "Verify";
 
     /// <summary>All exposed tool names.</summary>
-    public static readonly string[] All =
+    public static string[] All { get; } =
     [
         Info,
         Hash,

@@ -41,7 +41,7 @@ internal sealed class MaskedSpartanZeroMaskRejectionTests
     private static MleEvaluateDelegate SharedMleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
     private static MleFoldDelegate SharedMleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
-    private static readonly BigInteger Bn254Order = Bn254BigIntegerScalarReference.FieldOrder;
+    private static BigInteger Bn254Order { get; } = Bn254BigIntegerScalarReference.FieldOrder;
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 
     private const int HyraxVectorLength = 2;

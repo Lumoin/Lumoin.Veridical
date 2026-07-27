@@ -69,12 +69,12 @@ internal sealed class LigeroBatteryPassportCredentialProofTests
     private const decimal RecycledThreshold = 30.0m;
     private const decimal CarbonCap = 12.50m;
 
-    private static readonly byte[] RandomSeed = System.Text.Encoding.UTF8.GetBytes("veridical.supplychain.batterypassport.rng.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
-    private static readonly FixedPointDomain RecycledDomain = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(1), 100.0m);
-    private static readonly FixedPointDomain CarbonDomain = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(2), 100.00m);
-    private static readonly FixedPointBound RecycledFloor = FixedPointBound.Constant(RecycledDomain, RecycledThreshold);
-    private static readonly FixedPointBound CarbonCeiling = FixedPointBound.Constant(CarbonDomain, CarbonCap);
+    private static byte[] RandomSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.supplychain.batterypassport.rng.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static FixedPointDomain RecycledDomain { get; } = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(1), 100.0m);
+    private static FixedPointDomain CarbonDomain { get; } = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(2), 100.00m);
+    private static FixedPointBound RecycledFloor { get; } = FixedPointBound.Constant(RecycledDomain, RecycledThreshold);
+    private static FixedPointBound CarbonCeiling { get; } = FixedPointBound.Constant(CarbonDomain, CarbonCap);
 
 
     [TestMethod]

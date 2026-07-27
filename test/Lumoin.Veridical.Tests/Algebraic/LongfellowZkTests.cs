@@ -57,7 +57,7 @@ internal sealed class LongfellowZkTests
     private const int InverseRate = 4;
     private const int OpenedColumnCount = 2;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 

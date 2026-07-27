@@ -39,7 +39,7 @@ internal sealed class DecoderRobustnessTests
     private const int RoundPolynomialLengthHint = RoundPolynomialDegreeForFuzzing * ScalarSizeBytesForFuzzing;
     private const int WitnessLengthHint = ScalarSizeBytesForFuzzing;
 
-    private static readonly string[] ExternalParserTargetNames =
+    private static string[] ExternalParserTargetNames { get; } =
     [
         "circom-r1cs",
         "circom-wtns",

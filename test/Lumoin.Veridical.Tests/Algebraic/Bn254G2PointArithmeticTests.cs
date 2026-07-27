@@ -24,25 +24,25 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254G2PointArithmeticTests
 {
-    private static readonly G2AddDelegate AddDelegate =
+    private static G2AddDelegate AddDelegate { get; } =
         Bn254BigIntegerG2Reference.GetAdd();
 
-    private static readonly G2NegateDelegate NegateDelegate =
+    private static G2NegateDelegate NegateDelegate { get; } =
         Bn254BigIntegerG2Reference.GetNegate();
 
-    private static readonly G2ScalarMultiplyDelegate ScalarMultiplyDelegate =
+    private static G2ScalarMultiplyDelegate ScalarMultiplyDelegate { get; } =
         Bn254BigIntegerG2Reference.GetScalarMultiply();
 
-    private static readonly G2IsOnCurveDelegate IsOnCurveDelegate =
+    private static G2IsOnCurveDelegate IsOnCurveDelegate { get; } =
         Bn254BigIntegerG2Reference.GetIsOnCurve();
 
-    private static readonly G2IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroupDelegate =
+    private static G2IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroupDelegate { get; } =
         Bn254BigIntegerG2Reference.GetIsInPrimeOrderSubgroup();
 
-    private static readonly ScalarAddDelegate ScalarAdd =
+    private static ScalarAddDelegate ScalarAdd { get; } =
         Bn254BigIntegerScalarReference.GetAdd();
 
-    private static readonly ScalarReduceDelegate ScalarReduce =
+    private static ScalarReduceDelegate ScalarReduce { get; } =
         Bn254BigIntegerScalarReference.GetReduce();
 
 

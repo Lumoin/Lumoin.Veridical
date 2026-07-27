@@ -20,15 +20,15 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381Fp12ArithmeticTests
 {
-    private static readonly Fp12AddDelegate Add = Bls12Curve381BigIntegerFp12Reference.GetAdd();
-    private static readonly Fp12SubtractDelegate Subtract = Bls12Curve381BigIntegerFp12Reference.GetSubtract();
-    private static readonly Fp12MultiplyDelegate Multiply = Bls12Curve381BigIntegerFp12Reference.GetMultiply();
-    private static readonly Fp12SquareDelegate Square = Bls12Curve381BigIntegerFp12Reference.GetSquare();
-    private static readonly Fp12NegateDelegate Negate = Bls12Curve381BigIntegerFp12Reference.GetNegate();
-    private static readonly Fp12InvertDelegate Invert = Bls12Curve381BigIntegerFp12Reference.GetInvert();
-    private static readonly Fp12ConjugateDelegate Conjugate = Bls12Curve381BigIntegerFp12Reference.GetConjugate();
+    private static Fp12AddDelegate Add { get; } = Bls12Curve381BigIntegerFp12Reference.GetAdd();
+    private static Fp12SubtractDelegate Subtract { get; } = Bls12Curve381BigIntegerFp12Reference.GetSubtract();
+    private static Fp12MultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerFp12Reference.GetMultiply();
+    private static Fp12SquareDelegate Square { get; } = Bls12Curve381BigIntegerFp12Reference.GetSquare();
+    private static Fp12NegateDelegate Negate { get; } = Bls12Curve381BigIntegerFp12Reference.GetNegate();
+    private static Fp12InvertDelegate Invert { get; } = Bls12Curve381BigIntegerFp12Reference.GetInvert();
+    private static Fp12ConjugateDelegate Conjugate { get; } = Bls12Curve381BigIntegerFp12Reference.GetConjugate();
 
-    private static readonly BigInteger BaseFieldPrime = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger BaseFieldPrime { get; } = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
     private const int CompSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
 
     //CsCheck iteration count: small because each Fp12 op does many

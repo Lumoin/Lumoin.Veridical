@@ -21,17 +21,17 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 internal sealed class Fp256FieldBackendAgreementTests
 {
     private const long IterationCount = 500;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
-    private static readonly BigInteger P = P256BigIntegerG1Reference.BaseFieldPrime;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
+    private static BigInteger P { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
 
-    private static readonly Gen<byte[]> RawBytesGen = Gen.Byte.Array[Scalar.SizeBytes];
-    private static readonly Gen<byte[]> WideBytesGen = Gen.Byte.Array[64];
+    private static Gen<byte[]> RawBytesGen { get; } = Gen.Byte.Array[Scalar.SizeBytes];
+    private static Gen<byte[]> WideBytesGen { get; } = Gen.Byte.Array[64];
 
-    private static readonly ScalarReduceDelegate ReferenceReduce = P256BaseFieldReference.GetReduce();
-    private static readonly ScalarAddDelegate ReferenceAdd = P256BaseFieldReference.GetAdd();
-    private static readonly ScalarSubtractDelegate ReferenceSubtract = P256BaseFieldReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate ReferenceMultiply = P256BaseFieldReference.GetMultiply();
-    private static readonly ScalarInvertDelegate ReferenceInvert = P256BaseFieldReference.GetInvert();
+    private static ScalarReduceDelegate ReferenceReduce { get; } = P256BaseFieldReference.GetReduce();
+    private static ScalarAddDelegate ReferenceAdd { get; } = P256BaseFieldReference.GetAdd();
+    private static ScalarSubtractDelegate ReferenceSubtract { get; } = P256BaseFieldReference.GetSubtract();
+    private static ScalarMultiplyDelegate ReferenceMultiply { get; } = P256BaseFieldReference.GetMultiply();
+    private static ScalarInvertDelegate ReferenceInvert { get; } = P256BaseFieldReference.GetInvert();
 
     private delegate void BinaryFieldOp(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result);
     private delegate void UnaryFieldOp(ReadOnlySpan<byte> a, Span<byte> result);

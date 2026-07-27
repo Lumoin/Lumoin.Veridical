@@ -18,7 +18,7 @@ internal sealed class FiatShamirTranscriptR1csTests
 {
     private const string Domain = "veridical.test.r1cs.v1";
 
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
 
 
     [TestMethod]

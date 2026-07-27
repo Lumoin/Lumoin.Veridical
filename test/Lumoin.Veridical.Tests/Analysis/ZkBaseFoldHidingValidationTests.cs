@@ -79,9 +79,9 @@ internal sealed class ZkBaseFoldHidingValidationTests
     private const int ExtraVariableCount = 5;
     private const int SampleCount = 40;
 
-    private static readonly byte[] CodeSeed = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.code.v1");
-    private static readonly byte[] WitnessSeed = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.witness.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.code.v1");
+    private static byte[] WitnessSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.witness.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

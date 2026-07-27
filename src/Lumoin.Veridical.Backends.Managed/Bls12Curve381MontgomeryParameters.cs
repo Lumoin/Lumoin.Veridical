@@ -26,7 +26,7 @@ internal static class Bls12Curve381MontgomeryParameters
     private const int LimbCount = 4;
 
     //BLS12-381 scalar-field modulus r, little-endian 64-bit limbs.
-    private static readonly ulong[] ModulusLimbValues =
+    private static ulong[] ModulusLimbValues { get; } =
     [
         0xffffffff00000001UL,
         0x53bda402fffe5bfeUL,
@@ -37,17 +37,17 @@ internal static class Bls12Curve381MontgomeryParameters
     //Initialised in textual order after ModulusLimbValues, each derived from the
     //modulus via BigInteger; field initialisers (not an explicit static
     //constructor) satisfy the analyzer's beforefieldinit preference.
-    private static readonly ulong NPrimeValue = ComputeNPrime();
-    private static readonly ulong[] RSquaredLimbValues = ComputeRSquared();
-    private static readonly ulong[] OneMontgomeryLimbValues = ComputeOneMontgomery();
-    private static readonly ulong[] InversionExponentLimbValues = ComputeInversionExponent();
+    private static ulong NPrimeValue { get; } = ComputeNPrime();
+    private static ulong[] RSquaredLimbValues { get; } = ComputeRSquared();
+    private static ulong[] OneMontgomeryLimbValues { get; } = ComputeOneMontgomery();
+    private static ulong[] InversionExponentLimbValues { get; } = ComputeInversionExponent();
 
     //32-bit-limb forms for the lane-interleaved SIMD batch multiply, whose
     //per-partial-product step is a single 32×32→64 widening multiply (vpmuludq /
     //NEON widening). Eight little-endian 32-bit limbs, and N'32 = −r⁻¹ mod 2³².
-    private static readonly uint NPrime32Value = ComputeNPrime32();
-    private static readonly uint[] Modulus32LimbValues = Split64To32(ModulusLimbValues);
-    private static readonly uint[] RSquared32LimbValues = Split64To32(RSquaredLimbValues);
+    private static uint NPrime32Value { get; } = ComputeNPrime32();
+    private static uint[] Modulus32LimbValues { get; } = Split64To32(ModulusLimbValues);
+    private static uint[] RSquared32LimbValues { get; } = Split64To32(RSquaredLimbValues);
 
 
     private static ulong ComputeNPrime()

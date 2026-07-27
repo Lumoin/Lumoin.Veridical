@@ -24,7 +24,7 @@ internal sealed class Sha256AgreementTests
     //  119/120/127/128/129        the two-block pad boundaries,
     //  1000/8192                  multi-block bulk,
     //  8_400_000                  the ~8.4 MB grown-buffer size that triggered the O(N^2) re-hash.
-    private static readonly int[] EdgeSizes =
+    private static int[] EdgeSizes { get; } =
     [
         0, 1, 31, 32, 33,
         55, 56, 57,

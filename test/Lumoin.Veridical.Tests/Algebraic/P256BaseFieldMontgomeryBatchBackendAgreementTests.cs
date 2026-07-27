@@ -37,11 +37,11 @@ internal sealed class P256BaseFieldMontgomeryBatchBackendAgreementTests
     //19 is not a multiple of 4 (the AVX2 quartet width), so every sample runs both the SIMD body and the tail.
     private const int MainCount = 19;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
-    private static readonly ScalarReduceDelegate ReferenceReduce = P256BaseFieldReference.GetReduce();
-    private static readonly ScalarMultiplyDelegate ReferenceMultiply = P256BaseFieldReference.GetMultiply();
-    private static readonly ScalarMultiplyDelegate ScalarMultiplyMontgomery = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
+    private static ScalarReduceDelegate ReferenceReduce { get; } = P256BaseFieldReference.GetReduce();
+    private static ScalarMultiplyDelegate ReferenceMultiply { get; } = P256BaseFieldReference.GetMultiply();
+    private static ScalarMultiplyDelegate ScalarMultiplyMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
 
 
     [TestInitialize]

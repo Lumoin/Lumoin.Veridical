@@ -58,7 +58,7 @@ internal sealed class LongfellowRealHashCircuitProveTests
     private const int MacKeysStart = 85112;
     private const int InputCount = 85118;
 
-    private static readonly byte[] Now = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
+    private static byte[] Now { get; } = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
 
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("mdoc-hash");
 

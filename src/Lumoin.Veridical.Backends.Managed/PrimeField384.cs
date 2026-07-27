@@ -129,8 +129,7 @@ internal static class PrimeField384
         Span<ulong> reduced = stackalloc ulong[LimbCount];
         sum.CopyTo(reduced);
         bool borrow = SubtractWithBorrow(reduced, modulus);
-        //Non-short-circuit `|`: `||` would emit a conditional branch on the secret-derived operands
-        //before the branch-free Select; both bools are already computed, so `|` combines them branch-free.
+        //Branch-free combination of the secret-derived carry and borrow flags.
         Select(reduced, sum, carry | !borrow, result);
     }
 

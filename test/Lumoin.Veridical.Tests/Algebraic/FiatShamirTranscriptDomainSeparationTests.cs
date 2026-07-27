@@ -15,8 +15,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class FiatShamirTranscriptDomainSeparationTests
 {
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
 
     private const int SqueezeByteCount = 32;
 

@@ -28,11 +28,11 @@ public sealed class BbsPseudonym: SensitiveMemory
     public const int SizeBytes = WellKnownCurves.Bls12Curve381G1CompressedSizeBytes;
 
 
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.G1Point)
+    private static Tag AlgebraicTagSha256 { get; } = Tag.Create(AlgebraicRole.G1Point)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.G1Point)
+    private static Tag AlgebraicTagShake256 { get; } = Tag.Create(AlgebraicRole.G1Point)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Shake256Pseudonym);
 
