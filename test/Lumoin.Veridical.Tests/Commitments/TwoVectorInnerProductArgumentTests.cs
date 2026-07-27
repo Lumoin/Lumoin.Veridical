@@ -95,7 +95,7 @@ internal sealed class TwoVectorInnerProductArgumentTests
                 ScalarAdd, ScalarMul, ScalarInvert, ScalarReduce, G1Add, G1ScalarMul,
                 Hash, Squeeze, Curve, pool);
 
-            Assert.IsTrue(verified, $"An honest two-vector IPA must round-trip for n = {vectorLength}.");
+            Assert.IsTrue(verified, $"A correctly generated two-vector IPA must round-trip for n = {vectorLength}.");
         }
     }
 

@@ -15,7 +15,7 @@ namespace Lumoin.Veridical.Tests.Gkr;
 /// (<see cref="GkrDataParallelProver"/>/<see cref="GkrDataParallelVerifier"/>) over the P-256
 /// base field Fp256: four copies of the same two-layer per-copy circuit with distinct inputs per
 /// copy, the copy variable bound once across all copies. The data-parallel evaluation is gated
-/// per copy against the single-copy evaluator; an honest proof verifies end to end (the
+/// per copy against the single-copy evaluator; a correctly generated proof verifies end to end (the
 /// copy-round phase, the hand sumchecks, and the tensor-point input checks); a tampered
 /// copy-round polynomial, wrong claimed outputs and wrong claimed inputs are each rejected.
 /// </summary>
@@ -74,7 +74,7 @@ internal sealed class GkrDataParallelProverTests
 
 
     [TestMethod]
-    public void HonestDataParallelProofVerifies()
+    public void ValidDataParallelProofVerifies()
     {
         GkrCircuit circuit = BuildCircuit();
         using GkrWireTables tables = circuit.EvaluateDataParallel(Inputs, CopyCount, Add, Multiply, CurveParameterSet.None, BaseMemoryPool.Shared);
@@ -91,7 +91,7 @@ internal sealed class GkrDataParallelProverTests
             circuit, Inputs, outputs, CopyCount, proof, Add, Subtract, Multiply, Invert, Reduce, CurveParameterSet.None,
             verifierTranscript, Squeeze, Hash, BaseMemoryPool.Shared);
 
-        Assert.IsTrue(verified, "An honest data-parallel GKR proof must verify down to the inputs.");
+        Assert.IsTrue(verified, "A correctly generated data-parallel GKR proof must verify down to the inputs.");
     }
 
 

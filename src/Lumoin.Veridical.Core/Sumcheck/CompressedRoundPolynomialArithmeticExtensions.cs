@@ -17,7 +17,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 /// The compression is lossless conditioned on the sumcheck identity
 /// <c>e = poly(0) + poly(1)</c> being supplied at decompress time. Both
 /// prover and verifier track that running claim by construction, so the
-/// identity always holds across one honest round.
+/// identity always holds across one correctly generated round.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]

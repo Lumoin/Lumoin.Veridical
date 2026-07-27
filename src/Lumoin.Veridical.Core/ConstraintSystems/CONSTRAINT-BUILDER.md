@@ -506,7 +506,7 @@ means anything:
   field relation.
 
 The example proves the *composition* — that a rolled-up total is the faithful sum of
-independently verified tier footprints and is under a cap — and is honest that the
+independently verified tier footprints and is under a cap — and states plainly that the
 *comparability* of what is summed is established upstream, in the data layer, not
 here.
 

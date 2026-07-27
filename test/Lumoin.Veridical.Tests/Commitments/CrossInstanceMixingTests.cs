@@ -15,7 +15,7 @@ namespace Lumoin.Veridical.Tests.Commitments;
 
 /// <summary>
 /// Cross-instance mixing tests (the gnark CVE-2024-45039 pattern): a component
-/// taken from one fully independent honest proof instance must not verify when
+/// taken from one fully independent, correctly generated proof instance must not verify when
 /// spliced into a second instance's statement. Where the existing suites swap
 /// components <em>within one batch</em>, these characterize the binding across
 /// two separately produced proofs — the case a missing randomizer-to-object
@@ -116,7 +116,7 @@ internal sealed class CrossInstanceMixingTests
 
         HyraxWeightedOpening openingA = OpenWeighted(key, vectorA, weights, seed: 303);
 
-        //The honest same-instance opening is the control: the cross-instance
+        //The correctly generated same-instance opening is the control: the cross-instance
         //rejection above must not be an artifact of a broken round-trip.
         FiatShamirTranscript verifierTx = Track(NewHyraxTranscript());
         bool ok = openingA.Commitment.VerifyWeightedSum(

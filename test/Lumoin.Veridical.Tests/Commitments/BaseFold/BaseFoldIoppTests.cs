@@ -16,7 +16,7 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// <summary>
 /// Tests for the BaseFold IOPP (AB.3): the standalone interactive-oracle proof
 /// of proximity that a Merkle-committed codeword is close to a codeword of the
-/// random foldable code. Positive tests confirm an honestly-encoded codeword
+/// random foldable code. Positive tests confirm a correctly-encoded codeword
 /// verifies; negative tests confirm a word far from the code is rejected (the
 /// base-codeword check), and that tampering the commitment, any fold root, or
 /// any authentication path breaks verification. The real BLS12-381 scalar
@@ -66,7 +66,7 @@ internal sealed class BaseFoldIoppTests
 
         bool verified = ProveThenVerify(code, codeword, TestQueryCount, pool);
 
-        Assert.IsTrue(verified, $"An honestly-encoded codeword must verify for d = {layerCount}.");
+        Assert.IsTrue(verified, $"A correctly-encoded codeword must verify for d = {layerCount}.");
     }
 
 

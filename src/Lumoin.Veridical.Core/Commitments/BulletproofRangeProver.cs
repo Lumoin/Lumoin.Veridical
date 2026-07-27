@@ -28,8 +28,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </para>
 /// <para>
 /// The prover refuses an out-of-range value loudly
-/// (<see cref="RangeProofKey.ThrowIfValueOutOfRange"/>) — an honest prover
-/// cannot accidentally produce an unsound proof, and a dishonest one is
+/// (<see cref="RangeProofKey.ThrowIfValueOutOfRange"/>) — a prover following
+/// the protocol cannot accidentally produce an unsound proof, and a cheating prover is
 /// caught by the verifier's algebra.
 /// </para>
 /// </remarks>

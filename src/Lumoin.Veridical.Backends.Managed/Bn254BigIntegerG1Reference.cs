@@ -293,7 +293,7 @@ internal static class Bn254BigIntegerG1Reference
 
         //Cofactor is 1, so the curve group has prime order r and [r] P == O for
         //every on-curve P. The explicit multiplication is kept for parity with
-        //the BLS12-381 reference and as an honest statement of the membership
+        //the BLS12-381 reference and as a literal statement of the membership
         //predicate rather than short-circuiting on the cofactor being trivial.
         AffinePoint product = ScalarMultiplyPoint(ScalarFieldOrder, p);
 

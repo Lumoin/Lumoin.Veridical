@@ -139,7 +139,7 @@ public readonly record struct FixedPointScale
     /// <summary>
     /// The smallest bit width <c>b</c> with <c>maxEncodedValue &lt; 2^b</c>,
     /// floored at one (the range check rejects a width below one). This pins how a
-    /// <see cref="FixedPointDomain"/> sizes its range checks so an honest value
+    /// <see cref="FixedPointDomain"/> sizes its range checks so a value within range
     /// fits and no false difference can wrap the field.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="maxEncodedValue"/> is negative.</exception>

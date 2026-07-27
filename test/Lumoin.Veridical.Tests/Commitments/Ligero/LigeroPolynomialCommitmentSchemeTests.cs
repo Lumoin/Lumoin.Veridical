@@ -81,7 +81,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
 
-                    Assert.IsTrue(verified, $"An honest commit→open→verify must round-trip for n = {variableCount}.");
+                    Assert.IsTrue(verified, $"A correctly generated commit→open→verify must round-trip for n = {variableCount}.");
                 }
             }
         }
@@ -213,7 +213,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
 
-                    Assert.IsTrue(verified, "An honest commit→open→verify must round-trip at inverse rate 16 / query count 64.");
+                    Assert.IsTrue(verified, "A correctly generated commit→open→verify must round-trip at inverse rate 16 / query count 64.");
                 }
             }
         }

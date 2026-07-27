@@ -208,7 +208,7 @@ internal sealed class GkrGf2kShaFragmentTests
         Span<byte> outputs = outputsOwner.Memory.Span[..AdderOutputBytes];
         GkrGf2kTestSupport.Outputs(circuit, inputs, CopyCount, outputs);
 
-        Assert.IsFalse(outputs.ContainsAnyExcept((byte)0), "Every sum and carry check of an honest witnessed-carry addition must close to zero.");
+        Assert.IsFalse(outputs.ContainsAnyExcept((byte)0), "Every sum and carry check of a correctly witnessed-carry addition must close to zero.");
     }
 
 

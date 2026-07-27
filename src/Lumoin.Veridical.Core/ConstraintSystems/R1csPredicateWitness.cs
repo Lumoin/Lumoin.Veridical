@@ -48,7 +48,7 @@ public static class R1csPredicateWitness
     /// Adds the bit decomposition <c>{name}_bit_0 … {name}_bit_{bits-1}</c> for
     /// <see cref="R1csCircuitBuilderPredicates.AssertRangeCheck"/>, the low
     /// <paramref name="bits"/> bits of <paramref name="value"/> reduced modulo
-    /// the field. (An out-of-range value is bound honestly; the predicate's
+    /// the field. (An out-of-range value is bound correctly; the predicate's
     /// summation constraint is what then rejects it.)
     /// </summary>
     public static void AddRangeCheckBits(

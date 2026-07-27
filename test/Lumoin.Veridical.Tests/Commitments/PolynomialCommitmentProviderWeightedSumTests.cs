@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Tests.Commitments;
 /// <see cref="PolynomialCommitmentProvider.CommitVector"/> /
 /// <see cref="PolynomialCommitmentProvider.OpenWeightedSum"/> /
 /// <see cref="PolynomialCommitmentProvider.VerifyWeightedSum"/> must round-trip
-/// an honest weighted opening at its own
+/// a correctly generated weighted opening at its own
 /// <see cref="PolynomialCommitmentProvider.ResolveStatisticalMaskShape"/>
 /// resolution and reject a wrong claim — exercised through the broad leaf
 /// types exactly as the masked Spartan integration consumes them.
@@ -129,7 +129,7 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
 
                 using FiatShamirTranscript verifyTx = NewTranscript();
                 bool verified = provider.VerifyWeightedSum(commitment, weights, claimedValue, opening, verifyTx, pool);
-                Assert.IsTrue(verified, "An honest weighted opening must verify.");
+                Assert.IsTrue(verified, "A correctly generated weighted opening must verify.");
 
                 using Scalar wrong = AddOne(claimedValue, pool);
                 using FiatShamirTranscript rejectTx = NewTranscript();

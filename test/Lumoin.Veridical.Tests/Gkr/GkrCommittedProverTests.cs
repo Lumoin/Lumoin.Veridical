@@ -19,8 +19,8 @@ namespace Lumoin.Veridical.Tests.Gkr;
 /// over the P-256 base field Fp256 — the Longfellow zk-wrapper shape with Ligero in its small
 /// role: the inputs are committed (tableau root absorbed before any challenge), the linear
 /// data-parallel GKR walk reduces the public outputs to two input claims, and Ligero proves just
-/// those two openings of the commitment. The verifier is never given the inputs. An honest proof
-/// verifies; wrong claimed outputs, a tampered circuit proof and a mixed-in commitment for
+/// those two openings of the commitment. The verifier is never given the inputs. A correctly
+/// generated proof verifies; wrong claimed outputs, a tampered circuit proof and a mixed-in commitment for
 /// different inputs are each rejected.
 /// </summary>
 [TestClass]
@@ -80,7 +80,7 @@ internal sealed class GkrCommittedProverTests
 
 
     [TestMethod]
-    public void HonestCommittedProofVerifiesWithoutTheInputs()
+    public void ValidCommittedProofVerifiesWithoutTheInputs()
     {
         GkrCircuit circuit = BuildCircuit();
         byte[] outputs = Outputs(circuit, PrivateInputs);
@@ -92,7 +92,7 @@ internal sealed class GkrCommittedProverTests
         using FiatShamirTranscript verifierTranscript = NewTranscript();
         bool verified = Verify(circuit, outputs, proof, verifierTranscript);
 
-        Assert.IsTrue(verified, "An honest committed-witness proof must verify without the verifier seeing the inputs.");
+        Assert.IsTrue(verified, "A correctly generated committed-witness proof must verify without the verifier seeing the inputs.");
     }
 
 
@@ -123,15 +123,15 @@ internal sealed class GkrCommittedProverTests
         otherInputs[ScalarSize - 1] ^= 0x01;
 
         using FiatShamirTranscript proverTranscript = NewTranscript();
-        GkrCommittedProof honest = Prove(circuit, PrivateInputs, proverTranscript);
+        GkrCommittedProof valid = Prove(circuit, PrivateInputs, proverTranscript);
         using FiatShamirTranscript otherTranscript = NewTranscript();
         GkrCommittedProof other = Prove(circuit, otherInputs, otherTranscript);
 
-        //Pair the honest circuit walk with the other witness's commitment: the absorbed root
+        //Pair the valid circuit walk with the other witness's commitment: the absorbed root
         //differs, so the replayed challenges diverge and the walk must fail.
-        var mixed = new GkrCommittedProof(honest.CircuitProof, other.WitnessProof);
+        var mixed = new GkrCommittedProof(valid.CircuitProof, other.WitnessProof);
         Disposables.Add(mixed);
-        Disposables.Add(honest.WitnessProof);
+        Disposables.Add(valid.WitnessProof);
         Disposables.Add(other.CircuitProof);
 
         using FiatShamirTranscript verifierTranscript = NewTranscript();

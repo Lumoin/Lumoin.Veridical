@@ -29,7 +29,7 @@ paths, and is explicit about its limits.
   the group order `n` — the field SECDSA and ECDSA sign in — runs through a constant-time Montgomery backend
   (`P256ScalarMontgomeryBackend`), so signing does not branch on the nonce, the PIN-key, or the hardware-key
   blinds.
-- **The honest limit.** This is *best-effort constant-time in managed code*, **not** a hardware-guaranteed
+- **The limit.** This is *best-effort constant-time in managed code*, **not** a hardware-guaranteed
   constant-time bound. .NET does not guarantee that a value-selecting expression (`cond ? ~0UL : 0UL`) compiles
   to a conditional move rather than a branch, and the JIT, GC, and platform may introduce timing variation
   outside the library's control. Where a guarantee must be absolute, a hardened native backend behind the

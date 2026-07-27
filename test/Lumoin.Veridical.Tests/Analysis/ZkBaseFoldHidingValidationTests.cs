@@ -108,7 +108,7 @@ internal sealed class ZkBaseFoldHidingValidationTests
     {
         //The statistical experiments are asserted to run and produce a well-formed
         //result, not to reach a particular verdict: at test-suite sample scales a
-        //borderline finding either way is honest, not a failure (the SM statistical
+        //borderline finding either way is a valid outcome, not a failure (the SM statistical
         //mask makes NotDetected the expected outcome — observed at permutation
         //p ≈ 0.24 when the fix landed). The findings are logged for the record.
         using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();

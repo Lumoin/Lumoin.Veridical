@@ -259,7 +259,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// The consumer keeps the ordinary <c>Commit(f)</c> / <c>Open(f, z)</c> surface
     /// with a <c>d</c>-variable polynomial and a <c>d</c>-coordinate point; the lift
     /// and the trailing zero coordinates are entirely internal. The committed
-    /// codeword is an honest codeword of the same random foldable code at
+    /// codeword is a correctly generated codeword of the same random foldable code at
     /// <c>d + extraVariableCount</c> layers, so BaseFold's knowledge soundness
     /// (Theorem 4) and the code's minimum-distance bound apply unchanged — there is
     /// no code modification and no distance re-proof.

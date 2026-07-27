@@ -1,7 +1,7 @@
 # Security-bits ledger — per-proof-path knowledge-soundness accounting
 
 This note explains the computed ledger `WellKnownSecurityLevels` produces and the
-honest claims each Spartan proof path in this library can make. It unifies the
+claims each Spartan proof path in this library can support. It unifies the
 boundaries that previously lived apart — the Ligero opened-column derivation
 (`Ligero/WellKnownLigeroParameters`), the BaseFold IOPP query derivation
 (`BaseFold/WellKnownBaseFoldIoppParameters`), the ZK-BaseFold hiding budget

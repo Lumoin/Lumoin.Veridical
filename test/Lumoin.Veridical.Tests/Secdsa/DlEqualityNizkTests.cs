@@ -231,7 +231,7 @@ internal sealed class DlEqualityNizkTests
     [TestMethod]
     public void DistinctStatementsUnderOneWitnessUseDifferentNonces()
     {
-        //Regression for the unframed-nonce witness-recovery flaw. Two DISTINCT but honestly-true statements over
+        //Regression for the unframed-nonce witness-recovery flaw. Two DISTINCT but individually valid statements over
         //the SAME witness whose BARE concatenations collide (statement A: 1 pair, N = D0||D1; statement B: 2 pairs,
         //N = empty; both reduce to g0||e0||d0||d1) must derive DIFFERENT nonces k — else two responses over one k
         //recover the witness via d = (sA - sB)·((rA mod n) - (rB mod n))^-1. k is reconstructed as s - (r mod n)·d.

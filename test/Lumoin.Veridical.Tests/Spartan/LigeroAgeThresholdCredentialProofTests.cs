@@ -91,7 +91,7 @@ internal sealed class LigeroAgeThresholdCredentialProofTests
         Span<byte> s = stackalloc byte[ScalarSize];
         Mint(issuer, credential, publicKey, r, s);
 
-        Assert.IsTrue(VerifyIssuerSignature(credential, publicKey, r, s), "An honestly minted credential's issuer signature must verify.");
+        Assert.IsTrue(VerifyIssuerSignature(credential, publicKey, r, s), "A correctly minted credential's issuer signature must verify.");
 
         //Flip the age claim: the issuer signature no longer covers it.
         MdocCredential tampered = credential with

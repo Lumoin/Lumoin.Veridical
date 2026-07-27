@@ -128,7 +128,7 @@ internal sealed class GkrCrossFieldMacTests
     {
         //On the order of a few minutes, hardware-dependent — the prove attempt must build the
         //full Fp tableau before the parity statement fails.
-        //The Fp side commits a value differing in one bit; the GF side holds the honest value,
+        //The Fp side commits a value differing in one bit; the GF side holds the correct value,
         //so the macs reflect it. For some mac bit the Fp integer column sum has the wrong
         //parity, no masked quotient exists, and the parity constraint is unsatisfiable.
         byte[] tampered = (byte[])Value.Clone();
@@ -144,7 +144,7 @@ internal sealed class GkrCrossFieldMacTests
 
         Assert.ThrowsExactly<InvalidOperationException>(
             () => ProveCrossField(fpWitness, gfWitness, Value, keyCopy, macsCopy, maskedQuotients),
-            "An Fp commitment of a different value cannot satisfy the parity constraints for the honest macs.");
+            "An Fp commitment of a different value cannot satisfy the parity constraints for the correctly generated macs.");
     }
 
 

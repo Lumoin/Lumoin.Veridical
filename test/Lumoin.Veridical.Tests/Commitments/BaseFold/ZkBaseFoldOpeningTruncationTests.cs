@@ -82,7 +82,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     private delegate int TruncationLengthSelector(int fullLength);
 
 
-    //Commits and opens honestly, sanity-checks the intact opening verifies,
+    //Commits and opens correctly, sanity-checks the intact opening verifies,
     //then replays the verify with the opening cut to the selected length and
     //asserts a clean false verdict.
     private static void AssertTruncatedOpeningRejected(TruncationLengthSelector truncatedLengthSelector)

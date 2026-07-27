@@ -460,7 +460,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
 
 
     //Asserts W[wire] ≠ 0 by witnessing its inverse and pinning the product to 1: a
-    //zero wire has no inverse (the honest prover cannot build the witness) and no
+    //zero wire has no inverse (a prover following the protocol cannot build the witness) and no
     //witness satisfies wire·inv = 1, so a zero value is rejected either way.
     public void AddNonzeroCheck(int wire)
     {
@@ -508,7 +508,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
 
     //Test-only: build the binding with a CHOSEN quotient bit — the witness a malicious
     //prover would pick — so the integer identity's soundness can be checked against the
-    //mod-p alias, which needs the wrong quotient (the honest path picks it from value).
+    //mod-p alias, which needs the wrong quotient (the protocol-following path picks it from value).
     internal (int Wire, WireWord BitsMostSignificantFirst) AddReduceModOrderWithQuotientForTesting(
         int valueWire, ReadOnlySpan<byte> reducedValue, ReadOnlySpan<byte> modulus, bool quotient, int bitCount = 256) =>
         AddReduceModOrderCore(valueWire, reducedValue, modulus, bitCount, quotient);
@@ -590,8 +590,8 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     }
 
 
-    //Overwrites a wire's stored value (test-only) so a malicious witness — one the
-    //honest builder would never compute — can be fed to the prover or a constraint
+    //Overwrites a wire's stored value (test-only) so a malicious witness — one a
+    //protocol-following builder would never compute — can be fed to the prover or a constraint
     //evaluator, exercising the soundness of the constraint system directly.
     internal void SetWireForTesting(int wire, ReadOnlySpan<byte> value)
     {

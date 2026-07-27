@@ -15,7 +15,7 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
 /// <summary>
-/// End-to-end gate for the Ligero argument (LF.4b.4–LF.4b.6): an honest proof
+/// End-to-end gate for the Ligero argument (LF.4b.4–LF.4b.6): a correctly generated proof
 /// over a satisfying witness verifies, and the verifier rejects a flipped
 /// quadratic constraint, a tampered linear target, a corrupted opened column and
 /// a mismatched public input. It runs first over the small Mersenne-prime field
@@ -77,7 +77,7 @@ internal sealed class LigeroArgumentRoundtripTests
         using LigeroProof proof = BuildProof(backend, parameters);
         bool verified = VerifyProof(backend, parameters, proof, QuadraticConstraints, LinearTargetValues, TranscriptSeed);
 
-        Assert.IsTrue(verified, $"An honest proof over the {field} must verify.");
+        Assert.IsTrue(verified, $"A correctly generated proof over the {field} must verify.");
     }
 
 

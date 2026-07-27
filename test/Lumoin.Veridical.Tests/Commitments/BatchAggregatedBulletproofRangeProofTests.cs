@@ -97,7 +97,7 @@ internal sealed class BatchAggregatedBulletproofRangeProofTests
                 key, BitWidth, ValueCount, commitments, proofs, batchTx, () => NewTranscript(TranscriptDomain),
                 Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, pool);
 
-            Assert.IsTrue(perProof, "The per-proof aggregated verifier must accept the honest proof.");
+            Assert.IsTrue(perProof, "The per-proof aggregated verifier must accept the correctly generated proof.");
             Assert.AreEqual(perProof, batch, "The single-proof aggregated batch must agree with the per-proof verifier.");
         }
         finally

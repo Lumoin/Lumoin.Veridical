@@ -102,7 +102,7 @@ internal sealed class BatchBulletproofRangeProofTests
                 key, commitments.Span, proofs, batchTx, () => NewTranscript(TranscriptDomain),
                 Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, pool);
 
-            Assert.IsTrue(perProof, "The per-proof verifier must accept the honest proof.");
+            Assert.IsTrue(perProof, "The per-proof verifier must accept the correctly generated proof.");
             Assert.AreEqual(perProof, batch, "The single-proof batch must agree with the per-proof verifier.");
         }
         finally
@@ -127,7 +127,7 @@ internal sealed class BatchBulletproofRangeProofTests
             using IMemoryOwner<byte> commitmentsOwner = ProveBatch(key, ValuesFor(4), proofs, pool);
             ReadOnlySpan<byte> commitments = commitmentsOwner.Memory.Span[..(4 * WellKnownCurves.GetG1CompressedSizeBytes(Curve))];
 
-            //Corrupt the third proof's IPA tail; the other three stay honest.
+            //Corrupt the third proof's IPA tail; the other three stay untampered.
             MemoryMarshal.AsMemory(proofs[2].AsReadOnlyMemory()).Span[^1] ^= 0x01;
 
             using FiatShamirTranscript batchTx = NewTranscript(BatchDomain);

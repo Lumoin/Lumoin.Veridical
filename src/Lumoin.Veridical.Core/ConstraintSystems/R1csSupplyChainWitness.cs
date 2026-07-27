@@ -22,7 +22,7 @@ public delegate decimal SupplyChainMeasuredValue(string claimName);
 /// <remarks>
 /// The bit-decomposition math is delegated to <see cref="R1csPredicateWitness"/>,
 /// the single source of the field reduction the compiler applies, so an
-/// out-of-range measured value is decomposed honestly and rejected by the
+/// out-of-range measured value is decomposed correctly and rejected by the
 /// predicate's own constraints rather than silently masked here.
 /// </remarks>
 public static class R1csSupplyChainWitness

@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 
 /// <summary>
 /// The per-proof-path security-level calculator: it unifies the scattered
-/// honest boundaries — the Ligero opened-column soundness
+/// documented boundaries — the Ligero opened-column soundness
 /// (<see cref="WellKnownLigeroParameters"/>), the BaseFold IOPP query soundness
 /// (<see cref="WellKnownBaseFoldIoppParameters"/>) and the field-size terms the
 /// per-scheme docs previously carried only as prose — into one computed

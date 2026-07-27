@@ -110,7 +110,7 @@ internal sealed class BulletproofRangeProofTests
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
             G1Add, G1ScalarMul, G1Msm, pool);
 
-        Assert.IsTrue(verified, "A rehydrated honest range proof must verify.");
+        Assert.IsTrue(verified, "A rehydrated, correctly generated range proof must verify.");
     }
 
 
