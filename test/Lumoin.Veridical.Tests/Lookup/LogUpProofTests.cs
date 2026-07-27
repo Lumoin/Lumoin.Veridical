@@ -7,6 +7,7 @@ using Lumoin.Veridical.Core.Lookup;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Algebraic;
+using Lumoin.Veridical.Tests.Spartan;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
@@ -18,11 +19,13 @@ namespace Lumoin.Veridical.Tests.Lookup;
 
 /// <summary>
 /// End-to-end tests for the LogUp lookup argument: an honest proof that every
-/// witness value appears in the public table verifies over both the Ligero and
-/// BaseFold commitment providers, byte-for-byte deterministically; a false
-/// statement is unprovable; and every tampered proof component — round
-/// messages, claimed evaluations, openings, or a substituted table — is
-/// rejected. Real BLS12-381 arithmetic and production BLAKE3 throughout.
+/// witness value appears in the public table verifies over the Ligero,
+/// BaseFold and Hyrax commitment providers — two hash-based schemes and the
+/// homomorphic Pedersen family, so the argument demonstrably depends only on
+/// the provider seam; a false statement is unprovable; and every tampered
+/// proof component — round messages, claimed evaluations, openings, or a
+/// substituted table — is rejected. Real BLS12-381 arithmetic and production
+/// BLAKE3 throughout.
 /// </summary>
 [TestClass]
 internal sealed class LogUpProofTests
@@ -37,6 +40,10 @@ internal sealed class LogUpProofTests
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
+    private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+    private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1HashToCurveDelegate G1HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
 
     private const int ScalarSize = Scalar.SizeBytes;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
@@ -64,6 +71,11 @@ internal sealed class LogUpProofTests
     private const int WitnessColumnStride = 3;
 
     private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+
+    //Domain-separated from the transcript label so the Hyrax Pedersen
+    //blinding stream is independent of the Fiat-Shamir stream Hyrax also
+    //draws challenges from.
+    private static readonly byte[] HyraxBlindSeed = Encoding.UTF8.GetBytes("veridical.logup.test.hyrax.blind.v1");
 
 
     [TestMethod]
@@ -102,6 +114,19 @@ internal sealed class LogUpProofTests
         using LogUpProof proof = Prove(material, TestVariableCount, witnessColumnCount: 1, pcs, pool);
 
         Assert.IsTrue(Verify(material, proof, pcs, pool), "An honest LogUp proof must verify over BaseFold — the argument is provider-generic.");
+    }
+
+
+    [TestMethod]
+    public void SingleColumnLookupRoundTripsThroughHyrax()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider pcs = BuildHyraxProvider();
+        using IMemoryOwner<byte> material = BuildLookupMaterial(TestVariableCount, witnessColumnCount: 1, pool);
+
+        using LogUpProof proof = Prove(material, TestVariableCount, witnessColumnCount: 1, pcs, pool);
+
+        Assert.IsTrue(Verify(material, proof, pcs, pool), "An honest LogUp proof must verify over Hyrax — the argument is provider-generic and Hyrax is the homomorphic Pedersen-family backend.");
     }
 
 
@@ -445,6 +470,20 @@ internal sealed class LogUpProofTests
         return BaseFoldPolynomialCommitmentScheme.Create(
             codeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce,
             Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+    }
+
+
+    [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the derived commitment key transfers to the returned provider (ownsKey: true).")]
+    private static PolynomialCommitmentProvider BuildHyraxProvider()
+    {
+        HyraxCommitmentDimensions dimensions = HyraxCommitmentDimensions.ForVariableCount(TestVariableCount);
+        HyraxCommitmentKey key = HyraxCommitmentKey.Derive(
+            dimensions.ColumnCount, WellKnownHyraxDomainLabels.CanonicalSeedV1, Curve, G1HashToCurve, BaseMemoryPool.Shared);
+        ScalarRandomDelegate random = new DeterministicScalarRandom(HyraxBlindSeed).AsDelegate();
+
+        return HyraxPolynomialCommitmentScheme.Create(
+            key, Curve, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
+            G1Add, G1ScalarMul, G1Msm, ownsKey: true);
     }
 
 
