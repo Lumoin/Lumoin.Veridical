@@ -201,9 +201,14 @@ the dual-field zero-knowledge stack. A change that would alter a proof's bytes i
 ### Longfellow upstream pin
 
 The `draft-google-cfrg-libzk` Internet-Draft is expired (`-01` is the latest revision; not adopted by CFRG),
-so the `google/longfellow-zk` repository is the de-facto specification. The committed Longfellow fixtures are
-pinned to upstream commit `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (`v0.9-90-gd8ad8f6`, 2026-05-29 — also
-the upstream `main` HEAD as of 2026-07-09) and to the circuit generation the upstream `kZkSpecs` table names
+so the `google/longfellow-zk` repository is the de-facto specification. The conformance pin is upstream
+commit `3dfaac72abed4a6fbcd0ab8688b39168bb224133` (2026-07-26, the upstream `main` HEAD as of 2026-07-28).
+The committed Longfellow fixtures are reference dumps captured at commit
+`d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (2026-05-29) and re-verified at the pin: the upstream range
+between the two commits contains no change to the serialization, transcript, prover, scheduler or circuit
+generation surfaces, the reference's own test suite passes at the pin in the local oracle, and every pinned
+compile-counter dump reproduces identically there. The fixtures target the circuit generation the upstream
+`kZkSpecs` table names
 `longfellow-libzk-v1` version 7. Two registry rows are pinned: the one-attribute bundle (`block_enc`
 4151/4096) and the four-attribute breadth bundle (`kZkSpecs[3]`, `block_enc` 4415/4096, sharing the
 byte-identical signature circuit); both run Ligero rate 7 with 132 opened columns and 40 SHA-256 blocks of

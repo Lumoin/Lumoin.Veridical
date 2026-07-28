@@ -455,6 +455,13 @@ internal sealed class LongfellowMerkleTree: IDisposable
                 }
             }
 
+            //A valid proof is consumed exactly: trailing unread digests would make distinct proof
+            //byte strings verify for the same opening.
+            if(consumed != proofLength)
+            {
+                return false;
+            }
+
             //Define the opened leaves.
             for(int p = 0; p < positions.Length; p++)
             {

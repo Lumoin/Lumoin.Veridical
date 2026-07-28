@@ -226,17 +226,18 @@ internal sealed class LongfellowCircuitNode
 
     /// <summary>
     /// The content equality the common-subexpression table applies, the port of the reference
-    /// node's <c>operator==</c>: flags, desired wire ids and the full term list.
+    /// node's <c>operator==</c>: the input and assertion flags, the desired input wire id and the
+    /// full term list. Output-ness does not count towards wire equality — it is a compiler
+    /// annotation like depth, so a recomputed expression unifies with a node already marked as an
+    /// output.
     /// </summary>
     /// <param name="other">The node to compare against.</param>
     /// <returns><see langword="true"/> when the contents match.</returns>
     public bool ContentEquals(LongfellowCircuitNode other)
     {
         if(IsInput != other.IsInput
-            || IsOutput != other.IsOutput
             || IsAssertZero != other.IsAssertZero
             || DesiredWireIdForInput != other.DesiredWireIdForInput
-            || DesiredWireIdForOutput != other.DesiredWireIdForOutput
             || Terms.Length != other.Terms.Length)
         {
             return false;
@@ -267,9 +268,7 @@ internal sealed class LongfellowCircuitNode
 
         ulong hash = OffsetBasis;
         hash = (hash ^ (uint)DesiredWireIdForInput) * Prime;
-        hash = (hash ^ (uint)DesiredWireIdForOutput) * Prime;
         hash = (hash ^ (IsInput ? 1ul : 0ul)) * Prime;
-        hash = (hash ^ (IsOutput ? 1ul : 0ul)) * Prime;
         hash = (hash ^ (IsAssertZero ? 1ul : 0ul)) * Prime;
         hash = (hash ^ (ulong)Terms.Length) * Prime;
         foreach(LongfellowCompilerTerm term in Terms)

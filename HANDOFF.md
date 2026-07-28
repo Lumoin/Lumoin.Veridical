@@ -385,7 +385,7 @@ with the repo. Two things normally live there on the original machine:
    "Longfellow upstream pin" section of SECURITY.md):
    ```
    git clone https://github.com/google/longfellow-zk tempdocs/longfellow-zk-reference
-   git -C tempdocs/longfellow-zk-reference checkout d8ad8f65187c7c364a3c2181ad484bcab03f0ec2
+   git -C tempdocs/longfellow-zk-reference checkout 3dfaac72abed4a6fbcd0ab8688b39168bb224133
    ```
    Relevant files: `lib/ligero/{ligero_param,ligero_prover,ligero_verifier}.h`,
    `lib/algebra/{reed_solomon,crt_convolution}.h` (the latter two are the CRT-FFT

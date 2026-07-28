@@ -57,7 +57,7 @@ internal sealed class LongfellowFlatSha256CompileTests
 
     /// <summary>
     /// The unpacked block circuit's reference depth upper bound, regenerated from the pinned
-    /// reference (d8ad8f6) by running <c>FlatSHA256_Circuit.block_size_p256</c> in the
+    /// reference (3dfaac7) by running <c>FlatSHA256_Circuit.block_size_p256</c> in the
     /// longfellow-ref Docker oracle; the figure in <c>flatsha256_circuit.h</c>'s header comment is
     /// stale and does not reproduce at the pinned commit even in the reference itself.
     /// </summary>

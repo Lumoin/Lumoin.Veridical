@@ -156,7 +156,7 @@ internal static class LongfellowFlatSha256Witness
         }
 
         int n = message.Length;
-        int requiredBlocks = CeilingDivide(n + PaddingOverheadBytes, BytesPerBlock);
+        int requiredBlocks = CeilingDivide((long)n + PaddingOverheadBytes, BytesPerBlock);
         if(requiredBlocks > byte.MaxValue)
         {
             throw new ArgumentException("The message needs more occupied blocks than the occupied-block count can represent.", nameof(message));
@@ -282,10 +282,10 @@ internal static class LongfellowFlatSha256Witness
     }
 
     /// <summary>The reference's <c>ceildiv</c>: the ceiling of <paramref name="numerator"/> divided by <paramref name="denominator"/>.</summary>
-    /// <param name="numerator">The numerator.</param>
+    /// <param name="numerator">The numerator; widened so the addition of the padding overhead to a maximum-length span cannot overflow.</param>
     /// <param name="denominator">The denominator.</param>
     /// <returns>The ceiling quotient.</returns>
-    private static int CeilingDivide(int numerator, int denominator) => (numerator + denominator - 1) / denominator;
+    private static int CeilingDivide(long numerator, int denominator) => (int)((numerator / denominator) + (numerator % denominator == 0 ? 0 : 1));
 }
 
 /// <summary>

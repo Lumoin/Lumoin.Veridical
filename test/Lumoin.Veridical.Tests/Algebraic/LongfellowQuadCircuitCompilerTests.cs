@@ -248,6 +248,55 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>
+    /// A recomputed expression must unify with a node already registered as an output: output-ness
+    /// is a compiler annotation like depth, not part of subexpression identity.
+    /// </summary>
+    [TestMethod]
+    public void ACommonSubexpressionUnifiesWithAnOutputNode()
+    {
+        LongfellowQuadCircuitBuilder builder = NewBuilder();
+        int x = builder.InputWire();
+        int y = builder.InputWire();
+
+        int product = builder.Mul(x, y);
+        builder.OutputWire(product, 0);
+
+        int recomputed = builder.Mul(x, y);
+
+        Assert.AreEqual(product, recomputed, "The recomputed product must reuse the output node.");
+        Assert.AreEqual(1, builder.EliminatedSubexpressionCount, "The reuse must be counted as a common-subexpression elimination.");
+    }
+
+
+    /// <summary>Registering the same node as an output twice is a construction error.</summary>
+    [TestMethod]
+    public void ANodeCannotBeRegisteredAsAnOutputTwice()
+    {
+        LongfellowQuadCircuitBuilder builder = NewBuilder();
+        int x = builder.InputWire();
+        int y = builder.InputWire();
+        int product = builder.Mul(x, y);
+        builder.OutputWire(product, 0);
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => builder.OutputWire(product, 1));
+    }
+
+
+    /// <summary>A node already registered as an output cannot be absorbed into a new expression.</summary>
+    [TestMethod]
+    public void AnOutputNodeCannotBeAbsorbedIntoANewExpression()
+    {
+        LongfellowQuadCircuitBuilder builder = NewBuilder();
+        int x = builder.InputWire();
+        int y = builder.InputWire();
+        int product = builder.Mul(x, y);
+        builder.OutputWire(product, 0);
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => builder.Add(product, y));
+    }
+
+
     [TestMethod]
     public void ACircuitWithoutOutputsOrAssertionsIsRejected()
     {

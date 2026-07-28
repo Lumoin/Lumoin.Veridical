@@ -478,10 +478,17 @@ internal sealed class LongfellowQuadCircuitBuilder
     /// </summary>
     /// <param name="node">The node id.</param>
     /// <param name="outputWireId">The claimed position, or <see cref="LongfellowCircuitNode.WireIdUndefined"/>.</param>
+    /// <exception cref="InvalidOperationException">When the node is already an output.</exception>
     private void MarkOutput(int node, int outputWireId)
     {
-        nodes[node].IsOutput = true;
-        nodes[node].DesiredWireIdForOutput = outputWireId;
+        LongfellowCircuitNode n = nodes[node];
+        if(n.IsOutput)
+        {
+            throw new InvalidOperationException("The node is already registered as an output.");
+        }
+
+        n.IsOutput = true;
+        n.DesiredWireIdForOutput = outputWireId;
         OutputCount++;
     }
 
@@ -538,16 +545,23 @@ internal sealed class LongfellowQuadCircuitBuilder
 
     /// <summary>
     /// The materialized term view of a node (<c>materialize_input</c>): an input wire becomes the
-    /// single term <c>1·(w0·op)</c>; any other node contributes its own terms.
+    /// single term <c>1·(w0·op)</c>; any other node contributes its own terms. A node already
+    /// registered as an output cannot be absorbed into a new expression.
     /// </summary>
     /// <param name="op">The node id.</param>
     /// <returns>The term list.</returns>
+    /// <exception cref="InvalidOperationException">When a non-input output node is materialized.</exception>
     private LongfellowCompilerTerm[] MaterializeTerms(int op)
     {
         LongfellowCircuitNode n = nodes[op];
         if(n.IsInput)
         {
             return [new LongfellowCompilerTerm(1, 0, op)];
+        }
+
+        if(n.IsOutput)
+        {
+            throw new InvalidOperationException("An output node cannot be absorbed into a new expression.");
         }
 
         return n.Terms;

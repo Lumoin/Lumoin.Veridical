@@ -407,7 +407,7 @@ internal sealed class LongfellowFlatSha256Circuit
 
 
     /// <summary>
-    /// The reference's <c>find_len</c>: recovers the 64-bit big-endian bit-length field from the last 8
+    /// The reference's <c>find_len_bits</c>: recovers the 64-bit big-endian bit-length field from the last 8
     /// bytes of the occupied-block-count-th block (a one-hot selection over <paramref name="blockCount"/>,
     /// exactly as <see cref="AssertHash"/> selects the final state), then asserts every recovered bit is
     /// genuinely a bit.

@@ -7,12 +7,14 @@ using System.IO;
 namespace Lumoin.Veridical.Tests.Longfellow;
 
 /// <summary>
-/// The committed Longfellow fixtures are pinned to google/longfellow-zk commit
-/// <c>d8ad8f65187c7c364a3c2181ad484bcab03f0ec2</c> (v0.9 plus 90 commits, 2026-05-29). The ZkSpec registry
-/// identity and the raw-stream digest recorded in the circuit-import anchor are asserted here against the
-/// documented pin, so a fixture regeneration from a different upstream state fails the default suite rather
-/// than drifting silently. See <c>TestMaterial/Longfellow/PROVENANCE.md</c> and the "Longfellow upstream pin"
-/// section of <c>SECURITY.md</c> for the full identity chain and the re-pin tripwires.
+/// The Longfellow conformance pin is google/longfellow-zk commit
+/// <c>3dfaac72abed4a6fbcd0ab8688b39168bb224133</c> (2026-07-26); the committed fixtures are reference dumps
+/// captured at commit <c>d8ad8f65187c7c364a3c2181ad484bcab03f0ec2</c> (2026-05-29) and re-verified at the
+/// pin, whose upstream range carries no emit-side change. The ZkSpec registry identity and the raw-stream
+/// digest recorded in the circuit-import anchor are asserted here against the documented pin, so a fixture
+/// regeneration from a different upstream state fails the default suite rather than drifting silently. See
+/// <c>TestMaterial/Longfellow/PROVENANCE.md</c> and the "Longfellow upstream pin" section of
+/// <c>SECURITY.md</c> for the full identity chain and the re-pin tripwires.
 /// </summary>
 [TestClass]
 internal sealed class LongfellowUpstreamPinTests

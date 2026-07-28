@@ -117,15 +117,15 @@ internal static class LongfellowCircuitReader
         }
 
         //The reference's basic sanity checks, plus the lower bounds this representation requires: a
-        //circuit needs at least one layer, and a layer at least one hand round — malformed values
-        //must parse to false, never throw through the constructors.
+        //circuit needs at least one output, one copy and one layer, and a layer at least one hand
+        //round — malformed values must parse to false, never throw through the constructors.
         if(fieldIdAsNum != fieldId
             || publicInputCount > inputCount
             || subfieldBoundaryValue > inputCount
             || layerCount < 1
             || layerCount > MaxLayers
-            || nv < 0
-            || nc < 0
+            || nv < 1
+            || nc < 1
             || constantCount < 0)
         {
             return false;
@@ -175,7 +175,14 @@ internal static class LongfellowCircuitReader
             reader.TryReadNum(out long layerInputCount);
             reader.TryReadNum(out long termCount);
 
-            if(handRounds < 1 || handRounds > MaxBindings || layerInputCount <= 0 || termCount <= 0)
+            //A layer's wire count must be representable in its hand rounds: lw ≤ nw ≤ 2^lw, the
+            //reference's consistency relation between logw and nw.
+            if(handRounds < 1
+                || handRounds > MaxBindings
+                || layerInputCount <= 0
+                || layerInputCount < handRounds
+                || layerInputCount > 1L << (int)handRounds
+                || termCount <= 0)
             {
                 return false;
             }
