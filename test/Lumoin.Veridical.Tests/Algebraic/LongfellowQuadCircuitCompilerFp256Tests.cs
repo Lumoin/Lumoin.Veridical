@@ -3,14 +3,13 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
-using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
-using System.Security.Cryptography;
 using System.Text;
+using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -42,29 +41,9 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
 {
     private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
 
-    private const int ScalarSize = Scalar.SizeBytes;
-    private const int Fp256ElementBytes = 32;
     private const int Fp256BitCount = 256;
-    private const int DigestSize = 32;
-    private const int TranscriptVersion = 6;
-
-    private const int InverseRate = 4;
-    private const int OpenedColumnCount = 2;
-
-    //The compiled statement never calls BeginFullField, so the boundary stays zero.
-    private const int CopyCount = 1;
 
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("fp256-kernel-e2e");
-
-    private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
-
-    private static ScalarAddDelegate Fp256Add { get; } = P256BaseFieldReference.GetAdd();
-
-    private static ScalarSubtractDelegate Fp256Subtract { get; } = P256BaseFieldReference.GetSubtract();
-
-    private static ScalarMultiplyDelegate Fp256Multiply { get; } = P256BaseFieldReference.GetMultiply();
-
-    private static ScalarInvertDelegate Fp256Invert { get; } = P256BaseFieldReference.GetInvert();
 
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
 
@@ -114,9 +93,9 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes);
 
         byte[] witnessColumn = BuildSatisfyingColumn(3, 5, 7);
-        byte[] proof = ProveFp256(circuit, parameters, witnessColumn, TranscriptSeed);
+        byte[] proof = ProduceFp256Proof(circuit, parameters, witnessColumn, TranscriptSeed);
 
-        AssertFp256Verifies(circuit, parameters, proof, PublicInputBytes(circuit, witnessColumn), TranscriptSeed, expectedAccept: true);
+        AssertFp256Verifies(circuit, parameters, proof, Fp256PublicInputBytes(circuit, witnessColumn), TranscriptSeed, expectedAccept: true);
     }
 
 
@@ -128,8 +107,8 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes);
 
         byte[] witnessColumn = BuildSatisfyingColumn(3, 5, 7);
-        byte[] proof = ProveFp256(circuit, parameters, witnessColumn, TranscriptSeed);
-        byte[] publicInputs = PublicInputBytes(circuit, witnessColumn);
+        byte[] proof = ProduceFp256Proof(circuit, parameters, witnessColumn, TranscriptSeed);
+        byte[] publicInputs = Fp256PublicInputBytes(circuit, witnessColumn);
 
         //A flipped byte inside the sumcheck segment diverges the challenge stream.
         byte[] tamperedProof = (byte[])proof.Clone();
@@ -155,7 +134,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
         const int WitnessWireIndex = 4;
         column[(WitnessWireIndex * ScalarSize) + ScalarSize - 1] ^= 0x01;
 
-        Assert.ThrowsExactly<InvalidOperationException>(() => ProveFp256(circuit, parameters, column, TranscriptSeed));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ProduceFp256Proof(circuit, parameters, column, TranscriptSeed));
     }
 
 
@@ -243,39 +222,6 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
-    private static byte[] ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
-    {
-        Fp256RealFft fft = NewFp256Fft();
-        LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
-            fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
-        using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
-
-        using LongfellowTranscript transcript = NewTranscript(seed);
-        LongfellowRandomByteSource random = NewBelowModulusSource();
-
-        return LongfellowZkProver.Prove(
-            circuit,
-            parameters,
-            witnessColumn,
-            LongfellowFp256Encoding.SignatureSubfieldBoundary,
-            random,
-            transcript,
-            encoderFactory,
-            profile,
-            codec,
-            Fp256Add,
-            Fp256Subtract,
-            Fp256Multiply,
-            Fp256Invert,
-            Sha256TwoToOne,
-            Sha256OneShot,
-            WellKnownHashAlgorithms.Sha256,
-            CurveParameterSet.None,
-            BaseMemoryPool.Shared);
-    }
-
-
     private static void AssertFp256Verifies(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
@@ -302,7 +248,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
         using LongfellowLigeroProof? ligeroProof = LongfellowLigeroProofSerializer.Read(parameters, profile, codec, BaseMemoryPool.Shared, comProofBytes, out _);
         Assert.IsNotNull(ligeroProof, "The Ligero segment must parse.");
 
-        using LongfellowTranscript transcript = NewTranscript(seed);
+        using LongfellowTranscript transcript = NewFp256Transcript(seed);
         LongfellowZkVerifier.RecvCommitment(root, transcript);
 
         bool accepted = LongfellowZkVerifier.VerifyFromAbsorbedRoot(
@@ -335,63 +281,6 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
-    //The public input element bytes (little-endian to_bytes_field) at the 32-byte Fp256 width.
-    private static byte[] PublicInputBytes(LongfellowSumcheckCircuit circuit, byte[] witnessColumn)
-    {
-        byte[] publicInputs = new byte[circuit.PublicInputCount * Fp256ElementBytes];
-        for(int i = 0; i < circuit.PublicInputCount; i++)
-        {
-            for(int b = 0; b < Fp256ElementBytes; b++)
-            {
-                publicInputs[(i * Fp256ElementBytes) + b] = witnessColumn[(i * ScalarSize) + ScalarSize - 1 - b];
-            }
-        }
-
-        return publicInputs;
-    }
-
-
-    //A deterministic source whose every 32-byte draw is below p: the most significant little-endian
-    //byte is zeroed, so the integer is < 2^248 < p and of_bytes_field accepts it.
-    private static LongfellowRandomByteSource NewBelowModulusSource()
-    {
-        ulong counter = 0;
-
-        return destination =>
-        {
-            for(int i = 0; i < destination.Length; i++)
-            {
-                destination[i] = (byte)((counter * 31) + 7);
-                counter++;
-            }
-
-            if(destination.Length == Fp256ElementBytes)
-            {
-                destination[^1] = 0;
-            }
-        };
-    }
-
-
-    //of_scalar(u) over Fp256: the integer u reduced mod p as a canonical big-endian scalar.
-    private static void OfScalarFp256(uint coordinate, Span<byte> destination) =>
-        Canonical(new BigInteger(coordinate) % Prime).CopyTo(destination);
-
-
-    //fits(an): the canonical big-endian integer is below the modulus.
-    private static bool InRangeFp256(ReadOnlySpan<byte> canonical) => ReadCanonicalBigEndian(canonical) < Prime;
-
-
-    private static byte[] Canonical(BigInteger value)
-    {
-        byte[] canonical = new byte[ScalarSize];
-        byte[] bigEndian = value.ToByteArray(isUnsigned: true, isBigEndian: true);
-        bigEndian.CopyTo(canonical.AsSpan(ScalarSize - bigEndian.Length));
-
-        return canonical;
-    }
-
-
     private static byte[] CanonicalOne()
     {
         byte[] one = new byte[ScalarSize];
@@ -401,44 +290,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
-    private static BigInteger ReadCanonicalBigEndian(ReadOnlySpan<byte> canonical) =>
-        new(canonical, isUnsigned: true, isBigEndian: true);
-
-
     private static int Anchor(string key) => int.Parse(Anchors[key], CultureInfo.InvariantCulture);
-
-
-    private static LongfellowTranscript NewTranscript(byte[] seed) =>
-        new(seed, TranscriptVersion, Fp256ElementBytes, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
-
-
-    private static Fp256RealFft NewFp256Fft()
-    {
-        byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
-        LongfellowFp256Encoding.RootOfUnity(root);
-
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-    }
-
-
-    private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction) => SHA256.HashData(input, output);
-
-
-    private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
-    {
-        Span<byte> combined = stackalloc byte[2 * DigestSize];
-        left.CopyTo(combined[..left.Length]);
-        right.CopyTo(combined.Slice(left.Length, right.Length));
-        SHA256.HashData(combined[..(left.Length + right.Length)], output);
-    }
-
-
-    private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
-    {
-        using Aes aes = Aes.Create();
-        aes.Key = key.ToArray();
-        aes.EncryptEcb(input, output, PaddingMode.None);
-    }
 
 
     private static Dictionary<string, string> LoadAnchors(string relativePath)

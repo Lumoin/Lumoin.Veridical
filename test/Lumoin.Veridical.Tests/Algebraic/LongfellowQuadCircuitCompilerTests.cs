@@ -3,13 +3,12 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
-using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Security.Cryptography;
 using System.Text;
+using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -42,29 +41,12 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
 
     private const int ElementBytes = 16;
-    private const int ScalarSize = Scalar.SizeBytes;
-    private const int TranscriptVersion = 6;
-
-    private const int FieldBytes = 16;
-    private const int Production16SubFieldBytes = 2;
-    private const int InverseRate = 4;
-    private const int OpenedColumnCount = 2;
-
-    //The anchor circuit's subfield boundary: begin_full_field is never called, so it stays zero.
-    private const int SubfieldBoundary = 0;
-
-    //The anchor circuit's copy count: the sc wire segment requires a single copy.
-    private const int CopyCount = 1;
 
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
-    private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
-
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
-
-    private static ScalarInvertDelegate Invert { get; } = Gf2k128Backend.GetInvert();
 
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
 
@@ -129,7 +111,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         _ = BuildAnchorStatement(out LongfellowSumcheckCircuit circuit);
         byte[] witnessColumn = BuildAnchorWitnessColumn(circuit);
 
-        byte[] proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
+        byte[] proof = ProduceGfProof(circuit, witnessColumn, TranscriptSeed);
 
         byte[] expected = Convert.FromHexString(Anchors["proof_bytes"]);
         Assert.HasCount(expected.Length, proof, "The proof length over the compiled circuit must match the reference proof.");
@@ -144,13 +126,13 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         LongfellowSumcheckCircuit anchorBuilt = BuildAnchorCircuit();
 
         byte[] witnessColumn = BuildAnchorWitnessColumn(compiled);
-        byte[] publicInputs = PublicInputBytes(compiled, witnessColumn);
+        byte[] publicInputs = GfPublicInputBytes(compiled, witnessColumn);
 
-        byte[] proofOverCompiled = ProduceProof(compiled, witnessColumn, TranscriptSeed);
-        AssertVerifies(anchorBuilt, proofOverCompiled, publicInputs, expectedAccept: true);
+        byte[] proofOverCompiled = ProduceGfProof(compiled, witnessColumn, TranscriptSeed);
+        AssertGfVerifies(anchorBuilt, proofOverCompiled, publicInputs, TranscriptSeed, expectedAccept: true);
 
-        byte[] proofOverAnchorBuilt = ProduceProof(anchorBuilt, witnessColumn, TranscriptSeed);
-        AssertVerifies(compiled, proofOverAnchorBuilt, publicInputs, expectedAccept: true);
+        byte[] proofOverAnchorBuilt = ProduceGfProof(anchorBuilt, witnessColumn, TranscriptSeed);
+        AssertGfVerifies(compiled, proofOverAnchorBuilt, publicInputs, TranscriptSeed, expectedAccept: true);
     }
 
 
@@ -164,7 +146,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         const int WitnessWireIndex = 4;
         column[(WitnessWireIndex * ScalarSize) + ScalarSize - 1] ^= 0x01;
 
-        Assert.ThrowsExactly<InvalidOperationException>(() => ProduceProof(circuit, column, TranscriptSeed));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ProduceGfProof(circuit, column, TranscriptSeed));
     }
 
 
@@ -173,12 +155,12 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     {
         _ = BuildAnchorStatement(out LongfellowSumcheckCircuit circuit);
         byte[] witnessColumn = BuildAnchorWitnessColumn(circuit);
-        byte[] proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
+        byte[] proof = ProduceGfProof(circuit, witnessColumn, TranscriptSeed);
 
         //Flip one byte in the Ligero proof segment (past the root and the sumcheck segment).
         proof[^1] ^= 0x01;
 
-        AssertVerifies(circuit, proof, PublicInputBytes(circuit, witnessColumn), expectedAccept: false);
+        AssertGfVerifies(circuit, proof, GfPublicInputBytes(circuit, witnessColumn), TranscriptSeed, expectedAccept: false);
     }
 
 
@@ -705,98 +687,6 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
-    private static byte[] ProduceProof(LongfellowSumcheckCircuit circuit, byte[] witnessColumn, byte[] seed)
-    {
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
-
-        using Lch14AdditiveFft fft = NewFft();
-        using LongfellowTranscript transcript = NewTranscript(seed);
-        LongfellowRandomByteSource random = NewCounterSource();
-
-        return LongfellowZkProver.Prove(
-            circuit,
-            parameters,
-            witnessColumn,
-            Production16SubFieldBytes,
-            SubfieldBoundary,
-            random,
-            transcript,
-            fft,
-            Add,
-            Subtract,
-            Multiply,
-            Invert,
-            Sha256TwoToOne,
-            Sha256OneShot,
-            WellKnownHashAlgorithms.Sha256,
-            CurveParameterSet.None,
-            BaseMemoryPool.Shared);
-    }
-
-
-    private static void AssertVerifies(LongfellowSumcheckCircuit circuit, byte[] proof, byte[] publicInputs, bool expectedAccept)
-    {
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
-
-        using Lch14AdditiveFft fft = NewFft();
-        using LongfellowTranscript transcript = NewTranscript(TranscriptSeed);
-
-        bool accepted = LongfellowZkVerifier.Verify(
-            circuit,
-            parameters,
-            proof,
-            publicInputs,
-            Production16SubFieldBytes,
-            transcript,
-            fft,
-            Add,
-            Subtract,
-            Multiply,
-            Invert,
-            Sha256TwoToOne,
-            Sha256OneShot,
-            WellKnownHashAlgorithms.Sha256,
-            CurveParameterSet.None,
-            BaseMemoryPool.Shared,
-            out LongfellowZkVerificationResult result);
-
-        Assert.AreEqual(expectedAccept, accepted, $"The verdict must be {(expectedAccept ? "accept" : "reject")} (result {result}).");
-    }
-
-
-    //The public input element bytes (little-endian to_bytes_field): the first npub_in witness elements.
-    private static byte[] PublicInputBytes(LongfellowSumcheckCircuit circuit, byte[] witnessColumn)
-    {
-        byte[] publicInputs = new byte[circuit.PublicInputCount * ElementBytes];
-        for(int i = 0; i < circuit.PublicInputCount; i++)
-        {
-            for(int b = 0; b < ElementBytes; b++)
-            {
-                publicInputs[(i * ElementBytes) + b] = witnessColumn[(i * ScalarSize) + ScalarSize - 1 - b];
-            }
-        }
-
-        return publicInputs;
-    }
-
-
-    //A fresh deterministic counter source: the k-th byte produced is (k & 0xFF), identical to the C++
-    //oracle's CounterRandomEngine.
-    private static LongfellowRandomByteSource NewCounterSource()
-    {
-        ulong counter = 0;
-
-        return destination =>
-        {
-            for(int i = 0; i < destination.Length; i++)
-            {
-                destination[i] = (byte)(counter & 0xFF);
-                counter++;
-            }
-        };
-    }
-
-
     //The reference morton::lt over the even/odd bit-plane representation (lib/util/ceildiv.h),
     //transcribed as the independent oracle for the interleave-based comparison.
     private static bool ReferenceMortonLess(ulong x0, ulong x1, ulong y0, ulong y1)
@@ -849,37 +739,6 @@ internal sealed class LongfellowQuadCircuitCompilerTests
 
 
     private static int Anchor(string key) => int.Parse(Anchors[key], CultureInfo.InvariantCulture);
-
-
-    private static LongfellowTranscript NewTranscript(byte[] seed) =>
-        new(seed, TranscriptVersion, 16, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
-
-
-    private static Lch14AdditiveFft NewFft() =>
-        new(Lch14Subfield.Production16, Add, Subtract, Multiply, Invert, CurveParameterSet.None, BaseMemoryPool.Shared);
-
-
-    private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
-    {
-        SHA256.HashData(input, output);
-    }
-
-
-    private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
-    {
-        Span<byte> combined = stackalloc byte[left.Length + right.Length];
-        left.CopyTo(combined);
-        right.CopyTo(combined[left.Length..]);
-        SHA256.HashData(combined[..(left.Length + right.Length)], output);
-    }
-
-
-    private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
-    {
-        using Aes aes = Aes.Create();
-        aes.Key = key.ToArray();
-        aes.EncryptEcb(input, output, PaddingMode.None);
-    }
 
 
     private static Dictionary<string, string> LoadAnchors(string relativePath)
