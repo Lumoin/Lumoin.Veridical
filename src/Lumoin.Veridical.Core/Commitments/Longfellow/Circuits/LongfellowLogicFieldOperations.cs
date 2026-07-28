@@ -40,6 +40,15 @@ internal sealed class LongfellowLogicFieldOperations
     /// <summary>The Fp256 field's bit count.</summary>
     private const int Fp256BitCount = 256;
 
+    /// <summary>The sextic-extension on-wire element width in bytes (the reference <c>Fp24_6</c>'s <c>kBytes</c>: six four-byte coefficients).</summary>
+    private const int Fp24SexticElementBytes = 24;
+
+    /// <summary>The sextic-extension field's bit count (the reference <c>Fp24_6</c>'s <c>kBits</c>).</summary>
+    private const int Fp24SexticBitCount = 192;
+
+    /// <summary>The FIPS 204 prime <c>q = 2^23 − 2^13 + 1</c>: the <c>of_scalar</c> bound of the sextic extension's base field (the reference <c>Fp24</c>'s <c>check(a &lt; m)</c>).</summary>
+    private const ulong Fp24SexticScalarBound = 8380417;
+
     /// <summary>The subfield generator recurrence's lower exponent bound (<c>kSubFieldLogBits</c>): the reference's <c>subfield_generator()</c> loop starts here.</summary>
     private const int SubfieldGeneratorLowLogBits = 4;
 
@@ -59,6 +68,7 @@ internal sealed class LongfellowLogicFieldOperations
     private readonly ReadOnlyMemory<byte> generatorPolynomial;
     private readonly ReadOnlyMemory<byte> twoConstant;
     private readonly ReadOnlyMemory<byte> halfConstant;
+    private readonly ulong primeScalarBound;
 
     /// <summary>The wrapped compiler-kernel field-operation bundle: addition, multiplication, the field identities, and the element width/characteristic markers.</summary>
     public LongfellowCompilerFieldOperations Compiler { get; }
@@ -81,6 +91,7 @@ internal sealed class LongfellowLogicFieldOperations
     /// <param name="generatorPolynomial">The characteristic-two generator polynomial <c>x</c>, or the default value over an odd-prime field.</param>
     /// <param name="twoConstant">The odd-prime constant two, or the default value over a characteristic-two field.</param>
     /// <param name="halfConstant">The odd-prime constant one-half, or the default value over a characteristic-two field.</param>
+    /// <param name="primeScalarBound">The exclusive <see cref="OfScalar"/> bound of an odd-prime field whose base modulus fits <see cref="ulong"/>, or zero when the modulus exceeds 2^64 and every scalar embeds unreduced.</param>
     /// <exception cref="ArgumentNullException">When <paramref name="compiler"/>, <paramref name="subtract"/> or <paramref name="invert"/> is <see langword="null"/>.</exception>
     private LongfellowLogicFieldOperations(
         LongfellowCompilerFieldOperations compiler,
@@ -89,7 +100,8 @@ internal sealed class LongfellowLogicFieldOperations
         ReadOnlyMemory<byte>[]? subfieldBasis,
         ReadOnlyMemory<byte> generatorPolynomial,
         ReadOnlyMemory<byte> twoConstant,
-        ReadOnlyMemory<byte> halfConstant)
+        ReadOnlyMemory<byte> halfConstant,
+        ulong primeScalarBound = 0)
     {
         ArgumentNullException.ThrowIfNull(compiler);
         ArgumentNullException.ThrowIfNull(subtract);
@@ -102,6 +114,7 @@ internal sealed class LongfellowLogicFieldOperations
         this.generatorPolynomial = generatorPolynomial;
         this.twoConstant = twoConstant;
         this.halfConstant = halfConstant;
+        this.primeScalarBound = primeScalarBound;
     }
 
 
@@ -177,17 +190,57 @@ internal sealed class LongfellowLogicFieldOperations
 
 
     /// <summary>
-    /// The reference's <c>of_scalar</c>: over the odd-prime field the raw canonical embedding of
-    /// <paramref name="scalar"/> (both wired moduli exceed 2^64, so no reduction is needed); over
-    /// GF(2^128) the beta-basis mapping <c>Σ scalar_i · beta[i]</c>, defined only for the low 16 bits.
+    /// Creates the bundle over the sextic extension of the FIPS 204 prime field (the reference's
+    /// <c>Fp24_6(Fq(), beta = 7)</c>), eagerly computing <see cref="Two"/> and <see cref="Half"/>.
+    /// <see cref="OfScalar"/> embeds into the extension's constant coefficient and rejects scalars
+    /// at or beyond the base modulus, exactly as the reference's <c>of_scalar</c> panics there.
+    /// </summary>
+    /// <param name="add">The field addition.</param>
+    /// <param name="subtract">The field subtraction.</param>
+    /// <param name="multiply">The field multiplication.</param>
+    /// <param name="invert">The field inversion.</param>
+    /// <param name="minusOne">The base modulus less one in the constant coefficient, canonical big-endian, <see cref="Scalar.SizeBytes"/> bytes.</param>
+    /// <returns>The bundle.</returns>
+    /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
+    public static LongfellowLogicFieldOperations CreateFp24Sextic(
+        ScalarAddDelegate add,
+        ScalarSubtractDelegate subtract,
+        ScalarMultiplyDelegate multiply,
+        ScalarInvertDelegate invert,
+        ReadOnlyMemory<byte> minusOne)
+    {
+        ArgumentNullException.ThrowIfNull(invert);
+
+        LongfellowCompilerFieldOperations compiler = LongfellowCompilerFieldOperations.CreatePrime(
+            add, multiply, CurveParameterSet.None, minusOne, Fp24SexticElementBytes, Fp24SexticBitCount);
+
+        byte[] two = WriteCanonicalUInt64(TwoScalarValue);
+        var half = new byte[Scalar.SizeBytes];
+        invert(two, half, compiler.Curve);
+
+        return new LongfellowLogicFieldOperations(compiler, subtract, invert, null, default, two, half, Fp24SexticScalarBound);
+    }
+
+
+    /// <summary>
+    /// The reference's <c>of_scalar</c>: over an odd-prime field the raw canonical embedding of
+    /// <paramref name="scalar"/> — unreduced when the modulus exceeds 2^64 (Fp256), and
+    /// bounds-checked below the base modulus over the sextic extension, exactly where the
+    /// reference's <c>of_scalar</c> panics; over GF(2^128) the beta-basis mapping
+    /// <c>Σ scalar_i · beta[i]</c>, defined only for the low 16 bits.
     /// </summary>
     /// <param name="scalar">The value to embed.</param>
     /// <returns>The field element, canonical big-endian.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">When <see cref="Compiler"/> is characteristic two and <paramref name="scalar"/> occupies more than the low 16 bits.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When <see cref="Compiler"/> is characteristic two and <paramref name="scalar"/> occupies more than the low 16 bits, or when a bounded odd-prime field cannot represent <paramref name="scalar"/>.</exception>
     public ReadOnlyMemory<byte> OfScalar(ulong scalar)
     {
         if(!Compiler.IsCharacteristicTwo)
         {
+            if(primeScalarBound != 0 && scalar >= primeScalarBound)
+            {
+                throw new ArgumentOutOfRangeException(nameof(scalar), $"The field's of_scalar represents values below {primeScalarBound}.");
+            }
+
             return WriteCanonicalUInt64(scalar);
         }
 
