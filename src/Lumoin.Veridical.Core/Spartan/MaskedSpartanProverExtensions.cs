@@ -295,9 +295,9 @@ public static class MaskedSpartanProverExtensions
             int scalarSize = Scalar.SizeBytes;
 
             //Relaxed witness satisfaction check (same role as the base prover).
-            //An honest-prover fail-fast, not a soundness control — soundness is
-            //the verifier's. The zero-knowledge simulator runs this honest
-            //prover over a deliberately non-satisfying witness (the masked
+            //A fail-fast for a prover that follows the protocol, not a soundness
+            //control — soundness is the verifier's. The zero-knowledge simulator
+            //runs this prover over a deliberately non-satisfying witness (the masked
             //sumcheck algebra never requires satisfaction) and enters through
             //the unguarded internal entry.
             if(enforceSatisfactionGuard)
@@ -730,14 +730,14 @@ public static class MaskedSpartanProverExtensions
         /// <summary>
         /// The unguarded variant of
         /// <see cref="ProveZkBaseFold(MaskedSpartanProver, RawR1csInstance, RawR1csWitness, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, PolynomialCommitmentProvider, BaseMemoryPool, ScalarArithmeticBackend)"/>:
-        /// the witness-satisfaction fail-fast is skipped. The fail-fast is an
-        /// honest-prover convenience, not a soundness control (soundness is the
-        /// verifier's), and the zero-knowledge simulator in
-        /// <c>Lumoin.Veridical.Analysis</c> legitimately runs this honest prover
+        /// the witness-satisfaction fail-fast is skipped. The fail-fast is a
+        /// convenience for a prover that follows the protocol, not a soundness
+        /// control (soundness is the verifier's), and the zero-knowledge simulator in
+        /// <c>Lumoin.Veridical.Analysis</c> legitimately runs this prover
         /// over a deliberately non-satisfying witness — the masked sumcheck
         /// algebra never requires satisfaction — before retargeting the public
         /// claim through a programmed Fiat-Shamir oracle. A proof produced this
-        /// way is rejected by every honest verifier; only a verifier whose
+        /// way is rejected by a verifier that follows the protocol; only a verifier whose
         /// oracle has been programmed accepts it, which is exactly the
         /// random-oracle-model capability the ZK simulation theorem grants.
         /// </summary>

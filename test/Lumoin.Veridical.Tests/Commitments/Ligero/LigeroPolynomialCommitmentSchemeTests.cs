@@ -30,17 +30,17 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int TestQueryCount = 12;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bn254;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bn254;
 
-    private static readonly ScalarAddDelegate Add = Bn254BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarSubtractDelegate Subtract = Bn254BigIntegerScalarReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Multiply = Bn254BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarInvertDelegate Invert = Bn254BigIntegerScalarReference.GetInvert();
-    private static readonly ScalarReduceDelegate Reduce = Bn254BigIntegerScalarReference.GetReduce();
-    private static readonly MleEvaluateDelegate MleEvaluate = MultilinearExtensionBigIntegerReference.GetEvaluate();
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static ScalarAddDelegate Add { get; } = Bn254BigIntegerScalarReference.GetAdd();
+    private static ScalarSubtractDelegate Subtract { get; } = Bn254BigIntegerScalarReference.GetSubtract();
+    private static ScalarMultiplyDelegate Multiply { get; } = Bn254BigIntegerScalarReference.GetMultiply();
+    private static ScalarInvertDelegate Invert { get; } = Bn254BigIntegerScalarReference.GetInvert();
+    private static ScalarReduceDelegate Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
+    private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
     [TestMethod]
@@ -53,6 +53,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         using PolynomialCommitmentProvider provider = NewProvider();
+        Assert.AreEqual(WellKnownLigeroParameters.DefaultInverseRate, provider.InverseRate, "The default-path provider must commit at the wired default inverse rate.");
 
         using MultilinearExtension mle = BuildRandomMle(variableCount, 1, pool);
         Scalar[] point = BuildPoint(variableCount, 5, pool);
@@ -80,7 +81,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
 
-                    Assert.IsTrue(verified, $"An honest commit→open→verify must round-trip for n = {variableCount}.");
+                    Assert.IsTrue(verified, $"A correctly generated commit→open→verify must round-trip for n = {variableCount}.");
                 }
             }
         }
@@ -176,6 +177,54 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
 
 
     [TestMethod]
+    public void CommitOpenVerifyRoundTripsAtInverseRateSixteen()
+    {
+        //The wired CLI shape: rate 1/16 widens the extension so a small circuit still opens the full
+        //64-column target (see WellKnownSecurityLevelsTests.SixVariableRateSixteenOpeningRealisesFullTarget).
+        const int VariableCount = 6;
+        const int InverseRate = 16;
+        const int QueryCount = 64;
+
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider(QueryCount, InverseRate);
+        Assert.AreEqual(InverseRate, provider.InverseRate);
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 9, pool);
+        Scalar[] point = BuildPoint(VariableCount, 11, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    using Scalar expected = mle.Evaluate(point, MleEvaluate, pool);
+                    Assert.IsTrue(
+                        claimedValue.AsReadOnlySpan().SequenceEqual(expected.AsReadOnlySpan()),
+                        "Opened claimed value must equal f(z) at the wired rate-1/16 shape.");
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
+
+                    Assert.IsTrue(verified, "A correctly generated commit→open→verify must round-trip at inverse rate 16 / query count 64.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
         const int VariableCount = 3;
@@ -216,9 +265,15 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
 
     private static PolynomialCommitmentProvider NewProvider()
     {
+        return NewProvider(TestQueryCount, WellKnownLigeroParameters.DefaultInverseRate);
+    }
+
+
+    private static PolynomialCommitmentProvider NewProvider(int queryCount, int inverseRate)
+    {
         return LigeroPolynomialCommitmentScheme.Create(
             Curve,
-            TestQueryCount,
+            queryCount,
             Add,
             Subtract,
             Multiply,
@@ -228,7 +283,8 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
             Squeeze,
             Hash,
             Merkle,
-            WellKnownHashAlgorithms.Blake3);
+            WellKnownHashAlgorithms.Blake3,
+            inverseRate: inverseRate);
     }
 
 

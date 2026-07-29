@@ -1016,7 +1016,7 @@ This lineage map is living documentation. It should be updated
 when new primitives land, when stronger variants of existing
 primitives become available in the codebase, or when the field's
 standards shift meaningfully. The map is not a roadmap commitment;
-it is an honest record of where the library sits in the
+it is a factual record of where the library sits in the
 cryptographic-flavor landscape at any given time.
 
 ## BaseFold backing and the hiding caveat (batch AB)

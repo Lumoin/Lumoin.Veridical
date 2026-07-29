@@ -652,6 +652,7 @@
           "Lumoin.Veridical.Backends.Managed": "[0.0.0, )",
           "Lumoin.Veridical.Core": "[0.0.0, )",
           "Lumoin.Veridical.Hashing": "[0.0.0, )",
+          "Lumoin.Veridical.Json": "[0.0.0, )",
           "Microsoft.Extensions.Hosting": "[10.0.10, )",
           "ModelContextProtocol": "[1.4.1, )",
           "System.CommandLine": "[2.0.10, )"
@@ -660,7 +661,7 @@
       "lumoin.veridical.core": {
         "type": "Project",
         "dependencies": {
-          "Lumoin.Base": "[0.0.4, )"
+          "Lumoin.Base": "[0.0.8, )"
         }
       },
       "lumoin.veridical.hashing": {
@@ -668,6 +669,9 @@
         "dependencies": {
           "Lumoin.Veridical.Core": "[0.0.0, )"
         }
+      },
+      "lumoin.veridical.json": {
+        "type": "Project"
       },
       "lumoin.veridical.longfellow": {
         "type": "Project",
@@ -693,6 +697,7 @@
           "Lumoin.Veridical.Cli": "[0.0.0, )",
           "Lumoin.Veridical.Core": "[0.0.0, )",
           "Lumoin.Veridical.Hashing": "[0.0.0, )",
+          "Lumoin.Veridical.Json": "[0.0.0, )",
           "Lumoin.Veridical.Longfellow": "[0.0.0, )",
           "Lumoin.Veridical.Secdsa": "[0.0.0, )",
           "MSTest.TestAdapter": "[4.2.3, )",
@@ -728,9 +733,9 @@
       },
       "Lumoin.Base": {
         "type": "CentralTransitive",
-        "requested": "[0.0.4, )",
-        "resolved": "0.0.4",
-        "contentHash": "BcM4Dz91K0HAEb1NEJZNlLP/Go1FAvHV/+tjxpymYXuUVZ0/SdWuc3ukVH9qUv6rLahBsXbkfXpBwF18bm6/UA=="
+        "requested": "[0.0.8, )",
+        "resolved": "0.0.8",
+        "contentHash": "rHyzMyF+vQDtgApld0QuTLHrpDSrSLPB10uCv+ijV2zr3wb3PQSkNFQGel9j8+PEK0pBEdDmeydd8vUGZ4Ukmw=="
       },
       "Microsoft.Extensions.Hosting": {
         "type": "CentralTransitive",

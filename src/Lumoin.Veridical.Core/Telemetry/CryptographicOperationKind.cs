@@ -370,7 +370,7 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind BbsCommitVerify { get; } = new(175);
 
 
-    private static readonly List<CryptographicOperationKind> kinds =
+    private static List<CryptographicOperationKind> kinds { get; } =
     [
         None,
         ScalarAdd, ScalarSubtract, ScalarMultiply, ScalarNegate, ScalarInvert,

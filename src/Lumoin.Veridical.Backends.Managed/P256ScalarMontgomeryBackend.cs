@@ -413,6 +413,7 @@ internal static class P256ScalarMontgomeryBackend
         Span<ulong> reduced = stackalloc ulong[LimbCount];
         t[..LimbCount].CopyTo(reduced);
         bool borrow = PrimeField256.SubtractWithBorrow(reduced, n);
-        PrimeField256.Select(reduced, t[..LimbCount], (t[LimbCount] != 0UL) || !borrow, result);
+        //Branch-free combination of the secret-derived carry and borrow flags.
+        PrimeField256.Select(reduced, t[..LimbCount], (t[LimbCount] != 0UL) | !borrow, result);
     }
 }

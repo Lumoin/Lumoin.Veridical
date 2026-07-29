@@ -27,7 +27,7 @@ internal sealed class SpartanProofSerializationTests
     private const int IpaRoundCount = 1;
     private const int ErrorIpaRoundCount = 1;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

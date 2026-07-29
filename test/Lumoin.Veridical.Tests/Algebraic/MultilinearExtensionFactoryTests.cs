@@ -18,8 +18,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class MultilinearExtensionFactoryTests
 {
-    private static readonly ScalarRandomDelegate Random = Bls12Curve381BigIntegerScalarReference.GetRandom();
-    private static readonly BigInteger FieldOrder = Bls12Curve381BigIntegerScalarReference.FieldOrder;
+    private static ScalarRandomDelegate Random { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+    private static BigInteger FieldOrder { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
 
 
     [TestMethod]

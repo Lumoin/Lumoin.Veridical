@@ -57,13 +57,13 @@ public static class LongfellowMdoc
         //The hash side runs over GF(2^128); its circuit is committed as parsed (no coefficient lift). The FFT
         //and the GF codec own pooled state and must outlive the driver call, so they are using-declared.
         using Lch14AdditiveFft hashFft = LongfellowMdocBundles.NewGfFft(pool);
-        LongfellowFieldProfile hashProfile = LongfellowMdocBundles.NewGfProfile(hashFft);
+        using LongfellowFieldProfile hashProfile = LongfellowMdocBundles.NewGfProfile(hashFft, pool);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowMdocBundles.NewGfCodec(hashProfile, hashFft, pool);
         LongfellowMdocFieldProver hashBundle = LongfellowMdocBundles.BuildHashProver(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
         //The sig side runs over the P-256 base field in the Montgomery working domain. The real-FFT owns no
         //pooled state (it is not disposable); the Fp256 codec owns nothing but is still disposable.
-        LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile();
+        using LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile(pool);
         Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
         LongfellowMdocFieldProver signatureBundle = LongfellowMdocBundles.BuildSigProver(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
@@ -85,16 +85,15 @@ public static class LongfellowMdoc
             transcriptSeed, spec.ProofSpecVersion, LongfellowMdocBundles.TranscriptElementBytes,
             blockCipher, pool, cryptoSuite.IncrementalHashFactory);
 
-        byte[] envelope = LongfellowMdocProver.Prove(
+        using LongfellowZkProofEnvelope envelope = LongfellowMdocProver.Prove(
             hashBundle, signatureBundle, witness.HashColumn.Span, montgomerySignatureColumn,
             hashRandom, signatureRandom, witness.CommonValues.Span, witness.ApKeys.Span,
             spec.HashMacIndex, LongfellowMdocZkSpec.SignatureMacIndex, transcript,
             cryptoSuite.MerkleHash, cryptoSuite.LeafHash, WellKnownHashAlgorithms.Sha256, pool);
 
-        LongfellowMdocProof proof = LongfellowMdocProof.FromCanonical(envelope, pool);
+        LongfellowMdocProof proof = LongfellowMdocProof.FromCanonical(envelope.Bytes, pool);
 
-        //The envelope is public proof material; zero the transient copy and the lifted secret column.
-        CryptographicOperations.ZeroMemory(envelope);
+        //The pooled envelope clears on disposal; the lifted secret column is cleared here.
         montgomerySignatureColumn.Clear();
 
         return proof;
@@ -131,11 +130,11 @@ public static class LongfellowMdoc
         ParseCircuits(circuits, spec, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
 
         using Lch14AdditiveFft hashFft = LongfellowMdocBundles.NewGfFft(pool);
-        LongfellowFieldProfile hashProfile = LongfellowMdocBundles.NewGfProfile(hashFft);
+        using LongfellowFieldProfile hashProfile = LongfellowMdocBundles.NewGfProfile(hashFft, pool);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowMdocBundles.NewGfCodec(hashProfile, hashFft, pool);
         LongfellowMdocFieldVerifier hashBundle = LongfellowMdocBundles.BuildHashVerifier(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
-        LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile();
+        using LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile(pool);
         Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
         LongfellowMdocFieldVerifier signatureBundle = LongfellowMdocBundles.BuildSigVerifier(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);

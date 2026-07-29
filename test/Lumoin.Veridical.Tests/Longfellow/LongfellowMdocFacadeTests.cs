@@ -49,15 +49,15 @@ internal sealed class LongfellowMdocFacadeTests
     //break the hash-circuit verify without touching the MAC prefix or the signature region.
     private const int TamperOffset = 5000;
 
-    private static readonly byte[] Now = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
+    private static byte[] Now { get; } = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
 
     //A fixed session seed; the facade's prove and verify each build a fresh transcript from it.
-    private static readonly byte[] SessionSeed = Encoding.ASCII.GetBytes("lumoin-veridical-longfellow-facade-roundtrip");
+    private static byte[] SessionSeed { get; } = Encoding.ASCII.GetBytes("lumoin-veridical-longfellow-facade-roundtrip");
 
-    private static readonly ScalarAddDelegate GfAdd = Gf2k128Backend.GetAdd();
-    private static readonly ScalarSubtractDelegate GfSubtract = Gf2k128Backend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate GfMultiply = Gf2k128Backend.GetMultiply();
-    private static readonly ScalarInvertDelegate GfInvert = Gf2k128Backend.GetInvert();
+    private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+    private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
+    private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
+    private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
     //The decompressed reference circuit-definition bytes (~99 MB); decompress once and share.
     private static byte[] RawCircuitBytes { get; } = DecompressGzip(ReadFixture(RawGzipRelativePath));

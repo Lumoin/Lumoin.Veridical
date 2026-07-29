@@ -20,21 +20,21 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsNymProofFailureTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x61);
-    private static readonly byte[] KeyInfo = "nym-proof-failure-key-info"u8.ToArray();
-    private static readonly byte[] Header = "nym-proof-failure-header"u8.ToArray();
-    private static readonly byte[] PresentationHeader = "nym-proof-failure-presentation"u8.ToArray();
-    private static readonly byte[] ContextId = "nym-proof-failure-context"u8.ToArray();
-    private static readonly byte[] OtherContextId = "nym-proof-failure-other-context"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x61);
+    private static byte[] KeyInfo { get; } = "nym-proof-failure-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "nym-proof-failure-header"u8.ToArray();
+    private static byte[] PresentationHeader { get; } = "nym-proof-failure-presentation"u8.ToArray();
+    private static byte[] ContextId { get; } = "nym-proof-failure-context"u8.ToArray();
+    private static byte[] OtherContextId { get; } = "nym-proof-failure-other-context"u8.ToArray();
 
     //With one committed message the committed index space ends at 0, so
     //index 1 is exactly the (structurally undisclosable) nym slot.
-    private static readonly int[] NymTailCommittedIndex = [1];
+    private static int[] NymTailCommittedIndex { get; } = [1];
 
     //Pre-calculated wrong-subgroup probe shared with
     //BbsSubgroupValidationTests: the BLS12-381 G1 point with x = 0 is on
     //the curve but outside the r-order subgroup.
-    private static readonly byte[] WrongSubgroupG1Compressed = Convert.FromHexString(
+    private static byte[] WrongSubgroupG1Compressed { get; } = Convert.FromHexString(
         "a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
 
 
@@ -59,7 +59,7 @@ internal sealed class BbsNymProofFailureTests
     }
 
 
-    private static readonly SuiteWiring Sha256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
+    private static SuiteWiring Sha256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
 
 
     private sealed record IssuanceChain(

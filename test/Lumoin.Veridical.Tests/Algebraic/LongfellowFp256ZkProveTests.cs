@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -72,8 +73,8 @@ internal sealed class LongfellowFp256ZkProveTests
     private const int GfSubFieldBytes = 2;
     private const int GfSubfieldBoundary = 0;
 
-    private static readonly byte[] Fp256TranscriptSeed = Encoding.ASCII.GetBytes("fp256-zk-e2e");
-    private static readonly byte[] GfTranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] Fp256TranscriptSeed { get; } = Encoding.ASCII.GetBytes("fp256-zk-e2e");
+    private static byte[] GfTranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
@@ -107,11 +108,11 @@ internal sealed class LongfellowFp256ZkProveTests
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes);
 
         byte[] witnessColumn = BuildSatisfyingColumn(3, 5, 7);
-        byte[] proof = ProveFp256(circuit, parameters, witnessColumn, Fp256TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProveFp256(circuit, parameters, witnessColumn, Fp256TranscriptSeed);
 
         byte[] publicInputs = PublicInputBytes(circuit, witnessColumn);
 
-        AssertFp256Verifies(circuit, parameters, proof, publicInputs, Fp256TranscriptSeed, expectedAccept: true);
+        AssertFp256Verifies(circuit, parameters, proof.Bytes, publicInputs, Fp256TranscriptSeed, expectedAccept: true);
     }
 
 
@@ -124,19 +125,21 @@ internal sealed class LongfellowFp256ZkProveTests
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes);
 
         byte[] witnessColumn = BuildSatisfyingColumn(3, 5, 7);
-        byte[] proof = ProveFp256(circuit, parameters, witnessColumn, Fp256TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProveFp256(circuit, parameters, witnessColumn, Fp256TranscriptSeed);
         byte[] publicInputs = PublicInputBytes(circuit, witnessColumn);
 
         //A flipped byte inside the sumcheck segment (after the 32-byte root) breaks the replay: the derived
         //challenge stream and the constraint coefficients diverge and the Ligero opening no longer matches.
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[DigestSize + 8] ^= 0x01;
         AssertFp256Verifies(circuit, parameters, tamperedProof, publicInputs, Fp256TranscriptSeed, expectedAccept: false);
 
         //A flipped public input moves the FS setup and the input-binding constraint, so verification fails.
         byte[] tamperedPublic = (byte[])publicInputs.Clone();
         tamperedPublic[Fp256ElementBytes + 1] ^= 0x01;
-        AssertFp256Verifies(circuit, parameters, proof, tamperedPublic, Fp256TranscriptSeed, expectedAccept: false);
+        AssertFp256Verifies(circuit, parameters, proof.Bytes, tamperedPublic, Fp256TranscriptSeed, expectedAccept: false);
     }
 
 
@@ -153,24 +156,25 @@ internal sealed class LongfellowFp256ZkProveTests
 
         byte[] witnessColumn = BuildGfWitnessColumn(circuit);
 
-        byte[] viaConvenience = ProveGfConvenience(circuit, parameters, witnessColumn, GfTranscriptSeed);
-        byte[] viaFieldGeneric = ProveGfFieldGeneric(circuit, parameters, witnessColumn, GfTranscriptSeed);
+        using LongfellowZkProofEnvelope viaConvenience = ProveGfConvenience(circuit, parameters, witnessColumn, GfTranscriptSeed);
+        using LongfellowZkProofEnvelope viaFieldGeneric = ProveGfFieldGeneric(circuit, parameters, witnessColumn, GfTranscriptSeed);
 
-        Assert.IsTrue(viaFieldGeneric.AsSpan().SequenceEqual(viaConvenience), "The field-generic entry must produce the byte-identical GF envelope the convenience overload produces.");
+        Assert.IsTrue(viaFieldGeneric.Bytes.SequenceEqual(viaConvenience.Bytes), "The field-generic entry must produce the byte-identical GF envelope the convenience overload produces.");
 
         //Cross-check against the reference's pinned bytes so the GF path is anchored, not just self-equal.
         byte[] expected = Convert.FromHexString(Anchors["proof_bytes"]);
-        Assert.IsTrue(viaFieldGeneric.AsSpan().SequenceEqual(expected), "The field-generic GF envelope must equal the reference's pinned proof bytes.");
+        Assert.IsTrue(viaFieldGeneric.Bytes.SequenceEqual(expected), "The field-generic GF envelope must equal the reference's pinned proof bytes.");
     }
 
 
     //Proves a satisfying Fp256 witness column through the field-generic prover with the Fp256 encoding.
-    private static byte[] ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
+    //Returns the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
     {
         Fp256RealFft fft = NewFp256Fft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         using LongfellowTranscript transcript = NewTranscript(seed, Fp256ElementBytes);
@@ -203,7 +207,7 @@ internal sealed class LongfellowFp256ZkProveTests
     private static void AssertFp256Verifies(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
-        byte[] proof,
+        ReadOnlySpan<byte> proof,
         byte[] publicInputs,
         byte[] seed,
         bool expectedAccept)
@@ -211,7 +215,7 @@ internal sealed class LongfellowFp256ZkProveTests
         Fp256RealFft fft = NewFp256Fft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         //Parse the envelope: com (32) || sc || com_proof, the field-generic counterpart of the GF Verify
@@ -266,7 +270,8 @@ internal sealed class LongfellowFp256ZkProveTests
 
 
     //Proves the GF circuit through the GF convenience Prove (the unchanged signature; the byte baseline).
-    private static byte[] ProveGfConvenience(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
+    //Returns the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProveGfConvenience(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
     {
         using Lch14AdditiveFft fft = NewGfFft();
         using LongfellowTranscript transcript = NewTranscript(seed, GfElementBytes);
@@ -295,10 +300,11 @@ internal sealed class LongfellowFp256ZkProveTests
 
     //Proves the GF circuit through the field-generic Prove, building the GF encoding/codec from the FFT
     //exactly as the convenience overload does internally.
-    private static byte[] ProveGfFieldGeneric(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
+    //Returns the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProveGfFieldGeneric(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
     {
         using Lch14AdditiveFft fft = NewGfFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForGf2k128(profile, fft, GfSubFieldBytes, BaseMemoryPool.Shared);
 

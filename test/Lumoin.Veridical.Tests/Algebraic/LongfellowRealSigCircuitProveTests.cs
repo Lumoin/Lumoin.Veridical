@@ -5,6 +5,7 @@ using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Tests.Mdoc;
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -81,7 +82,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
     //is no GF/a_v side baking 16). Version 7 matches the deployed sig path.
     private const int TranscriptVersion = 7;
 
-    private static readonly byte[] TranscriptSeed = System.Text.Encoding.ASCII.GetBytes("fp256-real-sig-e2e");
+    private static byte[] TranscriptSeed { get; } = System.Text.Encoding.ASCII.GetBytes("fp256-real-sig-e2e");
 
     //The decompressed real-circuit bytes (~99 MB); decompress once and share across the imports.
     private static byte[] RawCircuitBytes { get; } = DecompressGzip(ReadFixture(RawGzipRelativePath));
@@ -159,17 +160,17 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
         //A warm prove+verify pair first (JIT, the FFT precompute, the field-backend warm-up), then the timed
         //pair, so the reported wall-clock is representative rather than dominated by first-call costs.
-        byte[] warm = ProveFp256(circuit, parameters, witnessColumn);
-        AssertVerifies(circuit, parameters, warm, publicInputs, expectedAccept: true);
+        using LongfellowZkProofEnvelope warm = ProveFp256(circuit, parameters, witnessColumn);
+        AssertVerifies(circuit, parameters, warm.Bytes, publicInputs, expectedAccept: true);
 
         //Prove the real-credential witness through OUR field-generic Fp256 prover, then verify it through OUR
         //verifier on a fresh transcript: the headline self-consistent accept.
         Stopwatch proveWatch = Stopwatch.StartNew();
-        byte[] proof = ProveFp256(circuit, parameters, witnessColumn);
+        using LongfellowZkProofEnvelope proof = ProveFp256(circuit, parameters, witnessColumn);
         proveWatch.Stop();
 
         Stopwatch verifyWatch = Stopwatch.StartNew();
-        AssertVerifies(circuit, parameters, proof, publicInputs, expectedAccept: true);
+        AssertVerifies(circuit, parameters, proof.Bytes, publicInputs, expectedAccept: true);
         verifyWatch.Stop();
 
         TestContext.WriteLine($"Real-credential Fp256 SIG circuit (ninputs=3739, npub_in=900, 21 layers): PROVE {proveWatch.ElapsedMilliseconds} ms, VERIFY {verifyWatch.ElapsedMilliseconds} ms (warm; Montgomery backend; rate=7/nreq=132/block_enc=4096).");
@@ -177,7 +178,9 @@ internal sealed class LongfellowRealSigCircuitProveTests
         //The tamper dual: flip a proof byte AND a public input. A flipped byte inside the sumcheck segment
         //(after the 32-byte root) diverges the replayed challenge stream, and a flipped public input moves
         //the FS setup and the input-binding constraint; either alone rejects, both together certainly do.
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[DigestSize + 8] ^= 0x01;
         byte[] tamperedPublic = (byte[])publicInputs.Clone();
         tamperedPublic[Point256ElementBytes + 1] ^= 0x01;
@@ -205,16 +208,16 @@ internal sealed class LongfellowRealSigCircuitProveTests
         byte[] canonicalColumn = BuildWitnessColumn();
         byte[] montgomeryColumn = MontgomeryColumn(canonicalColumn);
 
-        byte[] canonicalEnvelope = ProveFp256Canonical(circuit, parameters, canonicalColumn);
-        byte[] montgomeryEnvelope = ProveFp256(circuit, parameters, montgomeryColumn);
+        using LongfellowZkProofEnvelope canonicalEnvelope = ProveFp256Canonical(circuit, parameters, canonicalColumn);
+        using LongfellowZkProofEnvelope montgomeryEnvelope = ProveFp256(circuit, parameters, montgomeryColumn);
 
-        string canonicalSha = Convert.ToHexStringLower(SHA256.HashData(canonicalEnvelope));
-        string montgomerySha = Convert.ToHexStringLower(SHA256.HashData(montgomeryEnvelope));
+        string canonicalSha = Convert.ToHexStringLower(SHA256.HashData(canonicalEnvelope.Bytes));
+        string montgomerySha = Convert.ToHexStringLower(SHA256.HashData(montgomeryEnvelope.Bytes));
         TestContext.WriteLine($"Canonical envelope SHA-256: {canonicalSha} ({canonicalEnvelope.Length} bytes)");
         TestContext.WriteLine($"Montgomery envelope SHA-256: {montgomerySha} ({montgomeryEnvelope.Length} bytes)");
         TestContext.WriteLine($"Byte-identical: {(canonicalSha == montgomerySha ? "yes" : "no")}");
 
-        Assert.IsTrue(canonicalEnvelope.AsSpan().SequenceEqual(montgomeryEnvelope), "The Montgomery-domain prove must emit a byte-identical envelope to the canonical-domain prove over the same witness.");
+        Assert.IsTrue(canonicalEnvelope.Bytes.SequenceEqual(montgomeryEnvelope.Bytes), "The Montgomery-domain prove must emit a byte-identical envelope to the canonical-domain prove over the same witness.");
     }
 
 
@@ -227,9 +230,9 @@ internal sealed class LongfellowRealSigCircuitProveTests
         //the spec's intended Gate 1, but that prove is NON-DETERMINISTIC run-to-run on pristine main — see the
         //subagent report's blocking findings — so a hardcoded-envelope golden cannot exist for it. This gate
         //pins the part that IS deterministic and is the actual byte-identity claim the converters make.)
-        LongfellowFieldProfile canonical = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
-        LongfellowFieldProfile montgomery = LongfellowFp256Encoding.CreateMontgomeryProfile(
-            OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery);
+        using LongfellowFieldProfile canonical = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
+        using LongfellowFieldProfile montgomery = LongfellowFp256Encoding.CreateMontgomeryProfile(
+            OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery, BaseMemoryPool.Shared);
 
         byte[] witnessColumn = BuildWitnessColumn();
         Span<byte> canonicalWire = stackalloc byte[Point256ElementBytes];
@@ -265,10 +268,10 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
     //Proves the real-credential witness column (a MONTGOMERY-domain column) through the field-generic prover
     //with the Montgomery Fp256 encoding (the 1-CIOS path), the v7 rate/nreq and the pinned block_enc carried by
-    //the supplied parameters.
-    private static byte[] ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
+    //the supplied parameters. Returns the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
     {
-        LongfellowFieldProfile profile = NewMontgomeryProfile();
+        using LongfellowFieldProfile profile = NewMontgomeryProfile();
         Fp256RealFft fft = NewMontgomeryFp256Fft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
@@ -305,13 +308,14 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
 
     //Proves the same witness CANONICALLY (the 2-CIOS path), the byte-identity gate's canonical leg. The witness
-    //column is the canonical filler output, the profile/delegates/root are canonical.
-    private static byte[] ProveFp256Canonical(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] canonicalColumn)
+    //column is the canonical filler output, the profile/delegates/root are canonical. Returns the pooled proof
+    //envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProveFp256Canonical(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] canonicalColumn)
     {
         Fp256RealFft fft = NewFp256Fft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         using LongfellowTranscript transcript = NewTranscript();
@@ -344,11 +348,11 @@ internal sealed class LongfellowRealSigCircuitProveTests
     private static void AssertVerifies(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
-        byte[] proof,
+        ReadOnlySpan<byte> proof,
         byte[] publicInputs,
         bool expectedAccept)
     {
-        LongfellowFieldProfile profile = NewMontgomeryProfile();
+        using LongfellowFieldProfile profile = NewMontgomeryProfile();
         Fp256RealFft fft = NewMontgomeryFp256Fft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
@@ -437,7 +441,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
     //PublicInputBytes over the canonical column — the seam invariant the increment rests on.
     private static byte[] MontgomeryPublicInputBytes(LongfellowSumcheckCircuit circuit, byte[] montgomeryColumn)
     {
-        LongfellowFieldProfile profile = NewMontgomeryProfile();
+        using LongfellowFieldProfile profile = NewMontgomeryProfile();
         byte[] publicInputs = new byte[circuit.PublicInputCount * Point256ElementBytes];
         for(int i = 0; i < circuit.PublicInputCount; i++)
         {
@@ -514,9 +518,10 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
 
     //The Montgomery-domain Fp256 profile: of_scalar/of_bytes_field lift canonical->Montgomery, to_bytes_field
-    //drops Montgomery->canonical, so the wire bytes stay byte-identical to the canonical profile.
+    //drops Montgomery->canonical, so the wire bytes stay byte-identical to the canonical profile. The caller
+    //disposes it.
     private static LongfellowFieldProfile NewMontgomeryProfile() =>
-        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery);
+        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery, BaseMemoryPool.Shared);
 
 
     //The Montgomery-domain real-FFT: the production root is lifted per coordinate to its Montgomery residue, so
@@ -526,7 +531,9 @@ internal sealed class LongfellowRealSigCircuitProveTests
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnityWorking(root, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, NewMontgomeryProfile().OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using LongfellowFieldProfile profile = NewMontgomeryProfile();
+
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
     }
 
 

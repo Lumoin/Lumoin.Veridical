@@ -209,9 +209,9 @@ internal sealed class LongfellowCircuitReaderTests
 
         //Our C.9 prover over the imported circuit produces a proof our C.8 verifier accepts.
         byte[] witnessColumn = BuildSatisfyingColumn(circuit, 3, 5, 7);
-        byte[] proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
 
-        AssertVerifies(circuit, proof, PublicInputBytes(circuit, witnessColumn));
+        AssertVerifies(circuit, proof.Bytes, PublicInputBytes(circuit, witnessColumn));
     }
 
 
@@ -435,7 +435,8 @@ internal sealed class LongfellowCircuitReaderTests
     }
 
 
-    private static byte[] ProduceProof(LongfellowSumcheckCircuit circuit, byte[] witnessColumn, byte[] seed)
+    //Returns the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, byte[] witnessColumn, byte[] seed)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
 
@@ -464,7 +465,7 @@ internal sealed class LongfellowCircuitReaderTests
     }
 
 
-    private static void AssertVerifies(LongfellowSumcheckCircuit circuit, byte[] proof, byte[] publicInputs)
+    private static void AssertVerifies(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> proof, byte[] publicInputs)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
 

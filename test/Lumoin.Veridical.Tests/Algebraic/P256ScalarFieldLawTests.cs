@@ -23,19 +23,19 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 internal sealed class P256ScalarFieldLawTests
 {
     private const long IterationCount = 300;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
-    private static readonly BigInteger Order = P256BigIntegerScalarReference.FieldOrder;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
+    private static BigInteger Order { get; } = P256BigIntegerScalarReference.FieldOrder;
 
-    private static readonly ScalarReduceDelegate ReferenceReduce = P256BigIntegerScalarReference.GetReduce();
+    private static ScalarReduceDelegate ReferenceReduce { get; } = P256BigIntegerScalarReference.GetReduce();
 
-    private static readonly ScalarAddDelegate Add = P256ScalarMontgomeryBackend.GetAdd();
-    private static readonly ScalarMultiplyDelegate Multiply = P256ScalarMontgomeryBackend.GetMultiply();
-    private static readonly ScalarNegateDelegate Negate = P256ScalarMontgomeryBackend.GetNegate();
-    private static readonly ScalarInvertDelegate Invert = P256ScalarMontgomeryBackend.GetInvert();
-    private static readonly ScalarReduceDelegate MontgomeryReduce = P256ScalarMontgomeryBackend.GetReduce();
+    private static ScalarAddDelegate Add { get; } = P256ScalarMontgomeryBackend.GetAdd();
+    private static ScalarMultiplyDelegate Multiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
+    private static ScalarNegateDelegate Negate { get; } = P256ScalarMontgomeryBackend.GetNegate();
+    private static ScalarInvertDelegate Invert { get; } = P256ScalarMontgomeryBackend.GetInvert();
+    private static ScalarReduceDelegate MontgomeryReduce { get; } = P256ScalarMontgomeryBackend.GetReduce();
 
-    private static readonly Gen<byte[]> BoundaryFieldBytesGen = BoundaryCorpusGen.CanonicalDomain(Order);
-    private static readonly Gen<byte[]> BoundaryRawBytesGen = BoundaryCorpusGen.RawReduction(Order);
+    private static Gen<byte[]> BoundaryFieldBytesGen { get; } = BoundaryCorpusGen.CanonicalDomain(Order);
+    private static Gen<byte[]> BoundaryRawBytesGen { get; } = BoundaryCorpusGen.RawReduction(Order);
 
 
     [TestMethod]

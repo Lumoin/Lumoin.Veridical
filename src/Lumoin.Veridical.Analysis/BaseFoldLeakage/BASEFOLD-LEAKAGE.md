@@ -55,7 +55,7 @@ detected**, permutation p ≈ 0.40. The pre-correction analytic test had reporte
 figure was an artifact. The post-correction result is itself instructive: the
 plain provider's proof bytes are *literally deterministic* in the witness
 (experiment 3 recovers it outright), yet this aggregate byte-histogram probe —
-under a valid null — cannot see it. The honest claim for the plain provider is
+under a valid null — cannot see it. The claim the experiments support for the plain provider is
 the structural one; this coarse statistic is simply too blunt to quantify a
 leak that lives in structure rather than in marginal byte frequencies.
 
@@ -69,7 +69,7 @@ held-out 30 %. This asks whether a *simple, linear* attack can recover the bit.
 p ≈ 0.20). The naive linear model does no better than chance. This is expected:
 the witness-to-proof relationship runs through a hash (the Merkle root) and the
 encoding, both highly non-linear, and a linear model over a high-dimensional
-proof with few samples cannot recover it. The honest reading is that this
+proof with few samples cannot recover it. The reading the data supports is that this
 particular weak attack fails — **not** that no attack succeeds. A structurally
 aware adversary does far better, which is the next experiment.
 

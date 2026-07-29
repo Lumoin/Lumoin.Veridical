@@ -49,7 +49,7 @@ internal sealed class LongfellowTranscriptTests
     private const int FieldElementBytes = 16;
     private const int DigestSize = 32;
 
-    private static readonly byte[] TestSeed = Encoding.ASCII.GetBytes("test");
+    private static byte[] TestSeed { get; } = Encoding.ASCII.GetBytes("test");
 
     //Parsed once: the dumped label -> value lines from the oracle output.
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors();

@@ -21,7 +21,7 @@ internal sealed class BbsCommitmentWithProofTests
 {
     private const int ScalarSize = BbsCommitmentWithProof.ScalarSizeBytes;
 
-    private static readonly BbsCiphersuite Suite = BbsCiphersuite.Bls12Curve381Sha256Blind;
+    private static BbsCiphersuite Suite { get; } = BbsCiphersuite.Bls12Curve381Sha256Blind;
 
     //A valid 48-byte G1 point used as inert filler for the C slot. FromCanonical
     //does not validate point geometry (deferred to the operation surfaces), so

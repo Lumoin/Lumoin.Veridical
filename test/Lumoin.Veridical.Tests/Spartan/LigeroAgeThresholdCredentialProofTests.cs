@@ -76,8 +76,8 @@ internal sealed class LigeroAgeThresholdCredentialProofTests
     //A fixed ECDSA nonce in [1, n-1] (deterministic test material; production uses RFC 6979).
     private const string NonceHex = "a6e3c57dd01abe90086538398355dd4c3b17aa873382b0f24d6129493d8aad60";
 
-    private static readonly byte[] RandomSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ligero.age.rng.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static byte[] RandomSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ligero.age.rng.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]
@@ -91,7 +91,7 @@ internal sealed class LigeroAgeThresholdCredentialProofTests
         Span<byte> s = stackalloc byte[ScalarSize];
         Mint(issuer, credential, publicKey, r, s);
 
-        Assert.IsTrue(VerifyIssuerSignature(credential, publicKey, r, s), "An honestly minted credential's issuer signature must verify.");
+        Assert.IsTrue(VerifyIssuerSignature(credential, publicKey, r, s), "A correctly minted credential's issuer signature must verify.");
 
         //Flip the age claim: the issuer signature no longer covers it.
         MdocCredential tampered = credential with

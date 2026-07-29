@@ -53,7 +53,7 @@ internal sealed class LongfellowZeroMaskRejectionTests
         //Every pad draw from a zero source is the field zero, so the pad
         //encrypts nothing; Fill must reject it at generation.
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
         LongfellowSumcheckCircuit circuit = SmallCircuit();
 
         Assert.ThrowsExactly<InvalidOperationException>(() =>
@@ -79,7 +79,7 @@ internal sealed class LongfellowZeroMaskRejectionTests
 
         LigeroQuadraticConstraint[] quadraticConstraints = [new LigeroQuadraticConstraint(0, 1, 2)];
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         byte[] witnessBytes = witnesses.ToArray();
         byte[] root = new byte[DigestSize];
 

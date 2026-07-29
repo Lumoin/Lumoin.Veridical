@@ -51,7 +51,7 @@ public static class CryptographicOperationCounters
 
 
     /// <summary>The single tagged counter that backs all OTel reporting. Tags <c>kind</c> and <c>curve</c> distinguish the aggregations.</summary>
-    private static readonly Counter<long> OperationCounter = Meter.CreateCounter<long>(
+    private static Counter<long> OperationCounter { get; } = Meter.CreateCounter<long>(
         name: "Lumoin.Veridical.CryptographicOperations.Total",
         unit: "operations",
         description: "Total cryptographic operations by kind and curve.");
@@ -82,9 +82,9 @@ public static class CryptographicOperationCounters
 
     private const int InitialCountsCapacity = 64;
 
-    private static readonly Lock CountsLock = new();
+    private static Lock CountsLock { get; } = new();
 
-    private static readonly Lock ObserversLock = new();
+    private static Lock ObserversLock { get; } = new();
     private static List<IObserver<CryptographicOperationEvent>> observers = [];
 
 

@@ -20,9 +20,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254ScalarBoundaryLawTests
 {
-    private static readonly ScalarReduceDelegate ReduceDelegate = Bn254BigIntegerScalarReference.GetReduce();
+    private static ScalarReduceDelegate ReduceDelegate { get; } = Bn254BigIntegerScalarReference.GetReduce();
 
-    private static readonly Gen<byte[]> BoundaryScalarBytesGen =
+    private static Gen<byte[]> BoundaryScalarBytesGen { get; } =
         BoundaryCorpusGen.CanonicalDomain(Bn254BigIntegerScalarReference.FieldOrder);
 
 

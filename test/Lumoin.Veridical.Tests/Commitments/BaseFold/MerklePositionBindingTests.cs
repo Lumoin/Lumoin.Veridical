@@ -74,11 +74,11 @@ internal sealed class MerklePositionBindingTests
         using MerkleAuthenticationPath path = tree.BuildPath(OpenedIndex, BaseMemoryPool.Shared);
         ReadOnlySpan<byte> openedLeaf = leaves.Slice(OpenedIndex * DigestSizeBytes, DigestSizeBytes);
 
-        //The out-of-range guard must not disturb the honest opening at the very
+        //The out-of-range guard must not disturb the valid opening at the very
         //index it aliases with.
         Assert.IsTrue(
             path.Verify(tree.Root, OpenedIndex, openedLeaf, Blake3TwoToOne),
-            "The honest in-range opening must still authenticate.");
+            "The valid in-range opening must still authenticate.");
     }
 
 

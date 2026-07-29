@@ -43,7 +43,7 @@ internal sealed class LongfellowSampleTests
     private const int Fp256SampleBytes = 32;
     private const int TranscriptVersion = 6;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("sample-gate");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("sample-gate");
 
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
@@ -56,14 +56,14 @@ internal sealed class LongfellowSampleTests
     private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
     //The Fp256 profile: of_scalar(u) reduces u mod p; the fits predicate is the < p comparison.
-    private static LongfellowFieldProfile Fp256Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange);
+    private static LongfellowFieldProfile Fp256Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange, BaseMemoryPool.Shared);
 
 
     [TestMethod]
     public void GfSampleCoincidesWithOfBytesFieldAndConsumesSixteenBytes()
     {
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
 
         //A fixed 16-byte little-endian block; both paths must produce the same canonical element.
         byte[] block = new byte[GfSampleBytes];
@@ -165,7 +165,7 @@ internal sealed class LongfellowSampleTests
         //path), the other via SqueezeBytes(16) + FromBytesField. The canonical elements must match AND a
         //subsequent draw must be byte-identical, proving SqueezeFieldElementBytes consumed exactly 16 bytes.
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
 
         using LongfellowTranscript transcriptA = NewTranscript();
         using LongfellowTranscript transcriptB = NewTranscript();

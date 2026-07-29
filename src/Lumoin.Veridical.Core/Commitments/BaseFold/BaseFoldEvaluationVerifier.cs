@@ -398,7 +398,7 @@ public static class BaseFoldEvaluationVerifier
         int finalOracleLength = BaseFoldQueryPhase.LayerLength(baseUnit, 0) * ScalarSize;
 
         //The mask-commitment code must match the deterministic policy shape for
-        //this protocol — a mismatch is a configuration fault on the honest path
+        //this protocol — a mismatch is a configuration fault on the protocol-following path
         //and a rejection on the adversarial one.
         StatisticalMaskParameters maskParameters = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(d, curve, queryCount);
         if(maskCommitmentCode.Parameters != WellKnownFoldableCodeParameters.CreateClassicalSecurity(maskParameters.LiftedVariableCount, curve))
@@ -436,7 +436,7 @@ public static class BaseFoldEvaluationVerifier
             scratch.Add(rho);
 
             //A zero blend challenge would make ρ⁻¹ undefined; rejecting keeps the
-            //terminal derivation total (probability 1/|F| on an honest run).
+            //terminal derivation total (probability 1/|F| on a correctly generated run).
             if(IsZeroScalar(rho.AsReadOnlySpan()))
             {
                 return false;

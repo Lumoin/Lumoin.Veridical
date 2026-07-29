@@ -25,11 +25,11 @@ public sealed class BbsSecretKey: SensitiveMemory
     public const int SizeBytes = WellKnownCurves.Bls12Curve381ScalarSizeBytes;
 
 
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.SignatureSecretKey)
+    private static Tag AlgebraicTagSha256 { get; } = Tag.Create(AlgebraicRole.SignatureSecretKey)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Sha256);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.SignatureSecretKey)
+    private static Tag AlgebraicTagShake256 { get; } = Tag.Create(AlgebraicRole.SignatureSecretKey)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Shake256);
 

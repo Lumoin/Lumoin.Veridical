@@ -48,7 +48,7 @@ internal static class LongfellowZkProver
     private const int DigestLength = 32;
 
     //The reference's ZkProver hash_of_A: {0xde, 0xad, 0xbe, 0xef} then zero-filled to 32 bytes.
-    private static readonly byte[] TheoremStatementHash = BuildTheoremStatementHash();
+    private static byte[] TheoremStatementHash { get; } = BuildTheoremStatementHash();
 
 
     /// <summary>
@@ -76,11 +76,11 @@ internal static class LongfellowZkProver
     /// <param name="broadcastMultiplyAccumulate">The optional broadcast-scalar fused multiply primitive the <c>filleq</c> eq-array fills in the constraint replay route their per-level scalar-times-vector products through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
     /// <param name="bindQuadReduce">The optional fused <c>bind_quad</c> per-term reduce primitive the constraint replay's <c>BindQuad</c> routes its three-multiply-per-term reduction through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
     /// <param name="gatherMultiplyAccumulate">The optional gather/scatter fused multiply-accumulate primitive the sumcheck prover's per-round <c>QW</c> corner precompute routes through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
-    /// <returns>The full proof envelope <c>com ‖ sc ‖ com_proof</c>; the caller owns the returned array.</returns>
+    /// <returns>The pooled proof envelope <c>com ‖ sc ‖ com_proof</c>; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the circuit has copies or a length is wrong.</exception>
     /// <exception cref="InvalidOperationException">When the witness does not satisfy the circuit.</exception>
-    public static byte[] Prove(
+    public static LongfellowZkProofEnvelope Prove(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
         ReadOnlySpan<byte> witnessColumn,
@@ -108,7 +108,7 @@ internal static class LongfellowZkProver
         //The GF binding of the field profile, the row-encoder seam, and the subfield-run codec, all derived
         //from the additive-FFT engine; routing the GF path through the field-generic entry leaves its bytes
         //unchanged (the seam reproduces exactly the values the binary-only port baked in).
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, pool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, pool);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForGf2k128(profile, fft, subFieldBytes, pool);
 
@@ -149,11 +149,11 @@ internal static class LongfellowZkProver
     /// <param name="bindQuadReduce">The optional fused <c>bind_quad</c> per-term reduce primitive the constraint replay's <c>BindQuad</c> routes its three-multiply-per-term reduction through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
     /// <param name="gatherMultiplyAccumulate">The optional gather/scatter fused multiply-accumulate primitive the sumcheck prover's per-round <c>QW</c> corner precompute routes through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
     /// <param name="fp256BatchMultiply">The optional lane-parallel batch Montgomery multiply the constraint replay's <c>bind_quad</c> reduction routes its three-multiply-per-term chain through; the Fp256 sig side supplies it, the GF(2^128) hash side leaves it <see langword="null"/> (it supplies <paramref name="bindQuadReduce"/> instead).</param>
-    /// <returns>The full proof envelope <c>com ‖ sc ‖ com_proof</c>; the caller owns the returned array.</returns>
+    /// <returns>The pooled proof envelope <c>com ‖ sc ‖ com_proof</c>; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the circuit has copies or a length is wrong.</exception>
     /// <exception cref="InvalidOperationException">When the witness does not satisfy the circuit.</exception>
-    public static byte[] Prove(
+    public static LongfellowZkProofEnvelope Prove(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
         ReadOnlySpan<byte> witnessColumn,
@@ -360,11 +360,11 @@ internal static class LongfellowZkProver
     /// <param name="bindQuadReduce">The optional fused <c>bind_quad</c> per-term reduce primitive the constraint replay's <c>BindQuad</c> routes its three-multiply-per-term reduction through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
     /// <param name="gatherMultiplyAccumulate">The optional gather/scatter fused multiply-accumulate primitive the sumcheck prover's per-round <c>QW</c> corner precompute routes through; the GF(2^128) hash side supplies it, the Fp256 sig side leaves it <see langword="null"/> for the scalar fallback.</param>
     /// <param name="fp256BatchMultiply">The optional lane-parallel batch Montgomery multiply the constraint replay's <c>bind_quad</c> reduction routes its three-multiply-per-term chain through; the Fp256 sig side supplies it, the GF(2^128) hash side leaves it <see langword="null"/> (it supplies <paramref name="bindQuadReduce"/> instead).</param>
-    /// <returns>The full proof envelope <c>com ‖ sc ‖ com_proof</c>; the caller owns the returned array.</returns>
+    /// <returns>The pooled proof envelope <c>com ‖ sc ‖ com_proof</c>; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a length is wrong.</exception>
     /// <exception cref="InvalidOperationException">When the patched witness does not satisfy the circuit.</exception>
-    public static byte[] ProveFromCommitment(
+    public static LongfellowZkProofEnvelope ProveFromCommitment(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
         LongfellowZkCommitment commitment,
@@ -443,30 +443,42 @@ internal static class LongfellowZkProver
             commitment.Commitment, transcript, system.ConstraintCount, linearTerms, TheoremStatementHash, commitment.QuadraticConstraints,
             encoderFactory, profile, add, subtract, multiply, curve, pool);
 
-        return SerializeEnvelope(circuit, commitment.RootSpan, sumcheckProof, ligeroProof, profile, codec);
+        return SerializeEnvelope(circuit, commitment.RootSpan, sumcheckProof, ligeroProof, profile, codec, pool);
     }
 
 
     //Serializes the full envelope com ‖ sc ‖ com_proof (the reference's ZkProof::write) under the field's
     //subfield-run codec — the same codec seam the Ligero proof serializer exposes (the GF path supplies the
-    //GF basis codec, the Fp256 path the full-field identity codec).
-    private static byte[] SerializeEnvelope(
+    //GF basis codec, the Fp256 path the full-field identity codec) — into a pooled semantic envelope the
+    //caller owns.
+    private static LongfellowZkProofEnvelope SerializeEnvelope(
         LongfellowSumcheckCircuit circuit,
         ReadOnlySpan<byte> root,
         LongfellowSumcheckProof sumcheckProof,
         LongfellowLigeroProof ligeroProof,
         LongfellowFieldProfile profile,
-        LongfellowSubfieldRunCodec codec)
+        LongfellowSubfieldRunCodec codec,
+        BaseMemoryPool pool)
     {
         int scSize = LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile);
         int comProofSize = LongfellowLigeroProofSerializer.SerializedSize(ligeroProof, profile, codec);
+        int envelopeLength = DigestLength + scSize + comProofSize;
 
-        byte[] envelope = new byte[DigestLength + scSize + comProofSize];
-        root.CopyTo(envelope.AsSpan(0, DigestLength));
-        LongfellowSumcheckProofSerializer.Write(circuit, sumcheckProof, profile, envelope.AsSpan(DigestLength, scSize));
-        LongfellowLigeroProofSerializer.Write(ligeroProof, profile, codec, envelope.AsSpan(DigestLength + scSize, comProofSize));
+        IMemoryOwner<byte> envelopeOwner = pool.Rent(envelopeLength);
+        try
+        {
+            Span<byte> envelope = envelopeOwner.Memory.Span[..envelopeLength];
+            root.CopyTo(envelope[..DigestLength]);
+            LongfellowSumcheckProofSerializer.Write(circuit, sumcheckProof, profile, envelope.Slice(DigestLength, scSize));
+            LongfellowLigeroProofSerializer.Write(ligeroProof, profile, codec, envelope.Slice(DigestLength + scSize, comProofSize));
 
-        return envelope;
+            return new LongfellowZkProofEnvelope(envelopeOwner, envelopeLength);
+        }
+        catch
+        {
+            envelopeOwner.Dispose();
+            throw;
+        }
     }
 
 

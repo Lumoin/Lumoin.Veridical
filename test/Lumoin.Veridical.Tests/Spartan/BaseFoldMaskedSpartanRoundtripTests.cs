@@ -54,10 +54,10 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     private const int TestQueryCount = 8;
     private const string TranscriptDomain = "veridical.spartan2.basefold.masked.test.v1";
 
-    private static readonly byte[] CodeSeed = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.masked.code.v1");
-    private static readonly byte[] RandomSeed = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.masked.rng.v1");
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.masked.code.v1");
+    private static byte[] RandomSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.masked.rng.v1");
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

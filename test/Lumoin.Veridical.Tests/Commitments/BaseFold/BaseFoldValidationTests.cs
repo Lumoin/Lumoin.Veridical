@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -23,22 +24,22 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class BaseFoldValidationTests
 {
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate Multiply = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly ScalarInvertDelegate Invert = TestScalarBackends.Bls12Curve381.Invert;
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarHashToScalarDelegate HashToScalar = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
-    private static readonly MleEvaluateDelegate MleEvaluate = MultilinearExtensionBigIntegerReference.GetEvaluate();
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int FastQueryCount = 8;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]
@@ -131,6 +132,76 @@ internal sealed class BaseFoldValidationTests
         try
         {
             Assert.IsTrue(RoundTrips(mle, point, queryCount, pool), $"A round-trip at the full query count ({queryCount}) must verify.");
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    [TestMethod]
+    public void OneAndAHalfJohnsonQueryCountRoundTrips()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 2;
+
+        //The 128-bit one-and-a-half-Johnson preset (≈205 queries): the opt-in
+        //reduced count is a distinct parameter set with its own proof sizes, so
+        //the protocol is exercised end to end at this count like at the wired
+        //default.
+        int queryCount = WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount;
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 9, pool);
+        Scalar[] point = BuildPoint(VariableCount, 10, pool);
+
+        try
+        {
+            Assert.IsTrue(RoundTrips(mle, point, queryCount, pool), $"A round-trip at the one-and-a-half-Johnson query count ({queryCount}) must verify.");
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    [TestMethod]
+    public void OneAndAHalfJohnsonQueryCountTamperRejects()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 2;
+
+        int queryCount = WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount;
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 11, pool);
+        Scalar[] point = BuildPoint(VariableCount, 12, pool);
+
+        try
+        {
+            using PolynomialCommitmentProvider provider = NewProvider(queryCount);
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTranscript = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTranscript, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    //Flip a byte inside the opening (a round-polynomial coefficient):
+                    //the reduced-count parameter set must reject a tampered proof
+                    //exactly like the wired default's count does.
+                    MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[0] ^= 0x01;
+
+                    using FiatShamirTranscript verifyTranscript = NewTranscript();
+                    bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTranscript, pool);
+
+                    Assert.IsFalse(verified, $"A tampered opening at the one-and-a-half-Johnson query count ({queryCount}) must be rejected.");
+                }
+            }
         }
         finally
         {

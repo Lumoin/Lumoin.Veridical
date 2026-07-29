@@ -58,7 +58,7 @@ internal sealed class LongfellowRealHashCircuitProveTests
     private const int MacKeysStart = 85112;
     private const int InputCount = 85118;
 
-    private static readonly byte[] Now = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
+    private static byte[] Now { get; } = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
 
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("mdoc-hash");
 
@@ -82,14 +82,15 @@ internal sealed class LongfellowRealHashCircuitProveTests
 
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
 
-        byte[] proof = ProduceProof(circuit, parameters, column);
-        bool accepted = Verify(circuit, parameters, proof, PublicInputBytes(circuit, column));
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, parameters, column);
+        bool accepted = Verify(circuit, parameters, proof.Bytes, PublicInputBytes(circuit, column));
 
         Assert.IsTrue(accepted, "Our verifier must accept our proof over the imported real hash circuit.");
     }
 
 
-    private static byte[] ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] column)
+    //Returns the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] column)
     {
         using Lch14AdditiveFft fft = NewFft();
         using LongfellowTranscript transcript = NewTranscript(TranscriptSeed);
@@ -102,7 +103,7 @@ internal sealed class LongfellowRealHashCircuitProveTests
     }
 
 
-    private static bool Verify(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] proof, byte[] publicInputs)
+    private static bool Verify(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, ReadOnlySpan<byte> proof, byte[] publicInputs)
     {
         using Lch14AdditiveFft fft = NewFft();
         using LongfellowTranscript transcript = NewTranscript(TranscriptSeed);

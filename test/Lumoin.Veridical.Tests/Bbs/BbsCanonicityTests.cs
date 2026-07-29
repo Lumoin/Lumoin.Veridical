@@ -25,7 +25,7 @@ internal sealed class BbsCanonicityTests
     //The ciphersuite used throughout; the canonicity checks are independent of
     //the ciphersuite choice (both SHA-256 and SHAKE-256 share the same
     //underlying BLS12-381 scalar field).
-    private static readonly BbsCiphersuite Suite = BbsCiphersuite.Bls12Curve381Sha256;
+    private static BbsCiphersuite Suite { get; } = BbsCiphersuite.Bls12Curve381Sha256;
 
     //A valid 48-byte G1 point used as inert filler for the point slots of the
     //signature and proof. FromCanonical does not validate point geometry (that

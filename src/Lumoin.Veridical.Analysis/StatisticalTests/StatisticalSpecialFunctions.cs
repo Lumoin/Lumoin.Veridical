@@ -24,7 +24,7 @@ internal static class StatisticalSpecialFunctions
     private const double Tiny = 1e-300;
 
     //Lanczos coefficients for g = 7, nine terms — the standard high-accuracy set.
-    private static readonly double[] LanczosCoefficients =
+    private static double[] LanczosCoefficients { get; } =
     [
         0.99999999999980993,
         676.5203681218851,

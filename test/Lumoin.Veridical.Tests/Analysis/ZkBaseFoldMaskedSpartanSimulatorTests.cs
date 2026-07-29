@@ -68,8 +68,8 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     private const int ByteValueCount = 256;
     private const string TranscriptDomain = "veridical.analysis.spartan2.simulator.test.v1";
 
-    private static readonly byte[] CodeSeed = Encoding.UTF8.GetBytes("veridical.analysis.spartan2.simulator.code.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.spartan2.simulator.code.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

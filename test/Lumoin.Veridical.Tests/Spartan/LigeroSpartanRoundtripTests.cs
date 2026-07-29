@@ -49,9 +49,9 @@ internal sealed class LigeroSpartanRoundtripTests
     private const int TestQueryCount = 8;
     private const string TranscriptDomain = "veridical.spartan2.ligero.test.v1";
 
-    private static readonly byte[] RandomSeed = Encoding.UTF8.GetBytes("veridical.spartan2.ligero.roundtrip.rng.v1");
+    private static byte[] RandomSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.ligero.roundtrip.rng.v1");
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

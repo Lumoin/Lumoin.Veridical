@@ -64,7 +64,7 @@ internal sealed class LongfellowZkProveTests
     //The anchor's subfield_boundary is 0 (the reference rebases it: 0 < npub_in, so it stays 0).
     private const int SubfieldBoundary = 0;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
@@ -83,7 +83,7 @@ internal sealed class LongfellowZkProveTests
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         byte[] witnessColumn = BuildWitnessColumn(circuit);
 
-        byte[] proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
 
         byte[] expected = Convert.FromHexString(Anchors["proof_bytes"]);
 
@@ -91,11 +91,11 @@ internal sealed class LongfellowZkProveTests
         string? reverseGatePath = Environment.GetEnvironmentVariable("ZK_REVERSE_GATE_PATH");
         if(reverseGatePath is not null)
         {
-            File.WriteAllBytes(reverseGatePath, proof);
+            File.WriteAllBytes(reverseGatePath, proof.Bytes.ToArray());
         }
 
-        Assert.HasCount(expected.Length, proof, "The proof length must match the reference's 1864 bytes.");
-        Assert.IsTrue(proof.AsSpan().SequenceEqual(expected), "The full proof envelope must be byte-identical to the reference.");
+        Assert.AreEqual(expected.Length, proof.Length, "The proof length must match the reference's 1864 bytes.");
+        Assert.IsTrue(proof.Bytes.SequenceEqual(expected), "The full proof envelope must be byte-identical to the reference.");
     }
 
 
@@ -105,19 +105,19 @@ internal sealed class LongfellowZkProveTests
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         byte[] witnessColumn = BuildWitnessColumn(circuit);
 
-        byte[] proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
 
         int comLen = int.Parse(Anchors["seg_com_len"], CultureInfo.InvariantCulture);
         int scLen = int.Parse(Anchors["seg_sc_len"], CultureInfo.InvariantCulture);
 
         Assert.AreEqual(DigestSize, comLen, "The com segment is the 32-byte root.");
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         Assert.AreEqual(scLen, LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile), "The sc segment length must match the reference.");
 
         //The root segment equals the anchor's com_root.
         byte[] expectedRoot = Convert.FromHexString(Anchors["com_root"]);
-        Assert.IsTrue(proof.AsSpan(0, DigestSize).SequenceEqual(expectedRoot), "The commitment root must match the reference's com_root.");
+        Assert.IsTrue(proof.Bytes[..DigestSize].SequenceEqual(expectedRoot), "The commitment root must match the reference's com_root.");
     }
 
 
@@ -127,9 +127,9 @@ internal sealed class LongfellowZkProveTests
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         byte[] witnessColumn = BuildWitnessColumn(circuit);
 
-        byte[] proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
 
-        AssertVerifies(circuit, proof, PublicInputBytes(circuit, witnessColumn), expectedAccept: true);
+        AssertVerifies(circuit, proof.Bytes, PublicInputBytes(circuit, witnessColumn), expectedAccept: true);
     }
 
 
@@ -138,14 +138,14 @@ internal sealed class LongfellowZkProveTests
     {
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         byte[] baselineColumn = BuildWitnessColumn(circuit);
-        byte[] baselineProof = ProduceProof(circuit, baselineColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope baselineProof = ProduceProof(circuit, baselineColumn, TranscriptSeed);
 
         //A different satisfying witness: x = of_scalar(9) (public), y = 2, z = 4, w = (x+y)(x+z)x.
         byte[] alternativeColumn = BuildSatisfyingColumn(circuit, 9, 2, 4);
-        byte[] alternativeProof = ProduceProof(circuit, alternativeColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope alternativeProof = ProduceProof(circuit, alternativeColumn, TranscriptSeed);
 
-        Assert.IsFalse(alternativeProof.AsSpan().SequenceEqual(baselineProof), "A different witness must change the proof.");
-        AssertVerifies(circuit, alternativeProof, PublicInputBytes(circuit, alternativeColumn), expectedAccept: true);
+        Assert.IsFalse(alternativeProof.Bytes.SequenceEqual(baselineProof.Bytes), "A different witness must change the proof.");
+        AssertVerifies(circuit, alternativeProof.Bytes, PublicInputBytes(circuit, alternativeColumn), expectedAccept: true);
     }
 
 
@@ -168,16 +168,17 @@ internal sealed class LongfellowZkProveTests
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         byte[] witnessColumn = BuildWitnessColumn(circuit);
 
-        byte[] baselineProof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
-        byte[] alternativeProof = ProduceProof(circuit, witnessColumn, Encoding.ASCII.GetBytes("zk9"));
+        using LongfellowZkProofEnvelope baselineProof = ProduceProof(circuit, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope alternativeProof = ProduceProof(circuit, witnessColumn, Encoding.ASCII.GetBytes("zk9"));
 
-        Assert.IsFalse(alternativeProof.AsSpan().SequenceEqual(baselineProof), "A different seed must change the proof.");
-        AssertVerifies(circuit, alternativeProof, PublicInputBytes(circuit, witnessColumn), expectedAccept: true, alternativeSeed: Encoding.ASCII.GetBytes("zk9"));
+        Assert.IsFalse(alternativeProof.Bytes.SequenceEqual(baselineProof.Bytes), "A different seed must change the proof.");
+        AssertVerifies(circuit, alternativeProof.Bytes, PublicInputBytes(circuit, witnessColumn), expectedAccept: true, alternativeSeed: Encoding.ASCII.GetBytes("zk9"));
     }
 
 
-    //Runs the full prover over the witness column and the seed, returning the serialized envelope.
-    private static byte[] ProduceProof(LongfellowSumcheckCircuit circuit, byte[] witnessColumn, byte[] seed)
+    //Runs the full prover over the witness column and the seed, returning the pooled proof envelope;
+    //the caller disposes it.
+    private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, byte[] witnessColumn, byte[] seed)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
 
@@ -206,7 +207,7 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    private static void AssertVerifies(LongfellowSumcheckCircuit circuit, byte[] proof, byte[] publicInputs, bool expectedAccept, byte[]? alternativeSeed = null)
+    private static void AssertVerifies(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> proof, byte[] publicInputs, bool expectedAccept, byte[]? alternativeSeed = null)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
 

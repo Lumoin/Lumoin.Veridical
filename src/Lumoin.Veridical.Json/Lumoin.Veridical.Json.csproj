@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Lumoin.Veridical.Json</RootNamespace>
+    <Description>System.Text.Json serialization for Lumoin.Veridical edge artifacts (the predicate-proof request and proof envelopes). AOT-safe by construction: every type round-trips through a source-generated JsonSerializerContext, so no reflection-based serialization runs. This is the reference serializer the CLI and other consumers wire in; the core cryptography libraries stay serializer-agnostic.</Description>
+    <PackageTags>json serialization aot source-generator veridical</PackageTags>
+
+    <!-- The repo bans System.Text.Json / System.Formats.Cbor in library code so the
+         cryptographic core stays serializer-agnostic (it injects a serializer instead).
+         This project IS that injected serializer, so it opts out of the ban. -->
+    <EnableSerializationBan>false</EnableSerializationBan>
+  </PropertyGroup>
+
+</Project>

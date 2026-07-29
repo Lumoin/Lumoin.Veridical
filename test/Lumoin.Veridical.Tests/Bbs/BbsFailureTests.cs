@@ -11,8 +11,8 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsFailureTests
 {
-    private static readonly byte[] Header = "test-header"u8.ToArray();
-    private static readonly BbsMessage[] Messages = [new BbsMessage("first"u8.ToArray()), new BbsMessage("second"u8.ToArray())];
+    private static byte[] Header { get; } = "test-header"u8.ToArray();
+    private static BbsMessage[] Messages { get; } = [new BbsMessage("first"u8.ToArray()), new BbsMessage("second"u8.ToArray())];
 
 
     [TestMethod]

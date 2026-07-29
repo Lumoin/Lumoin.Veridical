@@ -36,6 +36,18 @@ internal static class LigeroEvaluationProver
     /// Commits to the evaluation matrix and returns the column Merkle tree; the
     /// caller copies out <see cref="MerkleTree.Root"/> and disposes the tree.
     /// </summary>
+    /// <param name="evaluations">The polynomial's evaluation matrix, row-major; exactly <c>RowCount · ColumnCount · 32</c> bytes.</param>
+    /// <param name="dimensions">The matrix and code shape.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="subtract">Scalar-subtract backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="invert">Scalar-invert backend.</param>
+    /// <param name="columnHash">The one-shot bytes-to-digest hash producing a Merkle leaf from a whole column.</param>
+    /// <param name="hashAlgorithm">The canonical hash-function name.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <param name="rowExtenderFactory">Optional row-extension source consulted once for the matrix's single row shape, in place of the barycentric path; <see langword="null"/> (the default) keeps today's barycentric encode.</param>
     public static MerkleTree Commit(
         ReadOnlySpan<byte> evaluations,
         LigeroEvaluationDimensions dimensions,
@@ -47,9 +59,13 @@ internal static class LigeroEvaluationProver
         string hashAlgorithm,
         MerkleHashDelegate merkleHash,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
-        using IMemoryOwner<byte> encodedOwner = EncodeMatrix(evaluations, dimensions, add, subtract, multiply, invert, curve, pool);
+        //Every row of the matrix shares one (ColumnCount, CodewordLength) shape, so the
+        //extender is resolved once here, before the per-row loop inside EncodeMatrix.
+        LigeroRowExtender? rowExtender = ResolveRowExtender(rowExtenderFactory, dimensions.ColumnCount, dimensions.CodewordLength);
+        using IMemoryOwner<byte> encodedOwner = EncodeMatrix(evaluations, dimensions, add, subtract, multiply, invert, curve, pool, rowExtender);
         return CommitColumns(encodedOwner.Memory.Span[..(dimensions.RowCount * dimensions.CodewordLength * ScalarSize)], dimensions, columnHash, hashAlgorithm, merkleHash, pool);
     }
 
@@ -61,6 +77,26 @@ internal static class LigeroEvaluationProver
     /// (one scalar). Runs the full Fiat-Shamir schedule against
     /// <paramref name="transcript"/>.
     /// </summary>
+    /// <param name="evaluations">The polynomial's evaluation matrix, row-major; exactly <c>RowCount · ColumnCount · 32</c> bytes.</param>
+    /// <param name="evaluationPoint">The multilinear evaluation point; exactly <c>ColumnVariableCount + RowVariableCount</c> scalars.</param>
+    /// <param name="dimensions">The matrix and code shape.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes.</param>
+    /// <param name="openingDestination">Receives the serialized opening; exactly <see cref="OpeningLengthBytes"/> bytes.</param>
+    /// <param name="claimedValueDestination">Receives the claimed evaluation <c>p(point)</c>; one scalar.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="subtract">Scalar-subtract backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="invert">Scalar-invert backend.</param>
+    /// <param name="reduce">Scalar-reduce backend for the challenge squeeze.</param>
+    /// <param name="hash">The fixed-output transcript hash backend.</param>
+    /// <param name="squeeze">The transcript XOF backend.</param>
+    /// <param name="columnHash">The one-shot bytes-to-digest hash producing a Merkle leaf from a whole column.</param>
+    /// <param name="hashAlgorithm">The canonical hash-function name.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript to absorb into and squeeze from.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <param name="rowExtenderFactory">Optional row-extension source consulted once for the matrix's single row shape, in place of the barycentric path; <see langword="null"/> (the default) keeps today's barycentric encode.</param>
     public static void Prove(
         ReadOnlySpan<byte> evaluations,
         ReadOnlySpan<Scalar> evaluationPoint,
@@ -80,14 +116,18 @@ internal static class LigeroEvaluationProver
         MerkleHashDelegate merkleHash,
         FiatShamirTranscript transcript,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         int rowCount = dimensions.RowCount;
         int columnCount = dimensions.ColumnCount;
         int codewordLength = dimensions.CodewordLength;
         int openedColumnCount = dimensions.OpenedColumnCount;
 
-        using IMemoryOwner<byte> encodedOwner = EncodeMatrix(evaluations, dimensions, add, subtract, multiply, invert, curve, pool);
+        //Every row of the matrix shares one (ColumnCount, CodewordLength) shape, so the
+        //extender is resolved once here, before the per-row loop inside EncodeMatrix.
+        LigeroRowExtender? rowExtender = ResolveRowExtender(rowExtenderFactory, columnCount, codewordLength);
+        using IMemoryOwner<byte> encodedOwner = EncodeMatrix(evaluations, dimensions, add, subtract, multiply, invert, curve, pool, rowExtender);
         Span<byte> encoded = encodedOwner.Memory.Span[..(rowCount * codewordLength * ScalarSize)];
 
         using MerkleTree tree = CommitColumns(encoded, dimensions, columnHash, hashAlgorithm, merkleHash, pool);
@@ -139,7 +179,12 @@ internal static class LigeroEvaluationProver
 
 
     //RS-encodes each of the RowCount message rows (ColumnCount -> CodewordLength)
-    //into a freshly rented row-major encoded matrix.
+    //into a freshly rented row-major encoded matrix. Message and codeword are
+    //separate buffers here (unlike LigeroTableau's in-place rows), so the
+    //extender path first copies the message into the codeword's prefix, then
+    //runs the extender over the whole codeword. The barycentric fallback
+    //computes its weights once for the shape shared by every row, rather than
+    //per row.
     private static IMemoryOwner<byte> EncodeMatrix(
         ReadOnlySpan<byte> evaluations,
         LigeroEvaluationDimensions dimensions,
@@ -148,7 +193,8 @@ internal static class LigeroEvaluationProver
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtender? rowExtender = null)
     {
         int rowCount = dimensions.RowCount;
         int columnCount = dimensions.ColumnCount;
@@ -163,11 +209,27 @@ internal static class LigeroEvaluationProver
         try
         {
             Span<byte> encoded = owner.Memory.Span[..(rowCount * codewordLength * ScalarSize)];
+            if(rowExtender is not null)
+            {
+                for(int i = 0; i < rowCount; i++)
+                {
+                    ReadOnlySpan<byte> message = evaluations.Slice(i * columnCount * ScalarSize, columnCount * ScalarSize);
+                    Span<byte> codeword = encoded.Slice(i * codewordLength * ScalarSize, codewordLength * ScalarSize);
+                    message.CopyTo(codeword[..(columnCount * ScalarSize)]);
+                    rowExtender(codeword);
+                }
+
+                return owner;
+            }
+
+            using IMemoryOwner<byte> weightsOwner = pool.Rent(columnCount * ScalarSize);
+            Span<byte> weights = weightsOwner.Memory.Span[..(columnCount * ScalarSize)];
+            LigeroReedSolomonEncoder.ComputeWeights(columnCount, LigeroNodeDomain.ConsecutiveIntegers, weights, subtract, multiply, invert, curve, pool);
             for(int i = 0; i < rowCount; i++)
             {
                 ReadOnlySpan<byte> message = evaluations.Slice(i * columnCount * ScalarSize, columnCount * ScalarSize);
                 Span<byte> codeword = encoded.Slice(i * codewordLength * ScalarSize, codewordLength * ScalarSize);
-                LigeroReedSolomonEncoder.Encode(message, columnCount, codeword, codewordLength, add, subtract, multiply, invert, curve, pool);
+                LigeroReedSolomonEncoder.Encode(message, columnCount, codeword, codewordLength, LigeroNodeDomain.ConsecutiveIntegers, weights, add, subtract, multiply, invert, curve, pool);
             }
 
             return owner;
@@ -209,6 +271,21 @@ internal static class LigeroEvaluationProver
         }
 
         return MerkleTree.Build(leaves, paddedLeafCount, merkleHash, pool);
+    }
+
+
+    //Consults the factory for the matrix's row shape. EncodeMatrix passes
+    //LigeroNodeDomain.ConsecutiveIntegers explicitly at both of its encode call
+    //sites, so this PCS path never runs the BinaryField domain and needs no
+    //domain argument to gate on, unlike LigeroTableau's build.
+    private static LigeroRowExtender? ResolveRowExtender(LigeroRowExtenderFactory? factory, int messageLength, int codewordLength)
+    {
+        if(factory is null)
+        {
+            return null;
+        }
+
+        return factory(messageLength, codewordLength);
     }
 
 

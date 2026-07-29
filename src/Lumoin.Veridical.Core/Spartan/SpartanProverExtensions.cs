@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments;
+using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.ConstraintSystems;
 using Lumoin.Veridical.Core.Memory;
 using System;
@@ -190,10 +191,11 @@ public static class SpartanProverExtensions
                 static (pcs, witnessCommitment, outer, inner, evalW, errorProof, witnessProof, p) =>
                 {
                     (int queryCount, int digestSize) = RequireBaseFoldMetadata(pcs);
+                    int inverseRate = pcs.InverseRate ?? WellKnownLigeroParameters.DefaultInverseRate;
                     return LigeroSpartanProof.Build(
                         witnessCommitment, outer.Rounds, outer.TerminatingAz, outer.TerminatingBz,
                         outer.TerminatingCz, outer.TerminatingE, inner.Rounds, evalW, errorProof, witnessProof,
-                        queryCount, digestSize, p);
+                        queryCount, inverseRate, digestSize, p);
                 });
         }
 

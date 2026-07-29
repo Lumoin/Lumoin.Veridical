@@ -36,7 +36,7 @@ public class ScalarAddBenchmarks
 {
     private const int ScalarBytes = 32;
     private const int BenchmarkSeed = 0x5EED5EED;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     private byte[] aBytes = null!;

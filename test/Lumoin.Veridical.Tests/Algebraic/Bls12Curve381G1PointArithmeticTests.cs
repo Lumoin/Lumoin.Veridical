@@ -59,28 +59,28 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381G1PointArithmeticTests
 {
-    private static readonly G1AddDelegate AddDelegate =
+    private static G1AddDelegate AddDelegate { get; } =
         Bls12Curve381BigIntegerG1Reference.GetAdd();
 
-    private static readonly G1NegateDelegate NegateDelegate =
+    private static G1NegateDelegate NegateDelegate { get; } =
         Bls12Curve381BigIntegerG1Reference.GetNegate();
 
-    private static readonly G1ScalarMultiplyDelegate ScalarMultiplyDelegate =
+    private static G1ScalarMultiplyDelegate ScalarMultiplyDelegate { get; } =
         Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
 
-    private static readonly G1HashToCurveDelegate HashToCurveDelegate =
+    private static G1HashToCurveDelegate HashToCurveDelegate { get; } =
         Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
 
-    private static readonly G1IsOnCurveDelegate IsOnCurveDelegate =
+    private static G1IsOnCurveDelegate IsOnCurveDelegate { get; } =
         Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
 
-    private static readonly G1IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroupDelegate =
+    private static G1IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroupDelegate { get; } =
         Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
 
-    private static readonly ScalarAddDelegate ScalarAdd =
+    private static ScalarAddDelegate ScalarAdd { get; } =
         Bls12Curve381BigIntegerScalarReference.GetAdd();
 
-    private static readonly ScalarReduceDelegate ScalarReduce =
+    private static ScalarReduceDelegate ScalarReduce { get; } =
         Bls12Curve381BigIntegerScalarReference.GetReduce();
 
 

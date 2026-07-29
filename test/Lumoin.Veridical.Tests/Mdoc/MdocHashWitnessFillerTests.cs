@@ -51,7 +51,7 @@ internal sealed class MdocHashWitnessFillerTests
     private const int HashWitnessEnd = 85112;
     private const int MacKeysStart = 85112;
 
-    private static readonly byte[] Now = System.Text.Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
+    private static byte[] Now { get; } = System.Text.Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 

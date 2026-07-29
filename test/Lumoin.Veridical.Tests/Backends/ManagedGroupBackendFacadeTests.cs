@@ -18,9 +18,9 @@ namespace Lumoin.Veridical.Tests.Backends;
 [TestClass]
 internal sealed class ManagedGroupBackendFacadeTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x10);
-    private static readonly byte[] KeyInfo = "facade-key-info"u8.ToArray();
-    private static readonly byte[] Header = "facade-header"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x10);
+    private static byte[] KeyInfo { get; } = "facade-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "facade-header"u8.ToArray();
 
 
     [TestMethod]
@@ -112,11 +112,15 @@ internal sealed class ManagedGroupBackendFacadeTests
         Assert.AreEqual(CurveParameterSet.Bls12Curve381, bls.Curve);
         Assert.IsNotNull(bls.IsOnCurve, "BLS12-381 G1 supplies an on-curve predicate.");
         Assert.IsNotNull(bls.IsInPrimeOrderSubgroup, "BLS12-381 G1 supplies a subgroup predicate.");
+        Assert.AreEqual(Bls12Curve381ConstantTimeG1Backend.GetScalarMultiply(), bls.ScalarMultiply,
+            "The BLS12-381 G1 bundle wires the secret-scalar multiply to the constant-time ladder.");
 
         using G1ArithmeticBackend bn = Bn254ManagedG1Backend.Create();
         Assert.AreEqual(CurveParameterSet.Bn254, bn.Curve);
         Assert.IsNotNull(bn.IsOnCurve, "BN254 G1 supplies an on-curve predicate.");
         Assert.IsNotNull(bn.IsInPrimeOrderSubgroup, "BN254 G1 supplies a subgroup predicate.");
+        Assert.AreEqual(Bn254ConstantTimeG1Backend.GetScalarMultiply(), bn.ScalarMultiply,
+            "The BN254 G1 bundle wires the secret-scalar multiply to the constant-time ladder.");
 
         using G1ArithmeticBackend p256 = P256ManagedG1Backend.Create();
         Assert.AreEqual(CurveParameterSet.P256, p256.Curve);
@@ -130,6 +134,8 @@ internal sealed class ManagedGroupBackendFacadeTests
     {
         using G2ArithmeticBackend blsG2 = Bls12Curve381ManagedG2Backend.Create();
         Assert.AreEqual(CurveParameterSet.Bls12Curve381, blsG2.Curve);
+        Assert.AreEqual(Bls12Curve381ConstantTimeG2Backend.GetScalarMultiply(), blsG2.ScalarMultiply,
+            "The BLS12-381 G2 bundle wires the secret-scalar multiply to the constant-time ladder.");
         using G2ArithmeticBackend bnG2 = Bn254ManagedG2Backend.Create();
         Assert.AreEqual(CurveParameterSet.Bn254, bnG2.Curve);
 

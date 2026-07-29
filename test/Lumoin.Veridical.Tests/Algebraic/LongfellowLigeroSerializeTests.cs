@@ -65,7 +65,7 @@ internal sealed class LongfellowLigeroSerializeTests
     private const int OpenedColumnCount = 2;
     private const int TranscriptVersion = 6;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("c4");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("c4");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
@@ -175,7 +175,7 @@ internal sealed class LongfellowLigeroSerializeTests
         using Lch14AdditiveFft fft = NewFft(subfield);
         using LongfellowLigeroProof proof = ProduceProof(fft, subFieldBytes, out byte[] root, out byte[] linearTargets);
 
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         int size = LongfellowLigeroProofSerializer.SerializedSize(proof, subFieldBytes, profile, fft, BaseMemoryPool.Shared);
 
         using IMemoryOwner<byte> bufferOwner = BaseMemoryPool.Shared.Rent(size);
@@ -207,7 +207,7 @@ internal sealed class LongfellowLigeroSerializeTests
         using Lch14AdditiveFft fft = NewFft(subfield);
         using LongfellowLigeroProof proof = BuildReferenceProof(parameters, prefix);
 
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         int size = LongfellowLigeroProofSerializer.SerializedSize(proof, subFieldBytes, profile, fft, BaseMemoryPool.Shared);
 
         using IMemoryOwner<byte> bufferOwner = BaseMemoryPool.Shared.Rent(size);
@@ -231,7 +231,7 @@ internal sealed class LongfellowLigeroSerializeTests
         using Lch14AdditiveFft fft = NewFft(subfield);
         byte[] referenceBytes = Convert.FromHexString(SerializeAnchors[$"{prefix}_ligero_bytes"]);
 
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         using LongfellowLigeroProof? parsed = LongfellowLigeroProofSerializer.Read(parameters, subFieldBytes, profile, fft, BaseMemoryPool.Shared, referenceBytes, out int read);
 
         Assert.IsNotNull(parsed, $"{prefix}: Read must parse the reference bytes.");
@@ -270,7 +270,7 @@ internal sealed class LongfellowLigeroSerializeTests
         using Lch14AdditiveFft fft = NewFft(subfield);
         using LongfellowLigeroProof proof = ProduceProof(fft, subFieldBytes, out _, out _);
 
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         int size = LongfellowLigeroProofSerializer.SerializedSize(proof, subFieldBytes, profile, fft, BaseMemoryPool.Shared);
         byte[] buffer = new byte[size];
         LongfellowLigeroProofSerializer.Write(proof, subFieldBytes, profile, fft, BaseMemoryPool.Shared, buffer);
@@ -313,7 +313,7 @@ internal sealed class LongfellowLigeroSerializeTests
         using LongfellowTranscript transcript = NewTranscript(TranscriptSeed);
         transcript.AbsorbCommitmentRoot(root);
 
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
         return LongfellowLigeroVerifier.Verify(
             parameters, proof, root, transcript, TheoremStatementHash(),
@@ -337,9 +337,10 @@ internal sealed class LongfellowLigeroSerializeTests
         LigeroLinearConstraint[] linearConstraints = BuildLinearConstraints(fft);
 
         LongfellowRandomByteSource random = NewCounterSource();
+        using LongfellowFieldProfile commitProfile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         using LongfellowLigeroCommitment commitment = LongfellowLigeroCommitment.Commit(
             parameters, witnesses, quadraticConstraints, subFieldBytes, parameters.WitnessCount, random,
-            LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared), LongfellowGf2k128Encoding.CreateProfile(fft),
+            LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared), commitProfile,
             Add, Subtract, Multiply, Sha256TwoToOne, Sha256OneShot, WellKnownHashAlgorithms.Sha256, CurveParameterSet.None, BaseMemoryPool.Shared);
 
         root = new byte[DigestSize];
@@ -348,9 +349,10 @@ internal sealed class LongfellowLigeroSerializeTests
         using LongfellowTranscript transcript = NewTranscript(TranscriptSeed);
         transcript.AbsorbCommitmentRoot(root);
 
+        using LongfellowFieldProfile proveProfile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         LongfellowLigeroProof proof = LongfellowLigeroProver.Prove(
             commitment, transcript, WitnessCount, linearConstraints, TheoremStatementHash(), quadraticConstraints,
-            LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared), LongfellowGf2k128Encoding.CreateProfile(fft),
+            LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared), proveProfile,
             Add, Subtract, Multiply, CurveParameterSet.None, BaseMemoryPool.Shared);
 
         linearTargets = new byte[WitnessCount * ScalarSize];

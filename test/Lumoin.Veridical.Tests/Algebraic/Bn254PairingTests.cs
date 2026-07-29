@@ -21,22 +21,22 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254PairingTests
 {
-    private static readonly Fp12FrobeniusDelegate Frobenius = Bn254BigIntegerPairingReference.GetFrobenius();
-    private static readonly Fp12CyclotomicSquareDelegate CyclotomicSquare = Bn254BigIntegerPairingReference.GetCyclotomicSquare();
-    private static readonly PairingDelegate Pair = Bn254BigIntegerPairingReference.GetPairing();
+    private static Fp12FrobeniusDelegate Frobenius { get; } = Bn254BigIntegerPairingReference.GetFrobenius();
+    private static Fp12CyclotomicSquareDelegate CyclotomicSquare { get; } = Bn254BigIntegerPairingReference.GetCyclotomicSquare();
+    private static PairingDelegate Pair { get; } = Bn254BigIntegerPairingReference.GetPairing();
 
-    private static readonly Fp12SquareDelegate RegularSquare = Bn254BigIntegerFp12Reference.GetSquare();
+    private static Fp12SquareDelegate RegularSquare { get; } = Bn254BigIntegerFp12Reference.GetSquare();
 
-    private static readonly G1ScalarMultiplyDelegate G1ScalarMul = Bn254BigIntegerG1Reference.GetScalarMultiply();
-    private static readonly G2ScalarMultiplyDelegate G2ScalarMul = Bn254BigIntegerG2Reference.GetScalarMultiply();
-    private static readonly G2NegateDelegate G2Negate = Bn254BigIntegerG2Reference.GetNegate();
-    private static readonly Fp12MultiplyDelegate Fp12Mul = Bn254BigIntegerFp12Reference.GetMultiply();
-    private static readonly ScalarReduceDelegate Reduce = Bn254BigIntegerScalarReference.GetReduce();
+    private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bn254BigIntegerG1Reference.GetScalarMultiply();
+    private static G2ScalarMultiplyDelegate G2ScalarMul { get; } = Bn254BigIntegerG2Reference.GetScalarMultiply();
+    private static G2NegateDelegate G2Negate { get; } = Bn254BigIntegerG2Reference.GetNegate();
+    private static Fp12MultiplyDelegate Fp12Mul { get; } = Bn254BigIntegerFp12Reference.GetMultiply();
+    private static ScalarReduceDelegate Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
 
-    private static readonly G1IsOnCurveDelegate G1IsOnCurve = Bn254BigIntegerG1Reference.GetIsOnCurve();
-    private static readonly G2IsOnCurveDelegate G2IsOnCurve = Bn254BigIntegerG2Reference.GetIsOnCurve();
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+    private static G2IsOnCurveDelegate G2IsOnCurve { get; } = Bn254BigIntegerG2Reference.GetIsOnCurve();
 
-    private static readonly BigInteger BaseFieldPrime = Bn254BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger BaseFieldPrime { get; } = Bn254BigIntegerG1Reference.BaseFieldPrime;
     private const int CompSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
     private const int Fp12Size = 12 * WellKnownCurves.Bn254BaseFieldSizeBytes;
 

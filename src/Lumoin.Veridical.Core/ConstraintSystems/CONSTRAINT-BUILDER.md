@@ -24,11 +24,13 @@ is in that range", "prove this id is one of these") that you would rather
 express in code than compile from a separate circuit language. It is the
 natural choice for small to medium circuits whose logic you own.
 
-Use the Circom adapter instead when you already have an audited circuit —
-a circomlib Poseidon hash, an ECDSA gadget, a Merkle-path verifier — that is
-written in Circom and compiled by the real toolchain. The builder does not
-reimplement those; it gives you the primitives (arithmetic constraints and a
-small predicate library) to compose your own.
+For the Poseidon hash and Poseidon Merkle-path membership the builder now
+provides native gadgets (§ 11) — no Circom toolchain needed. Use the Circom
+adapter instead when you already have a different audited circuit — an ECDSA
+gadget, a bespoke arithmetic circuit — that is written in Circom and compiled by
+the real toolchain. For everything the gadgets and the predicate library do not
+cover, the builder gives you the primitives (arithmetic constraints and a small
+predicate library) to compose your own.
 
 The builder deliberately stops short of a circuit DSL. There is no symbolic
 execution, no AST, no operator sugar on variables themselves — it is
@@ -262,3 +264,306 @@ Fiat-Shamir transcript, the multilinear-extension delegates — is shown in the
 `Spartan/` tests and the [`Spartan/README.md`](../Spartan/README.md); the
 builder changes nothing about it. What the builder gives you is the front end:
 a constraint system authored in C# instead of compiled from Circom.
+
+## § 9 Supply-chain predicates and fixed-point encoding
+
+Regulatory claims about a product — "the recycled content is at least 30 %",
+"the carbon footprint is at most 12.5 kg CO₂e" — are comparisons over decimal
+quantities, but the constraint system compares field integers. Three types turn
+one into the other: `FixedPointScale` and `FixedPointDomain` pin how a decimal
+becomes a field integer, and `R1csCircuitBuilderSupplyChainPredicates` names the
+comparisons. They add no op types — a supply-chain predicate is a range check
+plus an ordering check on the primitives of § 6 — and hold no credential, RDF, or
+serialization concern: the input is a `System.Decimal`, the output a proof.
+
+### Exact-or-reject encoding
+
+`FixedPointScale.OfFractionalDigits(d)` fixes a scale whose factor is `10^d`, and
+`Encode` maps a non-negative decimal to `value · 10^d` as an exact integer. It
+never rounds: a value carrying finer resolution than the scale (`32.567` at one
+digit) is rejected, not truncated. That is a soundness choice, not fastidiousness
+— rounding a measured value up, or a "≥" threshold down, is exactly how a
+sub-threshold quantity would clear the bar. Because one scale encodes both
+operands, `encode(a) ≥ encode(b)` in the field holds precisely when `a ≥ b` as
+decimals. Any quantisation of noisier source data is the caller's explicit
+decision upstream, never a silent property here.
+
+### One domain per comparison, and a field-safe width
+
+A bare scale is not enough to compare safely: the range check that underlies "≥"
+and "≤" reduces a difference modulo the scalar field, and a difference sized too
+close to the field order can wrap and read as in-range. `FixedPointDomain.Create`
+pairs a scale with an inclusive maximum and derives the range-check width from the
+encoded maximum, capped at `FixedPointScale.MaximumEncodedBits` (252). The cap is
+the decisive number: the difference range check rejects a negative (false)
+difference only when `r ≥ 2^(bits+1)`, and the smaller wired scalar field
+(BN254, `r ≈ 2^253.6`) satisfies that at 252 bits but not at 253. Every
+supply-chain predicate takes a domain, so both operands of a comparison are
+encoded at one scale and sized within one field-safe width — a mismatched scale
+is not expressible.
+
+### The named predicates
+
+`AssertQuantityAtLeast(measured, threshold, name)` proves the measured quantity is
+at least the threshold; `AssertQuantityAtMost(measured, cap, name)` proves it is at
+most the cap. The bound is a `FixedPointBound`, which carries its domain and is
+either of two forms. `FixedPointBound.Constant(domain, value)` bakes the value into
+the circuit id, so a proof attests against the regulatory number structurally
+rather than against a prover-suppliable input. `FixedPointBound.PublicInput(domain,
+value, variable)` carries the bound in a public input the verifier supplies, so one
+circuit serves many thresholds. A constant is validated at compile time to lie
+within the exact domain maximum; a public input is range-checked in-circuit into
+the field-safe width `[0, 2^Bits)` (auxiliaries under `{name}_bound`) — enough to
+keep the difference from wrapping, though not clamped to the exact maximum the way
+a constant is.
+
+Each predicate also range-checks the measured value into `[0, 2^Bits)` under
+`{name}_domain`. That is load-bearing for "≤": without it, a measured value bound
+to the field element just below the modulus reads as a small positive difference
+and clears a bare cap check. Range-checking the measured value for "≥" as well
+(where it is self-bounding under the 252 cap) keeps the soundness argument
+independent of the operands' magnitudes and of which curve compiles the circuit.
+
+```csharp
+var builder = new R1csCircuitBuilder(CurveParameterSet.Bls12Curve381);
+FixedPointDomain percent = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(1), 100.0m);
+R1csVariableIndex recycled = builder.DeclareWitnessVariable("recycled");
+builder.AssertQuantityAtLeast(recycled, FixedPointBound.Constant(percent, 30.0m), "recycled");
+R1csCircuit circuit = builder.Build();
+
+var bindings = new Dictionary<string, BigInteger>(StringComparer.Ordinal);
+R1csSupplyChainWitness.AddQuantityAtLeastBindings(
+    bindings, "recycled", "recycled", FixedPointBound.Constant(percent, 30.0m), measured: 32.5m, circuit.Curve);
+```
+
+`R1csSupplyChainWitness` fills the auxiliaries like `R1csPredicateWitness` does,
+and additionally binds the measured variable itself — encoding the caller's decimal
+at the domain's scale — so the compared value cannot be bound at a mismatched
+scale. The helper owns the measured and auxiliary bindings. For a
+`FixedPointBound.PublicInput` bound the caller binds the declared bound variable to
+its encoding in the instance, since a public input is part of the statement the
+caller assembles, not a witness the helper derives.
+
+### The battery-passport bundle
+
+A `SupplyChainClaim` is one named comparison as data — a caller-declared measured
+variable, a domain, a public bound, and a direction. `AssertBatteryPassport` over
+a span of claims is their conjunction: the bundle proves only when every claim
+holds, each claim contributing its own `{name}_domain` and `{name}` auxiliaries
+under a distinct name. Naming a claim is therefore data, not a new method per
+claim shape.
+
+```csharp
+SupplyChainClaim[] claims =
+[
+    SupplyChainClaim.AtLeast("recycled", recycled, FixedPointBound.Constant(percent, 30.0m)),
+    SupplyChainClaim.AtMost("carbon", carbon, FixedPointBound.Constant(kilograms, 12.50m)),
+];
+builder.AssertBatteryPassport(claims);
+// R1csSupplyChainWitness.AddBatteryPassportBindings(bindings, claims, name => measurement(name), circuit.Curve);
+```
+
+The measured variable is one the *caller* declares, not one the bundle
+auto-declares, and the claim carries its index. That is deliberate: a later
+statement can tie the same variable to a commitment — a signed credential digest,
+a Poseidon-Merkle leaf — that binds the proven quantity to its source.
+
+A bundle names one measured quantity per claim (its witness helper keys each
+measured binding by the claim name). To bound a *single* hidden value on two sides
+— a band such as `30 % ≤ recycled ≤ 100 %` — do not bundle two claims over it;
+apply `AssertQuantityAtLeast` and `AssertQuantityAtMost` to the one variable
+directly, binding both through the single-predicate witness helpers, which take
+the measured variable's name separately from the auxiliary-name prefix.
+
+### Scope
+
+As with the range check of § 6, a supply-chain proof binds the predicate over a
+*supplied* measurement. It does not, on its own, tie that in-circuit value to a
+signed credential or a committed graph; binding the measured value to its source
+is a follow-on that composes an in-circuit membership or commitment gadget in
+front of these predicates. What this section adds is the front half: the exact
+encoding convention and the named, field-safe comparisons a compliance statement
+is built from.
+
+## § 10 Multi-tier aggregation by sequential composition
+
+A product's carbon footprint is rarely made in one place. A battery pack's
+cradle-to-gate footprint is its cell makers' footprints plus assembly; each cell's
+is its material suppliers' footprints plus cell production; and so on up the chain.
+Proving the finished product is under a regulatory cap therefore means aggregating
+a footprint that no single party holds in full, out of proofs that each verify on
+their own — every tier's contribution is an independently checkable proof rather
+than a trusted claim. This composes from the § 9 predicates with no new machinery:
+no recursion, and no hashing inside the circuit.
+
+### One tier, one circuit
+
+Model each tier as one circuit of a single shape. Its cradle-to-gate footprint
+`pcf` is a **public output**; the already-proven footprints of its direct suppliers
+enter as **public inputs** `upstream_j`; and the tier's own gate-to-gate emissions
+`direct` are a **witness**. The tier asserts the cradle-to-gate identity and its own
+cap:
+
+```csharp
+R1csVariableIndex pcf = builder.DeclarePublicInput("pcf");
+R1csVariableIndex upstream = builder.DeclarePublicInput("upstream_0");
+R1csVariableIndex direct = builder.DeclareWitnessVariable("direct");
+
+builder.AssertRangeCheck(direct, domain.Bits, "direct_domain");           // own emissions into the field-safe width
+builder.AssertEqual(pcf, R1csLinearCombination.From(direct) + upstream);  // pcf = own emissions + upstream
+builder.AssertQuantityAtMost(pcf, FixedPointBound.Constant(domain, cap), "pcf");
+```
+
+Two range checks carry the anti-wrap guarantee, and both are load-bearing.
+`AssertQuantityAtMost` (§ 9) pins `pcf` itself into the field-safe width
+`[0, 2^Bits)`. The range check on `direct` forces
+`pcf = direct + Σ upstream_j ≥ Σ upstream_j`: without it a prover could bind
+`direct` to a large field element so that the sum wraps to a value below the true
+upstream total, proving a cradle-to-gate footprint smaller than its own verified
+inputs — the most damaging under-report the composition must forbid. A leaf tier is
+the same shape with no `upstream_j`, where `pcf` is just the tier's own emissions.
+
+### The committed output, and how it carries
+
+"Sequential composition" is ordinary orchestration, not an in-circuit verifier.
+Prove and verify each tier on its own. The value the verifier re-checks — the
+transcript-bound public-input scalar, read back from the verified `RawR1csInstance`
+in canonical big-endian — is the tier's **committed output** (here "committed" means
+bound into the proof's Fiat-Shamir transcript and public, not sealed in a hiding
+commitment):
+
+```csharp
+ReadOnlySpan<byte> publicInputs = verifiedInstance.GetPublicInputsBytes();
+int scalarSize = publicInputs.Length / verifiedInstance.PublicInputCount;
+var committed = new BigInteger(publicInputs[..scalarSize], isUnsigned: true, isBigEndian: true);   // pcf is the first public input
+```
+
+That exact scalar is bound into the next tier as an `upstream_j` public input.
+Because one `FixedPointDomain` scale (§ 9) encodes every tier, the field addition is
+the decimal roll-up exactly — `encode(a) + encode(b) = encode(a + b)` at a shared
+scale — and a total sized within one field-safe width cannot wrap. Choose a domain
+whose maximum covers the whole chain's total, not just one tier's.
+
+### What is revealed
+
+This composition reveals everything. A tier's total footprint `pcf` is public — it
+is the value the next tier and the verifier consume — and every carried `upstream_j`
+is public, so the tier's own emissions `direct = pcf − Σ upstream_j` are publicly
+derivable, and a leaf tier's `pcf` is its own emissions outright. `direct` is carried
+as a witness rather than a labelled public field — the seam a later hiding upgrade
+would protect — but it is not confidential here. What the section proves is a
+verifiable multi-tier roll-up under a cap across independently verified tiers, not
+per-tier privacy.
+
+A fully hiding carry — one where a tier's own figures are bound to its proof yet
+never revealed — is out of reach on this stack: it needs either an in-circuit opening
+of a hiding commitment to the carried value, or a discrete-log-equality argument on
+the proof system's own scalar field. Adding that hiding is a later, larger piece; the
+revealed composition here is the part that stands on today's primitives.
+
+### Where the trust sits
+
+Each proof binds only its own public inputs. Nothing inside a parent's proof forces
+its `upstream_j` to be a value some child actually proved — the parent is equally
+happy to aggregate an understated figure. The chain is bound by the orchestrator's
+refusal to carry anything other than the child's committed output, which is a plain
+field-element comparison against the scalar the child's verifier accepted. That
+check is the load-bearing step of the composition; it is not delegated to the
+circuit.
+
+### Binding to a PCF data model
+
+The composition mirrors how product-carbon-footprint data is exchanged in the
+WBCSD Pathfinder / PACT data model, and the mapping is an interoperability note, not
+a schema this layer parses — the § 9 scope boundary holds, the input is a
+`System.Decimal` and the output a proof:
+
+- The additive scalar is a product's **excluding-biogenic PCF per declared unit** —
+  a kilograms-CO₂e figure a supplier already computes and exchanges. Each
+  `upstream_j` is one such supplier record; `direct` is the tier's own gate-to-gate
+  contribution; `pcf` is the tier's cradle-to-gate result to hand its own customer.
+- The exact JSON field spellings differ across PACT Tech Spec major versions (the
+  cross-sectoral-standards key, for one), so a binding maps onto the conceptual
+  attribute, not a pinned key name; consult the live specification for the wire form.
+
+Three things the arithmetic assumes and the crypto does **not** check — they are
+application-layer preconditions the exchanging systems must satisfy before a sum
+means anything:
+
+- **Comparable units.** Summing footprints over a shared declared unit is valid only
+  when the units reconcile; a real roll-up first scales each supplier's per-unit
+  footprint by the quantity of that input embodied in the product (its
+  bill-of-materials amount). The worked example sums per-unit footprints directly
+  (unit amounts of one). A constant embodied quantity is a linear-combination
+  coefficient — free, just a coefficient on `upstream_j` — while a hidden quantity is
+  one product constraint per input; either extends the identity above with no new
+  predicate types, but neither substitutes for the unit reconciliation itself.
+- **Consistent reference period and boundary.** Footprints computed over different
+  reference periods, geographies, or system boundaries are not additively
+  comparable; the crypto sees only the scalars.
+- **Consistent accounting standards.** Whether the inputs used the same
+  cross-sectoral and product-category rules is a data-quality precondition, not a
+  field relation.
+
+The example proves the *composition* — that a rolled-up total is the faithful sum of
+independently verified tier footprints and is under a cap — and states plainly that the
+*comparability* of what is summed is established upstream, in the data layer, not
+here.
+
+## § 11 Poseidon and Merkle gadgets
+
+`R1csCircuitBuilderPoseidonGadget` adds two composable gadgets on top of the
+primitives: the Poseidon hash and a Poseidon Merkle-path membership proof. Both
+express, as R1CS constraints, computations that are otherwise imported from an
+audited Circom circuit — so a prover can show in zero knowledge that a hidden
+leaf is a member of a committed set.
+
+The Poseidon permutation's linear layers are free in R1CS: adding a round
+constant is a constant term on a linear combination, and the MDS mix is a linear
+combination of the previous lanes. Only the `x^5` S-box costs constraints (three
+each, through `x2 = x·x`, `x4 = x2·x2`, `x5 = x4·x`). `AssertPoseidonHash` folds
+the rounds exactly as the plaintext `PoseidonPermutation.Permute` does and
+returns a materialised digest wire; the auxiliaries come from
+`R1csPoseidonWitness`, whose `BigInteger` trace is gated equal to
+`PoseidonPermutation.Hash` (itself byte-compatible with circomlib over BN254).
+
+```csharp
+PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
+    inputCount: 2, curve, add, invert);
+
+var builder = new R1csCircuitBuilder(curve);
+R1csVariableIndex expected = builder.DeclarePublicInput("expected");
+R1csVariableIndex a = builder.DeclareWitnessVariable("a");
+R1csVariableIndex b = builder.DeclareWitnessVariable("b");
+R1csVariableIndex digest = builder.AssertPoseidonHash([From(a), From(b)], parameters, "h");
+builder.AssertEqual(From(digest), From(expected));
+R1csCircuit circuit = builder.Build();
+
+var bindings = new Dictionary<string, BigInteger> { ["a"] = 7, ["b"] = 11, ["expected"] = /* the hash */ };
+R1csPoseidonWitness.AddPoseidonHashWitness(bindings, "h", [7, 11], parameters);
+```
+
+`AssertMerkleMembership` authenticates a leaf against a (public) root through a
+binary Merkle path under a two-to-one Poseidon compression — the in-circuit form
+of `MerkleAuthenticationPath.Verify`. At each level a boolean path bit (bit
+`level` of the leaf index) drives a conditional swap realised with a single
+multiplication — `swap = bit·(sibling − current)`, `left = current + swap`,
+`right = sibling − swap` — so `bit = 0` hashes `(current, sibling)` (the running
+node is the left child) and `bit = 1` hashes `(sibling, current)`, matching the
+out-of-circuit convention. It follows that a `MerkleSetCommitment` membership
+proof built with `PoseidonPermutation.GetMerkleHash` (the Poseidon shadow root)
+verifies unchanged inside the circuit: feed the leaf digest, the index bits, and
+the path siblings, bind the auxiliaries with
+`R1csPoseidonWitness.AddMerkleMembershipWitness`, and the recomputed root is
+asserted equal to the committed one.
+
+```csharp
+builder.AssertMerkleMembership(From(leaf), pathBits, siblings, From(root), parameters, "m");
+```
+
+Both gadgets are curve-parameterised through `PoseidonParameters` (BN254 and
+BLS12-381 are wired). A full statement composes them: hash `(key, value)` to a
+leaf with one `AssertPoseidonHash`, then prove that leaf's membership. As with
+every predicate, the compile-time satisfaction check is the rejection mechanism
+— a wrong leaf, sibling, root, direction bit, or under-constrained intermediate
+fails to compile.

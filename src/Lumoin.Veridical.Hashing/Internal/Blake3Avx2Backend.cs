@@ -525,7 +525,7 @@ internal static class Blake3Avx2Backend
     /// Byte-shuffle mask for the 16-bit rotation within each 32-bit
     /// lane: bytes [a,b,c,d] become [c,d,a,b].
     /// </summary>
-    private static readonly Vector256<byte> RotateRight16ShuffleMask =
+    private static Vector256<byte> RotateRight16ShuffleMask { get; } =
         Vector256.Create<byte>(
         [
             2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13,
@@ -537,7 +537,7 @@ internal static class Blake3Avx2Backend
     /// Byte-shuffle mask for the 8-bit rotation within each 32-bit
     /// lane: bytes [a,b,c,d] become [b,c,d,a].
     /// </summary>
-    private static readonly Vector256<byte> RotateRight8ShuffleMask =
+    private static Vector256<byte> RotateRight8ShuffleMask { get; } =
         Vector256.Create<byte>(
         [
             1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12,

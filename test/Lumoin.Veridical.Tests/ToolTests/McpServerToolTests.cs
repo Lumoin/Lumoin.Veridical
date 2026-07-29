@@ -38,7 +38,7 @@ internal sealed class McpServerToolTests
     //test's correctness must never depend on a wall-clock deadline, so it is disabled here:
     //the cold-started server is waited for indefinitely, leaving the per-test [Timeout]
     //hang-guard above (surfaced through TestContext.CancellationToken) as the only clock.
-    private static readonly McpClientOptions NoInitializationTimeout = new()
+    private static McpClientOptions NoInitializationTimeout { get; } = new()
     {
         InitializationTimeout = Timeout.InfiniteTimeSpan
     };

@@ -46,8 +46,8 @@ internal sealed class LongfellowMdocVerifierTests
     //sig-proof remainder underflows.
     private const int SigProofTailCutBytes = 5;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("mdoc-driver-gate");
-    private static readonly byte[] AnchorProofSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("mdoc-driver-gate");
+    private static byte[] AnchorProofSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
 
@@ -61,7 +61,7 @@ internal sealed class LongfellowMdocVerifierTests
 
     private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
-    private static LongfellowFieldProfile Fp256Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange);
+    private static LongfellowFieldProfile Fp256Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange, BaseMemoryPool.Shared);
 
 
     [TestMethod]
@@ -137,7 +137,7 @@ internal sealed class LongfellowMdocVerifierTests
     {
         //fill_gf2k<f_128, f_128> = push_back(m): each mac and a_v is ONE 16-byte element, NOT bit-expanded.
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
 
         const int TemplateElements = 3;
         byte[] template = new byte[TemplateElements * GfElementBytes];
@@ -232,7 +232,7 @@ internal sealed class LongfellowMdocVerifierTests
         //The filler.size() != npub_in guard (mdoc_zk.cc:686-689): a template that does not leave exactly the
         //seven mac/av slots must reject (the driver maps null to AttributeNumberMismatch).
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile hashProfile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile hashProfile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
 
         byte[] macs = BuildMacs();
         byte[] av = CanonicalGf(0x01);
@@ -301,7 +301,7 @@ internal sealed class LongfellowMdocVerifierTests
         //Parse safety: an envelope shorter than the 96-byte mac region must return MalformedEnvelope, never
         //throw on attacker bytes. The field bundles can be minimal here because the parse fails first.
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile hashProfile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile hashProfile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(hashProfile, fft, subFieldBytes: 2, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(Fp256Profile);
 
@@ -335,11 +335,11 @@ internal sealed class LongfellowMdocVerifierTests
         LongfellowSumcheckCircuit circuit = BuildAnchorCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, GfElementBytes, AnchorSubFieldBytes);
 
-        byte[] proof = ProduceAnchorHashProof(circuit);
-        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof, proof);
+        using LongfellowZkProofEnvelope proof = ProduceAnchorHashProof(circuit);
+        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof.Bytes, proof.Bytes);
 
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForGf2k128(profile, fft, AnchorSubFieldBytes, BaseMemoryPool.Shared);
 
         var field = new LongfellowMdocFieldVerifier(circuit, parameters, NewGfEncoderFactory(fft), profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None);
@@ -364,11 +364,12 @@ internal sealed class LongfellowMdocVerifierTests
         //so the failure is specifically the Ligero run-length read
         //(LongfellowLigeroProofSerializer.Read) the envelope split probes with.
         LongfellowSumcheckCircuit circuit = BuildAnchorCircuit();
-        byte[] proof = ProduceAnchorHashProof(circuit);
-        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof, proof);
+        using LongfellowZkProofEnvelope proof = ProduceAnchorHashProof(circuit);
+        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof.Bytes, proof.Bytes);
 
         using Lch14AdditiveFft fft = NewFft();
-        int sumcheckSegmentBytes = LongfellowSumcheckProofSerializer.SerializedSize(circuit, LongfellowFieldProfile.ForGf2k128(fft));
+        using LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
+        int sumcheckSegmentBytes = LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile);
         int cut = LongfellowMdocEnvelope.MacRegionBytes + DigestSize + sumcheckSegmentBytes + HashComProofCutBytes;
         Assert.IsLessThan(envelope.Length, cut, "The cut must land strictly inside the envelope.");
 
@@ -387,8 +388,8 @@ internal sealed class LongfellowMdocVerifierTests
         //remainder is short of a parseable ZkProof, so the sig-side parse
         //fails before any verification runs.
         LongfellowSumcheckCircuit circuit = BuildAnchorCircuit();
-        byte[] proof = ProduceAnchorHashProof(circuit);
-        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof, proof);
+        using LongfellowZkProofEnvelope proof = ProduceAnchorHashProof(circuit);
+        byte[] envelope = Concatenate(BuildMacRegionBytes(), proof.Bytes, proof.Bytes);
 
         bool ok = VerifyAnchorEnvelope(circuit, envelope.AsSpan(0, envelope.Length - SigProofTailCutBytes), out LongfellowMdocVerificationResult result);
 
@@ -405,7 +406,7 @@ internal sealed class LongfellowMdocVerifierTests
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, GfElementBytes, AnchorSubFieldBytes);
 
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft);
+        using LongfellowFieldProfile profile = LongfellowFieldProfile.ForGf2k128(fft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForGf2k128(profile, fft, AnchorSubFieldBytes, BaseMemoryPool.Shared);
         var field = new LongfellowMdocFieldVerifier(circuit, parameters, NewGfEncoderFactory(fft), profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None);
 
@@ -656,8 +657,9 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //Produces a real GF(2^128) hash ZkProof through the C.9 prover over the anchor circuit.
-    private static byte[] ProduceAnchorHashProof(LongfellowSumcheckCircuit circuit)
+    //Produces a real GF(2^128) hash ZkProof through the C.9 prover over the anchor circuit. Returns
+    //the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProduceAnchorHashProof(LongfellowSumcheckCircuit circuit)
     {
         byte[] witnessColumn = new byte[circuit.InputCount * ScalarSize];
         for(int i = 0; i < circuit.InputCount; i++)
@@ -698,7 +700,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    private static byte[] Concatenate(byte[] first, byte[] second, byte[] third)
+    private static byte[] Concatenate(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second, ReadOnlySpan<byte> third)
     {
         byte[] result = new byte[first.Length + second.Length + third.Length];
         first.CopyTo(result.AsSpan(0));

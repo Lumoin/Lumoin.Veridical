@@ -10,9 +10,9 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsSignatureTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x10);
-    private static readonly byte[] KeyInfo = "test-key-info"u8.ToArray();
-    private static readonly byte[] Header = "test-header-bytes"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x10);
+    private static byte[] KeyInfo { get; } = "test-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "test-header-bytes"u8.ToArray();
 
 
     [TestMethod]

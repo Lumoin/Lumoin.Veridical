@@ -328,7 +328,7 @@ is statistical in the ROM).
 - Over the Pedersen/IPA path the end-to-end flavor remains computational ZK
   in the ROM (the opening layer is DLOG-rooted); the statistical end-to-end
   claim holds over the full-ZK BaseFold provider. Appendix C records the
-  per-path honest claims.
+  per-path supported claims.
 - No change to soundness, the dimension lift, the hiding budget guard, or the
   commitment layout — `Commit` bytes are unchanged; only `Open`'s mask side
   changed.

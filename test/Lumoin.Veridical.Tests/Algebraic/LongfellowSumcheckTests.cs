@@ -51,7 +51,7 @@ internal sealed class LongfellowSumcheckTests
     private const int ScalarSize = Scalar.SizeBytes;
     private const int TranscriptVersion = 6;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("sc7");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("sc7");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
@@ -71,7 +71,7 @@ internal sealed class LongfellowSumcheckTests
         byte[] referenceBytes = Convert.FromHexString(Anchors["sc_bytes"]);
 
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         using LongfellowSumcheckProof? parsed = LongfellowSumcheckProofSerializer.Read(circuit, profile, BaseMemoryPool.Shared, referenceBytes, out int read);
 
         Assert.IsNotNull(parsed, "Read must parse the reference sc bytes.");
@@ -89,7 +89,7 @@ internal sealed class LongfellowSumcheckTests
         Assert.HasCount(expectedLength, referenceBytes, "The anchor length and the dumped bytes must agree.");
 
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         int size = LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile);
         Assert.AreEqual(expectedLength, size, "The size derived from the circuit shape must match sc_len.");
 
@@ -111,7 +111,7 @@ internal sealed class LongfellowSumcheckTests
         byte[] referenceBytes = Convert.FromHexString(Anchors["sc_bytes"]);
 
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         using LongfellowSumcheckProof? parsed = LongfellowSumcheckProofSerializer.Read(circuit, profile, BaseMemoryPool.Shared, referenceBytes, out _);
         Assert.IsNotNull(parsed);
 
@@ -146,7 +146,7 @@ internal sealed class LongfellowSumcheckTests
         byte[] referenceBytes = Convert.FromHexString(Anchors["sc_bytes"]);
 
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         using LongfellowSumcheckProof? parsed = LongfellowSumcheckProofSerializer.Read(circuit, profile, BaseMemoryPool.Shared, referenceBytes, out _);
         Assert.IsNotNull(parsed);
 
@@ -178,7 +178,7 @@ internal sealed class LongfellowSumcheckTests
         byte[] referenceBytes = Convert.FromHexString(Anchors["sc_bytes"]);
 
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         using LongfellowSumcheckProof? parsed = LongfellowSumcheckProofSerializer.Read(circuit, profile, BaseMemoryPool.Shared, referenceBytes, out _);
         Assert.IsNotNull(parsed);
 
@@ -211,7 +211,7 @@ internal sealed class LongfellowSumcheckTests
         //read_sc_proof rejects any buffer short of the needed per-layer bytes. Drop the trailing bytes
         //one at a time and assert every truncation fails to parse.
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         for(int drop = 1; drop <= referenceBytes.Length; drop++)
         {
             ReadOnlySpan<byte> truncated = referenceBytes.AsSpan(0, referenceBytes.Length - drop);

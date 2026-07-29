@@ -50,17 +50,31 @@ internal static class P256ConstantTimeG1Backend
     private const int CoordinateSize = 32;
     private const int ScalarSizeBytes = 32;
 
-    //The complete-formula field operations run in the canonical domain over the shipped constant-time
-    //P-256 base field; the delegates are cached once (base-field arithmetic ignores the curve argument).
-    private static readonly ScalarAddDelegate FieldAdd = P256BaseFieldMontgomeryBackend.GetAdd();
-    private static readonly ScalarSubtractDelegate FieldSubtract = P256BaseFieldMontgomeryBackend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate FieldMultiply = P256BaseFieldMontgomeryBackend.GetMultiply();
-    private static readonly ScalarInvertDelegate FieldInvert = P256BaseFieldMontgomeryBackend.GetInvert();
+    /// <summary>
+    /// The cached constant-time base-field addition the complete formulas run on, in the canonical
+    /// domain; base-field arithmetic ignores the curve argument.
+    /// </summary>
+    private static ScalarAddDelegate FieldAdd { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
 
-    //The curve coefficient a = p − 3 and the Renes–Costello–Batina constant k3b = 3·b mod p, as canonical
-    //32-byte big-endian field elements. Public curve data, derived once from the reference constants.
-    private static readonly byte[] CurveACanonical = ToCanonical(P256BigIntegerG1Reference.CurveA);
-    private static readonly byte[] CurveK3bCanonical = ToCanonical(
+    /// <summary>The cached constant-time base-field subtraction.</summary>
+    private static ScalarSubtractDelegate FieldSubtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
+
+    /// <summary>The cached constant-time base-field multiplication.</summary>
+    private static ScalarMultiplyDelegate FieldMultiply { get; } = P256BaseFieldMontgomeryBackend.GetMultiply();
+
+    /// <summary>The cached constant-time base-field Fermat inversion for the final normalize.</summary>
+    private static ScalarInvertDelegate FieldInvert { get; } = P256BaseFieldMontgomeryBackend.GetInvert();
+
+    /// <summary>
+    /// The curve coefficient a = p − 3, as a canonical 32-byte big-endian field element. Public curve
+    /// data, derived once from the reference constants.
+    /// </summary>
+    private static byte[] CurveACanonical { get; } = ToCanonical(P256BigIntegerG1Reference.CurveA);
+    /// <summary>
+    /// The Renes–Costello–Batina constant k3b = 3·b mod p, as a canonical 32-byte big-endian field
+    /// element. Public curve data, derived once from the reference constants.
+    /// </summary>
+    private static byte[] CurveK3bCanonical { get; } = ToCanonical(
         P256BigIntegerG1Reference.Mod(3 * P256BigIntegerG1Reference.CurveB, P256BigIntegerG1Reference.BaseFieldPrime));
 
 
@@ -150,11 +164,13 @@ internal static class P256ConstantTimeG1Backend
     }
 
 
-    //Complete projective addition — Algorithm 1 of eprint 2015/1060, the same operation-for-operation
-    //sequence as ProjectivePointFp256.Add, with the BigInteger field ops replaced by the constant-time
-    //canonical base-field delegates. Valid for all inputs (equal points, identity, inverses); the output
-    //buffers (x3, y3, z3) must not alias any input. Every field op reads both operands before writing its
-    //result, so the in-place variable reuse below is alias-safe.
+    /// <summary>
+    /// Complete projective addition — Algorithm 1 of eprint 2015/1060, the same operation-for-operation
+    /// sequence as ProjectivePointFp256.Add, with the BigInteger field ops replaced by the constant-time
+    /// canonical base-field delegates. Valid for all inputs (equal points, identity, inverses); the output
+    /// buffers (x3, y3, z3) must not alias any input. Every field op reads both operands before writing its
+    /// result, so the in-place variable reuse below is alias-safe.
+    /// </summary>
     private static void PointAdd(
         ReadOnlySpan<byte> x1, ReadOnlySpan<byte> y1, ReadOnlySpan<byte> z1,
         ReadOnlySpan<byte> x2, ReadOnlySpan<byte> y2, ReadOnlySpan<byte> z2,
@@ -210,8 +226,10 @@ internal static class P256ConstantTimeG1Backend
     }
 
 
-    //Complete projective doubling — Algorithm 3 of eprint 2015/1060, matching ProjectivePointFp256.Double.
-    //The output buffers (x3, y3, z3) must not alias any input.
+    /// <summary>
+    /// Complete projective doubling — Algorithm 3 of eprint 2015/1060, matching ProjectivePointFp256.Double.
+    /// The output buffers (x3, y3, z3) must not alias any input.
+    /// </summary>
     private static void PointDouble(
         ReadOnlySpan<byte> x, ReadOnlySpan<byte> y, ReadOnlySpan<byte> z,
         Span<byte> x3, Span<byte> y3, Span<byte> z3)
@@ -267,9 +285,11 @@ internal static class P256ConstantTimeG1Backend
         FieldMultiply(a, b, result, CurveParameterSet.None);
 
 
-    //Branch-free blend: onTrue when the secret bit is 1, else onFalse. The full-width mask is derived
-    //arithmetically from the 0/1 bit (no `? :`), mirroring PrimeField256.Select, so the JIT is not invited
-    //to lower a value-selecting ternary to a conditional move.
+    /// <summary>
+    /// Branch-free blend: onTrue when the secret bit is 1, else onFalse. The full-width mask is derived
+    /// arithmetically from the 0/1 bit (no `? :`), mirroring PrimeField256.Select, so the JIT is not invited
+    /// to lower a value-selecting ternary to a conditional move.
+    /// </summary>
     private static void ConstantTimeSelect(ReadOnlySpan<byte> onTrue, ReadOnlySpan<byte> onFalse, int bit, Span<byte> destination)
     {
         byte mask = (byte)(0 - bit);

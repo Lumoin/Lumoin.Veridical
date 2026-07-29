@@ -15,7 +15,7 @@ namespace Lumoin.Veridical.Tests.Commitments;
 
 /// <summary>
 /// Cross-instance mixing tests (the gnark CVE-2024-45039 pattern): a component
-/// taken from one fully independent honest proof instance must not verify when
+/// taken from one fully independent, correctly generated proof instance must not verify when
 /// spliced into a second instance's statement. Where the existing suites swap
 /// components <em>within one batch</em>, these characterize the binding across
 /// two separately produced proofs — the case a missing randomizer-to-object
@@ -46,19 +46,19 @@ internal sealed class CrossInstanceMixingTests
     private const int RangeValueCount = 4;
     private const int HyraxVariableCount = 3;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
-    private static readonly G1HashToCurveDelegate HashToCurve = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
-    private static readonly G1AddDelegate G1Add = Bls12Curve381BigIntegerG1Reference.GetAdd();
-    private static readonly G1ScalarMultiplyDelegate G1ScalarMul = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
-    private static readonly G1MultiScalarMultiplyDelegate G1Msm = TestG1Backends.Bls12Curve381Msm;
-    private static readonly ScalarAddDelegate ScalarAdd = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate ScalarSubtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate ScalarMul = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly ScalarInvertDelegate ScalarInvert = TestScalarBackends.Bls12Curve381.Invert;
-    private static readonly ScalarReduceDelegate ScalarReduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
+    private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+    private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+    private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static ScalarAddDelegate ScalarAdd { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate ScalarSubtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate ScalarMul { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarInvertDelegate ScalarInvert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    private static ScalarReduceDelegate ScalarReduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
 
 
     //Disposables opened during a test, released together in cleanup so the test
@@ -116,7 +116,7 @@ internal sealed class CrossInstanceMixingTests
 
         HyraxWeightedOpening openingA = OpenWeighted(key, vectorA, weights, seed: 303);
 
-        //The honest same-instance opening is the control: the cross-instance
+        //The correctly generated same-instance opening is the control: the cross-instance
         //rejection above must not be an artifact of a broken round-trip.
         FiatShamirTranscript verifierTx = Track(NewHyraxTranscript());
         bool ok = openingA.Commitment.VerifyWeightedSum(

@@ -5,6 +5,7 @@ using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Tests.Mdoc;
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -98,11 +99,11 @@ internal sealed class LongfellowMdocProveDriverTests
     private const int TranscriptElementBytes = 16;
     private const int TranscriptVersion = 7;
 
-    private static readonly byte[] Now = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
+    private static byte[] Now { get; } = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
 
     //A deterministic dual-field session seed (the same seed both ends; the driver and verifier each build a
     //fresh transcript from it).
-    private static readonly byte[] SessionSeed = Encoding.ASCII.GetBytes("mdoc-dual-field-prove-driver");
+    private static byte[] SessionSeed { get; } = Encoding.ASCII.GetBytes("mdoc-dual-field-prove-driver");
 
     private static System.Collections.Generic.Dictionary<string, string> Fixture { get; } = LoadFixture(FixtureRelativePath);
 
@@ -299,15 +300,15 @@ internal sealed class LongfellowMdocProveDriverTests
 
         //A warm prove first (JIT, the FFT precompute, the field-backend warm-up), then the timed prove, so the
         //reported wall-clock is representative rather than dominated by first-call costs.
-        byte[] warm = Prove(hashColumn, sigColumn, common, ap);
-        AssertAccepts(warm, hashTemplate, sigTemplate);
+        using LongfellowZkProofEnvelope warm = Prove(hashColumn, sigColumn, common, ap);
+        AssertAccepts(warm.Bytes, hashTemplate, sigTemplate);
 
         Stopwatch proveWatch = Stopwatch.StartNew();
-        byte[] envelope = Prove(hashColumn, sigColumn, common, ap);
+        using LongfellowZkProofEnvelope envelope = Prove(hashColumn, sigColumn, common, ap);
         proveWatch.Stop();
 
         Stopwatch verifyWatch = Stopwatch.StartNew();
-        LongfellowMdocVerificationResult result = VerifyOnce(envelope, hashTemplate, sigTemplate);
+        LongfellowMdocVerificationResult result = VerifyOnce(envelope.Bytes, hashTemplate, sigTemplate);
         verifyWatch.Stop();
 
         TestContext.WriteLine($"Dual-field mdoc PROVE->VERIFY over the real credential (hash ~85k wires, sig 3739/21 layers): PROVE {proveWatch.ElapsedMilliseconds} ms, VERIFY {verifyWatch.ElapsedMilliseconds} ms (warm; Montgomery sig backend; rate=7/nreq=132).");
@@ -316,11 +317,15 @@ internal sealed class LongfellowMdocProveDriverTests
 
         //The tamper dual: a flipped byte well inside the hash ZkProof region must be HashRejected; a flipped
         //byte in the sig region must be SigRejected — proving each circuit's proof is actually checked.
-        byte[] hashTampered = (byte[])envelope.Clone();
+        using IMemoryOwner<byte> hashTamperedOwner = BaseMemoryPool.Shared.Rent(envelope.Length);
+        Span<byte> hashTampered = hashTamperedOwner.Memory.Span[..envelope.Length];
+        envelope.Bytes.CopyTo(hashTampered);
         hashTampered[LongfellowMdocEnvelope.MacRegionBytes + 5000] ^= 0x01;
         Assert.AreEqual(LongfellowMdocVerificationResult.HashRejected, VerifyOnce(hashTampered, hashTemplate, sigTemplate), "A flipped hash-region byte must be rejected by the hash circuit verify.");
 
-        byte[] sigTampered = (byte[])envelope.Clone();
+        using IMemoryOwner<byte> sigTamperedOwner = BaseMemoryPool.Shared.Rent(envelope.Length);
+        Span<byte> sigTampered = sigTamperedOwner.Memory.Span[..envelope.Length];
+        envelope.Bytes.CopyTo(sigTampered);
         sigTampered[envelope.Length - 5000] ^= 0x01;
         Assert.AreEqual(LongfellowMdocVerificationResult.SigRejected, VerifyOnce(sigTampered, hashTemplate, sigTemplate), "A flipped sig-region byte must be rejected by the sig circuit verify.");
     }
@@ -329,17 +334,20 @@ internal sealed class LongfellowMdocProveDriverTests
     //Proves the dual-field envelope through OUR driver with a fresh transcript from the session seed. The
     //reverse Docker gate passes the REAL ISO session transcript (the crown fixture's "transcript" blob) so the
     //reference's run_mdoc_verifier — which derives its challenges from that same session transcript — accepts;
-    //the prove-driver's self-consistent prove->verify uses the default test seed.
-    private static byte[] Prove(byte[] hashColumn, byte[] sigColumn, byte[] common, byte[] ap, byte[]? transcriptSeed = null)
+    //the prove-driver's self-consistent prove->verify uses the default test seed. Returns the pooled proof
+    //envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope Prove(byte[] hashColumn, byte[] sigColumn, byte[] common, byte[] ap, byte[]? transcriptSeed = null)
     {
         using Lch14AdditiveFft hashFft = NewGfFft();
+        using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
-            LongfellowGf2k128Encoding.CreateProfile(hashFft), hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
+            hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
         Fp256RealFft sigFft = NewFp256Fft();
-        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(NewMontgomerySigProfile());
+        using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
+        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
-        LongfellowMdocFieldProver hash = BuildHashProver(hashFft, hashCodec);
-        LongfellowMdocFieldProver sig = BuildSigProver(sigFft, sigCodec);
+        LongfellowMdocFieldProver hash = BuildHashProver(hashFft, hashProfile, hashCodec);
+        LongfellowMdocFieldProver sig = BuildSigProver(sigFft, sigProfile, sigCodec);
 
         using LongfellowTranscript transcript = NewTranscript(transcriptSeed);
 
@@ -353,7 +361,9 @@ internal sealed class LongfellowMdocProveDriverTests
     //(ours -> Google's run_mdoc_verifier). PURE: it builds the columns + proves and RETURNS the bytes — the IO
     //(writing the dump file the C++ harness reads) lives in the Benchmarks console driver, never in the test
     //project (the no-IO-in-tests discipline). The bytes are the same envelope
-    //OurDriverProvesARealCredentialEnvelopeOurVerifierAccepts proves and OUR verifier accepts.
+    //OurDriverProvesARealCredentialEnvelopeOurVerifierAccepts proves and OUR verifier accepts. Materializes an
+    //owned array because the pooled envelope's rent does not outlive this call, and the Benchmarks driver
+    //(a separate project, not pool-aware) needs the bytes to survive to its own dump-file write.
     internal static byte[] ReverseGateEnvelope()
     {
         byte[] hashColumn = BuildHashColumn();
@@ -366,25 +376,29 @@ internal sealed class LongfellowMdocProveDriverTests
         //challenges from that session transcript — opens the same Ligero columns and accepts.
         byte[] sessionTranscript = Convert.FromHexString(Fixture["transcript"]);
 
-        return Prove(hashColumn, sigColumn, common, ap, sessionTranscript);
+        using LongfellowZkProofEnvelope envelope = Prove(hashColumn, sigColumn, common, ap, sessionTranscript);
+
+        return envelope.Bytes.ToArray();
     }
 
 
-    private static void AssertAccepts(byte[] envelope, byte[] hashTemplate, byte[] sigTemplate) =>
+    private static void AssertAccepts(ReadOnlySpan<byte> envelope, byte[] hashTemplate, byte[] sigTemplate) =>
         Assert.AreEqual(LongfellowMdocVerificationResult.Accepted, VerifyOnce(envelope, hashTemplate, sigTemplate), "The driver envelope must be accepted.");
 
 
     //Runs one full dual-field verify over the envelope with a fresh transcript and fresh bundles.
-    private static LongfellowMdocVerificationResult VerifyOnce(byte[] envelope, byte[] hashTemplate, byte[] sigTemplate)
+    private static LongfellowMdocVerificationResult VerifyOnce(ReadOnlySpan<byte> envelope, byte[] hashTemplate, byte[] sigTemplate)
     {
         using Lch14AdditiveFft hashFft = NewGfFft();
+        using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
-            LongfellowGf2k128Encoding.CreateProfile(hashFft), hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
+            hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
         Fp256RealFft sigFft = NewFp256Fft();
-        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(NewMontgomerySigProfile());
+        using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
+        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
-        LongfellowMdocFieldVerifier hash = BuildHashVerifier(hashFft, hashCodec);
-        LongfellowMdocFieldVerifier sig = BuildSigVerifier(sigFft, sigCodec);
+        LongfellowMdocFieldVerifier hash = BuildHashVerifier(hashFft, hashProfile, hashCodec);
+        LongfellowMdocFieldVerifier sig = BuildSigVerifier(sigFft, sigProfile, sigCodec);
 
         using LongfellowTranscript transcript = NewTranscript();
 
@@ -397,23 +411,21 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    private static LongfellowMdocFieldProver BuildHashProver(Lch14AdditiveFft fft, LongfellowSubfieldRunCodec codec)
+    private static LongfellowMdocFieldProver BuildHashProver(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
         LongfellowSumcheckCircuit circuit = ParseHashCircuit(out _);
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
 
         return new LongfellowMdocFieldProver(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, HashSubfieldBoundary, CurveParameterSet.None, Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate(), Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetGatherMultiplyAccumulate());
     }
 
 
-    private static LongfellowMdocFieldProver BuildSigProver(Fp256RealFft fft, LongfellowSubfieldRunCodec codec)
+    private static LongfellowMdocFieldProver BuildSigProver(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
         LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
-        LongfellowFieldProfile profile = NewMontgomerySigProfile();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
 
@@ -424,23 +436,21 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    private static LongfellowMdocFieldVerifier BuildHashVerifier(Lch14AdditiveFft fft, LongfellowSubfieldRunCodec codec)
+    private static LongfellowMdocFieldVerifier BuildHashVerifier(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
         LongfellowSumcheckCircuit circuit = ParseHashCircuit(out _);
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
 
         return new LongfellowMdocFieldVerifier(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate());
     }
 
 
-    private static LongfellowMdocFieldVerifier BuildSigVerifier(Fp256RealFft fft, LongfellowSubfieldRunCodec codec)
+    private static LongfellowMdocFieldVerifier BuildSigVerifier(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
         LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
-        LongfellowFieldProfile profile = NewMontgomerySigProfile();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
 
@@ -730,9 +740,10 @@ internal sealed class LongfellowMdocProveDriverTests
 
 
     //The Montgomery-domain Fp256 profile (Perf Increment 1): of_scalar/of_bytes_field lift canonical->Montgomery,
-    //to_bytes_field drops back, so the wire bytes are byte-identical to the canonical profile.
+    //to_bytes_field drops back, so the wire bytes are byte-identical to the canonical profile. The caller
+    //disposes it.
     private static LongfellowFieldProfile NewMontgomerySigProfile() =>
-        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery);
+        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery, BaseMemoryPool.Shared);
 
 
     //The Montgomery-domain real-FFT: the production root is lifted per coordinate to its Montgomery residue and
@@ -742,7 +753,9 @@ internal sealed class LongfellowMdocProveDriverTests
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnityWorking(root, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, NewMontgomerySigProfile().OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using LongfellowFieldProfile profile = NewMontgomerySigProfile();
+
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
     }
 
 
@@ -766,7 +779,7 @@ internal sealed class LongfellowMdocProveDriverTests
     //canonical column.
     private static byte[] MontgomerySigTemplate(byte[] montgomeryColumn)
     {
-        LongfellowFieldProfile profile = NewMontgomerySigProfile();
+        using LongfellowFieldProfile profile = NewMontgomerySigProfile();
         byte[] template = new byte[SigTemplateElementCount * Point256ElementBytes];
         for(int i = 0; i < SigTemplateElementCount; i++)
         {

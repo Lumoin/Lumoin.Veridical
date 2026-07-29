@@ -86,7 +86,7 @@ internal static class Bls12Curve381Avx2ScalarBackend
     /// constants so the limb slice can be passed to span-accepting helpers
     /// without per-call array allocation.
     /// </remarks>
-    private static readonly ulong[] FieldOrderLimbs =
+    private static ulong[] FieldOrderLimbs { get; } =
     [
         0xffffffff00000001UL,
         0x53bda402fffe5bfeUL,
@@ -174,7 +174,7 @@ internal static class Bls12Curve381Avx2ScalarBackend
         //yields the correct reduced result. Otherwise, if sumMinusR did not
         //borrow then sum >= r and the subtracted value is the correct one. In
         //both cases we want sumMinusR; only when neither holds do we want sum.
-        bool useReduced = carry || !borrow;
+        bool useReduced = carry | !borrow;
         ConditionalSelect(sumMinusR, sum, useReduced, result);
     }
 
@@ -625,10 +625,10 @@ internal static class Bls12Curve381Avx2ScalarBackend
     /// value in every one of its four 64-bit lanes, because the four
     /// scalars in a quartet share the modulus.
     /// </summary>
-    private static readonly Vector256<ulong> FieldOrderLane0 = Vector256.Create(0xffffffff00000001UL);
-    private static readonly Vector256<ulong> FieldOrderLane1 = Vector256.Create(0x53bda402fffe5bfeUL);
-    private static readonly Vector256<ulong> FieldOrderLane2 = Vector256.Create(0x3339d80809a1d805UL);
-    private static readonly Vector256<ulong> FieldOrderLane3 = Vector256.Create(0x73eda753299d7d48UL);
+    private static Vector256<ulong> FieldOrderLane0 { get; } = Vector256.Create(0xffffffff00000001UL);
+    private static Vector256<ulong> FieldOrderLane1 { get; } = Vector256.Create(0x53bda402fffe5bfeUL);
+    private static Vector256<ulong> FieldOrderLane2 { get; } = Vector256.Create(0x3339d80809a1d805UL);
+    private static Vector256<ulong> FieldOrderLane3 { get; } = Vector256.Create(0x73eda753299d7d48UL);
 
 
     /// <summary>
@@ -693,16 +693,16 @@ internal static class Bls12Curve381Avx2ScalarBackend
     private const int Limb32Count = 8;
 
     /// <summary>Per-lane broadcast: every 64-bit lane holds <c>0x00000000FFFFFFFF</c>, the low-32 mask.</summary>
-    private static readonly Vector256<ulong> Low32Mask = Vector256.Create(0xFFFFFFFFUL);
+    private static Vector256<ulong> Low32Mask { get; } = Vector256.Create(0xFFFFFFFFUL);
 
     /// <summary><c>N'32 = −r⁻¹ mod 2³²</c> broadcast to every lane (value in the low 32 bits).</summary>
-    private static readonly Vector256<ulong> NPrime32Broadcast = Vector256.Create((ulong)Bls12Curve381MontgomeryParameters.NPrime32);
+    private static Vector256<ulong> NPrime32Broadcast { get; } = Vector256.Create((ulong)Bls12Curve381MontgomeryParameters.NPrime32);
 
     /// <summary>The eight 32-bit modulus limbs, each broadcast to every lane.</summary>
-    private static readonly Vector256<ulong>[] Modulus32Broadcast = BuildBroadcast(Bls12Curve381MontgomeryParameters.Modulus32Limbs);
+    private static Vector256<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bls12Curve381MontgomeryParameters.Modulus32Limbs);
 
     /// <summary>The eight 32-bit <c>R² mod r</c> limbs, each broadcast to every lane.</summary>
-    private static readonly Vector256<ulong>[] RSquared32Broadcast = BuildBroadcast(Bls12Curve381MontgomeryParameters.RSquared32Limbs);
+    private static Vector256<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bls12Curve381MontgomeryParameters.RSquared32Limbs);
 
 
     private static Vector256<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)
