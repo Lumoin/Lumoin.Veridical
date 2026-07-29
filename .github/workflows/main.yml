@@ -246,14 +246,21 @@ jobs:
     # resolves ONLY to its RID package (no fallback), so the deploy jobs push the
     # pointer last, after every sub-package. The MCP server manifest version is stamped
     # to the package version. Mirrors the Lumoin.Veritas tool-packaging model.
+    # The pack rebuilds the dependency closure under publish-time properties; capped
+    # build parallelism and per-invocation compilers keep that rebuild's peak memory
+    # plus the AOT compile inside the hosted runner's budget, and the step timeout
+    # turns any future overrun into a clean step failure instead of a runner death.
     - name: Pack and verify the veridical tool packages (pointer + any)
       if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' }}
+      timeout-minutes: 25
       run: |
         TOOL_VERSION="${PACKAGE_VERSION%%+*}"
         sed -i 's/"version": "[^"]*"/"version": "'"$TOOL_VERSION"'"/' src/Lumoin.Veridical.Cli/.mcp/server.json
         dotnet pack --verbosity normal \
           --configuration "$BUILD_CONFIGURATION" \
           --output nupkgs \
+          -maxcpucount:2 \
+          -p:UseSharedCompilation=false \
           --property:PackageVersion="$TOOL_VERSION" \
           --property:ContinuousIntegrationBuild=true --property:Version=$VERSION --property:InformationalVersion=$PACKAGE_VERSION --property:AssemblyVersion=$TAG_VERSION --property:FileVersion=$TAG_VERSION \
           -p:PublishAot=true \
@@ -261,6 +268,8 @@ jobs:
         dotnet pack --verbosity normal \
           --configuration "$BUILD_CONFIGURATION" \
           --output nupkgs \
+          -maxcpucount:2 \
+          -p:UseSharedCompilation=false \
           --property:PackageVersion="$TOOL_VERSION" \
           --property:ContinuousIntegrationBuild=true --property:Version=$VERSION --property:InformationalVersion=$PACKAGE_VERSION --property:AssemblyVersion=$TAG_VERSION --property:FileVersion=$TAG_VERSION \
           -r any -p:PublishAot=false \
