@@ -53,7 +53,7 @@ internal sealed class LongfellowFp256SeamTests
 
 
     //The Fp256 profile: of_scalar(u) reduces the integer u mod p; the fits predicate is the < p comparison.
-    private static LongfellowFieldProfile Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange);
+    private static LongfellowFieldProfile Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange, BaseMemoryPool.Shared);
 
 
     [TestMethod]

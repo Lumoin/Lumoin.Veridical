@@ -198,11 +198,12 @@ internal static class LongfellowFp256Encoding
     }
 
 
-    /// <summary>Builds the Fp256 field profile from the base-field <c>of_scalar</c> and <c>fits</c> predicate.</summary>
+    /// <summary>Builds the Fp256 field profile from the base-field <c>of_scalar</c> and <c>fits</c> predicate; the caller owns its disposal.</summary>
     /// <param name="ofScalar">The base-field <c>of_scalar(u)</c>: the integer <c>u</c> reduced mod p as a canonical big-endian scalar.</param>
     /// <param name="inRange">The <c>fits</c> predicate (<c>an &lt; p</c>) the <c>of_bytes_field</c> reversal applies.</param>
-    public static LongfellowFieldProfile CreateProfile(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange) =>
-        LongfellowFieldProfile.ForFp256(ofScalar, inRange);
+    /// <param name="pool">Pool the profile's retained constant scalars rent from.</param>
+    public static LongfellowFieldProfile CreateProfile(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange, BaseMemoryPool pool) =>
+        LongfellowFieldProfile.ForFp256(ofScalar, inRange, pool);
 
 
     /// <summary>
@@ -216,6 +217,7 @@ internal static class LongfellowFp256Encoding
     /// <param name="inRange">The <c>fits</c> predicate (<c>an &lt; p</c>) applied to the canonical value before the Montgomery lift.</param>
     /// <param name="toMontgomery">The canonical-&gt;Montgomery lift (<c>to_montgomery</c>).</param>
     /// <param name="fromMontgomery">The Montgomery-&gt;canonical drop (<c>from_montgomery</c>).</param>
-    public static LongfellowFieldProfile CreateMontgomeryProfile(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange, LongfellowDomainConvertDelegate toMontgomery, LongfellowDomainConvertDelegate fromMontgomery) =>
-        LongfellowFieldProfile.ForFp256Montgomery(ofScalar, inRange, toMontgomery, fromMontgomery);
+    /// <param name="pool">Pool the profile's retained constant scalars rent from.</param>
+    public static LongfellowFieldProfile CreateMontgomeryProfile(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange, LongfellowDomainConvertDelegate toMontgomery, LongfellowDomainConvertDelegate fromMontgomery, BaseMemoryPool pool) =>
+        LongfellowFieldProfile.ForFp256Montgomery(ofScalar, inRange, toMontgomery, fromMontgomery, pool);
 }

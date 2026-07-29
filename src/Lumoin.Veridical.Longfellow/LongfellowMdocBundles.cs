@@ -108,9 +108,10 @@ internal static class LongfellowMdocBundles
         new(Lch14Subfield.Production16, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, pool);
 
 
-    /// <summary>Builds the GF(2^128) field profile over <paramref name="fft"/>.</summary>
+    /// <summary>Builds the GF(2^128) field profile over <paramref name="fft"/>; the caller disposes it.</summary>
     /// <param name="fft">The shared LCH14 additive-FFT engine.</param>
-    internal static LongfellowFieldProfile NewGfProfile(Lch14AdditiveFft fft) => LongfellowGf2k128Encoding.CreateProfile(fft);
+    /// <param name="pool">Pool the profile's retained constant scalars rent from.</param>
+    internal static LongfellowFieldProfile NewGfProfile(Lch14AdditiveFft fft, BaseMemoryPool pool) => LongfellowGf2k128Encoding.CreateProfile(fft, pool);
 
 
     /// <summary>Builds the GF(2^128) subfield-run codec (it owns a pooled basis reduction).</summary>
@@ -122,9 +123,10 @@ internal static class LongfellowMdocBundles
         LongfellowSubfieldRunCodec.ForGf2k128(profile, fft, HashSubFieldBytes, pool);
 
 
-    /// <summary>Builds the Montgomery-domain P-256 base-field profile (canonical-to-Montgomery at the read/of_scalar/sample seams, Montgomery-to-canonical at the emit seam).</summary>
-    internal static LongfellowFieldProfile NewMontgomerySigProfile() =>
-        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery);
+    /// <summary>Builds the Montgomery-domain P-256 base-field profile (canonical-to-Montgomery at the read/of_scalar/sample seams, Montgomery-to-canonical at the emit seam); the caller disposes it.</summary>
+    /// <param name="pool">Pool the profile's retained constant scalars rent from.</param>
+    internal static LongfellowFieldProfile NewMontgomerySigProfile(BaseMemoryPool pool) =>
+        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery, pool);
 
 
     /// <summary>

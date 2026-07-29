@@ -307,7 +307,7 @@ internal sealed class LongfellowLigeroCommitmentTests
         Span<byte> root = stackalloc byte[DigestSize];
         LongfellowRandomByteSource random = NewCounterSource();
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         LongfellowLigeroCommitment.Commit(
             parameters, witnesses, quadraticConstraints, subFieldBytes, parameters.WitnessCount, random, encoderFactory, profile,
             Add, Subtract, Multiply, Sha256TwoToOne, Sha256OneShot, WellKnownHashAlgorithms.Sha256, CurveParameterSet.None, root, BaseMemoryPool.Shared);
@@ -348,7 +348,7 @@ internal sealed class LongfellowLigeroCommitmentTests
         Span<byte> root = stackalloc byte[DigestSize];
         LongfellowRandomByteSource random = NewCounterSource();
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         LongfellowLigeroCommitment.Commit(
             parameters, witnesses, quadraticConstraints, subFieldBytes, parameters.WitnessCount, random, encoderFactory, profile,
             Add, Subtract, Multiply, Sha256TwoToOne, RecordingLeafHash, WellKnownHashAlgorithms.Sha256, CurveParameterSet.None, root, BaseMemoryPool.Shared);
@@ -381,7 +381,7 @@ internal sealed class LongfellowLigeroCommitmentTests
 
         LongfellowRandomByteSource random = NewCounterSource();
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         LongfellowLigeroCommitment.Commit(
             parameters, witnesses, quadraticConstraints, subFieldBytes, parameters.WitnessCount, random, encoderFactory, profile,
             Add, Subtract, Multiply, Sha256TwoToOne, Sha256OneShot, WellKnownHashAlgorithms.Sha256, CurveParameterSet.None, root, BaseMemoryPool.Shared);

@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -93,9 +94,9 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes);
 
         byte[] witnessColumn = BuildSatisfyingColumn(3, 5, 7);
-        byte[] proof = ProduceFp256Proof(circuit, parameters, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceFp256Proof(circuit, parameters, witnessColumn, TranscriptSeed);
 
-        AssertFp256Verifies(circuit, parameters, proof, Fp256PublicInputBytes(circuit, witnessColumn), TranscriptSeed, expectedAccept: true);
+        AssertFp256Verifies(circuit, parameters, proof.Bytes, Fp256PublicInputBytes(circuit, witnessColumn), TranscriptSeed, expectedAccept: true);
     }
 
 
@@ -107,18 +108,20 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes);
 
         byte[] witnessColumn = BuildSatisfyingColumn(3, 5, 7);
-        byte[] proof = ProduceFp256Proof(circuit, parameters, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceFp256Proof(circuit, parameters, witnessColumn, TranscriptSeed);
         byte[] publicInputs = Fp256PublicInputBytes(circuit, witnessColumn);
 
         //A flipped byte inside the sumcheck segment diverges the challenge stream.
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[DigestSize + 8] ^= 0x01;
         AssertFp256Verifies(circuit, parameters, tamperedProof, publicInputs, TranscriptSeed, expectedAccept: false);
 
         //A flipped public input moves the Fiat–Shamir setup and the input-binding constraint.
         byte[] tamperedPublic = (byte[])publicInputs.Clone();
         tamperedPublic[Fp256ElementBytes + 1] ^= 0x01;
-        AssertFp256Verifies(circuit, parameters, proof, tamperedPublic, TranscriptSeed, expectedAccept: false);
+        AssertFp256Verifies(circuit, parameters, proof.Bytes, tamperedPublic, TranscriptSeed, expectedAccept: false);
     }
 
 
@@ -225,7 +228,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     private static void AssertFp256Verifies(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
-        byte[] proof,
+        ReadOnlySpan<byte> proof,
         byte[] publicInputs,
         byte[] seed,
         bool expectedAccept)
@@ -233,7 +236,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
         Fp256RealFft fft = NewFp256Fft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         ReadOnlySpan<byte> proofSpan = proof;

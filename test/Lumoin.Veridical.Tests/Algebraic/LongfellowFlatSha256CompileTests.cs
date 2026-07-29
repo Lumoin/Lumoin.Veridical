@@ -3,7 +3,9 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
+using Lumoin.Veridical.Core.Memory;
 using System;
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
 using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
@@ -200,11 +202,13 @@ internal sealed class LongfellowFlatSha256CompileTests
         LongfellowSumcheckCircuit circuit = CompileAllPackedBlockCircuit(field, privateWitness: true, out _);
         byte[] witnessColumn = BuildAllPackedWitnessColumn(field, circuit.InputCount);
 
-        byte[] proof = ProduceGfProof(circuit, witnessColumn, GfTranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceGfProof(circuit, witnessColumn, GfTranscriptSeed);
         byte[] publicInputs = GfPublicInputBytes(circuit, witnessColumn);
-        AssertGfVerifies(circuit, proof, publicInputs, GfTranscriptSeed, expectedAccept: true);
+        AssertGfVerifies(circuit, proof.Bytes, publicInputs, GfTranscriptSeed, expectedAccept: true);
 
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[^1] ^= 0x01;
         AssertGfVerifies(circuit, tamperedProof, publicInputs, GfTranscriptSeed, expectedAccept: false);
     }
@@ -242,12 +246,14 @@ internal sealed class LongfellowFlatSha256CompileTests
 
         byte[] witnessColumn = BuildUnpackedWitnessColumn(circuit.InputCount);
 
-        byte[] proof = ProduceFp256Proof(circuit, parameters, witnessColumn, Fp256TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceFp256Proof(circuit, parameters, witnessColumn, Fp256TranscriptSeed);
         byte[] publicInputs = Fp256PublicInputBytes(circuit, witnessColumn);
-        AssertFp256Verifies(circuit, parameters, proof, publicInputs, Fp256TranscriptSeed, expectedAccept: true);
+        AssertFp256Verifies(circuit, parameters, proof.Bytes, publicInputs, Fp256TranscriptSeed, expectedAccept: true);
 
         //A flipped byte inside the sumcheck segment diverges the challenge stream.
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[DigestSize + 8] ^= 0x01;
         AssertFp256Verifies(circuit, parameters, tamperedProof, publicInputs, Fp256TranscriptSeed, expectedAccept: false);
     }

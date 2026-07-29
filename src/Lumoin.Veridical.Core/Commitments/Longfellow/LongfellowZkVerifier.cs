@@ -375,7 +375,7 @@ internal static class LongfellowZkVerifier
 
         //The GF binding of the row-encoder seam and the field profile, derived from the additive-FFT engine.
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, pool);
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, pool);
 
         //Parse the envelope: com (32) || sc || com_proof.
         if(proofBytes.Length < DigestLength)

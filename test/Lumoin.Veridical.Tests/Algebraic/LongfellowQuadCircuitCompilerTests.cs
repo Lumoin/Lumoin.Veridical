@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -111,11 +112,11 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         _ = BuildAnchorStatement(out LongfellowSumcheckCircuit circuit);
         byte[] witnessColumn = BuildAnchorWitnessColumn(circuit);
 
-        byte[] proof = ProduceGfProof(circuit, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceGfProof(circuit, witnessColumn, TranscriptSeed);
 
         byte[] expected = Convert.FromHexString(Anchors["proof_bytes"]);
-        Assert.HasCount(expected.Length, proof, "The proof length over the compiled circuit must match the reference proof.");
-        Assert.IsTrue(proof.AsSpan().SequenceEqual(expected), "The proof over the compiled circuit must be byte-identical to the reference proof.");
+        Assert.AreEqual(expected.Length, proof.Length, "The proof length over the compiled circuit must match the reference proof.");
+        Assert.IsTrue(proof.Bytes.SequenceEqual(expected), "The proof over the compiled circuit must be byte-identical to the reference proof.");
     }
 
 
@@ -128,11 +129,11 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         byte[] witnessColumn = BuildAnchorWitnessColumn(compiled);
         byte[] publicInputs = GfPublicInputBytes(compiled, witnessColumn);
 
-        byte[] proofOverCompiled = ProduceGfProof(compiled, witnessColumn, TranscriptSeed);
-        AssertGfVerifies(anchorBuilt, proofOverCompiled, publicInputs, TranscriptSeed, expectedAccept: true);
+        using LongfellowZkProofEnvelope proofOverCompiled = ProduceGfProof(compiled, witnessColumn, TranscriptSeed);
+        AssertGfVerifies(anchorBuilt, proofOverCompiled.Bytes, publicInputs, TranscriptSeed, expectedAccept: true);
 
-        byte[] proofOverAnchorBuilt = ProduceGfProof(anchorBuilt, witnessColumn, TranscriptSeed);
-        AssertGfVerifies(compiled, proofOverAnchorBuilt, publicInputs, TranscriptSeed, expectedAccept: true);
+        using LongfellowZkProofEnvelope proofOverAnchorBuilt = ProduceGfProof(anchorBuilt, witnessColumn, TranscriptSeed);
+        AssertGfVerifies(compiled, proofOverAnchorBuilt.Bytes, publicInputs, TranscriptSeed, expectedAccept: true);
     }
 
 
@@ -155,12 +156,15 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     {
         _ = BuildAnchorStatement(out LongfellowSumcheckCircuit circuit);
         byte[] witnessColumn = BuildAnchorWitnessColumn(circuit);
-        byte[] proof = ProduceGfProof(circuit, witnessColumn, TranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceGfProof(circuit, witnessColumn, TranscriptSeed);
 
         //Flip one byte in the Ligero proof segment (past the root and the sumcheck segment).
-        proof[^1] ^= 0x01;
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
+        tamperedProof[^1] ^= 0x01;
 
-        AssertGfVerifies(circuit, proof, GfPublicInputBytes(circuit, witnessColumn), TranscriptSeed, expectedAccept: false);
+        AssertGfVerifies(circuit, tamperedProof, GfPublicInputBytes(circuit, witnessColumn), TranscriptSeed, expectedAccept: false);
     }
 
 

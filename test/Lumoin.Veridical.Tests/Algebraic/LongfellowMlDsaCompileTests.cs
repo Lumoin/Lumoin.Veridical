@@ -1,9 +1,11 @@
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
+using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
@@ -21,11 +23,12 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// bundle declaration order, and the commitment sponge witness count of seven blocks.
 /// </para>
 /// <para>
-/// The sextic-extension statements are compile-pinned here and vector-checked in evaluation
-/// (<c>LongfellowMlDsaCircuitTests</c>); the reference's ZK round trip over the extension field
-/// needs an extension-field Reed-Solomon and Ligero profile the shipped stack does not carry, so
-/// the proof-system-level gate over these circuits is a separately scoped item, exactly as for the
-/// SHA-3 sextic rows.
+/// The sextic-extension statements are compile-pinned here, vector-checked in evaluation
+/// (<c>LongfellowMlDsaCircuitTests</c>), and proved end to end in zero knowledge through the
+/// shipped stack's <c>LongfellowFp24SexticEncoding</c> profile at the reference's own Ligero
+/// parameters (rate 4, 128 opened columns — the pair the reference annotates at 86-plus bits of
+/// statistical soundness; the sextic field size, about 2^138, likewise caps the field-side terms
+/// below the 128-bit headline of the NIST P-256 statements).
 /// </para>
 /// </remarks>
 [TestClass]
@@ -58,6 +61,15 @@ internal sealed class LongfellowMlDsaCompileTests
 
     /// <summary>The message representative's byte count.</summary>
     private const int MuBytes = 64;
+
+    /// <summary>The reference's ML-DSA ZK inverse rate (<c>ml_dsa_circuit_test.cc</c>'s literal <c>4</c>).</summary>
+    private const int MlDsaInverseRate = 4;
+
+    /// <summary>The reference's ML-DSA ZK opened-column count (<c>ml_dsa_circuit_test.cc</c>'s literal <c>128</c>; the reference annotates the rate-4/128 pair at 86-plus bits of statistical soundness).</summary>
+    private const int MlDsaOpenedColumnCount = 128;
+
+    /// <summary>The ML-DSA end-to-end gate's Fiat-Shamir seed.</summary>
+    private static byte[] MlDsaTranscriptSeed { get; } = System.Text.Encoding.ASCII.GetBytes("ml-dsa-sextic-e2e");
 
     /// <summary>The reference telemetry of <c>ml_dsa_44_use_hint_single</c>.</summary>
     private static CounterPin MlDsa44UseHintSinglePin { get; } = new(6, 193, 36, 2, 32, 278, 50, 258);
@@ -172,6 +184,121 @@ internal sealed class LongfellowMlDsaCompileTests
 
         AssertColumnCovers(LongfellowMlDsaParameters.MlDsa44, MlDsa44ValidSignaturePin, LongfellowMlDsa44ExampleVectors.SignatureExamples[0], "ml_dsa_44");
         AssertColumnCovers(LongfellowMlDsaParameters.MlDsa65, MlDsa65ValidSignaturePin, LongfellowMlDsa65ExampleVectors.SignatureExamples[0], "ml_dsa_65");
+    }
+
+
+    /// <summary>
+    /// Pins that the full kernel-compiled ML-DSA signature-verification statement proves and verifies
+    /// in zero knowledge end to end through the shipped stack at BOTH parameter sets — the analogue of
+    /// the reference's <c>AssertValidSignatureOnMu</c> ZK test at its own rate-4/128-column parameters —
+    /// with the tamper-rejection and corrupted-witness-unprovable probes run at the 44 set (the 65 set's
+    /// rejection lattice is the same code path; its accepting round trip is what this gate adds).
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Slow")]
+    public void TheValidSignatureStatementProvesAndVerifiesEndToEnd()
+    {
+        AssertStatementRoundTrips(LongfellowMlDsaParameters.MlDsa44, LongfellowMlDsa44ExampleVectors.SignatureExamples[0], probeRejections: true, "ml_dsa_44");
+        AssertStatementRoundTrips(LongfellowMlDsaParameters.MlDsa65, LongfellowMlDsa65ExampleVectors.SignatureExamples[0], probeRejections: false, "ml_dsa_65");
+    }
+
+
+    /// <summary>Runs one parameter set's full-statement ZK round trip, optionally with the rejection probes.</summary>
+    /// <param name="parameters">The parameter set.</param>
+    /// <param name="example">The signature example to prove.</param>
+    /// <param name="probeRejections">Whether to run the tamper-rejection and corrupted-witness probes.</param>
+    /// <param name="setName">The parameter set's name, for the failure messages.</param>
+    private static void AssertStatementRoundTrips(LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example, bool probeRejections, string setName)
+    {
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowSumcheckCircuit circuit = CompileValidSignatureStatement(parameters, field);
+
+        int columnBytes = circuit.InputCount * Scalar.SizeBytes;
+        using IMemoryOwner<byte> columnOwner = BuildStatementColumn(field, parameters, example, circuit, out int witnessStartWire);
+        Span<byte> column = columnOwner.Memory.Span[..columnBytes];
+
+        LongfellowLigeroParameters ligeroParameters = LongfellowZkVerifier.DeriveParameters(
+            circuit, MlDsaInverseRate, MlDsaOpenedColumnCount, Fp24SexticElementBytes, Fp24SexticSubFieldBytes);
+        using LongfellowZkProofEnvelope proof = ProduceFp24SexticProof(circuit, ligeroParameters, column, MlDsaTranscriptSeed);
+
+        int publicInputBytes = circuit.PublicInputCount * Fp24SexticElementBytes;
+        using IMemoryOwner<byte> publicOwner = BaseMemoryPool.Shared.Rent(publicInputBytes);
+        Span<byte> publicInputs = publicOwner.Memory.Span[..publicInputBytes];
+        FillFp24SexticPublicInputs(circuit, column, publicInputs);
+        AssertFp24SexticVerifies(circuit, ligeroParameters, proof.Bytes, publicInputs, MlDsaTranscriptSeed, expectedAccept: true);
+
+        if(!probeRejections)
+        {
+            column.Clear();
+
+            return;
+        }
+
+        using IMemoryOwner<byte> tamperedOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
+        tamperedProof[^1] ^= 0x01;
+        AssertFp24SexticVerifies(circuit, ligeroParameters, tamperedProof, publicInputs, MlDsaTranscriptSeed, expectedAccept: false);
+
+        //A corrupted first opened-columns run length drives the sextic run-length reader's
+        //untrusted-length guard: the parse must fail gracefully, never over-read.
+        proof.Bytes.CopyTo(tamperedProof);
+        TamperFirstOpenedColumnsRunLength(circuit, ligeroParameters, tamperedProof);
+        AssertFp24SexticVerifies(circuit, ligeroParameters, tamperedProof, publicInputs, MlDsaTranscriptSeed, expectedAccept: false);
+
+        //Flipping the first private witness element in place breaks the statement's assertion lattice;
+        //the accepting proof and the public inputs were already derived, so the column is free to mutate.
+        Span<byte> witnessElement = column.Slice(witnessStartWire * Scalar.SizeBytes, Scalar.SizeBytes);
+        ReadOnlyMemory<byte> flipped = LongfellowCompilerFieldOperations.ElementIsZero(witnessElement) ? field.Compiler.One : field.Compiler.Zero;
+        flipped.Span.CopyTo(witnessElement);
+        Memory<byte> corrupted = columnOwner.Memory[..columnBytes];
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => ProduceFp24SexticProof(circuit, ligeroParameters, corrupted.Span, MlDsaTranscriptSeed),
+            $"A corrupted {setName} witness element must be unprovable.");
+        column.Clear();
+    }
+
+
+    /// <summary>Builds one parameter set's full-statement witness column into pooled memory: the constant one, the full witness fill, and the trailing message-representative bits.</summary>
+    /// <param name="field">The field bundle.</param>
+    /// <param name="parameters">The parameter set.</param>
+    /// <param name="example">The signature example to compute the witness from.</param>
+    /// <param name="circuit">The compiled statement declaring the input count.</param>
+    /// <param name="witnessStartWire">Receives the first private wire (the public boundary), for the corruption probe.</param>
+    /// <returns>The pooled witness column; the caller disposes it.</returns>
+    private static IMemoryOwner<byte> BuildStatementColumn(LongfellowLogicFieldOperations field, LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example, LongfellowSumcheckCircuit circuit, out int witnessStartWire)
+    {
+        LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(
+            parameters,
+            Convert.FromHexString(example.PublicKey),
+            Convert.FromHexString(example.Signature),
+            Convert.FromHexString(example.Message),
+            Convert.FromHexString(example.Context));
+        Assert.IsNotNull(witness, "The example witness must compute.");
+
+        IMemoryOwner<byte> columnOwner = BaseMemoryPool.Shared.Rent(circuit.InputCount * Scalar.SizeBytes);
+        Span<byte> column = columnOwner.Memory.Span[..(circuit.InputCount * Scalar.SizeBytes)];
+        column.Clear();
+        field.Compiler.One.Span.CopyTo(column[..Scalar.SizeBytes]);
+        int cursor = 1;
+        witness.FillPublicKey(field, column, ref cursor);
+        witnessStartWire = cursor;
+
+        cursor = 1;
+        witness.FillWitness(field, column, ref cursor);
+        for(int i = 0; i < witness.Mu.Length; i++)
+        {
+            for(int bit = 0; bit < LongfellowLogic.BitWidth8; bit++)
+            {
+                ReadOnlyMemory<byte> element = ((witness.Mu[i] >> bit) & 1) != 0 ? field.Compiler.One : field.Compiler.Zero;
+                element.Span.CopyTo(column.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
+                cursor++;
+            }
+        }
+
+        Assert.AreEqual(circuit.InputCount, cursor, "The column layout must cover exactly the statement's declared input wires.");
+
+        return columnOwner;
     }
 
 
@@ -384,9 +511,15 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_circuit</c> statement shape.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileValidSignature(LongfellowMlDsaParameters parameters)
-    {
-        return Compile(parameters, (logic, builder, verify) =>
+    private static LongfellowQuadCircuitBuilder CompileValidSignature(LongfellowMlDsaParameters parameters) =>
+        Compile(parameters, DefineValidSignature(parameters));
+
+
+    /// <summary>The full statement's shape definition, shared by the telemetry pin and the ZK end-to-end: pk public, then the private boundary, then signature, witness and message-representative inputs, then the assertion.</summary>
+    /// <param name="parameters">The parameter set.</param>
+    /// <returns>The shape definition.</returns>
+    private static Action<LongfellowLogic, LongfellowQuadCircuitBuilder, LongfellowMlDsaVerifyCircuit> DefineValidSignature(LongfellowMlDsaParameters parameters) =>
+        (logic, builder, verify) =>
         {
             var publicKey = new LongfellowMlDsaPublicKeyWires(parameters);
             publicKey.Input(logic);
@@ -405,7 +538,22 @@ internal sealed class LongfellowMlDsaCompileTests
             }
 
             verify.AssertValidSignatureOnMu(publicKey, signature, mu, witness);
-        });
+        };
+
+
+    /// <summary>Compiles the full statement and returns the circuit itself, for the ZK end-to-end.</summary>
+    /// <param name="parameters">The parameter set.</param>
+    /// <param name="field">The field bundle to compile over.</param>
+    /// <returns>The compiled statement circuit.</returns>
+    private static LongfellowSumcheckCircuit CompileValidSignatureStatement(LongfellowMlDsaParameters parameters, LongfellowLogicFieldOperations field)
+    {
+        var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        var backend = new LongfellowCompileLogicBackend(field, builder);
+        var logic = new LongfellowLogic(backend, field);
+        var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
+        DefineValidSignature(parameters)(logic, builder, verify);
+
+        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 

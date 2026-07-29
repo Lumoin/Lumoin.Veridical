@@ -6,6 +6,7 @@ using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using Lumoin.Veridical.Core.Memory;
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Numerics;
 using System.Text;
@@ -264,12 +265,14 @@ internal sealed class LongfellowJwtCompileTests
 
         byte[] witnessColumn = BuildWitnessColumn(field, circuit, out int eBitsStartWire);
 
-        byte[] proof = ProduceProof(circuit, parameters, witnessColumn);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, parameters, witnessColumn);
         byte[] publicInputs = Fp256PublicInputBytes(circuit, witnessColumn);
-        AssertJwtVerifies(circuit, parameters, proof, publicInputs, expectedAccept: true);
+        AssertJwtVerifies(circuit, parameters, proof.Bytes, publicInputs, expectedAccept: true);
 
         //A flipped byte inside the sumcheck segment diverges the challenge stream.
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[DigestSize + 8] ^= 0x01;
         AssertJwtVerifies(circuit, parameters, tamperedProof, publicInputs, expectedAccept: false);
 
@@ -390,13 +393,13 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="circuit">The compiled circuit to prove.</param>
     /// <param name="parameters">The derived Ligero parameters.</param>
     /// <param name="witnessColumn">The witness column.</param>
-    /// <returns>The serialized proof bytes.</returns>
-    private static byte[] ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
+    /// <returns>The pooled proof envelope; the caller disposes it.</returns>
+    private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
     {
         Fp256RealFft fft = NewFastFft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         using LongfellowTranscript transcript = NewFp256Transcript(JwtTranscriptSeed);
@@ -430,12 +433,12 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="proof">The proof bytes to verify.</param>
     /// <param name="publicInputs">The public input bytes.</param>
     /// <param name="expectedAccept">Whether the proof is expected to be accepted.</param>
-    private static void AssertJwtVerifies(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] proof, byte[] publicInputs, bool expectedAccept)
+    private static void AssertJwtVerifies(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, ReadOnlySpan<byte> proof, byte[] publicInputs, bool expectedAccept)
     {
         Fp256RealFft fft = NewFastFft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         ReadOnlySpan<byte> proofSpan = proof;

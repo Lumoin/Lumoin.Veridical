@@ -5,6 +5,7 @@ using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
@@ -14,8 +15,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// The compile-half gates for the SHA-3 stack: the kernel-compiled Keccak-f[1600] permutation
 /// (witness-free and witnessed) and the SHAKE256 assertion circuit pinned counter for counter
 /// against the reference compiler over the sextic extension of the FIPS 204 prime and over
-/// GF(2^128), and the ZK end-to-end over the GF(2^128) SHAKE256 statement through the shipped
-/// stack.
+/// GF(2^128), and the ZK end-to-ends over the GF(2^128) and sextic SHAKE256 statements through
+/// the shipped stack.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,11 +28,11 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// <para>
 /// The sextic-extension rows are compile-pinned here and vector-checked in evaluation
-/// (<c>LongfellowSha3CircuitTests</c>); the reference's ZK round trip over the extension field
-/// itself needs an extension-field Reed-Solomon and Ligero profile the shipped stack does not
-/// carry, so the proof-system-level gate over the sextic circuit is a separately scoped item.
-/// The GF(2^128) end-to-end below runs on the shipped stack and covers the compiled sponge's
-/// proof-system behavior on the characteristic-two branch.
+/// (<c>LongfellowSha3CircuitTests</c>). Both ZK end-to-ends below run on the shipped stack: the
+/// GF(2^128) statement covers the compiled sponge's proof-system behavior on the
+/// characteristic-two branch, and the sextic statement covers the odd-prime branch through the
+/// <c>LongfellowFp24SexticEncoding</c> profile (the reference's <c>ReedSolomonExtensionFactory</c>
+/// analogue).
 /// </para>
 /// </remarks>
 [TestClass]
@@ -163,6 +164,9 @@ internal sealed class LongfellowSha3CompileTests
     /// <summary>The Fiat-Shamir transcript seed for the GF(2^128) end-to-end gate.</summary>
     private static byte[] GfShakeTranscriptSeed { get; } = System.Text.Encoding.ASCII.GetBytes("sha3-shake-gf-e2e");
 
+    /// <summary>The sextic SHAKE end-to-end gate's Fiat-Shamir seed.</summary>
+    private static byte[] SexticShakeTranscriptSeed { get; } = System.Text.Encoding.ASCII.GetBytes("sha3-shake-sextic-e2e");
+
 
     /// <summary>Pins the kernel-compiled witness-free Keccak-f[1600] circuit's telemetry against the reference compiler's, over the sextic extension.</summary>
     [TestMethod]
@@ -239,25 +243,83 @@ internal sealed class LongfellowSha3CompileTests
         LongfellowLogicFieldOperations field = NewGfBundle();
         LongfellowSumcheckCircuit circuit = CompileShakeCircuit(field, GfSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: true, out _);
 
-        byte[] witnessColumn = BuildShakeWitnessColumn(field, circuit, out int witnessStartWire);
+        int columnBytes = circuit.InputCount * ScalarSize;
+        using IMemoryOwner<byte> witnessOwner = BuildShakeWitnessColumn(field, circuit, out int witnessStartWire);
+        Span<byte> witnessColumn = witnessOwner.Memory.Span[..columnBytes];
 
-        byte[] proof = ProduceGfProof(circuit, witnessColumn, GfShakeTranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceGfProof(circuit, witnessColumn, GfShakeTranscriptSeed);
         byte[] publicInputs = GfPublicInputBytes(circuit, witnessColumn);
-        AssertGfVerifies(circuit, proof, publicInputs, GfShakeTranscriptSeed, expectedAccept: true);
+        AssertGfVerifies(circuit, proof.Bytes, publicInputs, GfShakeTranscriptSeed, expectedAccept: true);
 
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[^1] ^= 0x01;
         AssertGfVerifies(circuit, tamperedProof, publicInputs, GfShakeTranscriptSeed, expectedAccept: false);
 
-        //Flipping the first witnessed lane bit breaks the round-five re-anchoring assertion.
-        byte[] corruptedColumn = (byte[])witnessColumn.Clone();
-        byte[] flipped = LongfellowCompilerFieldOperations.ElementIsZero(corruptedColumn.AsSpan(witnessStartWire * ScalarSize, ScalarSize))
-            ? field.Compiler.One.ToArray()
-            : field.Compiler.Zero.ToArray();
-        flipped.CopyTo(corruptedColumn.AsSpan(witnessStartWire * ScalarSize, ScalarSize));
+        //Flipping the first witnessed lane bit in place breaks the round-five re-anchoring assertion;
+        //the accepting proof and the public inputs were already derived, so the column is free to mutate.
+        Span<byte> witnessElement = witnessColumn.Slice(witnessStartWire * ScalarSize, ScalarSize);
+        ReadOnlyMemory<byte> flipped = LongfellowCompilerFieldOperations.ElementIsZero(witnessElement) ? field.Compiler.One : field.Compiler.Zero;
+        flipped.Span.CopyTo(witnessElement);
+        Memory<byte> corrupted = witnessOwner.Memory[..columnBytes];
         Assert.ThrowsExactly<InvalidOperationException>(
-            () => ProduceGfProof(circuit, corruptedColumn, GfShakeTranscriptSeed),
+            () => ProduceGfProof(circuit, corrupted.Span, GfShakeTranscriptSeed),
             "A flipped SHAKE witness bit must be unprovable.");
+        witnessColumn.Clear();
+    }
+
+
+    /// <summary>
+    /// Pins that the kernel-compiled SHAKE256 statement over the FIPS 204 sextic circuit field proves
+    /// and verifies the reference's <c>abc</c> vector end to end through the shipped stack — the
+    /// sextic analogue of the reference's <c>ZkProverAndVerifierTest_Fp24_6</c>, run at the harness's
+    /// shared test shape (the reference test uses its rate-7/132-column harness constants; the code
+    /// path is identical) — that a tampered proof rejects, and that a flipped witness bit is
+    /// unprovable.
+    /// </summary>
+    [TestMethod]
+    public void TheSexticShakeStatementProvesAndVerifiesEndToEnd()
+    {
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowSumcheckCircuit circuit = CompileShakeCircuit(field, SexticSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: true, out _);
+
+        int columnBytes = circuit.InputCount * ScalarSize;
+        using IMemoryOwner<byte> witnessOwner = BuildShakeWitnessColumn(field, circuit, out int witnessStartWire);
+        Span<byte> witnessColumn = witnessOwner.Memory.Span[..columnBytes];
+
+        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
+            circuit, InverseRate, OpenedColumnCount, Fp24SexticElementBytes, Fp24SexticSubFieldBytes);
+        using LongfellowZkProofEnvelope proof = ProduceFp24SexticProof(circuit, parameters, witnessColumn, SexticShakeTranscriptSeed);
+
+        int publicInputBytes = circuit.PublicInputCount * Fp24SexticElementBytes;
+        using IMemoryOwner<byte> publicOwner = BaseMemoryPool.Shared.Rent(publicInputBytes);
+        Span<byte> publicInputs = publicOwner.Memory.Span[..publicInputBytes];
+        FillFp24SexticPublicInputs(circuit, witnessColumn, publicInputs);
+        AssertFp24SexticVerifies(circuit, parameters, proof.Bytes, publicInputs, SexticShakeTranscriptSeed, expectedAccept: true);
+
+        using IMemoryOwner<byte> tamperedOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
+        tamperedProof[^1] ^= 0x01;
+        AssertFp24SexticVerifies(circuit, parameters, tamperedProof, publicInputs, SexticShakeTranscriptSeed, expectedAccept: false);
+
+        //A corrupted first opened-columns run length drives the sextic run-length reader's
+        //untrusted-length guard: the parse must fail gracefully, never over-read.
+        proof.Bytes.CopyTo(tamperedProof);
+        TamperFirstOpenedColumnsRunLength(circuit, parameters, tamperedProof);
+        AssertFp24SexticVerifies(circuit, parameters, tamperedProof, publicInputs, SexticShakeTranscriptSeed, expectedAccept: false);
+
+        //Flipping the first witnessed lane bit in place breaks the round-five re-anchoring assertion;
+        //the accepting proof and the public inputs were already derived, so the column is free to mutate.
+        Span<byte> witnessElement = witnessColumn.Slice(witnessStartWire * ScalarSize, ScalarSize);
+        ReadOnlyMemory<byte> flipped = LongfellowCompilerFieldOperations.ElementIsZero(witnessElement) ? field.Compiler.One : field.Compiler.Zero;
+        flipped.Span.CopyTo(witnessElement);
+        Memory<byte> corrupted = witnessOwner.Memory[..columnBytes];
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => ProduceFp24SexticProof(circuit, parameters, corrupted.Span, SexticShakeTranscriptSeed),
+            "A flipped SHAKE witness bit must be unprovable over the sextic field.");
+        witnessColumn.Clear();
     }
 
 
@@ -376,8 +438,8 @@ internal sealed class LongfellowSha3CompileTests
     /// <param name="field">The field bundle.</param>
     /// <param name="circuit">The compiled circuit declaring the input count.</param>
     /// <param name="witnessStartWire">Receives the witness region's first wire, for the unprovability probe.</param>
-    /// <returns>The witness column, one canonical scalar per declared input wire.</returns>
-    private static byte[] BuildShakeWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, out int witnessStartWire)
+    /// <returns>The pooled witness column, one canonical scalar per declared input wire; the caller disposes it.</returns>
+    private static IMemoryOwner<byte> BuildShakeWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, out int witnessStartWire)
     {
         LongfellowSha3TestVectors.ShakeVector vector = LongfellowSha3TestVectors.Shake256Vectors[1];
         byte[] seed = Convert.FromHexString(vector.Input);
@@ -385,8 +447,10 @@ internal sealed class LongfellowSha3CompileTests
         Assert.HasCount(ZkSeedLength, seed, "The ZK vector's seed must be the reference's three bytes.");
         Assert.HasCount(ZkOutputLength, want, "The ZK vector's output must be the reference's 33 bytes.");
 
-        byte[] column = new byte[circuit.InputCount * ScalarSize];
-        field.Compiler.One.Span.CopyTo(column.AsSpan(0, ScalarSize));
+        IMemoryOwner<byte> columnOwner = BaseMemoryPool.Shared.Rent(circuit.InputCount * ScalarSize);
+        Span<byte> column = columnOwner.Memory.Span[..(circuit.InputCount * ScalarSize)];
+        column.Clear();
+        field.Compiler.One.Span.CopyTo(column[..ScalarSize]);
         int cursor = 1;
         WriteByteBits(field, column, ref cursor, seed);
         WriteByteBits(field, column, ref cursor, want);
@@ -396,7 +460,7 @@ internal sealed class LongfellowSha3CompileTests
         LongfellowSha3Witness.FillWitness(field, witnesses, column, ref cursor);
         Assert.AreEqual(circuit.InputCount, cursor, "The column layout must cover exactly the declared input wires.");
 
-        return column;
+        return columnOwner;
     }
 
 
@@ -419,18 +483,4 @@ internal sealed class LongfellowSha3CompileTests
     }
 
 
-    /// <summary>Builds the sextic-extension field bundle over the backend delegates.</summary>
-    /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp24SexticBundle()
-    {
-        var minusOne = new byte[ScalarSize];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(minusOne.AsSpan(ScalarSize - 4, 4), Fp24SexticBackend.Modulus - 1);
-
-        return LongfellowLogicFieldOperations.CreateFp24Sextic(
-            Fp24SexticBackend.GetAdd(),
-            Fp24SexticBackend.GetSubtract(),
-            Fp24SexticBackend.GetMultiply(),
-            Fp24SexticBackend.GetInvert(),
-            minusOne);
-    }
 }

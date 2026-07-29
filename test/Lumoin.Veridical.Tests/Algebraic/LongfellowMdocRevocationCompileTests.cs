@@ -6,6 +6,7 @@ using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using Lumoin.Veridical.Core.Memory;
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Numerics;
 using System.Text;
@@ -182,12 +183,14 @@ internal sealed class LongfellowMdocRevocationCompileTests
         ReadOnlyMemory<byte>[] list = BuildList(SmallListLength);
         byte[] witnessColumn = BuildListWitnessColumn(field, circuit, list, Canonical(UnlistedIdValue));
 
-        byte[] proof = ProduceProof(circuit, parameters, witnessColumn, ListTranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, parameters, witnessColumn, ListTranscriptSeed);
         byte[] publicInputs = Fp256PublicInputBytes(circuit, witnessColumn);
-        AssertRevocationVerifies(circuit, parameters, proof, publicInputs, ListTranscriptSeed, expectedAccept: true);
+        AssertRevocationVerifies(circuit, parameters, proof.Bytes, publicInputs, ListTranscriptSeed, expectedAccept: true);
 
         //A flipped byte inside the sumcheck segment diverges the challenge stream.
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[DigestSize + 8] ^= 0x01;
         AssertRevocationVerifies(circuit, parameters, tamperedProof, publicInputs, ListTranscriptSeed, expectedAccept: false);
 
@@ -211,9 +214,9 @@ internal sealed class LongfellowMdocRevocationCompileTests
         ReadOnlyMemory<byte>[] list = BuildList(PinnedListLength);
         byte[] witnessColumn = BuildListWitnessColumn(field, circuit, list, Canonical(UnlistedIdValue));
 
-        byte[] proof = ProduceProof(circuit, parameters, witnessColumn, ListTranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, parameters, witnessColumn, ListTranscriptSeed);
         byte[] publicInputs = Fp256PublicInputBytes(circuit, witnessColumn);
-        AssertRevocationVerifies(circuit, parameters, proof, publicInputs, ListTranscriptSeed, expectedAccept: true);
+        AssertRevocationVerifies(circuit, parameters, proof.Bytes, publicInputs, ListTranscriptSeed, expectedAccept: true);
     }
 
 
@@ -228,12 +231,14 @@ internal sealed class LongfellowMdocRevocationCompileTests
 
         byte[] witnessColumn = BuildSpanWitnessColumn(field, circuit, out int idBitsStartWire);
 
-        byte[] proof = ProduceProof(circuit, parameters, witnessColumn, SpanTranscriptSeed);
+        using LongfellowZkProofEnvelope proof = ProduceProof(circuit, parameters, witnessColumn, SpanTranscriptSeed);
         byte[] publicInputs = Fp256PublicInputBytes(circuit, witnessColumn);
-        AssertRevocationVerifies(circuit, parameters, proof, publicInputs, SpanTranscriptSeed, expectedAccept: true);
+        AssertRevocationVerifies(circuit, parameters, proof.Bytes, publicInputs, SpanTranscriptSeed, expectedAccept: true);
 
         //A flipped byte inside the sumcheck segment diverges the challenge stream.
-        byte[] tamperedProof = (byte[])proof.Clone();
+        using IMemoryOwner<byte> tamperedProofOwner = BaseMemoryPool.Shared.Rent(proof.Length);
+        Span<byte> tamperedProof = tamperedProofOwner.Memory.Span[..proof.Length];
+        proof.Bytes.CopyTo(tamperedProof);
         tamperedProof[DigestSize + 8] ^= 0x01;
         AssertRevocationVerifies(circuit, parameters, tamperedProof, publicInputs, SpanTranscriptSeed, expectedAccept: false);
 
@@ -408,13 +413,13 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="parameters">The derived Ligero parameters.</param>
     /// <param name="witnessColumn">The witness column.</param>
     /// <param name="transcriptSeed">The Fiat-Shamir transcript seed.</param>
-    /// <returns>The serialized proof bytes.</returns>
-    private static byte[] ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] transcriptSeed)
+    /// <returns>The pooled proof envelope; the caller disposes it.</returns>
+    private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] transcriptSeed)
     {
         Fp256RealFft fft = NewFastFft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         using LongfellowTranscript transcript = NewFp256Transcript(transcriptSeed);
@@ -449,12 +454,12 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="publicInputs">The public input bytes.</param>
     /// <param name="transcriptSeed">The Fiat-Shamir transcript seed.</param>
     /// <param name="expectedAccept">Whether the proof is expected to be accepted.</param>
-    private static void AssertRevocationVerifies(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] proof, byte[] publicInputs, byte[] transcriptSeed, bool expectedAccept)
+    private static void AssertRevocationVerifies(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, ReadOnlySpan<byte> proof, byte[] publicInputs, byte[] transcriptSeed, bool expectedAccept)
     {
         Fp256RealFft fft = NewFastFft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         ReadOnlySpan<byte> proofSpan = proof;

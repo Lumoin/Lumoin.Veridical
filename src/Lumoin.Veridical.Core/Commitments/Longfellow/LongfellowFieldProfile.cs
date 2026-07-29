@@ -1,5 +1,7 @@
 using Lumoin.Veridical.Core.Algebraic;
+using Lumoin.Veridical.Core.Memory;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 
@@ -12,11 +14,12 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The two production instances:
+/// The three production instances:
 /// </para>
 /// <list type="bullet">
 ///   <item><description><b>GF(2^128) hash circuit</b> (<see cref="ForGf2k128"/>): element width 16, the wire bytes are the low 16 bytes least-significant first; the subfield is the LCH14 basis subfield, so <c>of_scalar(u)</c> is <c>Lch14AdditiveFft.NodeElement(u)</c>; the evaluation points are <c>{0, 1, g}</c> with <c>g</c> the subfield generator <c>BasisElement(1)</c>, and subtraction coincides with addition (XOR), so negation is the identity.</description></item>
 ///   <item><description><b>P-256 base-field signature circuit</b> (<see cref="ForFp256"/>): element width 32, the wire bytes are the whole element least-significant first; the subfield IS the base field, so <c>of_scalar(u)</c> is the integer <c>u</c> reduced mod p as a canonical scalar; the evaluation points are <c>{0, 1, 2}</c>, and subtraction is genuine field subtraction.</description></item>
+///   <item><description><b>FIPS 204 sextic ML-DSA circuit field</b> (<see cref="ForFp24Sextic"/>): element width 24 — six 4-byte little-endian coordinates on the wire, limb 0 first (<c>fp24_6.h to_bytes_field</c>); <c>of_scalar(u)</c> embeds into coordinate 0; the evaluation points are <c>{0, 1, 2}</c>; sampling rejects per 23-bit coordinate through the injected <see cref="LongfellowElementSampleDelegate"/>.</description></item>
 /// </list>
 /// <para>
 /// Keeping these field-specific behaviours in one injected bundle is what lets the single Ligero/ZK port
@@ -24,17 +27,56 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// (16-byte framing, <c>g</c> as the third point, add-as-subtract), so wiring the GF path through this
 /// profile leaves its bytes unchanged.
 /// </para>
+/// <para>
+/// Disposable: the two retained constant scalars (the third evaluation point and the working-domain one)
+/// are pool-rented, cleared and released on disposal.
+/// </para>
 /// </remarks>
-internal sealed class LongfellowFieldProfile
+internal sealed class LongfellowFieldProfile: IDisposable
 {
+    /// <summary>The canonical scalar container width every profile frames its retained constants and working values at.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    private readonly byte[] thirdEvaluationPoint;
-    private readonly byte[] workingOne;
+    /// <summary>The GF(2^128) on-wire element width in bytes (the reference <c>GF2_128</c>'s <c>kBytes</c>); the sample draw covers exactly the element width, so it also serves as that profile's <c>sampleByteLength</c>.</summary>
+    private const int Gf2128ElementBytes = 16;
+
+    /// <summary>The GF(2^128) field bit count (the reference <c>GF2_128</c>'s <c>kBits</c>); that profile's <c>exact_bits_</c>.</summary>
+    private const int Gf2128BitCount = 128;
+
+    /// <summary>The P-256 base-field on-wire element width in bytes (the reference <c>Fp256Base</c>'s <c>kBytes</c>); also that profile's <c>sampleByteLength</c>.</summary>
+    private const int Fp256ElementBytes = 32;
+
+    /// <summary>The P-256 base-field bit count (the reference <c>Fp256Base</c>'s <c>kBits</c>: p's top byte is <c>0xff</c>, so <c>exact_bits_</c> spans the whole element).</summary>
+    private const int Fp256BitCount = 256;
+
+    /// <summary>The FIPS 204 sextic-extension on-wire element width in bytes (the reference <c>Fp24_6</c>'s <c>kBytes</c>: six four-byte coordinates); also that profile's <c>sampleByteLength</c>.</summary>
+    private const int Fp24SexticElementBytes = 24;
+
+    /// <summary>The FIPS 204 sextic-extension field bit count (the reference <c>Fp24_6</c>'s <c>kBits</c>).</summary>
+    private const int Fp24SexticBitCount = 192;
+
+    /// <summary>The prime profiles' third polynomial evaluation point (<c>poly_evaluation_point(2)</c> of <c>{0, 1, 2}</c>); the GF profile uses the subfield generator instead.</summary>
+    private const uint PrimeThirdEvaluationPoint = 2;
+
+    /// <summary>The number of retained constant scalars in the pooled rent: the third evaluation point and the working-domain one.</summary>
+    private const int ConstantSlotCount = 2;
+
+    /// <summary>The byte offset of the third evaluation point inside the pooled constant rent.</summary>
+    private const int ThirdPointSlotOffset = 0;
+
+    /// <summary>The byte offset of the working-domain one inside the pooled constant rent.</summary>
+    private const int WorkingOneSlotOffset = ScalarSize;
+
+    /// <summary>The pooled rent holding the two retained constant scalars side by side; cleared and released on disposal, <see langword="null"/> once disposed.</summary>
+    private IMemoryOwner<byte>? constants;
+
     private readonly Action<uint, Span<byte>> ofScalar;
     private readonly LongfellowCanonicalRangeDelegate? inRange;
     private readonly int sampleByteLength;
     private readonly int exactBits;
+
+    /// <summary>The field's own sample loop for elements that are not a single little-endian integer (the sextic profile's per-coordinate rejection); <see langword="null"/> for the single-integer fields, which use the generic mask-then-reject loop.</summary>
+    private readonly LongfellowElementSampleDelegate? sampleOverride;
 
     //The canonical<->working-domain converters (Perf Increment 1). For the GF profile and the canonical Fp
     //profile these are null (the working domain IS canonical); for the Montgomery Fp profile toWorking lifts
@@ -45,30 +87,45 @@ internal sealed class LongfellowFieldProfile
     private readonly LongfellowDomainConvertDelegate? toCanonical;
 
 
-    /// <summary>The on-wire element byte width (<c>Field::kBytes</c>): 16 for GF(2^128), 32 for the P-256 base field.</summary>
+    /// <summary>The on-wire element byte width (<c>Field::kBytes</c>): 16 for GF(2^128), 32 for the P-256 base field, 24 for the FIPS 204 sextic circuit field.</summary>
     public int ElementBytes { get; }
 
 
-    private LongfellowFieldProfile(int elementBytes, byte[] thirdEvaluationPoint, Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate? inRange, int sampleByteLength, int exactBits, LongfellowDomainConvertDelegate? toWorking, LongfellowDomainConvertDelegate? toCanonical)
+    private LongfellowFieldProfile(int elementBytes, ReadOnlySpan<byte> thirdEvaluationPoint, Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate? inRange, int sampleByteLength, int exactBits, LongfellowDomainConvertDelegate? toWorking, LongfellowDomainConvertDelegate? toCanonical, BaseMemoryPool pool, LongfellowElementSampleDelegate? sampleOverride = null)
     {
         ElementBytes = elementBytes;
-        this.thirdEvaluationPoint = thirdEvaluationPoint;
         this.ofScalar = ofScalar;
         this.inRange = inRange;
         this.sampleByteLength = sampleByteLength;
         this.exactBits = exactBits;
         this.toWorking = toWorking;
         this.toCanonical = toCanonical;
+        this.sampleOverride = sampleOverride;
 
-        //The field multiplicative one in the WORKING domain. The canonical representative is the integer 1
-        //(the last byte of the big-endian scalar = 0x01); for the canonical working domain (GF and the
-        //canonical Fp profile) that IS the working one, byte-identical to the stack's former hardcoded
-        //SetOne. For the Montgomery Fp profile toWorking lifts it to to_montgomery(1) = R. This is a
-        //DEDICATED working-domain one, distinct from OfScalar(1) (which for GF is the Lch14 NodeElement(1),
-        //a node element, not the field one).
-        workingOne = new byte[ScalarSize];
-        workingOne[ScalarSize - 1] = 0x01;
-        toWorking?.Invoke(workingOne, workingOne);
+        IMemoryOwner<byte> rentedConstants = pool.Rent(ConstantSlotCount * ScalarSize);
+        try
+        {
+            Span<byte> slots = rentedConstants.Memory.Span[..(ConstantSlotCount * ScalarSize)];
+            slots.Clear();
+            thirdEvaluationPoint.CopyTo(slots.Slice(ThirdPointSlotOffset, ScalarSize));
+
+            //The field multiplicative one in the WORKING domain. The canonical representative is the integer 1
+            //(the last byte of the big-endian scalar = 0x01); for the canonical working domain (GF and the
+            //canonical Fp profile) that IS the working one, byte-identical to the stack's former hardcoded
+            //SetOne. For the Montgomery Fp profile toWorking lifts it to to_montgomery(1) = R. This is a
+            //DEDICATED working-domain one, distinct from OfScalar(1) (which for GF is the Lch14 NodeElement(1),
+            //a node element, not the field one).
+            Span<byte> workingOne = slots.Slice(WorkingOneSlotOffset, ScalarSize);
+            workingOne[ScalarSize - 1] = 0x01;
+            toWorking?.Invoke(workingOne, workingOne);
+        }
+        catch
+        {
+            rentedConstants.Dispose();
+            throw;
+        }
+
+        constants = rentedConstants;
     }
 
 
@@ -77,16 +134,18 @@ internal sealed class LongfellowFieldProfile
     /// third evaluation point <c>g = BasisElement(1)</c>.
     /// </summary>
     /// <param name="fft">The LCH14 additive-FFT engine supplying the subfield generator and node elements.</param>
-    public static LongfellowFieldProfile ForGf2k128(Lch14AdditiveFft fft)
+    /// <param name="pool">Pool the retained constant scalars rent from.</param>
+    public static LongfellowFieldProfile ForGf2k128(Lch14AdditiveFft fft, BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(fft);
+        ArgumentNullException.ThrowIfNull(pool);
 
-        byte[] g = new byte[ScalarSize];
+        Span<byte> g = stackalloc byte[ScalarSize];
         fft.BasisElement(1).CopyTo(g);
 
         //GF(2^128): exact_bits_ == 128 ⇒ sample draws (128 + 7) / 8 = 16 bytes per attempt and never rejects
         //(every 16-byte sequence is a valid element — gf2_128.h:181-188).
-        return new LongfellowFieldProfile(16, g, (coordinate, destination) => fft.NodeElement(coordinate, destination), inRange: null, sampleByteLength: 16, exactBits: 128, toWorking: null, toCanonical: null);
+        return new LongfellowFieldProfile(Gf2128ElementBytes, g, (coordinate, destination) => fft.NodeElement(coordinate, destination), inRange: null, sampleByteLength: Gf2128ElementBytes, exactBits: Gf2128BitCount, toWorking: null, toCanonical: null, pool);
     }
 
 
@@ -96,17 +155,19 @@ internal sealed class LongfellowFieldProfile
     /// </summary>
     /// <param name="ofScalar">The base-field <c>of_scalar</c>: the integer <paramref name="ofScalar"/> argument reduced mod p as a canonical big-endian scalar.</param>
     /// <param name="inRange">The <c>fits</c> predicate (<c>an &lt; p</c>) the <c>of_bytes_field</c> reversal applies to a freshly read element; the wire bytes are rejected when the integer reaches the modulus.</param>
-    public static LongfellowFieldProfile ForFp256(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange)
+    /// <param name="pool">Pool the retained constant scalars rent from.</param>
+    public static LongfellowFieldProfile ForFp256(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange, BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(ofScalar);
         ArgumentNullException.ThrowIfNull(inRange);
+        ArgumentNullException.ThrowIfNull(pool);
 
-        byte[] two = new byte[ScalarSize];
-        ofScalar(2, two);
+        Span<byte> two = stackalloc byte[ScalarSize];
+        ofScalar(PrimeThirdEvaluationPoint, two);
 
         //P-256 base field: p's top byte is 0xff ⇒ exact_bits_ == 256 ⇒ sample draws (256 + 7) / 8 = 32 bytes
         //per attempt and the mask-to-exact-bits is a no-op (fp_generic.h:360-371; p256.h:26).
-        return new LongfellowFieldProfile(32, two, ofScalar, inRange, sampleByteLength: 32, exactBits: 256, toWorking: null, toCanonical: null);
+        return new LongfellowFieldProfile(Fp256ElementBytes, two, ofScalar, inRange, sampleByteLength: Fp256ElementBytes, exactBits: Fp256BitCount, toWorking: null, toCanonical: null, pool);
     }
 
 
@@ -124,27 +185,56 @@ internal sealed class LongfellowFieldProfile
     /// <param name="inRange">The <c>fits</c> predicate (<c>an &lt; p</c>) applied to the CANONICAL value before the Montgomery lift.</param>
     /// <param name="toMontgomery">The canonical-&gt;Montgomery lift (<c>to_montgomery</c>).</param>
     /// <param name="fromMontgomery">The Montgomery-&gt;canonical drop (<c>from_montgomery</c>).</param>
-    public static LongfellowFieldProfile ForFp256Montgomery(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange, LongfellowDomainConvertDelegate toMontgomery, LongfellowDomainConvertDelegate fromMontgomery)
+    /// <param name="pool">Pool the retained constant scalars rent from.</param>
+    public static LongfellowFieldProfile ForFp256Montgomery(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange, LongfellowDomainConvertDelegate toMontgomery, LongfellowDomainConvertDelegate fromMontgomery, BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(ofScalar);
         ArgumentNullException.ThrowIfNull(inRange);
         ArgumentNullException.ThrowIfNull(toMontgomery);
         ArgumentNullException.ThrowIfNull(fromMontgomery);
+        ArgumentNullException.ThrowIfNull(pool);
 
         //of_scalar(2) is built canonical then lifted, so the stored third point is Montgomery(2) — the value
         //the degree-2 Lagrange fold multiplies in the Montgomery working domain.
-        byte[] twoCanonical = new byte[ScalarSize];
-        ofScalar(2, twoCanonical);
-        byte[] two = new byte[ScalarSize];
-        toMontgomery(twoCanonical, two);
+        Span<byte> two = stackalloc byte[ScalarSize];
+        ofScalar(PrimeThirdEvaluationPoint, two);
+        toMontgomery(two, two);
 
-        return new LongfellowFieldProfile(32, two, ofScalar, inRange, sampleByteLength: 32, exactBits: 256, toWorking: toMontgomery, toCanonical: fromMontgomery);
+        return new LongfellowFieldProfile(Fp256ElementBytes, two, ofScalar, inRange, sampleByteLength: Fp256ElementBytes, exactBits: Fp256BitCount, toWorking: toMontgomery, toCanonical: fromMontgomery, pool);
+    }
+
+
+    /// <summary>
+    /// The FIPS 204 sextic ML-DSA circuit-field profile: 24-byte framing (six 4-byte little-endian
+    /// coordinates, limb 0 first — <c>fp24_6.h to_bytes_field</c>), <c>of_scalar(u)</c> embedding into
+    /// coordinate 0, the third evaluation point <c>2</c>, and the per-coordinate rejection sampler
+    /// (<c>Fp24_6::sample</c>: six independent 23-bit base-field draws, which the single-integer mask
+    /// below cannot express).
+    /// </summary>
+    /// <param name="ofScalar">The field's <c>of_scalar(u)</c>: the integer <paramref name="ofScalar"/> argument reduced mod q into coordinate 0 of the canonical scalar.</param>
+    /// <param name="inRange">The <c>fits</c> predicate applied to a freshly read element: every 4-byte big-endian coordinate below q and the container's zero prefix intact.</param>
+    /// <param name="sampler">The per-coordinate rejection sampler (the reference's <c>Fp24_6::sample</c> draw structure).</param>
+    /// <param name="pool">Pool the retained constant scalars rent from.</param>
+    public static LongfellowFieldProfile ForFp24Sextic(Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate inRange, LongfellowElementSampleDelegate sampler, BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(ofScalar);
+        ArgumentNullException.ThrowIfNull(inRange);
+        ArgumentNullException.ThrowIfNull(sampler);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        Span<byte> two = stackalloc byte[ScalarSize];
+        ofScalar(PrimeThirdEvaluationPoint, two);
+
+        //sampleByteLength/exactBits describe the element width for the wire framing; the sampler override
+        //replaces the generic single-integer loop, which cannot mask six 23-bit coordinates.
+        return new LongfellowFieldProfile(Fp24SexticElementBytes, two, ofScalar, inRange, sampleByteLength: Fp24SexticElementBytes, exactBits: Fp24SexticBitCount, toWorking: null, toCanonical: null, pool, sampleOverride: sampler);
     }
 
 
     /// <summary>Copies the third polynomial evaluation point (<c>{0, 1, thirdPoint}</c>) into <paramref name="destination"/>.</summary>
     /// <param name="destination">Receives the canonical scalar; must be <see cref="Scalar.SizeBytes"/> bytes.</param>
-    public void CopyThirdEvaluationPoint(Span<byte> destination) => thirdEvaluationPoint.CopyTo(destination);
+    /// <exception cref="ObjectDisposedException">When the profile has been disposed.</exception>
+    public void CopyThirdEvaluationPoint(Span<byte> destination) => ConstantSlot(ThirdPointSlotOffset).CopyTo(destination);
 
 
     /// <summary>
@@ -154,7 +244,8 @@ internal sealed class LongfellowFieldProfile
     /// working-domain one the shared sumcheck/eq/zk logic multiplies, NOT <see cref="OfScalar"/>(1).
     /// </summary>
     /// <param name="destination">Receives the working-domain scalar; must be <see cref="Scalar.SizeBytes"/> bytes.</param>
-    public void CopyWorkingOne(Span<byte> destination) => workingOne.CopyTo(destination);
+    /// <exception cref="ObjectDisposedException">When the profile has been disposed.</exception>
+    public void CopyWorkingOne(Span<byte> destination) => ConstantSlot(WorkingOneSlotOffset).CopyTo(destination);
 
 
     /// <summary>The subfield <c>of_scalar(coordinate)</c> the commit's padding draws map through, produced in
@@ -172,14 +263,15 @@ internal sealed class LongfellowFieldProfile
     /// <summary>
     /// <c>of_bytes_field</c>: reverses the <see cref="ElementBytes"/> little-endian wire bytes into the low
     /// bytes of a canonical 32-byte big-endian scalar, the leading bytes zeroed. For the GF(2^128) profile
-    /// every 16-byte sequence is a valid element, so the reversal is total; the Fp256 profile additionally
-    /// applies the reference's <c>fits</c> guard (<c>an &lt; p</c>) and rejects out-of-range wire bytes — the
-    /// reference's <c>fp_generic.h of_bytes_field</c> returns <c>std::nullopt</c> there, and every reference
-    /// caller in this stack <c>check()</c>s the value is present, so an out-of-range draw aborts.
+    /// every 16-byte sequence is a valid element, so the reversal is total; the prime-field profiles apply
+    /// the reference's <c>fits</c> guard — <c>an &lt; p</c> for Fp256, every 4-byte coordinate below <c>q</c>
+    /// for the FIPS 204 sextic field — and reject out-of-range wire bytes: the reference's
+    /// <c>fp_generic.h</c>/<c>fp24_6.h</c> <c>of_bytes_field</c> return <c>std::nullopt</c> there, and every
+    /// reference caller in this stack <c>check()</c>s the value is present, so an out-of-range draw aborts.
     /// </summary>
     /// <param name="littleEndian">The <see cref="ElementBytes"/> wire bytes, least-significant first.</param>
     /// <param name="working">Receives the working-domain scalar (canonical, or Montgomery for the Montgomery Fp profile).</param>
-    /// <exception cref="ArgumentOutOfRangeException">For the Fp256 profile, when the little-endian integer is not below the modulus.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">For a prime-field profile, when the wire bytes encode an out-of-range element.</exception>
     public void FromBytesField(ReadOnlySpan<byte> littleEndian, Span<byte> working)
     {
         working.Clear();
@@ -200,8 +292,9 @@ internal sealed class LongfellowFieldProfile
 
     /// <summary>
     /// The non-throwing <c>of_bytes_field</c> the parse-safe proof readers use: as
-    /// <see cref="FromBytesField"/>, but an out-of-range Fp256 element returns <see langword="false"/>
-    /// (with <paramref name="working"/> cleared) instead of throwing — the reference's
+    /// <see cref="FromBytesField"/>, but an out-of-range prime-field element (an Fp256 integer at or
+    /// above <c>p</c>, or a sextic element with a coordinate at or above <c>q</c>) returns
+    /// <see langword="false"/> (with <paramref name="working"/> cleared) instead of throwing — the reference's
     /// <c>read_sc_proof</c>/<c>read_elt</c> turn the <c>std::nullopt</c> into a graceful
     /// <c>return false</c>, never a panic, because the wire bytes are attacker-controlled there.
     /// </summary>
@@ -232,7 +325,11 @@ internal sealed class LongfellowFieldProfile
 
     /// <summary>
     /// <c>sample</c> (<c>fp_generic.h:360-371</c>, dispatched from <c>RandomEngine::elt(F)</c> at
-    /// <c>random.h:39-41</c>): draws a uniformly random field element by the mask-then-reject loop. Each
+    /// <c>random.h:39-41</c>): draws a uniformly random field element. A profile whose element is not a
+    /// single little-endian integer supplies its own draw structure through the injected
+    /// <see cref="LongfellowElementSampleDelegate"/> (the sextic profile's per-coordinate 23-bit rejection,
+    /// the reference's <c>Fp24_6::sample</c>) and never enters the generic loop; the single-integer fields
+    /// draw by the mask-then-reject loop. Each
     /// attempt fills <see cref="sampleByteLength"/> = <c>(exact_bits_ + 7) / 8</c> raw bytes through
     /// <paramref name="fillBytes"/>, reads them little-endian into the canonical low bytes, masks off the
     /// bits above <see cref="exactBits"/>, and — for the prime field — redraws a fresh block while the value
@@ -247,6 +344,15 @@ internal sealed class LongfellowFieldProfile
     public void SampleElement(LongfellowRandomByteSource fillBytes, Span<byte> working)
     {
         ArgumentNullException.ThrowIfNull(fillBytes);
+
+        //A field whose element is not a single little-endian integer supplies its own draw structure
+        //(the sextic profile's per-coordinate rejection); the generic loop below serves the rest.
+        if(sampleOverride is not null)
+        {
+            sampleOverride(fillBytes, working);
+
+            return;
+        }
 
         Span<byte> littleEndianBuffer = stackalloc byte[ScalarSize];
         Span<byte> littleEndian = littleEndianBuffer[..sampleByteLength];
@@ -304,6 +410,34 @@ internal sealed class LongfellowFieldProfile
         {
             littleEndian[i] = working[ScalarSize - 1 - i];
         }
+    }
+
+
+    /// <summary>
+    /// Releases the pooled constant rent (cleared first). Safe to call more than once; the copy accessors
+    /// throw once disposed.
+    /// </summary>
+    public void Dispose()
+    {
+        IMemoryOwner<byte>? local = constants;
+        if(local is not null)
+        {
+            constants = null;
+            local.Memory.Span[..(ConstantSlotCount * ScalarSize)].Clear();
+            local.Dispose();
+        }
+    }
+
+
+    /// <summary>Reads one retained constant scalar from the pooled rent.</summary>
+    /// <param name="offset">The slot's byte offset inside the rent.</param>
+    /// <returns>The constant's canonical bytes.</returns>
+    /// <exception cref="ObjectDisposedException">When the profile has been disposed.</exception>
+    private ReadOnlySpan<byte> ConstantSlot(int offset)
+    {
+        IMemoryOwner<byte> owner = constants ?? throw new ObjectDisposedException(nameof(LongfellowFieldProfile));
+
+        return owner.Memory.Span.Slice(offset, ScalarSize);
     }
 
 
