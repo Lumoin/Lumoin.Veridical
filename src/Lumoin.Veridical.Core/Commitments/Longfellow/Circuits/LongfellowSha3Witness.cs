@@ -51,6 +51,9 @@ internal static class LongfellowSha3Witness
     /// <summary>The SHAKE256 sponge rate in bytes.</summary>
     private const int Rate = 136;
 
+    /// <summary>The SHAKE128 sponge rate in bytes (the reference's <c>shake128Hash</c>), shared with the consumers that extract by whole blocks.</summary>
+    public const int Shake128Rate = 168;
+
     /// <summary>The Keccak state's byte width.</summary>
     private const int StateBytes = 200;
 
@@ -219,6 +222,70 @@ internal static class LongfellowSha3Witness
 
 
     /// <summary>
+    /// The host-side SHAKE128 (the reference's <c>shake128Hash</c>): the same sponge as
+    /// <see cref="Shake256Hash"/> at the SHAKE128 rate, squeezing <paramref name="output"/> from
+    /// <paramref name="seed"/>.
+    /// </summary>
+    /// <param name="seed">The input bytes.</param>
+    /// <param name="output">Receives the squeezed bytes.</param>
+    public static void Shake128Hash(ReadOnlySpan<byte> seed, Span<byte> output)
+    {
+        ulong[][] state = NewState();
+        Span<byte> block = stackalloc byte[StateBytes];
+        int pointer = 0;
+
+        for(int i = 0; i < seed.Length; i++)
+        {
+            block[pointer++] = seed[i];
+            if(pointer != Shake128Rate)
+            {
+                continue;
+            }
+
+            XorIn(state, block, Shake128Rate);
+            Permute(state);
+            pointer = 0;
+            block[..Shake128Rate].Clear();
+        }
+
+        block[pointer] ^= ShakePadFirst;
+        block[Shake128Rate - 1] ^= PadLast;
+        XorIn(state, block, Shake128Rate);
+        Permute(state);
+
+        int outputCursor = 0;
+        while(outputCursor < output.Length)
+        {
+            int take = Math.Min(Shake128Rate, output.Length - outputCursor);
+            int x = 0;
+            int y = 0;
+            for(int i = 0; i < take; i += 8)
+            {
+                ulong lane = state[x][y];
+                int laneBytes = Math.Min(8, take - i);
+                for(int b = 0; b < laneBytes; b++)
+                {
+                    output[outputCursor + i + b] = (byte)(lane >> (8 * b));
+                }
+
+                x++;
+                if(x == GridSize)
+                {
+                    y++;
+                    x = 0;
+                }
+            }
+
+            outputCursor += take;
+            if(outputCursor < output.Length)
+            {
+                Permute(state);
+            }
+        }
+    }
+
+
+    /// <summary>
     /// The reference filler's witness region: for every witness, every sliced round's lanes in
     /// x-major then y-major order, each lane as 64 bit-elements least significant first.
     /// </summary>
@@ -310,11 +377,12 @@ internal static class LongfellowSha3Witness
     /// <summary>The reference's <c>xorin</c>: XORs the rate-sized block into the state, one little-endian lane per eight bytes, x-major.</summary>
     /// <param name="state">The 5×5 lane state.</param>
     /// <param name="block">The zero-padded block.</param>
-    private static void XorIn(ulong[][] state, ReadOnlySpan<byte> block)
+    /// <param name="rate">The sponge rate in bytes.</param>
+    private static void XorIn(ulong[][] state, ReadOnlySpan<byte> block, int rate = Rate)
     {
         int x = 0;
         int y = 0;
-        for(int i = 0; i < Rate; i += 8)
+        for(int i = 0; i < rate; i += 8)
         {
             ulong lane = 0;
             for(int b = 0; b < 8; b++)
