@@ -91,7 +91,7 @@ internal sealed class LongfellowFp256EncodingTests
     [TestMethod]
     public void TheProfileIsTheFp256Profile()
     {
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
 
         Assert.AreEqual(Fp256ElementBytes, profile.ElementBytes, "The Fp256 on-wire element width is 32 bytes.");
 
@@ -184,7 +184,7 @@ internal sealed class LongfellowFp256EncodingTests
         //fp_generic.h: in_subfield ≡ true (line 284), kSubFieldBytes = kBytes = 32 (line 47),
         //to_bytes_subfield ≡ to_bytes_field / of_bytes_subfield ≡ of_bytes_field (lines 382-388). The
         //codec the serializer's run-length pass routes through must reproduce exactly that.
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
 
         Assert.AreEqual(Fp256ElementBytes, codec.SubFieldBytes, "The Fp256 subfield byte width is 32.");
@@ -222,7 +222,7 @@ internal sealed class LongfellowFp256EncodingTests
     {
         //fp_generic.h:47 — Fp256Base::kSubFieldBytes == kBytes == 32: the subfield byte size is the full
         //element width the profile reports.
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
         Assert.AreEqual(LongfellowFp256Encoding.SignatureSubFieldBytes, profile.ElementBytes, "The Fp256 subfield byte size is the full 32-byte element.");
 
         //The dumped sig_subfield_boundary is 0 (mdoc-circuit-anchor-output.txt). With it zero, no witness
@@ -247,7 +247,7 @@ internal sealed class LongfellowFp256EncodingTests
         const int OpenedColumnCount = 2;
 
         var parameters = new LongfellowLigeroParameters(WitnessCount, QuadraticConstraintCount, InverseRate, OpenedColumnCount, Fp256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
 
         using LongfellowLigeroProof proof = BuildSyntheticProof(parameters, OpenedColumnCount);
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
@@ -287,7 +287,7 @@ internal sealed class LongfellowFp256EncodingTests
         Fp256RealFft fft = NewFft();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
-        LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange);
+        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
 
         LongfellowRandomByteSource random = NewBelowModulusSource();
         LongfellowLigeroCommitment.Commit(

@@ -41,7 +41,7 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 internal static class Fp256BindQuadTimingDriver
 {
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
     //The deduped coefficient table size: the real circuit reuses a small constant table across many terms.
     private const int CoefficientDistinct = 256;

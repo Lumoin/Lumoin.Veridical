@@ -21,46 +21,60 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class P256ConstantTimeG1BackendAgreementTests
 {
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
-    private static readonly BigInteger Order = P256BigIntegerG1Reference.ScalarFieldOrder;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
+    private static BigInteger Order { get; } = P256BigIntegerG1Reference.ScalarFieldOrder;
 
-    private static readonly G1ScalarMultiplyDelegate ReferenceScalarMultiply = P256BigIntegerG1Reference.GetScalarMultiply();
-    private static readonly G1ScalarMultiplyDelegate ConstantTimeScalarMultiply = P256ConstantTimeG1Backend.GetScalarMultiply();
-    private static readonly ScalarReduceDelegate ReferenceReduce = P256BigIntegerScalarReference.GetReduce();
+    private static G1ScalarMultiplyDelegate ReferenceScalarMultiply { get; } = P256BigIntegerG1Reference.GetScalarMultiply();
+    private static G1ScalarMultiplyDelegate ConstantTimeScalarMultiply { get; } = P256ConstantTimeG1Backend.GetScalarMultiply();
+    private static ScalarReduceDelegate ReferenceReduce { get; } = P256BigIntegerScalarReference.GetReduce();
 
-    //SEC1 compressed P-256 point: a 0x02/0x03 parity prefix plus the 32-byte x-coordinate, or the
-    //single 0x00 infinity encoding.
+    /// <summary>
+    /// SEC1 compressed P-256 point: a 0x02/0x03 parity prefix plus the 32-byte x-coordinate, or the
+    /// single 0x00 infinity encoding.
+    /// </summary>
     private const int CompressedSize = 33;
 
     private const int GeneratorPointIndex = 0;
 
-    //Further valid points obtained by multiplying the generator by PointMultipliers through the
-    //reference delegate itself — legitimate public points, just not the generator.
+    /// <summary>
+    /// Further valid points obtained by multiplying the generator by PointMultipliers through the
+    /// reference delegate itself — legitimate public points, just not the generator.
+    /// </summary>
     private const int ExtraPointCount = 3;
 
     private const int PointCount = GeneratorPointIndex + 1 + ExtraPointCount + 1;
     private const int InfinityPointIndex = PointCount - 1;
 
-    //Small scalars used to derive the ExtraPointCount further points; must stay in sync with ExtraPointCount.
-    private static readonly int[] PointMultipliers = [2, 3, 7];
+    /// <summary>
+    /// Small scalars used to derive the ExtraPointCount further points; must stay in sync with ExtraPointCount.
+    /// </summary>
+    private static int[] PointMultipliers { get; } = [2, 3, 7];
 
-    //The eight hand-picked edge residues: 0, 1, 2, n - 1, n, n + 1, a single high bit (2^255), and
-    //all-ones - the magnitude and Hamming-weight boundaries a fixed-width ladder is most likely to
-    //mishandle relative to the reference's variable-length ladder.
+    /// <summary>
+    /// The eight hand-picked edge residues: 0, 1, 2, n - 1, n, n + 1, a single high bit (2^255), and
+    /// all-ones - the magnitude and Hamming-weight boundaries a fixed-width ladder is most likely to
+    /// mishandle relative to the reference's variable-length ladder.
+    /// </summary>
     private const int EdgeScalarCount = 8;
 
-    //Deterministic full-width samples beyond the edges, exercising the general case across every bit
-    //position; a few dozen keeps the PointCount x (EdgeScalarCount + SampleScalarCount) sweep in the
-    //low seconds while still reproducing exactly run to run.
+    /// <summary>
+    /// Deterministic full-width samples beyond the edges, exercising the general case across every bit
+    /// position; a few dozen keeps the PointCount x (EdgeScalarCount + SampleScalarCount) sweep in the
+    /// low seconds while still reproducing exactly run to run.
+    /// </summary>
     private const int SampleScalarCount = 32;
 
     private const int BlockScalarCount = EdgeScalarCount + SampleScalarCount;
 
-    //Arbitrary but fixed salt, distinct from the streams other agreement suites draw from
-    //DeterministicScalarFill, so this suite's samples are an independent, reproducible sequence.
+    /// <summary>
+    /// Arbitrary but fixed salt, distinct from the streams other agreement suites draw from
+    /// DeterministicScalarFill, so this suite's samples are an independent, reproducible sequence.
+    /// </summary>
     private const int ScalarFillSalt = 0x9256;
 
-    //The top bit of a 256-bit scalar: minimal Hamming weight at full bit width.
+    /// <summary>
+    /// The top bit of a 256-bit scalar: minimal Hamming weight at full bit width.
+    /// </summary>
     private const int HighBitShift = 255;
 
 
@@ -112,10 +126,10 @@ internal sealed class P256ConstantTimeG1BackendAgreementTests
     }
 
 
-    //Shared harness
-
-    //Lays out the point block as the generator, ExtraPointCount further points obtained by multiplying
-    //it through the reference delegate, and the infinity encoding.
+    /// <summary>
+    /// Lays out the point block as the generator, ExtraPointCount further points obtained by multiplying
+    /// it through the reference delegate, and the infinity encoding.
+    /// </summary>
     private static void BuildPointBlock(Span<byte> block)
     {
         block.Clear();
@@ -134,8 +148,10 @@ internal sealed class P256ConstantTimeG1BackendAgreementTests
     }
 
 
-    //Lays out the scalar block as the EdgeScalarCount edge residues followed by SampleScalarCount
-    //deterministic full-width samples.
+    /// <summary>
+    /// Lays out the scalar block as the EdgeScalarCount edge residues followed by SampleScalarCount
+    /// deterministic full-width samples.
+    /// </summary>
     private static void BuildScalarBlock(Span<byte> block)
     {
         WriteEdgeScalars(block[..(EdgeScalarCount * Scalar.SizeBytes)]);
@@ -144,8 +160,10 @@ internal sealed class P256ConstantTimeG1BackendAgreementTests
     }
 
 
-    //Writes the EdgeScalarCount hand-picked edge residues: slot 0 stays zero; slot 1 = 1; slot 2 = 2;
-    //slot 3 = n - 1; slot 4 = n; slot 5 = n + 1; slot 6 = a single high bit (2^255); slot 7 = all-ones.
+    /// <summary>
+    /// Writes the EdgeScalarCount hand-picked edge residues: slot 0 stays zero; slot 1 = 1; slot 2 = 2;
+    /// slot 3 = n - 1; slot 4 = n; slot 5 = n + 1; slot 6 = a single high bit (2^255); slot 7 = all-ones.
+    /// </summary>
     private static void WriteEdgeScalars(Span<byte> block)
     {
         block.Clear();
@@ -160,7 +178,9 @@ internal sealed class P256ConstantTimeG1BackendAgreementTests
     }
 
 
-    //Writes value as a right-aligned canonical 32-byte big-endian scalar, mirroring the reference's WriteCoordinate.
+    /// <summary>
+    /// Writes value as a right-aligned canonical 32-byte big-endian scalar, mirroring the reference's WriteCoordinate.
+    /// </summary>
     private static void WriteCanonicalBytes(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

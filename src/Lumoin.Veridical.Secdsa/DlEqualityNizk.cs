@@ -65,14 +65,14 @@ public static class DlEqualityNizk
     //(~198-230 bytes); this cap covers far more while staying a safe stack allocation.
     private const int MaxTranscriptSizeBytes = 4096;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
 
     //Domain-separation label for the deterministic commitment-nonce pre-image. It (a) disjoins this NIZK's nonce
     //domain from the ECDSA signing nonce so the two can never collide, and (b) together with the length prefixes
     //makes the pre-image injective in the statement. It is prover-local and never transmitted, so it does NOT
     //enter the Fiat-Shamir challenge r (which stays paper-conformant for interoperability).
-    private static readonly byte[] NonceDomainLabel = "SECDSA-DLEQ-NIZK-nonce-v1"u8.ToArray();
+    private static byte[] NonceDomainLabel { get; } = "SECDSA-DLEQ-NIZK-nonce-v1"u8.ToArray();
 
 
     /// <summary>

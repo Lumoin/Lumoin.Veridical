@@ -50,7 +50,7 @@ internal sealed class Fp256ReedSolomonTests
     //mdoc_zk.cc's omega_order for the Fp256 RS convolution: 2^31.
     private const ulong OmegaOrder = 1UL << 31;
 
-    private static readonly BigInteger FieldOrder = P256BaseFieldReference.FieldOrder;
+    private static BigInteger FieldOrder { get; } = P256BaseFieldReference.FieldOrder;
 
     private static ScalarAddDelegate Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
 

@@ -37,16 +37,16 @@ internal static class P256EcdsaReference
 {
     private const int ScalarSize = 32;
     private const int CompressedSize = 33;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
-    private static readonly ScalarMultiplyDelegate ScalarMul = P256BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarAddDelegate ScalarAdd = P256BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarInvertDelegate ScalarInvert = P256BigIntegerScalarReference.GetInvert();
-    private static readonly ScalarReduceDelegate ScalarReduce = P256BigIntegerScalarReference.GetReduce();
+    private static ScalarMultiplyDelegate ScalarMul { get; } = P256BigIntegerScalarReference.GetMultiply();
+    private static ScalarAddDelegate ScalarAdd { get; } = P256BigIntegerScalarReference.GetAdd();
+    private static ScalarInvertDelegate ScalarInvert { get; } = P256BigIntegerScalarReference.GetInvert();
+    private static ScalarReduceDelegate ScalarReduce { get; } = P256BigIntegerScalarReference.GetReduce();
     //Constant-time secret-scalar multiply (byte-identical to the reference): hardens the k·G in Sign. The
     //verify-side u1·G / u2·Q multiplies run on public scalars but share the same delegate.
-    private static readonly G1ScalarMultiplyDelegate PointMul = P256ConstantTimeG1Backend.GetScalarMultiply();
-    private static readonly G1AddDelegate PointAdd = P256BigIntegerG1Reference.GetAdd();
+    private static G1ScalarMultiplyDelegate PointMul { get; } = P256ConstantTimeG1Backend.GetScalarMultiply();
+    private static G1AddDelegate PointAdd { get; } = P256BigIntegerG1Reference.GetAdd();
 
     private static BigInteger Order { get; } = WellKnownCurves.GetScalarFieldOrder(CurveParameterSet.P256);
 

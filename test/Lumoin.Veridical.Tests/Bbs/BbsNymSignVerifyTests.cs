@@ -20,9 +20,9 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsNymSignVerifyTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x51);
-    private static readonly byte[] KeyInfo = "nym-sign-verify-key-info"u8.ToArray();
-    private static readonly byte[] Header = "nym-sign-verify-header"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x51);
+    private static byte[] KeyInfo { get; } = "nym-sign-verify-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "nym-sign-verify-header"u8.ToArray();
 
 
     private sealed record SuiteWiring(
@@ -46,8 +46,8 @@ internal sealed class BbsNymSignVerifyTests
     }
 
 
-    private static readonly SuiteWiring Sha256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
-    private static readonly SuiteWiring Shake256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Pseudonym);
+    private static SuiteWiring Sha256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
+    private static SuiteWiring Shake256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Pseudonym);
 
 
     [TestMethod]

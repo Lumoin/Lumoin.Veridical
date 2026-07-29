@@ -19,13 +19,13 @@ internal sealed class R1csLinearCombinationTests
     private const int MaxTerms = 6;
 
 
-    private static readonly Gen<BigInteger> GenCoefficient =
+    private static Gen<BigInteger> GenCoefficient { get; } =
         Gen.Long[-CoefficientBound, CoefficientBound].Select(v => new BigInteger(v));
 
-    private static readonly Gen<(R1csVariableIndex, BigInteger)> GenTerm =
+    private static Gen<(R1csVariableIndex, BigInteger)> GenTerm { get; } =
         Gen.Select(Gen.Int[0, MaxVariableIndex].Select(i => new R1csVariableIndex(i)), GenCoefficient);
 
-    private static readonly Gen<R1csLinearCombination> GenCombination =
+    private static Gen<R1csLinearCombination> GenCombination { get; } =
         Gen.Select(
             GenTerm.Array[0, MaxTerms],
             GenCoefficient,

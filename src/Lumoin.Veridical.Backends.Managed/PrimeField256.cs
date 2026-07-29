@@ -120,7 +120,8 @@ internal static class PrimeField256
         Span<ulong> reduced = stackalloc ulong[LimbCount];
         sum.CopyTo(reduced);
         bool borrow = SubtractWithBorrow(reduced, modulus);
-        Select(reduced, sum, carry || !borrow, result);
+        //Branch-free combination of the secret-derived carry and borrow flags.
+        Select(reduced, sum, carry | !borrow, result);
     }
 
 

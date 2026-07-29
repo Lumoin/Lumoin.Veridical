@@ -52,7 +52,7 @@ internal sealed class LongfellowMdocEnvelopeTests
     private const int OpenedColumnCount = 2;
     private const int SubfieldBoundary = 0;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
@@ -69,11 +69,11 @@ internal sealed class LongfellowMdocEnvelopeTests
     public void TheEnvelopeSplitsIntoMacsHashProofAndSigProof()
     {
         LongfellowSumcheckCircuit circuit = BuildCircuit();
-        byte[] hashProof = ProduceHashProof(circuit);
+        using LongfellowZkProofEnvelope hashProof = ProduceHashProof(circuit);
 
         byte[] macRegion = BuildMacRegion();
         byte[] sigTail = BuildSigTail(257);
-        byte[] envelope = Concatenate(macRegion, hashProof, sigTail);
+        byte[] envelope = Concatenate(macRegion, hashProof.Bytes, sigTail);
 
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
         using Lch14AdditiveFft fft = NewFft();
@@ -89,7 +89,7 @@ internal sealed class LongfellowMdocEnvelopeTests
         Assert.AreEqual(sigTail.Length, layout.SigProofBytes, "The sig proof length must be the remaining bytes.");
 
         //The resolved hash-proof slice must equal the produced proof byte for byte.
-        Assert.IsTrue(envelope.AsSpan(layout.HashProofOffset, layout.HashProofBytes).SequenceEqual(hashProof), "The split hash proof must equal the produced proof.");
+        Assert.IsTrue(envelope.AsSpan(layout.HashProofOffset, layout.HashProofBytes).SequenceEqual(hashProof.Bytes), "The split hash proof must equal the produced proof.");
         Assert.IsTrue(envelope.AsSpan(layout.SigProofOffset, layout.SigProofBytes).SequenceEqual(sigTail), "The split sig proof must equal the appended tail.");
     }
 
@@ -139,10 +139,10 @@ internal sealed class LongfellowMdocEnvelopeTests
     public void ATruncatedHashProofDoesNotSplit()
     {
         LongfellowSumcheckCircuit circuit = BuildCircuit();
-        byte[] hashProof = ProduceHashProof(circuit);
+        using LongfellowZkProofEnvelope hashProof = ProduceHashProof(circuit);
 
         //Drop the last byte of the hash proof so the Ligero com_proof read underflows.
-        byte[] envelope = Concatenate(BuildMacRegion(), hashProof.AsSpan(0, hashProof.Length - 1).ToArray(), []);
+        byte[] envelope = Concatenate(BuildMacRegion(), hashProof.Bytes[..^1], []);
 
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
         using Lch14AdditiveFft fft = NewFft();
@@ -154,7 +154,8 @@ internal sealed class LongfellowMdocEnvelopeTests
 
 
     //Produces the real GF(2^128) hash ZkProof through the C.9 prover over the anchor's small circuit.
-    private static byte[] ProduceHashProof(LongfellowSumcheckCircuit circuit)
+    //Returns the pooled proof envelope; the caller disposes it.
+    private static LongfellowZkProofEnvelope ProduceHashProof(LongfellowSumcheckCircuit circuit)
     {
         byte[] witnessColumn = BuildWitnessColumn(circuit);
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
@@ -194,7 +195,7 @@ internal sealed class LongfellowMdocEnvelopeTests
     }
 
 
-    private static byte[] Concatenate(byte[] first, byte[] second, byte[] third)
+    private static byte[] Concatenate(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second, ReadOnlySpan<byte> third)
     {
         byte[] result = new byte[first.Length + second.Length + third.Length];
         first.CopyTo(result.AsSpan(0));

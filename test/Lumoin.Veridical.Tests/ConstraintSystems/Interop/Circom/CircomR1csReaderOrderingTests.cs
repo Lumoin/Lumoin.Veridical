@@ -34,7 +34,7 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 [TestClass]
 internal sealed class CircomR1csReaderOrderingTests
 {
-    private static readonly BigInteger Bls12Curve381Prime = Bls12Curve381BigIntegerScalarReference.FieldOrder;
+    private static BigInteger Bls12Curve381Prime { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
     private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
     private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
 

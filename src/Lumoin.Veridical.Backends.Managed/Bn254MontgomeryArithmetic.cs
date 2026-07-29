@@ -143,7 +143,7 @@ internal static class Bn254MontgomeryArithmetic
         Span<ulong> reduced = stackalloc ulong[LimbCount];
         t[..LimbCount].CopyTo(reduced);
         bool borrow = SubtractWithBorrow256(reduced, n);
-        bool subtractModulus = (t[LimbCount] != 0UL) || !borrow;
+        bool subtractModulus = (t[LimbCount] != 0UL) | !borrow;
         SelectLimbs(reduced, t[..LimbCount], subtractModulus, result);
     }
 

@@ -24,7 +24,14 @@ soundness-parameter write-up are completed in batch AB.6.)
   proof of proximity: commit each fold layer, fold under squeezed challenges to
   the base codeword, and query random positions with Merkle openings. Query
   count is derived from the soundness bound (`WellKnownBaseFoldIoppParameters`,
-  default 273 for the 128-bit list-decoding regime).
+  default 273 for the 128-bit list-decoding regime). A named opt-in preset
+  prices the one-and-a-half-Johnson radius proven for every linear code by
+  Zeilberger, "Khatam" (IACR ePrint 2024/1843, CRYPTO 2026):
+  `ClassicalSecurityOneAndAHalfJohnsonQueryCount` (≈205, about a quarter fewer
+  repetitions and proportionally smaller openings). The two presets produce
+  different proof bytes and are never interchangeable on one artifact; the
+  regime ledger, slack accounting, and the support status of every regime are
+  in `SECURITY-BITS.md` and on `BaseFoldSoundnessRegime`.
 - **AB.4 — the multilinear PCS** (`BaseFoldEvaluationProver`/`Verifier`,
   `BaseFoldPolynomialCommitmentScheme`). The evaluation protocol (paper §5 /
   Fig 3) interleaves a sumcheck for `Σ_b f(b)·eq_z(b) = y` with the IOPP — the
@@ -205,7 +212,8 @@ The test coverage establishing the above, by layer:
 - **PCS validation (AB.6)** — `BaseFoldValidationTests`: determinism (committing
   and opening the same inputs is byte-identical — no non-determinism leaks into
   the transparent prover), the full 128-bit list-decoding query count (≈273)
-  exercised once, a larger variable count (d = 8), and a documented usage example.
+  exercised once, the one-and-a-half-Johnson preset count (≈205) exercised once,
+  a larger variable count (d = 8), and a documented usage example.
 - **Spartan integration (AB.5)** — `BaseFoldSpartanRoundtripTests`,
   `BaseFoldMaskedSpartanRoundtripTests` (prove→verify + tamper for the unmasked
   and masked variants), `BaseFoldFoldChainGuardTests` (the fold chain rejects a

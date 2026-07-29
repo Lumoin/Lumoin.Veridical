@@ -52,8 +52,8 @@ internal sealed class BbsBlindIetfVectorsTests
     }
 
 
-    private static readonly SuiteWiring Sha256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Blind);
-    private static readonly SuiteWiring Shake256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Blind);
+    private static SuiteWiring Sha256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Blind);
+    private static SuiteWiring Shake256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Blind);
 
 
     public static IEnumerable<object[]> Sha256CommitmentVectorsData =>

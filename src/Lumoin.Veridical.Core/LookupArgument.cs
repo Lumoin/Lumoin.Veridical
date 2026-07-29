@@ -23,8 +23,9 @@ namespace Lumoin.Veridical.Core;
 /// <see cref="Lasso"/> and <see cref="Jolt"/> for sublinear sumcheck-based
 /// lookups, <see cref="Plookup"/> for the Plonk-era polynomial-commitment
 /// approach, <see cref="Halo2Lookup"/> for Halo2's permutation-flavoured
-/// variant, and <see cref="CaulkPlus"/> for sublinear lookups in the KZG
-/// setting.
+/// variant, <see cref="CaulkPlus"/> for sublinear lookups in the KZG
+/// setting, and <see cref="LogUp"/> for the log-derivative argument this
+/// library implements (see <see cref="Lookup.LogUpProver"/>).
 /// </para>
 /// <para>
 /// Use <see cref="Create"/> with codes above 1000 to register application-specific
@@ -74,9 +75,17 @@ public readonly struct LookupArgument: IEquatable<LookupArgument>
     /// </summary>
     public static LookupArgument CaulkPlus { get; } = new(5);
 
+    /// <summary>
+    /// LogUp (Haböck, 2022). Lookup argument from logarithmic derivatives:
+    /// one committed multiplicity column plus a helper column of fractional
+    /// terms, checked by a single sumcheck. Prover work linear in the table
+    /// size; the implemented form in this library.
+    /// </summary>
+    public static LookupArgument LogUp { get; } = new(6);
 
-    private static readonly List<LookupArgument> lookupArguments =
-        [None, Lasso, Jolt, Plookup, Halo2Lookup, CaulkPlus];
+
+    private static List<LookupArgument> lookupArguments { get; } =
+        [None, Lasso, Jolt, Plookup, Halo2Lookup, CaulkPlus, LogUp];
 
 
     /// <summary>Gets all registered lookup argument values.</summary>
@@ -150,6 +159,7 @@ public static class LookupArgumentNames
         var c when c == LookupArgument.Plookup.Code => nameof(LookupArgument.Plookup),
         var c when c == LookupArgument.Halo2Lookup.Code => nameof(LookupArgument.Halo2Lookup),
         var c when c == LookupArgument.CaulkPlus.Code => nameof(LookupArgument.CaulkPlus),
+        var c when c == LookupArgument.LogUp.Code => nameof(LookupArgument.LogUp),
         _ => $"Custom ({code})"
     };
 }

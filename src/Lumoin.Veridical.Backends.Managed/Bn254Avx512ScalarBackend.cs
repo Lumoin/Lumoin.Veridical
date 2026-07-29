@@ -53,7 +53,7 @@ internal static class Bn254Avx512ScalarBackend
     /// BN254 scalar-field modulus <c>r</c> as four little-endian 64-bit limbs.
     /// <c>r = 0x30644e72e131a029 b85045b68181585d 2833e84879b97091 43e1f593f0000001</c>.
     /// </summary>
-    private static readonly ulong[] FieldOrderLimbs =
+    private static ulong[] FieldOrderLimbs { get; } =
     [
         0x43e1f593f0000001UL,
         0x2833e84879b97091UL,
@@ -63,10 +63,10 @@ internal static class Bn254Avx512ScalarBackend
 
 
     /// <summary>Per-lane broadcasts of the four limbs of <c>r</c>. Each <see cref="Vector512{T}"/> has the same limb value in all eight 64-bit lanes.</summary>
-    private static readonly Vector512<ulong> FieldOrderLane0 = Vector512.Create(0x43e1f593f0000001UL);
-    private static readonly Vector512<ulong> FieldOrderLane1 = Vector512.Create(0x2833e84879b97091UL);
-    private static readonly Vector512<ulong> FieldOrderLane2 = Vector512.Create(0xb85045b68181585dUL);
-    private static readonly Vector512<ulong> FieldOrderLane3 = Vector512.Create(0x30644e72e131a029UL);
+    private static Vector512<ulong> FieldOrderLane0 { get; } = Vector512.Create(0x43e1f593f0000001UL);
+    private static Vector512<ulong> FieldOrderLane1 { get; } = Vector512.Create(0x2833e84879b97091UL);
+    private static Vector512<ulong> FieldOrderLane2 { get; } = Vector512.Create(0xb85045b68181585dUL);
+    private static Vector512<ulong> FieldOrderLane3 { get; } = Vector512.Create(0x30644e72e131a029UL);
 
 
     /// <summary>Returns the AVX-512-backed scalar-add delegate.</summary>
@@ -122,7 +122,8 @@ internal static class Bn254Avx512ScalarBackend
         sum.CopyTo(sumMinusR);
         bool borrow = SubtractWithBorrow256(sumMinusR, FieldOrderLimbs);
 
-        bool useReduced = carry || !borrow;
+        //Branch-free combination of the secret-derived carry and borrow flags.
+        bool useReduced = carry | !borrow;
         ConditionalSelect(sumMinusR, sum, useReduced, result);
     }
 
@@ -558,10 +559,10 @@ internal static class Bn254Avx512ScalarBackend
 
     private const int Limb32Count = 8;
 
-    private static readonly Vector512<ulong> Low32Mask = Vector512.Create(0xFFFFFFFFUL);
-    private static readonly Vector512<ulong> NPrime32Broadcast = Vector512.Create((ulong)Bn254MontgomeryParameters.NPrime32);
-    private static readonly Vector512<ulong>[] Modulus32Broadcast = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
-    private static readonly Vector512<ulong>[] RSquared32Broadcast = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
+    private static Vector512<ulong> Low32Mask { get; } = Vector512.Create(0xFFFFFFFFUL);
+    private static Vector512<ulong> NPrime32Broadcast { get; } = Vector512.Create((ulong)Bn254MontgomeryParameters.NPrime32);
+    private static Vector512<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
+    private static Vector512<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
 
 
     private static Vector512<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)

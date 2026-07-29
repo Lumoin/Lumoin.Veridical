@@ -32,20 +32,20 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381PairingTests
 {
-    private static readonly Fp12FrobeniusDelegate Frobenius = Bls12Curve381BigIntegerPairingReference.GetFrobenius();
-    private static readonly Fp12CyclotomicSquareDelegate CyclotomicSquare = Bls12Curve381BigIntegerPairingReference.GetCyclotomicSquare();
-    private static readonly PairingDelegate Pair = Bls12Curve381BigIntegerPairingReference.GetPairing();
+    private static Fp12FrobeniusDelegate Frobenius { get; } = Bls12Curve381BigIntegerPairingReference.GetFrobenius();
+    private static Fp12CyclotomicSquareDelegate CyclotomicSquare { get; } = Bls12Curve381BigIntegerPairingReference.GetCyclotomicSquare();
+    private static PairingDelegate Pair { get; } = Bls12Curve381BigIntegerPairingReference.GetPairing();
 
-    private static readonly Fp12SquareDelegate RegularSquare = Bls12Curve381BigIntegerFp12Reference.GetSquare();
+    private static Fp12SquareDelegate RegularSquare { get; } = Bls12Curve381BigIntegerFp12Reference.GetSquare();
 
-    private static readonly G1ScalarMultiplyDelegate G1ScalarMul = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
-    private static readonly G2ScalarMultiplyDelegate G2ScalarMul = Bls12Curve381BigIntegerG2Reference.GetScalarMultiply();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    private static G2ScalarMultiplyDelegate G2ScalarMul { get; } = Bls12Curve381BigIntegerG2Reference.GetScalarMultiply();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
-    private static readonly G1IsOnCurveDelegate G1IsOnCurve = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
-    private static readonly G2IsOnCurveDelegate G2IsOnCurve = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G2IsOnCurveDelegate G2IsOnCurve { get; } = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
 
-    private static readonly BigInteger BaseFieldPrime = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger BaseFieldPrime { get; } = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
     private const int CompSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
 
     //CsCheck iteration count: kept very small because a full pairing

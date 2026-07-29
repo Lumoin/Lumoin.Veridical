@@ -59,13 +59,13 @@ internal static class Sha256Constants
     public static ReadOnlySpan<uint> K => KStorage;
 
 
-    private static readonly uint[] IvStorage =
+    private static uint[] IvStorage { get; } =
     [
         0x6A09E667u, 0xBB67AE85u, 0x3C6EF372u, 0xA54FF53Au,
         0x510E527Fu, 0x9B05688Cu, 0x1F83D9ABu, 0x5BE0CD19u,
     ];
 
-    private static readonly uint[] KStorage =
+    private static uint[] KStorage { get; } =
     [
         0x428A2F98u, 0x71374491u, 0xB5C0FBCFu, 0xE9B5DBA5u,
         0x3956C25Bu, 0x59F111F1u, 0x923F82A4u, 0xAB1C5ED5u,

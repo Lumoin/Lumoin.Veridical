@@ -29,13 +29,13 @@ internal static class Fp256MontgomeryParameters
     //The P-256 base-field prime p as little-endian 64-bit limbs, derived from
     //P256BigIntegerG1Reference.BaseFieldPrime exactly as
     //P256BaseFieldMontgomeryBackend.ComputeModulusLimbs does.
-    private static readonly ulong[] ModulusLimbValues = ComputeModulusLimbs();
+    private static ulong[] ModulusLimbValues { get; } = ComputeModulusLimbs();
 
     //32-bit-limb forms for the lane-interleaved SIMD batch multiply (one 32×32→64
     //widening multiply per partial product). Eight little-endian 32-bit limbs,
     //and N'32 = −p⁻¹ mod 2³².
-    private static readonly uint NPrime32Value = ComputeNPrime32();
-    private static readonly uint[] Modulus32LimbValues = Split64To32(ModulusLimbValues);
+    private static uint NPrime32Value { get; } = ComputeNPrime32();
+    private static uint[] Modulus32LimbValues { get; } = Split64To32(ModulusLimbValues);
 
 
     /// <summary>The modulus <c>p</c> as eight little-endian 32-bit limbs (for the SIMD batch multiply).</summary>

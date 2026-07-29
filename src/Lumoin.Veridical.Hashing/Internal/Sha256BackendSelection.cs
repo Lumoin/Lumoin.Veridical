@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Hashing.Internal;
 /// </remarks>
 internal static class Sha256BackendSelection
 {
-    private static readonly Sha256Backend Cached = ComputeBest();
+    private static Sha256Backend Cached { get; } = ComputeBest();
 
 
     /// <summary>Returns the cached best-available backend for this process.</summary>

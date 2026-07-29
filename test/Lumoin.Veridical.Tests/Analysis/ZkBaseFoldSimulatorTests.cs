@@ -61,8 +61,8 @@ internal sealed class ZkBaseFoldSimulatorTests
     //Byte-value bins for the per-proof histograms.
     private const int ByteValueCount = 256;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
-    private static readonly byte[] ProviderSeed = Encoding.UTF8.GetBytes("veridical.analysis.fs-simulator.code.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static byte[] ProviderSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.fs-simulator.code.v1");
 
 
     [TestMethod]

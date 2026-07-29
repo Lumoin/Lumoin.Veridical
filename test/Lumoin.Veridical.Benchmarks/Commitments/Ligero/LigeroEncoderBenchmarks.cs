@@ -29,8 +29,8 @@ public class LigeroEncoderBenchmarks
     private const int ScalarBytes = 32;
     private const int BenchmarkSeed = 0x5EED5EED;
     private const int InverseRate = 4;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
-    private static readonly BaseMemoryPool Pool = BaseMemoryPool.Shared;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
+    private static BaseMemoryPool Pool { get; } = BaseMemoryPool.Shared;
 
     //The RS message length (a Ligero row's witness block). BlockEncoded =
     //(2 + InverseRate)·Block − 1; DoubleBlock = 2·Block − 1.

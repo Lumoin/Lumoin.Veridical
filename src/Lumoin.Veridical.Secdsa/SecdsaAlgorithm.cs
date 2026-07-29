@@ -51,7 +51,7 @@ public static class SecdsaAlgorithm
     /// <summary>The P-256 SEC1 compressed point length (the public key and the intermediate <c>R = k·G</c>).</summary>
     public const int CompressedPointSizeBytes = WellKnownCurves.P256CompressedSizeBytes;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
 
     /// <summary>

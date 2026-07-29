@@ -17,9 +17,9 @@ namespace Lumoin.Veridical.Tests.Diagnostics;
 [TestClass]
 internal sealed class FiatShamirTranscriptInspectorTests
 {
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly FiatShamirDomainLabel DomainLabel = new("veridical.test.inspector.v1");
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static FiatShamirDomainLabel DomainLabel { get; } = new("veridical.test.inspector.v1");
 
 
     [TestMethod]

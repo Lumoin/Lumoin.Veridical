@@ -23,14 +23,14 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class BaseFoldInterpolationTests
 {
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
     private const int ScalarSize = 32;
     private const int IterationCount = 50;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

@@ -26,12 +26,12 @@ namespace Lumoin.Veridical.Benchmarks.Spartan;
 public class SumcheckRoundPolynomialBenchmarks
 {
     private const int ScalarBytes = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
-    private static readonly ScalarAddDelegate Add = Bls12Curve381BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarSubtractDelegate Subtract = Bls12Curve381BigIntegerScalarReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Multiply = Bls12Curve381BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarArithmeticBackend ReferenceBatch = TestScalarBackends.Bls12Curve381Reference;
+    private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+    private static ScalarSubtractDelegate Subtract { get; } = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+    private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+    private static ScalarArithmeticBackend ReferenceBatch { get; } = TestScalarBackends.Bls12Curve381Reference;
 
 
     /// <summary>

@@ -62,11 +62,11 @@ internal sealed class ZkBaseFoldMaskedSpartanRoundtripTests
     private const int ExtraVariableCount = 6;
     private const string TranscriptDomain = "veridical.spartan2.basefold.zkmasked.test.v1";
 
-    private static readonly byte[] CodeSeed = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.zkmasked.code.v1");
-    private static readonly byte[] SpartanRandomSeed = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.zkmasked.rng.v1");
-    private static readonly byte[] ProviderRandomSeed = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.zkmasked.provider.rng.v1");
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.zkmasked.code.v1");
+    private static byte[] SpartanRandomSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.zkmasked.rng.v1");
+    private static byte[] ProviderRandomSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.zkmasked.provider.rng.v1");
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]

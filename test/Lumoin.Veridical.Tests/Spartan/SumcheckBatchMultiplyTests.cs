@@ -24,15 +24,15 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class SumcheckBatchMultiplyTests
 {
-    private static readonly ScalarAddDelegate Add = Bls12Curve381BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarSubtractDelegate Subtract = Bls12Curve381BigIntegerScalarReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Multiply = Bls12Curve381BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarArithmeticBackend ReferenceBatch = TestScalarBackends.Bls12Curve381Reference;
-    private static readonly ScalarArithmeticBackend SimdBatch = TestScalarBackends.Bls12Curve381;
+    private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+    private static ScalarSubtractDelegate Subtract { get; } = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+    private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarArithmeticBackend ReferenceBatch { get; } = TestScalarBackends.Bls12Curve381Reference;
+    private static ScalarArithmeticBackend SimdBatch { get; } = TestScalarBackends.Bls12Curve381;
 
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     //3 variables: 4 pairs (sub-block); 11: 1024 pairs (exactly one block);

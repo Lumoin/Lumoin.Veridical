@@ -24,13 +24,13 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381ScalarHashToScalarShake256Tests
 {
-    private static readonly ScalarHashToScalarDelegate HashToScalarShake256 =
+    private static ScalarHashToScalarDelegate HashToScalarShake256 { get; } =
         Bls12Curve381BigIntegerScalarReference.GetHashToScalarShake256();
 
-    private static readonly ScalarHashToScalarDelegate HashToScalarSha256 =
+    private static ScalarHashToScalarDelegate HashToScalarSha256 { get; } =
         Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
 
-    private static readonly byte[] DefaultDst = Encoding.ASCII.GetBytes("LUMOIN-VERIDICAL-TEST-HASH-TO-SCALAR-SHAKE256");
+    private static byte[] DefaultDst { get; } = Encoding.ASCII.GetBytes("LUMOIN-VERIDICAL-TEST-HASH-TO-SCALAR-SHAKE256");
 
     private const long IterationCount = 30;
 

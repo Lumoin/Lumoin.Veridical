@@ -105,7 +105,7 @@ internal sealed class GkrGf2k128Tests
 
 
     [TestMethod]
-    public void HonestDataParallelProofVerifiesOverTheBinaryField()
+    public void ValidDataParallelProofVerifiesOverTheBinaryField()
     {
         GkrCircuit circuit = BuildChooseCircuit();
         using IMemoryOwner<byte> inputsOwner = BaseMemoryPool.Shared.Rent(InputBytes);
@@ -126,7 +126,7 @@ internal sealed class GkrGf2k128Tests
             circuit, inputs, outputs, CopyCount, proof, Add, Subtract, Multiply, Invert, Reduce, CurveParameterSet.None,
             verifierTranscript, Squeeze, Hash, BaseMemoryPool.Shared);
 
-        Assert.IsTrue(verified, "An honest data-parallel GKR proof over GF(2^128) must verify down to the inputs.");
+        Assert.IsTrue(verified, "A correctly generated data-parallel GKR proof over GF(2^128) must verify down to the inputs.");
     }
 
 

@@ -20,10 +20,10 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class SumcheckRoundComputationTests
 {
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate Multiply = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly BigInteger FieldOrder = Bls12Curve381BigIntegerScalarReference.FieldOrder;
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static BigInteger FieldOrder { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
 
 
     [TestMethod]

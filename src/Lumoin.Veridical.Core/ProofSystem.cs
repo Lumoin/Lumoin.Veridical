@@ -106,7 +106,7 @@ public readonly struct ProofSystem: IEquatable<ProofSystem>
     public static ProofSystem Spartan { get; } = new(9);
 
 
-    private static readonly List<ProofSystem> proofSystems =
+    private static List<ProofSystem> proofSystems { get; } =
         [None, Groth16, Plonk, Nova, SuperNova, Halo2, Stark, Bulletproofs, Marlin, Spartan];
 
 

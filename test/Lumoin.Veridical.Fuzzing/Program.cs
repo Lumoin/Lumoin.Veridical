@@ -39,7 +39,7 @@ internal static class Program
     private const int ExitInert = 1;
 #endif
 
-    private static readonly string[] TargetNames =
+    private static string[] TargetNames { get; } =
     [
         "circom-r1cs",
         "circom-wtns",

@@ -43,19 +43,19 @@ public sealed class BbsBlindSignature: SensitiveMemory
     public const int SizeBytes = ASizeBytes + ESizeBytes;
 
 
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.Signature)
+    private static Tag AlgebraicTagSha256 { get; } = Tag.Create(AlgebraicRole.Signature)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Sha256Blind);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.Signature)
+    private static Tag AlgebraicTagShake256 { get; } = Tag.Create(AlgebraicRole.Signature)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Shake256Blind);
 
-    private static readonly Tag AlgebraicTagSha256Pseudonym = Tag.Create(AlgebraicRole.Signature)
+    private static Tag AlgebraicTagSha256Pseudonym { get; } = Tag.Create(AlgebraicRole.Signature)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
 
-    private static readonly Tag AlgebraicTagShake256Pseudonym = Tag.Create(AlgebraicRole.Signature)
+    private static Tag AlgebraicTagShake256Pseudonym { get; } = Tag.Create(AlgebraicRole.Signature)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Shake256Pseudonym);
 

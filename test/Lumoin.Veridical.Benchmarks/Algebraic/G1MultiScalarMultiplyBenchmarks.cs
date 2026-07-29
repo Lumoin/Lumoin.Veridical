@@ -26,12 +26,12 @@ public class G1MultiScalarMultiplyBenchmarks
     //One salt selects both deterministic streams (the hash-to-curve messages
     //and the scalar fill); any small value works, it only has to be fixed.
     private const int PointStreamSalt = 7;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
-    private static readonly byte[] DomainSeparationTag = Encoding.UTF8.GetBytes("VERIDICAL-PIPPENGER-BENCH-V1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static byte[] DomainSeparationTag { get; } = Encoding.UTF8.GetBytes("VERIDICAL-PIPPENGER-BENCH-V1");
 
-    private static readonly G1MultiScalarMultiplyDelegate ReferenceMsm = Bls12Curve381BigIntegerG1Reference.GetMultiScalarMultiply();
-    private static readonly G1MultiScalarMultiplyDelegate PippengerMsm = Bls12Curve381PippengerG1Backend.GetMultiScalarMultiply();
-    private static readonly G1MultiScalarMultiplyDelegate CachingMsm = Bls12Curve381PippengerG1Backend.CreateCachingMultiScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate ReferenceMsm { get; } = Bls12Curve381BigIntegerG1Reference.GetMultiScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate PippengerMsm { get; } = Bls12Curve381PippengerG1Backend.GetMultiScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate CachingMsm { get; } = Bls12Curve381PippengerG1Backend.CreateCachingMultiScalarMultiply();
 
 
     /// <summary>Vector lengths: a Hyrax row, an IPA opening, a large commitment.</summary>

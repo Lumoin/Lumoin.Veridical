@@ -35,7 +35,8 @@ internal static class LongfellowGf2k128Encoding
         };
 
 
-    /// <summary>Builds the GF(2^128) field profile over <paramref name="fft"/>.</summary>
+    /// <summary>Builds the GF(2^128) field profile over <paramref name="fft"/>; the caller owns its disposal.</summary>
     /// <param name="fft">The shared LCH14 additive-FFT engine (supplies the subfield <c>of_scalar</c> and the <c>g</c> evaluation point).</param>
-    public static LongfellowFieldProfile CreateProfile(Lch14AdditiveFft fft) => LongfellowFieldProfile.ForGf2k128(fft);
+    /// <param name="pool">Pool the profile's retained constant scalars rent from.</param>
+    public static LongfellowFieldProfile CreateProfile(Lch14AdditiveFft fft, BaseMemoryPool pool) => LongfellowFieldProfile.ForGf2k128(fft, pool);
 }

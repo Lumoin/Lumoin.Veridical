@@ -29,11 +29,11 @@ internal static class P256ScalarMontgomeryParameters
 
     //All five constants are derived from P256BigIntegerScalarReference.FieldOrder at static init;
     //nothing here is hand-typed, so the Montgomery domain cannot drift from the canonical order n.
-    private static readonly ulong[] ModulusLimbValues = ComputeModulusLimbs();
-    private static readonly ulong NPrimeValue = ComputeNPrime();
-    private static readonly ulong[] RSquaredLimbValues = ComputeRSquared();
-    private static readonly ulong[] OneMontgomeryLimbValues = ComputeOneMontgomery();
-    private static readonly ulong[] InversionExponentLimbValues = ComputeInversionExponent();
+    private static ulong[] ModulusLimbValues { get; } = ComputeModulusLimbs();
+    private static ulong NPrimeValue { get; } = ComputeNPrime();
+    private static ulong[] RSquaredLimbValues { get; } = ComputeRSquared();
+    private static ulong[] OneMontgomeryLimbValues { get; } = ComputeOneMontgomery();
+    private static ulong[] InversionExponentLimbValues { get; } = ComputeInversionExponent();
 
 
     /// <summary>The group order <c>n</c> as four little-endian 64-bit limbs.</summary>

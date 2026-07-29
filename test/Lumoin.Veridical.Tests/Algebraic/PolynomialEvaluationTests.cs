@@ -18,10 +18,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class PolynomialEvaluationTests
 {
-    private static readonly PolynomialEvaluateDelegate Evaluate = PolynomialBigIntegerReference.GetEvaluate();
-    private static readonly PolynomialAddDelegate Add = PolynomialBigIntegerReference.GetAdd();
-    private static readonly PolynomialMultiplyDelegate Multiply = PolynomialBigIntegerReference.GetMultiply();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static PolynomialEvaluateDelegate Evaluate { get; } = PolynomialBigIntegerReference.GetEvaluate();
+    private static PolynomialAddDelegate Add { get; } = PolynomialBigIntegerReference.GetAdd();
+    private static PolynomialMultiplyDelegate Multiply { get; } = PolynomialBigIntegerReference.GetMultiply();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
     private const long IterationCount = 30;
 

@@ -44,15 +44,15 @@ public static class CircomWitnessReader
     private const uint HeaderSectionType = 1u;
     private const uint WitnessDataSectionType = 2u;
 
-    private static readonly byte[] FileMagic = [(byte)'w', (byte)'t', (byte)'n', (byte)'s'];
+    private static byte[] FileMagic { get; } = [(byte)'w', (byte)'t', (byte)'n', (byte)'s'];
 
-    private static readonly BigInteger Bls12Curve381ScalarFieldModulus = BigInteger.Parse(
+    private static BigInteger Bls12Curve381ScalarFieldModulus { get; } = BigInteger.Parse(
         "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);
 
     /// <summary>The BN254 (alt_bn128) scalar field order, against which a BN254-declared <c>.wtns</c> prime is validated.</summary>
-    private static readonly BigInteger Bn254ScalarFieldModulus = BigInteger.Parse(
+    private static BigInteger Bn254ScalarFieldModulus { get; } = BigInteger.Parse(
         "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
         NumberStyles.HexNumber,
         CultureInfo.InvariantCulture);

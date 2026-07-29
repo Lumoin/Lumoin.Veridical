@@ -80,6 +80,7 @@ public sealed class LigeroTableau: IDisposable
     /// <param name="invert">Scalar-invert backend.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent the tableau buffer and encoding scratch from.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path; <see langword="null"/> (the default) keeps today's barycentric encode. Consulted only in the <see cref="LigeroNodeDomain.ConsecutiveIntegers"/> domain, once per distinct <c>(messageLength, codewordLength)</c> shape for the whole build, never per row.</param>
     /// <returns>The built tableau; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a backend, the parameters or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span length does not match the layout.</exception>
@@ -96,7 +97,8 @@ public sealed class LigeroTableau: IDisposable
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(random);
@@ -145,9 +147,14 @@ public sealed class LigeroTableau: IDisposable
             LigeroReedSolomonEncoder.ComputeWeights(parameters.Block, parameters.NodeDomain, blockWeights, subtract, multiply, invert, curve, pool);
             LigeroReedSolomonEncoder.ComputeWeights(parameters.DoubleBlock, parameters.NodeDomain, doubleBlockWeights, subtract, multiply, invert, curve, pool);
 
-            FillBlindingRows(tableau, parameters, rowStrideBytes, blockWeights, doubleBlockWeights, scalarTag, random, add, subtract, multiply, invert, curve, pool);
-            FillWitnessRows(tableau, parameters, rowStrideBytes, blockWeights, witnesses, scalarTag, random, add, subtract, multiply, invert, curve, pool);
-            FillQuadraticRows(tableau, parameters, rowStrideBytes, blockWeights, witnesses, quadraticConstraints, scalarTag, random, add, subtract, multiply, invert, curve, pool);
+            //The row extender is shape-bound (messageLength, codewordLength), so it is resolved once per
+            //shape for the whole build — never per row — exactly like the weights above.
+            LigeroRowExtender? blockExtender = ResolveRowExtender(rowExtenderFactory, parameters.NodeDomain, parameters.Block, blockEncoded);
+            LigeroRowExtender? doubleBlockExtender = ResolveRowExtender(rowExtenderFactory, parameters.NodeDomain, parameters.DoubleBlock, blockEncoded);
+
+            FillBlindingRows(tableau, parameters, rowStrideBytes, blockWeights, doubleBlockWeights, scalarTag, random, add, subtract, multiply, invert, curve, pool, blockExtender, doubleBlockExtender);
+            FillWitnessRows(tableau, parameters, rowStrideBytes, blockWeights, witnesses, scalarTag, random, add, subtract, multiply, invert, curve, pool, blockExtender);
+            FillQuadraticRows(tableau, parameters, rowStrideBytes, blockWeights, witnesses, quadraticConstraints, scalarTag, random, add, subtract, multiply, invert, curve, pool, blockExtender);
         }
         catch
         {
@@ -178,7 +185,9 @@ public sealed class LigeroTableau: IDisposable
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtender? blockExtender = null,
+        LigeroRowExtender? doubleBlockExtender = null)
     {
         int block = parameters.Block;
         int dblock = parameters.DoubleBlock;
@@ -189,7 +198,7 @@ public sealed class LigeroTableau: IDisposable
         //ILDT: block random message entries, extend block -> blockEnc.
         Span<byte> lowDegreeRow = RowSpan(tableau, rowStrideBytes, LigeroParameters.LowDegreeRowIndex);
         FillRandomScalars(lowDegreeRow, 0, block, random, curve, scalarTag);
-        EncodeRow(lowDegreeRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool);
+        EncodeRow(lowDegreeRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool, blockExtender);
 
         //IDOT: dblock random entries; then subtract the whole witness-block sum
         //from column r so the entries [r, r+w) sum to zero (the dot test's
@@ -197,14 +206,14 @@ public sealed class LigeroTableau: IDisposable
         Span<byte> dotRow = RowSpan(tableau, rowStrideBytes, LigeroParameters.DotRowIndex);
         FillRandomScalars(dotRow, 0, dblock, random, curve, scalarTag);
         ZeroWitnessBlockSum(dotRow, r, w, add, subtract, curve);
-        EncodeRow(dotRow, dblock, blockEncoded, parameters.NodeDomain, doubleBlockWeights, add, subtract, multiply, invert, curve, pool);
+        EncodeRow(dotRow, dblock, blockEncoded, parameters.NodeDomain, doubleBlockWeights, add, subtract, multiply, invert, curve, pool, doubleBlockExtender);
 
         //IQUAD: dblock random entries but the witness columns [r, r+w) zeroed
         //(left clear by the initial Clear). Extend dblock -> blockEnc.
         Span<byte> quadraticRow = RowSpan(tableau, rowStrideBytes, LigeroParameters.QuadraticRowIndex);
         FillRandomScalars(quadraticRow, 0, r, random, curve, scalarTag);
         FillRandomScalars(quadraticRow, r + w, dblock - (r + w), random, curve, scalarTag);
-        EncodeRow(quadraticRow, dblock, blockEncoded, parameters.NodeDomain, doubleBlockWeights, add, subtract, multiply, invert, curve, pool);
+        EncodeRow(quadraticRow, dblock, blockEncoded, parameters.NodeDomain, doubleBlockWeights, add, subtract, multiply, invert, curve, pool, doubleBlockExtender);
     }
 
 
@@ -223,7 +232,8 @@ public sealed class LigeroTableau: IDisposable
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtender? blockExtender = null)
     {
         int block = parameters.Block;
         int blockEncoded = parameters.BlockEncoded;
@@ -244,7 +254,7 @@ public sealed class LigeroTableau: IDisposable
                 }
             }
 
-            EncodeRow(row, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool);
+            EncodeRow(row, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool, blockExtender);
         }
     }
 
@@ -266,7 +276,8 @@ public sealed class LigeroTableau: IDisposable
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtender? blockExtender = null)
     {
         int block = parameters.Block;
         int blockEncoded = parameters.BlockEncoded;
@@ -310,9 +321,9 @@ public sealed class LigeroTableau: IDisposable
                 z.CopyTo(ScalarAt(zRow, r + k));
             }
 
-            EncodeRow(xRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool);
-            EncodeRow(yRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool);
-            EncodeRow(zRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool);
+            EncodeRow(xRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool, blockExtender);
+            EncodeRow(yRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool, blockExtender);
+            EncodeRow(zRow, block, blockEncoded, parameters.NodeDomain, blockWeights, add, subtract, multiply, invert, curve, pool, blockExtender);
         }
     }
 
@@ -488,7 +499,9 @@ public sealed class LigeroTableau: IDisposable
 
     //RS-extends the row's first messageLength entries to the full blockEnc
     //codeword in place. The message is the row's own prefix, so the encoder's
-    //systematic copy is an identity copy of that region.
+    //systematic copy is an identity copy of that region. When rowExtender is
+    //supplied there is nothing to copy either — the row already carries its
+    //message prefix — so the extender runs directly over the whole row.
     private static void EncodeRow(
         Span<byte> row,
         int messageLength,
@@ -500,8 +513,16 @@ public sealed class LigeroTableau: IDisposable
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtender? rowExtender = null)
     {
+        if(rowExtender is not null)
+        {
+            rowExtender(row[..(blockEncoded * ScalarSize)]);
+
+            return;
+        }
+
         LigeroReedSolomonEncoder.Encode(
             row[..(messageLength * ScalarSize)],
             messageLength,
@@ -515,5 +536,20 @@ public sealed class LigeroTableau: IDisposable
             invert,
             curve,
             pool);
+    }
+
+
+    //Consults the factory for the given shape, but only in the domain the row
+    //extenders are specified against — LigeroNodeDomain.ConsecutiveIntegers. A
+    //null factory, a BinaryField-domain shape, or a decline (the factory returns
+    //null) all fall back to the barycentric path unchanged.
+    private static LigeroRowExtender? ResolveRowExtender(LigeroRowExtenderFactory? factory, LigeroNodeDomain nodeDomain, int messageLength, int codewordLength)
+    {
+        if(factory is null || nodeDomain != LigeroNodeDomain.ConsecutiveIntegers)
+        {
+            return null;
+        }
+
+        return factory(messageLength, codewordLength);
     }
 }

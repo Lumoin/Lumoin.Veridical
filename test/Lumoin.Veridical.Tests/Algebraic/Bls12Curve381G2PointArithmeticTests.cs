@@ -20,12 +20,12 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381G2PointArithmeticTests
 {
-    private static readonly G2AddDelegate Add = Bls12Curve381BigIntegerG2Reference.GetAdd();
-    private static readonly G2NegateDelegate Negate = Bls12Curve381BigIntegerG2Reference.GetNegate();
-    private static readonly G2ScalarMultiplyDelegate ScalarMul = Bls12Curve381BigIntegerG2Reference.GetScalarMultiply();
-    private static readonly G2IsOnCurveDelegate IsOnCurve = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
-    private static readonly G2IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroup = Bls12Curve381BigIntegerG2Reference.GetIsInPrimeOrderSubgroup();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static G2AddDelegate Add { get; } = Bls12Curve381BigIntegerG2Reference.GetAdd();
+    private static G2NegateDelegate Negate { get; } = Bls12Curve381BigIntegerG2Reference.GetNegate();
+    private static G2ScalarMultiplyDelegate ScalarMul { get; } = Bls12Curve381BigIntegerG2Reference.GetScalarMultiply();
+    private static G2IsOnCurveDelegate IsOnCurve { get; } = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
+    private static G2IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG2Reference.GetIsInPrimeOrderSubgroup();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
     private const long IterationCount = 8; //G2 scalar-mul over a 256-bit scalar is slow in BigInteger.
 

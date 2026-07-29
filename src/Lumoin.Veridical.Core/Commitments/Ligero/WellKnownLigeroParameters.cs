@@ -43,9 +43,11 @@ public static class WellKnownLigeroParameters
     public const int ClassicalSecurityLevelBits = 128;
 
     /// <summary>
-    /// The wired inverse code rate <c>c</c> (rate <c>ρ = 1/c</c>). Rate 1/4 fixes the opening size as a pure
-    /// function of <c>(variableCount, queryCount, digest)</c>, letting the Spartan proof carrier size openings
-    /// from provider metadata alone.
+    /// The default inverse code rate <c>c</c> (rate <c>ρ = 1/c</c>) a provider uses when none is chosen
+    /// explicitly. The rate is a per-provider parameter (carried as
+    /// <see cref="PolynomialCommitmentProvider.InverseRate"/> so consumers can size openings); a deployment
+    /// whose polynomials are small raises it to widen the extension and reach a full soundness target — see
+    /// <see cref="WellKnownSecurityLevels"/>.
     /// </summary>
     public const int DefaultInverseRate = 4;
 
@@ -189,9 +191,25 @@ public static class WellKnownLigeroParameters
 
 
     /// <summary>
+    /// The 128-bit-classical opened-column count under <paramref name="regime"/> at inverse rate
+    /// <paramref name="inverseRate"/>. A lower rate (larger <c>c</c>) yields more bits per opened column and so
+    /// fewer opened columns for the same target — the production lever for a small polynomial whose extension
+    /// width cannot carry the rate-1/4 column count.
+    /// </summary>
+    /// <param name="inverseRate">The inverse code rate <c>c ≥ 2</c>.</param>
+    /// <param name="regime">The soundness regime.</param>
+    /// <returns>The opened-column count.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When the inverse rate is below 2, or the regime is unrecognised.</exception>
+    public static int ClassicalSecurityQueryCount(int inverseRate, LigeroSoundnessRegime regime)
+    {
+        return ComputeQueryCount(ClassicalSecurityLevelBits, inverseRate, regime);
+    }
+
+
+    /// <summary>
     /// The 128-bit-classical opened-column count under the default regime
-    /// (<see cref="ClassicalSecurityRegime"/>, the conservative provable Johnson bound): the value a Ligero
-    /// provider should use unless told otherwise. 128 for the wired rate 1/4.
+    /// (<see cref="ClassicalSecurityRegime"/>, the conservative Johnson bound): the value a Ligero
+    /// provider should use unless told otherwise. 128 for the default rate 1/4.
     /// </summary>
     public static int ClassicalSecurityDefaultQueryCount => ClassicalSecurityQueryCount(ClassicalSecurityRegime);
 }

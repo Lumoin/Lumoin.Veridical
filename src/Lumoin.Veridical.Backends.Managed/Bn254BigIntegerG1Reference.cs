@@ -94,11 +94,11 @@ internal static class Bn254BigIntegerG1Reference
     /// Valid because <c>q ≡ 3 (mod 4)</c> (the low byte of <c>q</c> is
     /// <c>0x47</c>), so a quadratic residue's root is <c>a^((q+1)/4) mod q</c>.
     /// </summary>
-    private static readonly BigInteger SqrtExponent = (BaseFieldPrime + BigInteger.One) >> 2;
+    private static BigInteger SqrtExponent { get; } = (BaseFieldPrime + BigInteger.One) >> 2;
 
 
     /// <summary>The exponent <c>q - 2</c> used for Fermat-style modular inverses.</summary>
-    private static readonly BigInteger ModInverseExponent = BaseFieldPrime - 2;
+    private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
 
     //RFC 9380 §6.6.1 Shallue–van de Woestijne map constants for BN254 G1
@@ -109,22 +109,22 @@ internal static class Bn254BigIntegerG1Reference
     //transcribed, so they cannot drift from the modulus.
 
     /// <summary>The SvdW parameter <c>Z = 1</c>.</summary>
-    private static readonly BigInteger SvdwZ = BigInteger.One;
+    private static BigInteger SvdwZ { get; } = BigInteger.One;
 
     /// <summary>The SvdW constant <c>c1 = g(Z) = Z³ + 3</c>.</summary>
-    private static readonly BigInteger SvdwGz = Mod((SvdwZ * SvdwZ * SvdwZ) + CurveB, BaseFieldPrime);
+    private static BigInteger SvdwGz { get; } = Mod((SvdwZ * SvdwZ * SvdwZ) + CurveB, BaseFieldPrime);
 
     /// <summary>The quantity <c>3Z² + 4A = 3Z²</c> (A = 0), the SvdW denominator term.</summary>
-    private static readonly BigInteger SvdwThreeZsquared = Mod(3 * SvdwZ * SvdwZ, BaseFieldPrime);
+    private static BigInteger SvdwThreeZsquared { get; } = Mod(3 * SvdwZ * SvdwZ, BaseFieldPrime);
 
     /// <summary>The SvdW constant <c>c2 = -Z / 2</c>.</summary>
-    private static readonly BigInteger SvdwC2 = Mod(-SvdwZ * ModInverse(2), BaseFieldPrime);
+    private static BigInteger SvdwC2 { get; } = Mod(-SvdwZ * ModInverse(2), BaseFieldPrime);
 
     /// <summary>The SvdW constant <c>c3 = sqrt(-g(Z)·(3Z² + 4A))</c> with <c>sgn0(c3) = 0</c>.</summary>
-    private static readonly BigInteger SvdwC3 = ComputeSvdwC3();
+    private static BigInteger SvdwC3 { get; } = ComputeSvdwC3();
 
     /// <summary>The SvdW constant <c>c4 = -4·g(Z) / (3Z² + 4A)</c>.</summary>
-    private static readonly BigInteger SvdwC4 = Mod(-4 * SvdwGz * ModInverse(SvdwThreeZsquared), BaseFieldPrime);
+    private static BigInteger SvdwC4 { get; } = Mod(-4 * SvdwGz * ModInverse(SvdwThreeZsquared), BaseFieldPrime);
 
 
     /// <summary>
@@ -135,15 +135,15 @@ internal static class Bn254BigIntegerG1Reference
     private const int HashToFieldElementBytes = 48;
 
 
-    private static readonly ProviderLibrary ProviderLibraryIdentity = new(
+    private static ProviderLibrary ProviderLibraryIdentity { get; } = new(
         Name: "Lumoin.Veridical.Backends.Managed",
         Version: typeof(Bn254BigIntegerG1Reference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly CryptoLibrary CryptoLibraryIdentity = new(
+    private static CryptoLibrary CryptoLibraryIdentity { get; } = new(
         Name: "System.Numerics.BigInteger",
         Version: typeof(BigInteger).Assembly.GetName().Version?.ToString() ?? "unknown");
 
-    private static readonly ProviderClass ProviderClassIdentity = new(
+    private static ProviderClass ProviderClassIdentity { get; } = new(
         Name: nameof(Bn254BigIntegerG1Reference));
 
 
@@ -293,7 +293,7 @@ internal static class Bn254BigIntegerG1Reference
 
         //Cofactor is 1, so the curve group has prime order r and [r] P == O for
         //every on-curve P. The explicit multiplication is kept for parity with
-        //the BLS12-381 reference and as an honest statement of the membership
+        //the BLS12-381 reference and as a literal statement of the membership
         //predicate rather than short-circuiting on the cofactor being trivial.
         AffinePoint product = ScalarMultiplyPoint(ScalarFieldOrder, p);
 

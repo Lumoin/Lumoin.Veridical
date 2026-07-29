@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381WasmScalarBackendAgreementTests
 {
-    private static readonly ScalarReduceDelegate ReduceDelegate =
+    private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bls12Curve381BigIntegerScalarReference.GetReduce();
 
     private const long IterationCount = 200;

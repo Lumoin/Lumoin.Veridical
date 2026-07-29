@@ -67,7 +67,7 @@ public static class EcdhMacAlgorithm
     /// </summary>
     public const int MacKeySizeBytes = 32;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
 
     /// <summary>

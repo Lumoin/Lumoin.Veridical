@@ -23,7 +23,7 @@ internal sealed class ManagedMultilinearExtensionBackendTests
 {
     private const int ScalarSize = 32;
 
-    private static readonly MleFoldDelegate ReferenceFold = MultilinearExtensionBigIntegerReference.GetFold();
+    private static MleFoldDelegate ReferenceFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
 
     //3 variables: 4 pairs (sub-block); 11: 1024 pairs (exactly one block);

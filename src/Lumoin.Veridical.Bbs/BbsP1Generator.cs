@@ -33,8 +33,8 @@ internal static class BbsP1Generator
         "8929dfbc7e6642c4ed9cba0856e493f8b9d7d5fcb0c31ef8fdcd34d50648a56c795e106e9eada6e0bda386b414150755";
 
 
-    private static readonly byte[] Bls12Curve381Sha256Bytes = Convert.FromHexString(Bls12Curve381Sha256Hex);
-    private static readonly byte[] Bls12Curve381Shake256Bytes = Convert.FromHexString(Bls12Curve381Shake256Hex);
+    private static byte[] Bls12Curve381Sha256Bytes { get; } = Convert.FromHexString(Bls12Curve381Sha256Hex);
+    private static byte[] Bls12Curve381Shake256Bytes { get; } = Convert.FromHexString(Bls12Curve381Shake256Hex);
 
 
     /// <summary>

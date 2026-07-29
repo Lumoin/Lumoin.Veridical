@@ -46,21 +46,21 @@ internal static class LongfellowMdocBundles
 
 
     //The GF(2^128) hash-side delegates (all public in Backends.Managed). Subtract coincides with add (XOR).
-    private static readonly ScalarAddDelegate GfAdd = Gf2k128Backend.GetAdd();
-    private static readonly ScalarSubtractDelegate GfSubtract = Gf2k128Backend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate GfMultiply = Gf2k128Backend.GetMultiply();
-    private static readonly ScalarInvertDelegate GfInvert = Gf2k128Backend.GetInvert();
+    private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+    private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
+    private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
+    private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
     //The Fp256 sig-side delegates (internal in Backends.Managed, reached through the package's IVT). Add and
     //subtract are domain-linear, so the canonical delegates serve the Montgomery working domain unchanged; the
     //multiply and invert are the Montgomery-domain (single-CIOS) variants.
-    private static readonly ScalarAddDelegate Fp256Add = P256BaseFieldMontgomeryBackend.GetAdd();
-    private static readonly ScalarSubtractDelegate Fp256Subtract = P256BaseFieldMontgomeryBackend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Fp256MultiplyMontgomery = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
-    private static readonly ScalarInvertDelegate Fp256InvertMontgomery = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
+    private static ScalarAddDelegate Fp256Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
+    private static ScalarSubtractDelegate Fp256Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
+    private static ScalarMultiplyDelegate Fp256MultiplyMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
+    private static ScalarInvertDelegate Fp256InvertMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
 
     //The P-256 base-field prime the sig profile's of_scalar reduction and in_range predicate close over.
-    private static readonly BigInteger Fp256Prime = P256BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger Fp256Prime { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
 
 
     /// <summary>
@@ -108,9 +108,10 @@ internal static class LongfellowMdocBundles
         new(Lch14Subfield.Production16, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, pool);
 
 
-    /// <summary>Builds the GF(2^128) field profile over <paramref name="fft"/>.</summary>
+    /// <summary>Builds the GF(2^128) field profile over <paramref name="fft"/>; the caller disposes it.</summary>
     /// <param name="fft">The shared LCH14 additive-FFT engine.</param>
-    internal static LongfellowFieldProfile NewGfProfile(Lch14AdditiveFft fft) => LongfellowGf2k128Encoding.CreateProfile(fft);
+    /// <param name="pool">Pool the profile's retained constant scalars rent from.</param>
+    internal static LongfellowFieldProfile NewGfProfile(Lch14AdditiveFft fft, BaseMemoryPool pool) => LongfellowGf2k128Encoding.CreateProfile(fft, pool);
 
 
     /// <summary>Builds the GF(2^128) subfield-run codec (it owns a pooled basis reduction).</summary>
@@ -122,9 +123,10 @@ internal static class LongfellowMdocBundles
         LongfellowSubfieldRunCodec.ForGf2k128(profile, fft, HashSubFieldBytes, pool);
 
 
-    /// <summary>Builds the Montgomery-domain P-256 base-field profile (canonical-to-Montgomery at the read/of_scalar/sample seams, Montgomery-to-canonical at the emit seam).</summary>
-    internal static LongfellowFieldProfile NewMontgomerySigProfile() =>
-        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery);
+    /// <summary>Builds the Montgomery-domain P-256 base-field profile (canonical-to-Montgomery at the read/of_scalar/sample seams, Montgomery-to-canonical at the emit seam); the caller disposes it.</summary>
+    /// <param name="pool">Pool the profile's retained constant scalars rent from.</param>
+    internal static LongfellowFieldProfile NewMontgomerySigProfile(BaseMemoryPool pool) =>
+        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery, pool);
 
 
     /// <summary>

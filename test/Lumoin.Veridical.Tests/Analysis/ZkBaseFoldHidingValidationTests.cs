@@ -79,9 +79,9 @@ internal sealed class ZkBaseFoldHidingValidationTests
     private const int ExtraVariableCount = 5;
     private const int SampleCount = 40;
 
-    private static readonly byte[] CodeSeed = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.code.v1");
-    private static readonly byte[] WitnessSeed = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.witness.v1");
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.code.v1");
+    private static byte[] WitnessSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.zk-basefold.witness.v1");
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]
@@ -108,7 +108,7 @@ internal sealed class ZkBaseFoldHidingValidationTests
     {
         //The statistical experiments are asserted to run and produce a well-formed
         //result, not to reach a particular verdict: at test-suite sample scales a
-        //borderline finding either way is honest, not a failure (the SM statistical
+        //borderline finding either way is a valid outcome, not a failure (the SM statistical
         //mask makes NotDetected the expected outcome — observed at permutation
         //p ≈ 0.24 when the fix landed). The findings are logged for the record.
         using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();

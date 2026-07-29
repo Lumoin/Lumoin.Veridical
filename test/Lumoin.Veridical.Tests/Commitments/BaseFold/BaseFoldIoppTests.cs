@@ -16,7 +16,7 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// <summary>
 /// Tests for the BaseFold IOPP (AB.3): the standalone interactive-oracle proof
 /// of proximity that a Merkle-committed codeword is close to a codeword of the
-/// random foldable code. Positive tests confirm an honestly-encoded codeword
+/// random foldable code. Positive tests confirm a correctly-encoded codeword
 /// verifies; negative tests confirm a word far from the code is rejected (the
 /// base-codeword check), and that tampering the commitment, any fold root, or
 /// any authentication path breaks verification. The real BLS12-381 scalar
@@ -25,15 +25,15 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class BaseFoldIoppTests
 {
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate Multiply = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly ScalarInvertDelegate Invert = TestScalarBackends.Bls12Curve381.Invert;
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarHashToScalarDelegate HashToScalar = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
@@ -45,7 +45,7 @@ internal sealed class BaseFoldIoppTests
 
     private const int IterationCount = 20;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]
@@ -66,7 +66,7 @@ internal sealed class BaseFoldIoppTests
 
         bool verified = ProveThenVerify(code, codeword, TestQueryCount, pool);
 
-        Assert.IsTrue(verified, $"An honestly-encoded codeword must verify for d = {layerCount}.");
+        Assert.IsTrue(verified, $"A correctly-encoded codeword must verify for d = {layerCount}.");
     }
 
 
@@ -259,11 +259,14 @@ internal sealed class BaseFoldIoppTests
         const int InverseRate = WellKnownFoldableCodeParameters.ClassicalSecurityInverseRate;
         const int Lambda = WellKnownBaseFoldIoppParameters.ClassicalSecurityLevelBits;
 
-        //Capacity: δ = 1 - 1/8 = 0.875, ℓ = ⌈128/3⌉ = 43.
+        //Capacity clamps to the code's distance: δ = min(1 - 1/8, 0.728) = 0.728,
+        //ℓ = ⌈128 / -log2(0.272)⌉ = 69 — the unclamped rate-based radius 0.875
+        //exceeds the wired code's relative minimum distance and would price
+        //rejection power no proximity-gap statement reaches.
         Assert.AreEqual(
-            43,
+            69,
             WellKnownBaseFoldIoppParameters.ComputeQueryCount(Lambda, DeltaMin, InverseRate, BaseFoldSoundnessRegime.ConjecturedCapacity),
-            "Conjectured-capacity 128-bit query count.");
+            "Conjectured-capacity 128-bit query count (distance-clamped).");
 
         //Unique decoding: δ = 0.728/2 = 0.364, ℓ = ⌈128 / -log2(0.636)⌉ = 197.
         Assert.AreEqual(
@@ -277,11 +280,44 @@ internal sealed class BaseFoldIoppTests
             WellKnownBaseFoldIoppParameters.ComputeQueryCount(Lambda, DeltaMin, InverseRate, BaseFoldSoundnessRegime.ListDecodingJohnson),
             "List-decoding (double-Johnson) 128-bit query count.");
 
-        //The default preset is the list-decoding count.
+        //One-and-a-half Johnson: δ = 1 - (1 - 0.728)^(1/3) ≈ 0.3521,
+        //ℓ = ⌈128 / -log2(0.6479)⌉ = 205.
+        Assert.AreEqual(
+            205,
+            WellKnownBaseFoldIoppParameters.ComputeQueryCount(Lambda, DeltaMin, InverseRate, BaseFoldSoundnessRegime.ListDecodingOneAndAHalfJohnson),
+            "One-and-a-half-Johnson 128-bit query count.");
+
+        //The default preset is the double-Johnson list-decoding count; the
+        //one-and-a-half-Johnson preset is the named opt-in.
         Assert.AreEqual(
             273,
             WellKnownBaseFoldIoppParameters.ClassicalSecurityDefaultQueryCount,
             "The default query count is the paper-proven list-decoding count.");
+        Assert.AreEqual(
+            205,
+            WellKnownBaseFoldIoppParameters.ClassicalSecurityOneAndAHalfJohnsonQueryCount,
+            "The one-and-a-half-Johnson preset query count.");
+    }
+
+
+    [TestMethod]
+    public void OneAndAHalfJohnsonRadiusMatchesItsDefinition()
+    {
+        //1 - ∛(1 - x): 0 at 0; 1 at 1; 0.5 at 7/8 (∛(1/8) = 1/2).
+        Assert.AreEqual(0.0, WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(0.0), 1e-12);
+        Assert.AreEqual(1.0, WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(1.0), 1e-12);
+        Assert.AreEqual(0.5, WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(0.875), 1e-12);
+
+        //The radius sits between the doubly-applied Johnson radius and the
+        //code distance, and beats the unique-decoding radius exactly when the
+        //distance exceeds 1 - ((√5 - 1)/2)³ ≈ 0.7639 — below the crossover the
+        //regime's value is its proof strength, not its query count.
+        const double DeltaMin = WellKnownBaseFoldIoppParameters.ClassicalSecurityRelativeMinimumDistance;
+        double doubleJohnson = WellKnownBaseFoldIoppParameters.JohnsonRadius(WellKnownBaseFoldIoppParameters.JohnsonRadius(DeltaMin));
+        double oneAndAHalf = WellKnownBaseFoldIoppParameters.OneAndAHalfJohnsonRadius(DeltaMin);
+
+        Assert.IsGreaterThan(doubleJohnson, oneAndAHalf, "The one-and-a-half-Johnson radius exceeds the doubly-applied Johnson radius.");
+        Assert.IsLessThan(DeltaMin / 2.0, oneAndAHalf, "At the wired distance the radius sits inside the unique-decoding ball.");
     }
 
 
