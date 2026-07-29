@@ -23,7 +23,7 @@ internal static class Gf2k128Reference
     private const int ScalarSize = 32;
     private const int Degree = 128;
 
-    private static readonly BigInteger ElementMask = (BigInteger.One << Degree) - 1;
+    private static BigInteger ElementMask { get; } = (BigInteger.One << Degree) - 1;
 
 
     /// <summary>Returns the add delegate (XOR).</summary>

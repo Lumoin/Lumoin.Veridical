@@ -43,7 +43,7 @@ internal sealed class Bn254R1csCoefficientCoverageTests
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
-    private static readonly BigInteger Order = Bn254BigIntegerScalarReference.FieldOrder;
+    private static BigInteger Order { get; } = Bn254BigIntegerScalarReference.FieldOrder;
     private static CurveParameterSet Curve => CurveParameterSet.Bn254;
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 

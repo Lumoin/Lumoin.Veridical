@@ -41,7 +41,7 @@ public class ScalarBatchAddBenchmarks
     private const int ScalarBytes = 32;
     private const int BenchmarkSeed = 0x5EED5EED;
     private const int MaxBatchSize = 1024;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     /// <summary>

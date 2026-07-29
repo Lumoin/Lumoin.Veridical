@@ -75,7 +75,7 @@ internal static class LongfellowMdocEnvelope
         layout = default;
 
         //The GF(2^128) field profile of the hash circuit, derived from its additive-FFT engine.
-        LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft);
+        using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, pool);
 
         if(envelope.Length < MacRegionBytes)
         {

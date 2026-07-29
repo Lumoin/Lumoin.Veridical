@@ -20,11 +20,11 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class FiatShamirTranscriptBls12Curve381Tests
 {
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly PolynomialEvaluateDelegate PolyEvaluate = PolynomialBigIntegerReference.GetEvaluate();
-    private static readonly FiatShamirDomainLabel DomainLabel = new("veridical.test.bls12curve381.v1");
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static PolynomialEvaluateDelegate PolyEvaluate { get; } = PolynomialBigIntegerReference.GetEvaluate();
+    private static FiatShamirDomainLabel DomainLabel { get; } = new("veridical.test.bls12curve381.v1");
 
     private const long IterationCount = 30;
 

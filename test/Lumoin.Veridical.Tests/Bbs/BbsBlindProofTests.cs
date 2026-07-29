@@ -22,7 +22,7 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsBlindProofTests
 {
-    private static readonly BbsCiphersuite Suite = BbsCiphersuite.Bls12Curve381Sha256Blind;
+    private static BbsCiphersuite Suite { get; } = BbsCiphersuite.Bls12Curve381Sha256Blind;
 
     private static ReadOnlySpan<byte> PointFiller =>
         WellKnownCurves.GetG1GeneratorCompressed(CurveParameterSet.Bls12Curve381);

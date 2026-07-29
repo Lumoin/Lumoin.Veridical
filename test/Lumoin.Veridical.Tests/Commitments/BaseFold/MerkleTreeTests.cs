@@ -31,7 +31,7 @@ internal sealed class MerkleTreeTests
     private const int MaximumLeafExponent = 6;
 
 
-    private static readonly MerkleHashDelegate Blake3TwoToOne = HashTwoToOne;
+    private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
 
     [TestMethod]

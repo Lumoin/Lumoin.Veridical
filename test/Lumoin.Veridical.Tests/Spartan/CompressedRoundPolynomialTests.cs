@@ -23,11 +23,11 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class CompressedRoundPolynomialTests
 {
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly PolynomialEvaluateDelegate Evaluate = PolynomialBigIntegerReference.GetEvaluate();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly BigInteger FieldOrder = Bls12Curve381BigIntegerScalarReference.FieldOrder;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static PolynomialEvaluateDelegate Evaluate { get; } = PolynomialBigIntegerReference.GetEvaluate();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static BigInteger FieldOrder { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
 
     private const long IterationCount = 30;
 

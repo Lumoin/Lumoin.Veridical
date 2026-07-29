@@ -13,10 +13,10 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsProofGenerateVerifyTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x40);
-    private static readonly byte[] KeyInfo = "proof-roundtrip-key-info"u8.ToArray();
-    private static readonly byte[] Header = "proof-roundtrip-header"u8.ToArray();
-    private static readonly byte[] PresentationHeader = "proof-roundtrip-ph"u8.ToArray();
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x40);
+    private static byte[] KeyInfo { get; } = "proof-roundtrip-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "proof-roundtrip-header"u8.ToArray();
+    private static byte[] PresentationHeader { get; } = "proof-roundtrip-ph"u8.ToArray();
 
 
     [TestMethod]

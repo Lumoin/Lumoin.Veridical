@@ -23,7 +23,7 @@ internal static class Bn254MontgomeryParameters
 
     //BN254 scalar-field modulus r, little-endian 64-bit limbs.
     //r = 0x30644e72e131a029 b85045b68181585d 2833e84879b97091 43e1f593f0000001.
-    private static readonly ulong[] ModulusLimbValues =
+    private static ulong[] ModulusLimbValues { get; } =
     [
         0x43e1f593f0000001UL,
         0x2833e84879b97091UL,
@@ -31,17 +31,17 @@ internal static class Bn254MontgomeryParameters
         0x30644e72e131a029UL
     ];
 
-    private static readonly ulong NPrimeValue = ComputeNPrime();
-    private static readonly ulong[] RSquaredLimbValues = ComputeRSquared();
-    private static readonly ulong[] OneMontgomeryLimbValues = ComputeOneMontgomery();
-    private static readonly ulong[] InversionExponentLimbValues = ComputeInversionExponent();
+    private static ulong NPrimeValue { get; } = ComputeNPrime();
+    private static ulong[] RSquaredLimbValues { get; } = ComputeRSquared();
+    private static ulong[] OneMontgomeryLimbValues { get; } = ComputeOneMontgomery();
+    private static ulong[] InversionExponentLimbValues { get; } = ComputeInversionExponent();
 
     //32-bit-limb forms for the lane-interleaved SIMD batch multiply (one 32×32→64
     //widening multiply per partial product). Eight little-endian 32-bit limbs,
     //and N'32 = −r⁻¹ mod 2³².
-    private static readonly uint NPrime32Value = ComputeNPrime32();
-    private static readonly uint[] Modulus32LimbValues = Split64To32(ModulusLimbValues);
-    private static readonly uint[] RSquared32LimbValues = Split64To32(RSquaredLimbValues);
+    private static uint NPrime32Value { get; } = ComputeNPrime32();
+    private static uint[] Modulus32LimbValues { get; } = Split64To32(ModulusLimbValues);
+    private static uint[] RSquared32LimbValues { get; } = Split64To32(RSquaredLimbValues);
 
 
     private static ulong ComputeNPrime()

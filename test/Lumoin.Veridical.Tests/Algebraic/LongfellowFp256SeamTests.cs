@@ -39,7 +39,7 @@ internal sealed class LongfellowFp256SeamTests
     private const int InverseRate = 4;
     private const int OpenedColumnCount = 2;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("fp256-width-gate");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("fp256-width-gate");
 
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
@@ -53,7 +53,7 @@ internal sealed class LongfellowFp256SeamTests
 
 
     //The Fp256 profile: of_scalar(u) reduces the integer u mod p; the fits predicate is the < p comparison.
-    private static LongfellowFieldProfile Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange);
+    private static LongfellowFieldProfile Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange, BaseMemoryPool.Shared);
 
 
     [TestMethod]

@@ -31,14 +31,14 @@ internal sealed class LigeroConstraintSystemBuilderTests
     private const int OpenedColumns = 4;
     private const int Block = 64;
 
-    private static readonly BigInteger P = P256BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger P { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
 
-    private static readonly byte[] TranscriptSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.cs-builder.v1");
-    private static readonly byte[] RandomnessSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.cs-builder.rng.v1");
+    private static byte[] TranscriptSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.cs-builder.v1");
+    private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.cs-builder.rng.v1");
 
-    private static readonly FiatShamirHashDelegate Hash = Blake3FiatShamirBackend.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = Blake3FiatShamirBackend.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
     [TestMethod]

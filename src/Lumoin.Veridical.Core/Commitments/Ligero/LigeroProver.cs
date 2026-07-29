@@ -58,6 +58,7 @@ public static class LigeroProver
     /// <param name="hashAlgorithm">The canonical hash-function name.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path; <see langword="null"/> (the default) keeps today's barycentric encode throughout the tableau build and the dot-response computation.</param>
     /// <returns>The proof; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a backend, the parameters or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span length does not match the layout.</exception>
@@ -82,7 +83,8 @@ public static class LigeroProver
         MerkleHashDelegate merkleHash,
         string hashAlgorithm,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         if(linearTargets.Length != linearConstraintCount * ScalarSize)
         {
@@ -99,11 +101,11 @@ public static class LigeroProver
 
         using LigeroCommitment commitment = Commit(
             parameters, witnesses, quadraticConstraints, random,
-            add, subtract, multiply, invert, columnHash, hashAlgorithm, merkleHash, curve, pool);
+            add, subtract, multiply, invert, columnHash, hashAlgorithm, merkleHash, curve, pool, rowExtenderFactory);
 
         return Prove(
             commitment, linearConstraintCount, linearConstraints, linearTargets, transcriptSeed,
-            add, subtract, multiply, invert, reduce, hash, squeeze, curve, pool);
+            add, subtract, multiply, invert, reduce, hash, squeeze, curve, pool, rowExtenderFactory);
     }
 
 
@@ -112,7 +114,7 @@ public static class LigeroProver
     /// <see cref="LigeroCommitment"/> carries the encoded tableau, its Merkle
     /// tree and the witness, so a commit-then-challenge protocol can absorb the
     /// root first and later call
-    /// <see cref="Prove(LigeroCommitment, int, ReadOnlySpan{LigeroLinearConstraint}, ReadOnlySpan{byte}, ReadOnlySpan{byte}, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, CurveParameterSet, BaseMemoryPool)"/>
+    /// <see cref="Prove(LigeroCommitment, int, ReadOnlySpan{LigeroLinearConstraint}, ReadOnlySpan{byte}, ReadOnlySpan{byte}, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, CurveParameterSet, BaseMemoryPool, LigeroRowExtenderFactory?)"/>
     /// with challenge-derived constraints — without rebuilding and re-encoding
     /// the tableau. The quadratic constraints participate in the tableau layout,
     /// so they bind at commit time; the linear constraints do not, so they bind
@@ -131,6 +133,7 @@ public static class LigeroProver
     /// <param name="merkleHash">The two-to-one Merkle compression.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path while the tableau builds; <see langword="null"/> (the default) keeps today's barycentric encode.</param>
     /// <returns>The standing commitment; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tableau, tree and witness copy transfer ownership to the returned LigeroCommitment, which releases them through its own Dispose; on a fault they are released before rethrow.")]
     public static LigeroCommitment Commit(
@@ -146,7 +149,8 @@ public static class LigeroProver
         string hashAlgorithm,
         MerkleHashDelegate merkleHash,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(random);
@@ -155,7 +159,7 @@ public static class LigeroProver
         ArgumentNullException.ThrowIfNull(hashAlgorithm);
         ArgumentNullException.ThrowIfNull(pool);
 
-        LigeroTableau tableau = LigeroTableau.Build(parameters, witnesses, quadraticConstraints, random, add, subtract, multiply, invert, curve, pool);
+        LigeroTableau tableau = LigeroTableau.Build(parameters, witnesses, quadraticConstraints, random, add, subtract, multiply, invert, curve, pool, rowExtenderFactory);
         MerkleTree? tree = null;
         IMemoryOwner<byte>? witnessOwner = null;
         try
@@ -203,6 +207,7 @@ public static class LigeroProver
     /// <param name="squeeze">The transcript XOF backend.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path for the dot-response's block-to-dblock extension; <see langword="null"/> (the default) keeps today's barycentric encode.</param>
     /// <returns>The proof; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The response and opened-column buffers and the root transfer ownership to the returned LigeroProof, which releases them through its own Dispose; the tableau and tree belong to the commitment.")]
     public static LigeroProof Prove(
@@ -219,7 +224,8 @@ public static class LigeroProver
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         ArgumentNullException.ThrowIfNull(commitment);
         ArgumentNullException.ThrowIfNull(add);
@@ -271,7 +277,7 @@ public static class LigeroProver
         bool transferred = false;
         try
         {
-            ComputeResponses(parameters, tableau, matrixOwner.Memory.Span, uLowDegree, uQuadratic, responsesOwner.Memory.Span, add, subtract, multiply, invert, curve, pool);
+            ComputeResponses(parameters, tableau, matrixOwner.Memory.Span, uLowDegree, uQuadratic, responsesOwner.Memory.Span, add, subtract, multiply, invert, curve, pool, rowExtenderFactory);
 
             //Absorb the responses, then draw the opened-column indices.
             int block = parameters.Block;
@@ -340,7 +346,8 @@ public static class LigeroProver
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         CurveParameterSet curve,
-        BaseMemoryPool pool)
+        BaseMemoryPool pool,
+        LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         int block = parameters.Block;
         int dblock = parameters.DoubleBlock;
@@ -375,11 +382,23 @@ public static class LigeroProver
         using IMemoryOwner<byte> aextWeightsOwner = pool.Rent(block * ScalarSize);
         Span<byte> aextWeights = aextWeightsOwner.Memory.Span[..(block * ScalarSize)];
         LigeroReedSolomonEncoder.ComputeWeights(block, parameters.NodeDomain, aextWeights, subtract, multiply, invert, curve, pool);
+
+        //The Aext shape (block -> dblock) is the same for every i, so — like the weights above — the
+        //extender is resolved once for the whole loop, not per row.
+        LigeroRowExtender? aextExtender = ResolveRowExtender(rowExtenderFactory, parameters.NodeDomain, block, dblock);
         for(int i = 0; i < nwqrow; i++)
         {
             aextMessage.Clear();
             matrix.Slice(i * w * ScalarSize, w * ScalarSize).CopyTo(aextMessage[(r * ScalarSize)..]);
-            LigeroReedSolomonEncoder.Encode(aextMessage, block, aext, dblock, parameters.NodeDomain, aextWeights, add, subtract, multiply, invert, curve, pool);
+            if(aextExtender is not null)
+            {
+                aextMessage.CopyTo(aext[..(block * ScalarSize)]);
+                aextExtender(aext);
+            }
+            else
+            {
+                LigeroReedSolomonEncoder.Encode(aextMessage, block, aext, dblock, parameters.NodeDomain, aextWeights, add, subtract, multiply, invert, curve, pool);
+            }
 
             ReadOnlySpan<byte> row = tableau.GetRowSpan(LigeroParameters.FirstWitnessRowIndex + i)[..(dblock * ScalarSize)];
             AddAssignPointwise(yDot, aext, row, dblock, scratch, add, multiply, curve);
@@ -566,6 +585,21 @@ public static class LigeroProver
             add(slot, scratch, sum, curve);
             sum.CopyTo(slot);
         }
+    }
+
+
+    //Consults the factory for the given shape, but only in the domain the row
+    //extenders are specified against — LigeroNodeDomain.ConsecutiveIntegers. A
+    //null factory, a BinaryField-domain shape, or a decline (the factory returns
+    //null) all fall back to the barycentric path unchanged.
+    private static LigeroRowExtender? ResolveRowExtender(LigeroRowExtenderFactory? factory, LigeroNodeDomain nodeDomain, int messageLength, int codewordLength)
+    {
+        if(factory is null || nodeDomain != LigeroNodeDomain.ConsecutiveIntegers)
+        {
+            return null;
+        }
+
+        return factory(messageLength, codewordLength);
     }
 
 

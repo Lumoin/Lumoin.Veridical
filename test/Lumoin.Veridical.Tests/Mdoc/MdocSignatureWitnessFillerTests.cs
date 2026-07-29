@@ -41,12 +41,12 @@ internal sealed class MdocSignatureWitnessFillerTests
     private const int IssuerColumnEnd = 1937;
     private const int MacFillsStart = 2971;
 
-    private static readonly BigInteger Prime = P256BaseFieldReference.FieldOrder;
-    private static readonly BigInteger CurveA = EcdsaNonceRecovery.A;
-    private static readonly BigInteger CurveB = P256BigIntegerG1Reference.CurveB;
+    private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
+    private static BigInteger CurveA { get; } = EcdsaNonceRecovery.A;
+    private static BigInteger CurveB { get; } = P256BigIntegerG1Reference.CurveB;
 
-    private static readonly ScalarAddDelegate GfAdd = Gf2k128Backend.GetAdd();
-    private static readonly ScalarMultiplyDelegate GfMultiply = Gf2k128Backend.GetMultiply();
+    private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+    private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
 
     private static byte[] Credential { get; } = ReadFixture(CredentialRelativePath);
 

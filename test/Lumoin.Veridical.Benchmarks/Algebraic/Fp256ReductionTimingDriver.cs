@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 internal static class Fp256ReductionTimingDriver
 {
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
     private const int Operands = 1024;
     private const int InnerMultiplies = 256;
     private const int Rounds = 60;

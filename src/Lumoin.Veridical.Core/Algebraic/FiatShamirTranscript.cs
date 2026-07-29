@@ -78,10 +78,10 @@ public sealed class FiatShamirTranscript: SensitiveMemory
     //Operation prefixes encoded as UTF-8 byte literals. The four kinds
     //of hash call the construction performs are distinguished by these
     //fixed-length prefixes; their distinctness is a soundness invariant.
-    private static readonly byte[] InitPrefix = Encoding.UTF8.GetBytes("transcript:init");
-    private static readonly byte[] AbsorbPrefix = Encoding.UTF8.GetBytes("transcript:absorb");
-    private static readonly byte[] ChallengePrefix = Encoding.UTF8.GetBytes("transcript:challenge");
-    private static readonly byte[] StateUpdatePrefix = Encoding.UTF8.GetBytes("transcript:state-update");
+    private static byte[] InitPrefix { get; } = Encoding.UTF8.GetBytes("transcript:init");
+    private static byte[] AbsorbPrefix { get; } = Encoding.UTF8.GetBytes("transcript:absorb");
+    private static byte[] ChallengePrefix { get; } = Encoding.UTF8.GetBytes("transcript:challenge");
+    private static byte[] StateUpdatePrefix { get; } = Encoding.UTF8.GetBytes("transcript:state-update");
 
 
     private readonly byte[] domainLabelBytes;

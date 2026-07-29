@@ -11,10 +11,12 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// The field-specific subfield handling the Ligero proof serializer's run-length encoder needs: the
 /// <c>in_subfield</c> predicate that bounds each run, the subfield element byte width
 /// (<c>Field::kSubFieldBytes</c>), and the <c>to_bytes_subfield</c> / <c>of_bytes_subfield</c> framing.
-/// It is the serializer's seam between the two fields without a type hierarchy: the binary hash circuit
+/// It is the serializer's seam between the fields without a type hierarchy: the binary hash circuit
 /// builds <see cref="ForGf2k128"/> (the GF(2^128) basis solve over a pooled row-echelon reduction), the
 /// prime signature circuit builds <see cref="ForFp256"/> (the base field is its own subfield, so every
-/// element is in-subfield and the subfield framing equals the full-field framing).
+/// element is in-subfield and the subfield framing equals the full-field framing), and the FIPS 204
+/// sextic ML-DSA circuit field builds <see cref="ForFp24Sextic"/> (the subfield is the base field
+/// <c>F_q</c>, so an in-subfield element compresses to its 4-byte coordinate 0).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -115,9 +117,89 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
     }
 
 
+    /// <summary>
+    /// The FIPS 204 sextic ML-DSA circuit-field codec: the subfield is the base field <c>F_q</c>
+    /// (<c>fp24_6.h</c>: <c>kSubFieldBytes = 4</c>, <c>in_subfield</c> = coordinates 1…5 zero), so an
+    /// in-subfield element compresses to its 4-byte little-endian coordinate 0 and
+    /// <c>of_bytes_subfield</c> applies the base field's <c>fits</c> guard. It owns no pooled state.
+    /// </summary>
+    /// <param name="profile">The sextic field profile (validated as the sextic profile is the serializer's caller; carried for symmetry with <see cref="ForFp256"/>).</param>
+    public static LongfellowSubfieldRunCodec ForFp24Sextic(LongfellowFieldProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        return new LongfellowSubfieldRunCodec(
+            Fp24SexticSubFieldBytes,
+            Fp24SexticInSubfield,
+            Fp24SexticToBytesSubfield,
+            Fp24SexticOfBytesSubfield,
+            state: null);
+    }
+
+
+    /// <summary>The sextic codec's subfield element width (the reference <c>Fp24_6</c>'s <c>kSubFieldBytes</c>: one 4-byte base-field coordinate).</summary>
+    private const int Fp24SexticSubFieldBytes = 4;
+
+    /// <summary>The byte offset of coordinate 0 inside the canonical sextic container (the least-significant 4-byte big-endian limb).</summary>
+    private const int Fp24SexticLimbZeroOffset = Scalar.SizeBytes - Fp24SexticSubFieldBytes;
+
+    /// <summary>The byte offset where the canonical sextic container's coordinates 1…5 begin (they span up to coordinate 0's offset).</summary>
+    private const int Fp24SexticUpperLimbsOffset = 8;
+
+    /// <summary>The FIPS 204 prime <c>q = 2^23 − 2^13 + 1</c>: the <c>fits</c> bound of the sextic codec's <c>of_bytes_subfield</c>.</summary>
+    private const uint Fp24SexticFieldModulus = 8380417;
+
+
     /// <summary>The reference's <c>in_subfield(req[i])</c>: whether the run-length pass should treat the element as a subfield element.</summary>
     /// <param name="element">The canonical scalar to test.</param>
     public bool InSubfield(ReadOnlySpan<byte> element) => inSubfield(element);
+
+
+    /// <summary>The sextic <c>in_subfield</c> (<c>fp24_6.h</c>): coordinates 1…5 all zero.</summary>
+    /// <param name="element">The canonical sextic scalar to test.</param>
+    /// <returns><see langword="true"/> when the element lies in the base field.</returns>
+    private static bool Fp24SexticInSubfield(ReadOnlySpan<byte> element)
+    {
+        ReadOnlySpan<byte> upperLimbs = element[Fp24SexticUpperLimbsOffset..Fp24SexticLimbZeroOffset];
+        for(int i = 0; i < upperLimbs.Length; i++)
+        {
+            if(upperLimbs[i] != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+
+    /// <summary>The sextic <c>to_bytes_subfield</c>: coordinate 0 as its 4 little-endian wire bytes.</summary>
+    /// <param name="element">The canonical sextic scalar (asserted in-subfield by the caller's run logic).</param>
+    /// <param name="destination">Receives the 4 subfield bytes.</param>
+    private static void Fp24SexticToBytesSubfield(ReadOnlySpan<byte> element, Span<byte> destination)
+    {
+        uint coordinate = BinaryPrimitives.ReadUInt32BigEndian(element.Slice(Fp24SexticLimbZeroOffset, Fp24SexticSubFieldBytes));
+        BinaryPrimitives.WriteUInt32LittleEndian(destination[..Fp24SexticSubFieldBytes], coordinate);
+    }
+
+
+    /// <summary>The sextic <c>of_bytes_subfield</c>: 4 little-endian wire bytes into coordinate 0, with the base field's <c>fits</c> guard (the parse-safe reader's graceful reject).</summary>
+    /// <param name="source">The 4 subfield bytes.</param>
+    /// <param name="element">Receives the canonical sextic scalar, or all zeros on rejection.</param>
+    /// <returns><see langword="true"/> when the bytes encode a base-field element.</returns>
+    private static bool Fp24SexticOfBytesSubfield(ReadOnlySpan<byte> source, Span<byte> element)
+    {
+        element.Clear();
+        uint coordinate = BinaryPrimitives.ReadUInt32LittleEndian(source[..Fp24SexticSubFieldBytes]);
+        if(coordinate >= Fp24SexticFieldModulus)
+        {
+            return false;
+        }
+
+        BinaryPrimitives.WriteUInt32BigEndian(element.Slice(Fp24SexticLimbZeroOffset, Fp24SexticSubFieldBytes), coordinate);
+
+        return true;
+    }
 
 
     /// <summary>The reference's <c>to_bytes_subfield</c>: writes the element's <see cref="SubFieldBytes"/> subfield bytes.</summary>

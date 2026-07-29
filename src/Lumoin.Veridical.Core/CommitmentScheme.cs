@@ -106,7 +106,7 @@ public readonly struct CommitmentScheme: IEquatable<CommitmentScheme>
     public static CommitmentScheme Ligero { get; } = new(9);
 
 
-    private static readonly List<CommitmentScheme> commitmentSchemes =
+    private static List<CommitmentScheme> commitmentSchemes { get; } =
         [None, Kzg, HyperKzg, Mercury, Ipa, Fri, Hyrax, Pedersen, BaseFold, Ligero];
 
 

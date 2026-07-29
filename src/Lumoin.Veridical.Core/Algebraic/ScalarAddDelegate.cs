@@ -14,9 +14,14 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <param name="curve">Identifies the field whose order the result is reduced modulo.</param>
 /// <remarks>
 /// <para>
-/// The destination span must have the canonical byte length for the supplied
-/// curve's scalar field — for BLS12-381, 32 bytes. A correct backend reduces
-/// the result modulo the field order before writing.
+/// The destination span must have the canonical byte length of the field the
+/// specific delegate instance carries. For a scalar-field backend that is the
+/// curve's scalar field — for BLS12-381, 32 bytes — but the same delegate type
+/// also carries base-field and extension-field arithmetic for the constant-time
+/// ladders (48-byte BLS12-381 base-field elements, 96-byte Fp2 elements), so
+/// the element length follows from the factory that produced the instance, not
+/// from the curve alone. A correct backend reduces the result modulo its
+/// field's order before writing.
 /// </para>
 /// <para>
 /// This is an inner-loop arithmetic delegate. It does not stamp provenance

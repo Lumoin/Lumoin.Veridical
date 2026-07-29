@@ -30,11 +30,11 @@ public sealed class BbsSignature: SensitiveMemory
     public const int SizeBytes = ASizeBytes + ESizeBytes;
 
 
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.Signature)
+    private static Tag AlgebraicTagSha256 { get; } = Tag.Create(AlgebraicRole.Signature)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Sha256);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.Signature)
+    private static Tag AlgebraicTagShake256 { get; } = Tag.Create(AlgebraicRole.Signature)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Shake256);
 

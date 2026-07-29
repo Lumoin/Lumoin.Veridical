@@ -53,6 +53,14 @@ public static class WellKnownLookupArguments
     /// </summary>
     public const string CaulkPlus = "CaulkPlus";
 
+    /// <summary>
+    /// LogUp lookup argument (Haböck, 2022). Multivariate lookups from
+    /// logarithmic derivatives: one committed multiplicity column, a helper
+    /// column of fractional terms, and a single sumcheck. Linear in the table
+    /// size; the argument this library implements.
+    /// </summary>
+    public const string LogUp = "LogUp";
+
 
     /// <summary>Determines whether the specified value identifies the Lasso lookup argument.</summary>
     public static bool IsLasso(string? value) =>
@@ -79,10 +87,15 @@ public static class WellKnownLookupArguments
         !string.IsNullOrEmpty(value)
             && string.Equals(value, CaulkPlus, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Determines whether the specified value identifies the LogUp lookup argument.</summary>
+    public static bool IsLogUp(string? value) =>
+        !string.IsNullOrEmpty(value)
+            && string.Equals(value, LogUp, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Determines whether the specified lookup argument is sub-linear in the
-    /// table size. Lasso, Jolt, and Caulk+ are sub-linear; Plookup and the
-    /// Halo2 lookup argument are linear.
+    /// table size. Lasso, Jolt, and Caulk+ are sub-linear; Plookup, the
+    /// Halo2 lookup argument, and LogUp are linear.
     /// </summary>
     public static bool IsSublinear(string? value) =>
         IsLasso(value) || IsJolt(value) || IsCaulkPlus(value);

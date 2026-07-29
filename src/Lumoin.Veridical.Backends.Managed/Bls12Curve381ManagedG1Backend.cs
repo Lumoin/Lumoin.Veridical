@@ -14,9 +14,12 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <para>
 /// The underlying implementations remain internal — callers compose through this
 /// factory and the <see cref="G1ArithmeticBackend"/> bundle rather than naming a
-/// specific reference. The arithmetic is correctness-first BigInteger (the same
-/// ground-truth the production backends are validated against); it is not
-/// constant-time and not hardware-accelerated.
+/// specific reference. Scalar multiplication — the one group operation that takes a
+/// secret scalar at the BBS signing and proof seams — runs through the constant-time
+/// ladder; the remaining operations (add, negate, multi-scalar multiplication, the
+/// predicates) take only public inputs and stay on the correctness-first BigInteger
+/// reference and the Pippenger bucket method, which are not constant-time. Nothing
+/// is hardware-accelerated.
 /// </para>
 /// <para>
 /// Hash-to-curve is ciphersuite-keyed, so it is exposed as the explicit
@@ -27,8 +30,9 @@ namespace Lumoin.Veridical.Backends.Managed;
 public static class Bls12Curve381ManagedG1Backend
 {
     /// <summary>
-    /// Builds the BLS12-381 G1 backend bundle: add, negate, and scalar-multiply from
-    /// the BigInteger reference, multi-scalar multiplication from the caching
+    /// Builds the BLS12-381 G1 backend bundle: add and negate from the BigInteger
+    /// reference, scalar-multiply from the constant-time ladder (byte-identical to
+    /// the reference, agreement-gated), multi-scalar multiplication from the caching
     /// Pippenger backend, and the on-curve and prime-order-subgroup predicates.
     /// </summary>
     public static G1ArithmeticBackend Create()
@@ -37,7 +41,7 @@ public static class Bls12Curve381ManagedG1Backend
             CurveParameterSet.Bls12Curve381,
             Bls12Curve381BigIntegerG1Reference.GetAdd(),
             Bls12Curve381BigIntegerG1Reference.GetNegate(),
-            Bls12Curve381BigIntegerG1Reference.GetScalarMultiply(),
+            Bls12Curve381ConstantTimeG1Backend.GetScalarMultiply(),
             Bls12Curve381PippengerG1Backend.CreateCachingMultiScalarMultiply(),
             Bls12Curve381BigIntegerG1Reference.GetIsOnCurve(),
             Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup());

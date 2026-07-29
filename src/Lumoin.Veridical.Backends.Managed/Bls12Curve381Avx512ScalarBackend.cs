@@ -76,7 +76,7 @@ internal static class Bls12Curve381Avx512ScalarBackend
     /// BLS12-381 scalar-field modulus <c>r</c> as four little-endian
     /// 64-bit limbs.
     /// </summary>
-    private static readonly ulong[] FieldOrderLimbs =
+    private static ulong[] FieldOrderLimbs { get; } =
     [
         0xffffffff00000001UL,
         0x53bda402fffe5bfeUL,
@@ -86,10 +86,10 @@ internal static class Bls12Curve381Avx512ScalarBackend
 
 
     /// <summary>Per-lane broadcasts of the four limbs of <c>r</c>. Each <see cref="Vector512{T}"/> has the same limb value in all eight 64-bit lanes.</summary>
-    private static readonly Vector512<ulong> FieldOrderLane0 = Vector512.Create(0xffffffff00000001UL);
-    private static readonly Vector512<ulong> FieldOrderLane1 = Vector512.Create(0x53bda402fffe5bfeUL);
-    private static readonly Vector512<ulong> FieldOrderLane2 = Vector512.Create(0x3339d80809a1d805UL);
-    private static readonly Vector512<ulong> FieldOrderLane3 = Vector512.Create(0x73eda753299d7d48UL);
+    private static Vector512<ulong> FieldOrderLane0 { get; } = Vector512.Create(0xffffffff00000001UL);
+    private static Vector512<ulong> FieldOrderLane1 { get; } = Vector512.Create(0x53bda402fffe5bfeUL);
+    private static Vector512<ulong> FieldOrderLane2 { get; } = Vector512.Create(0x3339d80809a1d805UL);
+    private static Vector512<ulong> FieldOrderLane3 { get; } = Vector512.Create(0x73eda753299d7d48UL);
 
 
     /// <summary>Returns the AVX-512-backed scalar-add delegate.</summary>
@@ -145,7 +145,8 @@ internal static class Bls12Curve381Avx512ScalarBackend
         sum.CopyTo(sumMinusR);
         bool borrow = SubtractWithBorrow256(sumMinusR, FieldOrderLimbs);
 
-        bool useReduced = carry || !borrow;
+        //Branch-free combination of the secret-derived carry and borrow flags.
+        bool useReduced = carry | !borrow;
         ConditionalSelect(sumMinusR, sum, useReduced, result);
     }
 
@@ -589,10 +590,10 @@ internal static class Bls12Curve381Avx512ScalarBackend
 
     private const int Limb32Count = 8;
 
-    private static readonly Vector512<ulong> Low32Mask = Vector512.Create(0xFFFFFFFFUL);
-    private static readonly Vector512<ulong> NPrime32Broadcast = Vector512.Create((ulong)Bls12Curve381MontgomeryParameters.NPrime32);
-    private static readonly Vector512<ulong>[] Modulus32Broadcast = BuildBroadcast(Bls12Curve381MontgomeryParameters.Modulus32Limbs);
-    private static readonly Vector512<ulong>[] RSquared32Broadcast = BuildBroadcast(Bls12Curve381MontgomeryParameters.RSquared32Limbs);
+    private static Vector512<ulong> Low32Mask { get; } = Vector512.Create(0xFFFFFFFFUL);
+    private static Vector512<ulong> NPrime32Broadcast { get; } = Vector512.Create((ulong)Bls12Curve381MontgomeryParameters.NPrime32);
+    private static Vector512<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bls12Curve381MontgomeryParameters.Modulus32Limbs);
+    private static Vector512<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bls12Curve381MontgomeryParameters.RSquared32Limbs);
 
 
     private static Vector512<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)

@@ -24,9 +24,9 @@ internal sealed class EcdsaSignatureWitnessTests
     private const int ScalarSize = 32;
     private const int LadderBits = 256;
 
-    private static readonly BigInteger Prime = EcdsaNonceRecovery.P;
-    private static readonly BigInteger CurveA = EcdsaNonceRecovery.A;
-    private static readonly BigInteger CurveB = P256BigIntegerG1Reference.CurveB;
+    private static BigInteger Prime { get; } = EcdsaNonceRecovery.P;
+    private static BigInteger CurveA { get; } = EcdsaNonceRecovery.A;
+    private static BigInteger CurveB { get; } = P256BigIntegerG1Reference.CurveB;
 
     //A fixed message so the gate is deterministic given a key; the key itself is fixed below.
     private static ReadOnlySpan<byte> Message => "EcdsaSignatureWitness region byte-oracle gate."u8;

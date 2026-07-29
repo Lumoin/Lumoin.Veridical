@@ -48,7 +48,7 @@ public static class TimingLeakageHarness
     //Fractions of the combined sample kept before each Welch test: 1.0 is the
     //untrimmed test, the tighter crops discard the slow tail where scheduling noise
     //hides a difference the operation itself does not carry.
-    private static readonly double[] KeptFractions = [1.0, 0.999, 0.99, 0.95, 0.9];
+    private static double[] KeptFractions { get; } = [1.0, 0.999, 0.99, 0.95, 0.9];
 
 
     /// <summary>

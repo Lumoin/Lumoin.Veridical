@@ -28,8 +28,22 @@ paths, and is explicit about its limits.
   (Fermat over a *public* exponent), not data-dependent. In particular, NIST P-256 **scalar** arithmetic mod
   the group order `n` — the field SECDSA and ECDSA sign in — runs through a constant-time Montgomery backend
   (`P256ScalarMontgomeryBackend`), so signing does not branch on the nonce, the PIN-key, or the hardware-key
-  blinds.
-- **The honest limit.** This is *best-effort constant-time in managed code*, **not** a hardware-guaranteed
+  blinds. Secret-scalar **point multiplication** runs through fixed-iteration double-and-add-always ladders
+  over complete addition formulas on constant-time limb base fields: P-256 (`P256ConstantTimeG1Backend` — the
+  ECDSA/SECDSA `k·G`, the split-key derivation, and the DL-equality NIZK commitments), BLS12-381 G1
+  (`Bls12Curve381ConstantTimeG1Backend` — the BBS signature `A = B·(1/(SK+e))` and the proof-init
+  multiplications), BLS12-381 G2 (`Bls12Curve381ConstantTimeG2Backend` — the BBS key-generation
+  `PK = SK·BP2`, over a constant-time Fp2 layer), and BN254 G1 (`Bn254ConstantTimeG1Backend` — prover-side
+  commitment blinds that flow through the single-scalar seam). A deterministic operation-trace gate pins each
+  ladder's field-operation sequence as scalar-independent, and a dudect-style timing pair per ladder is the
+  complementary statistical check.
+- **Multi-scalar multiplication is not constant-time.** The Pippenger bucket method behind the
+  `G1MultiScalarMultiplyDelegate` seam remains variable-time on every curve. On BLS12-381 and BN254 some
+  prover-side multi-scalar calls carry per-proof ephemeral blinds and committed witness rows (BBS proof
+  `Bbar`/`T1`/`T2`; Hyrax and Pedersen commitment openings). These are lower-value, per-invocation secrets —
+  not long-term keys — and a constant-time multi-scalar path is a separate, explicitly open deliverable
+  behind the same delegate seam.
+- **The limit.** This is *best-effort constant-time in managed code*, **not** a hardware-guaranteed
   constant-time bound. .NET does not guarantee that a value-selecting expression (`cond ? ~0UL : 0UL`) compiles
   to a conditional move rather than a branch, and the JIT, GC, and platform may introduce timing variation
   outside the library's control. Where a guarantee must be absolute, a hardened native backend behind the
@@ -129,6 +143,18 @@ soundness rests on assumptions a consumer must uphold:
   **truncated algebraic compression** (a native Poseidon shadow root), that compression is not
   collision-resistant and position binding then rests on the eprint 2026/089 argument — the leaf
   pre-hashing that argument requires is already in place and must be preserved.
+- **A parameter set's realised soundness is computed, not assumed.** The per-path knowledge-soundness
+  accounting — the opened-column/query proximity term, the Spartan sumcheck Fiat-Shamir term, and the
+  low-order field terms, with the effective level their minimum — is computed by
+  `WellKnownSecurityLevels` and documented in `src/Lumoin.Veridical.Core/Commitments/SECURITY-BITS.md`.
+  The practically important hazard it closes: a Ligero opening is clamped to the code's extension
+  width, so a small circuit can silently realise far fewer soundness bits than its query count
+  nominally targets; `WellKnownSecurityLevels.ThrowIfLigeroSoundnessClamped` turns that into a loud
+  failure, and the `veridical prove`/`verify` tool enforces it at both prove and verify time. The
+  tool's wired set (BLS12-381, Ligero inverse rate 16, 64 opened columns) realises the
+  128-bit-classical proximity target under the conservative Johnson list-decoding regime
+  (Johnson-radius pricing; the η technicality and its sub-0.1-bit cost are documented in
+  `SECURITY-BITS.md`).
 
 ## Post-quantum posture
 
@@ -175,9 +201,14 @@ the dual-field zero-knowledge stack. A change that would alter a proof's bytes i
 ### Longfellow upstream pin
 
 The `draft-google-cfrg-libzk` Internet-Draft is expired (`-01` is the latest revision; not adopted by CFRG),
-so the `google/longfellow-zk` repository is the de-facto specification. The committed Longfellow fixtures are
-pinned to upstream commit `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (`v0.9-90-gd8ad8f6`, 2026-05-29 — also
-the upstream `main` HEAD as of 2026-07-09) and to the circuit generation the upstream `kZkSpecs` table names
+so the `google/longfellow-zk` repository is the de-facto specification. The conformance pin is upstream
+commit `3dfaac72abed4a6fbcd0ab8688b39168bb224133` (2026-07-26, the upstream `main` HEAD as of 2026-07-28).
+The committed Longfellow fixtures are reference dumps captured at commit
+`d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (2026-05-29) and re-verified at the pin: the upstream range
+between the two commits contains no change to the serialization, transcript, prover, scheduler or circuit
+generation surfaces, the reference's own test suite passes at the pin in the local oracle, and every pinned
+compile-counter dump reproduces identically there. The fixtures target the circuit generation the upstream
+`kZkSpecs` table names
 `longfellow-libzk-v1` version 7. Two registry rows are pinned: the one-attribute bundle (`block_enc`
 4151/4096) and the four-attribute breadth bundle (`kZkSpecs[3]`, `block_enc` 4415/4096, sharing the
 byte-identical signature circuit); both run Ligero rate 7 with 132 opened columns and 40 SHA-256 blocks of

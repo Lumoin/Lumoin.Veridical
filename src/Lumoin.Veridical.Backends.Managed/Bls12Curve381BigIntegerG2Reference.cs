@@ -57,7 +57,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
         CultureInfo.InvariantCulture);
 
 
-    private static readonly BigInteger ModInverseExponent = BaseFieldPrime - 2;
+    private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
     private const int ComponentSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
     private const int CompressedSize = WellKnownCurves.Bls12Curve381G2CompressedSizeBytes;
@@ -139,7 +139,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>An Fp2 element represented as a (c0, c1) BigInteger pair.</summary>
-    private readonly record struct Fp2Value(BigInteger C0, BigInteger C1)
+    internal readonly record struct Fp2Value(BigInteger C0, BigInteger C1)
     {
         public static Fp2Value Zero { get; } = new(BigInteger.Zero, BigInteger.Zero);
         public static Fp2Value One { get; } = new(BigInteger.One, BigInteger.Zero);
@@ -149,7 +149,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>An affine G2 point over Fp2. The identity is represented by <see cref="IsInfinity"/>.</summary>
-    private readonly record struct AffinePoint(Fp2Value X, Fp2Value Y, bool IsInfinity)
+    internal readonly record struct AffinePoint(Fp2Value X, Fp2Value Y, bool IsInfinity)
     {
         public static AffinePoint Identity { get; } = new(Fp2Value.Zero, Fp2Value.Zero, IsInfinity: true);
     }
@@ -450,7 +450,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>Decodes the canonical compressed bytes into an affine point; throws on malformed input.</summary>
-    private static AffinePoint Decode(ReadOnlySpan<byte> bytes)
+    internal static AffinePoint Decode(ReadOnlySpan<byte> bytes)
     {
         if(!TryDecode(bytes, out AffinePoint result))
         {
@@ -542,7 +542,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>Encodes an affine point in the canonical 96-byte compressed form.</summary>
-    private static void Encode(AffinePoint point, Span<byte> destination)
+    internal static void Encode(AffinePoint point, Span<byte> destination)
     {
         if(destination.Length != CompressedSize)
         {

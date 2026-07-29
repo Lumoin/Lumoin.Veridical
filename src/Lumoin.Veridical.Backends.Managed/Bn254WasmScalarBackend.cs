@@ -69,7 +69,7 @@ internal static class Bn254WasmScalarBackend
 
 
     /// <summary>BN254 scalar-field modulus <c>r</c> as four little-endian 64-bit limbs.</summary>
-    private static readonly ulong[] FieldOrderLimbs =
+    private static ulong[] FieldOrderLimbs { get; } =
     [
         0x43e1f593f0000001UL,
         0x2833e84879b97091UL,
@@ -79,10 +79,10 @@ internal static class Bn254WasmScalarBackend
 
 
     /// <summary>Per-lane broadcasts of the four limbs of <c>r</c>. Each <see cref="Vector128{T}"/> has the same limb value in both 64-bit lanes.</summary>
-    private static readonly Vector128<ulong> FieldOrderLane0 = Vector128.Create(0x43e1f593f0000001UL);
-    private static readonly Vector128<ulong> FieldOrderLane1 = Vector128.Create(0x2833e84879b97091UL);
-    private static readonly Vector128<ulong> FieldOrderLane2 = Vector128.Create(0xb85045b68181585dUL);
-    private static readonly Vector128<ulong> FieldOrderLane3 = Vector128.Create(0x30644e72e131a029UL);
+    private static Vector128<ulong> FieldOrderLane0 { get; } = Vector128.Create(0x43e1f593f0000001UL);
+    private static Vector128<ulong> FieldOrderLane1 { get; } = Vector128.Create(0x2833e84879b97091UL);
+    private static Vector128<ulong> FieldOrderLane2 { get; } = Vector128.Create(0xb85045b68181585dUL);
+    private static Vector128<ulong> FieldOrderLane3 { get; } = Vector128.Create(0x30644e72e131a029UL);
 
 
     /// <summary>Returns the WASM PackedSimd scalar-add delegate.</summary>
@@ -140,7 +140,8 @@ internal static class Bn254WasmScalarBackend
         sum.CopyTo(sumMinusR);
         bool borrow = SubtractWithBorrow256(sumMinusR, FieldOrderLimbs);
 
-        bool useReduced = carry || !borrow;
+        //Branch-free combination of the secret-derived carry and borrow flags.
+        bool useReduced = carry | !borrow;
         ConditionalSelect(sumMinusR, sum, useReduced, result);
     }
 
@@ -606,10 +607,10 @@ internal static class Bn254WasmScalarBackend
 
     private const int Limb32Count = 8;
 
-    private static readonly Vector128<ulong> Low32Mask = Vector128.Create(0xFFFFFFFFUL);
-    private static readonly Vector128<ulong> NPrime32Broadcast = Vector128.Create((ulong)Bn254MontgomeryParameters.NPrime32);
-    private static readonly Vector128<ulong>[] Modulus32Broadcast = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
-    private static readonly Vector128<ulong>[] RSquared32Broadcast = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
+    private static Vector128<ulong> Low32Mask { get; } = Vector128.Create(0xFFFFFFFFUL);
+    private static Vector128<ulong> NPrime32Broadcast { get; } = Vector128.Create((ulong)Bn254MontgomeryParameters.NPrime32);
+    private static Vector128<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
+    private static Vector128<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
 
 
     private static Vector128<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)

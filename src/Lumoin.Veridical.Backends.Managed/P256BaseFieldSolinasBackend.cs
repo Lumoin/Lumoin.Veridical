@@ -32,12 +32,12 @@ internal static class P256BaseFieldSolinasBackend
     private const int ExponentBitCount = LimbCount * 64;
     private const int ZeroWord = 16;
 
-    private static readonly ulong[] ModulusLimbValues = ComputeModulusLimbs();
-    private static readonly ulong[] InversionExponentLimbValues = ComputeInversionExponent();
+    private static ulong[] ModulusLimbValues { get; } = ComputeModulusLimbs();
+    private static ulong[] InversionExponentLimbValues { get; } = ComputeInversionExponent();
 
     //δ = 2²⁵⁶ − p = 2²²⁴ − 2¹⁹² − 2⁹⁶ + 1 ≡ 2²⁵⁶ (mod p). Below 2²²⁴, so folding a
     //small (≤ 6) top word as word·δ lands below p with no further reduction.
-    private static readonly ulong[] DeltaLimbValues = ComputeDelta();
+    private static ulong[] DeltaLimbValues { get; } = ComputeDelta();
 
     private static ReadOnlySpan<ulong> ModulusLimbs => ModulusLimbValues;
 
@@ -45,8 +45,8 @@ internal static class P256BaseFieldSolinasBackend
     //32-bit-word indices of the product c (least-significant word first; index 16
     //means a zero word), and the coefficient the term enters the sum with:
     //s1,s4,s5 add once; s2,s3 add twice; s6,s7,s8,s9 subtract once.
-    private static readonly int[] TermSignedTimes = [1, 2, 2, 1, 1, -1, -1, -1, -1];
-    private static readonly int[][] TermWordIndices =
+    private static int[] TermSignedTimes { get; } = [1, 2, 2, 1, 1, -1, -1, -1, -1];
+    private static int[][] TermWordIndices { get; } =
     [
         [0, 1, 2, 3, 4, 5, 6, 7],            //s1 = (c7 c6 c5 c4 c3 c2 c1 c0)
         [16, 16, 16, 11, 12, 13, 14, 15],    //s2 = (c15 c14 c13 c12 c11 0 0 0)

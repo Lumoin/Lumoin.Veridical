@@ -33,11 +33,11 @@ namespace Lumoin.Veridical.Bbs;
 /// </remarks>
 public sealed class BbsPseudonymProof: SensitiveMemory
 {
-    private static readonly Tag AlgebraicTagSha256 = Tag.Create(AlgebraicRole.ZkProof)
+    private static Tag AlgebraicTagSha256 { get; } = Tag.Create(AlgebraicRole.ZkProof)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
 
-    private static readonly Tag AlgebraicTagShake256 = Tag.Create(AlgebraicRole.ZkProof)
+    private static Tag AlgebraicTagShake256 { get; } = Tag.Create(AlgebraicRole.ZkProof)
         .With(CurveParameterSet.Bls12Curve381)
         .With(BbsCiphersuite.Bls12Curve381Shake256Pseudonym);
 

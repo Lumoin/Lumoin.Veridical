@@ -54,7 +54,7 @@ internal static class Bn254Avx2ScalarBackend
     /// BN254 scalar-field modulus <c>r</c> as four little-endian 64-bit limbs.
     /// <c>r = 0x30644e72e131a029 b85045b68181585d 2833e84879b97091 43e1f593f0000001</c>.
     /// </summary>
-    private static readonly ulong[] FieldOrderLimbs =
+    private static ulong[] FieldOrderLimbs { get; } =
     [
         0x43e1f593f0000001UL,
         0x2833e84879b97091UL,
@@ -125,7 +125,7 @@ internal static class Bn254Avx2ScalarBackend
         //correct reduced result. Otherwise, if sumMinusR did not borrow then sum >= r
         //and the subtracted value is correct. In both cases we want sumMinusR; only
         //when neither holds do we want sum.
-        bool useReduced = carry || !borrow;
+        bool useReduced = carry | !borrow;
         ConditionalSelect(sumMinusR, sum, useReduced, result);
     }
 
@@ -544,10 +544,10 @@ internal static class Bn254Avx2ScalarBackend
 
 
     /// <summary>Per-lane broadcasts of the four limbs of the BN254 scalar modulus <c>r</c>; each lane of every register holds the same limb, because the quartet shares the modulus.</summary>
-    private static readonly Vector256<ulong> FieldOrderLane0 = Vector256.Create(0x43e1f593f0000001UL);
-    private static readonly Vector256<ulong> FieldOrderLane1 = Vector256.Create(0x2833e84879b97091UL);
-    private static readonly Vector256<ulong> FieldOrderLane2 = Vector256.Create(0xb85045b68181585dUL);
-    private static readonly Vector256<ulong> FieldOrderLane3 = Vector256.Create(0x30644e72e131a029UL);
+    private static Vector256<ulong> FieldOrderLane0 { get; } = Vector256.Create(0x43e1f593f0000001UL);
+    private static Vector256<ulong> FieldOrderLane1 { get; } = Vector256.Create(0x2833e84879b97091UL);
+    private static Vector256<ulong> FieldOrderLane2 { get; } = Vector256.Create(0xb85045b68181585dUL);
+    private static Vector256<ulong> FieldOrderLane3 { get; } = Vector256.Create(0x30644e72e131a029UL);
 
 
     /// <summary>Transposes <see cref="ScalarsPerQuartet"/> scalar-major canonical encodings into limb-major SIMD registers (lane <c>i</c> holds scalar <c>i</c>'s contribution at that limb).</summary>
@@ -601,10 +601,10 @@ internal static class Bn254Avx2ScalarBackend
 
     private const int Limb32Count = 8;
 
-    private static readonly Vector256<ulong> Low32Mask = Vector256.Create(0xFFFFFFFFUL);
-    private static readonly Vector256<ulong> NPrime32Broadcast = Vector256.Create((ulong)Bn254MontgomeryParameters.NPrime32);
-    private static readonly Vector256<ulong>[] Modulus32Broadcast = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
-    private static readonly Vector256<ulong>[] RSquared32Broadcast = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
+    private static Vector256<ulong> Low32Mask { get; } = Vector256.Create(0xFFFFFFFFUL);
+    private static Vector256<ulong> NPrime32Broadcast { get; } = Vector256.Create((ulong)Bn254MontgomeryParameters.NPrime32);
+    private static Vector256<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
+    private static Vector256<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
 
 
     private static Vector256<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)

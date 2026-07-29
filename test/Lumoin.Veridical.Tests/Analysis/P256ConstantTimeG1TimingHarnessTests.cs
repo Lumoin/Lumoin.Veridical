@@ -20,22 +20,34 @@ namespace Lumoin.Veridical.Tests.Analysis;
 [TestClass]
 internal sealed class P256ConstantTimeG1TimingHarnessTests
 {
-    //A modest live-measurement budget: enough to reach a decisive verdict quickly
-    //on a shared runner, far below a real leakage assessment's budget.
+    /// <summary>
+    /// A modest live-measurement budget: enough to reach a decisive verdict quickly
+    /// on a shared runner, far below a real leakage assessment's budget.
+    /// </summary>
     private const int MeasurementCount = 20000;
+    /// <summary>
+    /// A modest live-measurement budget: enough to reach a decisive verdict quickly
+    /// on a shared runner, far below a real leakage assessment's budget.
+    /// </summary>
     private const int WarmupCount = 2000;
     private const int ScalarInputLength = 32;
 
-    //SEC1 compressed P-256 point: a 0x02/0x03 parity prefix plus the 32-byte x-coordinate.
+    /// <summary>
+    /// SEC1 compressed P-256 point: a 0x02/0x03 parity prefix plus the 32-byte x-coordinate.
+    /// </summary>
     private const int CompressedPointSize = 33;
 
-    //The fixed class's scalar: the minimal nonzero magnitude, so it sits at the far end of the
-    //reference ladder's magnitude channel from a full-width random scalar.
+    /// <summary>
+    /// The fixed class's scalar: the minimal nonzero magnitude, so it sits at the far end of the
+    /// reference ladder's magnitude channel from a full-width random scalar.
+    /// </summary>
     private const byte FixedScalarValue = 1;
 
-    //The generator is public data at every secret-scalar call site, so a single shared encoding is
-    //safe to reuse as the fixed base point across both measurement runs.
-    private static readonly byte[] GeneratorPoint = BuildGeneratorPoint();
+    /// <summary>
+    /// The generator is public data at every secret-scalar call site, so a single shared encoding is
+    /// safe to reuse as the fixed base point across both measurement runs.
+    /// </summary>
+    private static byte[] GeneratorPoint { get; } = BuildGeneratorPoint();
 
 
     [TestMethod]
@@ -87,10 +99,12 @@ internal sealed class P256ConstantTimeG1TimingHarnessTests
     }
 
 
-    //Class 0 (FIXED) is the minimal-magnitude, minimal-Hamming-weight scalar k = 1; class 1 (RANDOM) is
-    //the raw entropy taken as a 256-bit big-endian scalar. Neither class needs a mod-n reduction: both
-    //backends multiply by the scalar's integer value as given, with no requirement that it be below the
-    //group order.
+    /// <summary>
+    /// Class 0 (FIXED) is the minimal-magnitude, minimal-Hamming-weight scalar k = 1; class 1 (RANDOM) is
+    /// the raw entropy taken as a 256-bit big-endian scalar. Neither class needs a mod-n reduction: both
+    /// backends multiply by the scalar's integer value as given, with no requirement that it be below the
+    /// group order.
+    /// </summary>
     private static void PrepareScalarInput(int classId, ReadOnlySpan<byte> entropy, Span<byte> destination)
     {
         if(classId == 0)
@@ -105,8 +119,10 @@ internal sealed class P256ConstantTimeG1TimingHarnessTests
     }
 
 
-    //The generator must be captured by both TimedOperation closures below, so it lives on the heap
-    //rather than as a stackalloc span, which cannot outlive this method.
+    /// <summary>
+    /// The generator must be captured by both TimedOperation closures below, so it lives on the heap
+    /// rather than as a stackalloc span, which cannot outlive this method.
+    /// </summary>
     private static byte[] BuildGeneratorPoint()
     {
         byte[] generator = new byte[CompressedPointSize];

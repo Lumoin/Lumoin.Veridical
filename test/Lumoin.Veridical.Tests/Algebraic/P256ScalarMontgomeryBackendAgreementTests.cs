@@ -21,22 +21,22 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class P256ScalarMontgomeryBackendAgreementTests
 {
-    private static readonly CurveParameterSet Curve = CurveParameterSet.P256;
-    private static readonly BigInteger Order = P256BigIntegerScalarReference.FieldOrder;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
+    private static BigInteger Order { get; } = P256BigIntegerScalarReference.FieldOrder;
 
-    private static readonly ScalarReduceDelegate ReferenceReduce = P256BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarAddDelegate ReferenceAdd = P256BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarSubtractDelegate ReferenceSubtract = P256BigIntegerScalarReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate ReferenceMultiply = P256BigIntegerScalarReference.GetMultiply();
-    private static readonly ScalarNegateDelegate ReferenceNegate = P256BigIntegerScalarReference.GetNegate();
-    private static readonly ScalarInvertDelegate ReferenceInvert = P256BigIntegerScalarReference.GetInvert();
+    private static ScalarReduceDelegate ReferenceReduce { get; } = P256BigIntegerScalarReference.GetReduce();
+    private static ScalarAddDelegate ReferenceAdd { get; } = P256BigIntegerScalarReference.GetAdd();
+    private static ScalarSubtractDelegate ReferenceSubtract { get; } = P256BigIntegerScalarReference.GetSubtract();
+    private static ScalarMultiplyDelegate ReferenceMultiply { get; } = P256BigIntegerScalarReference.GetMultiply();
+    private static ScalarNegateDelegate ReferenceNegate { get; } = P256BigIntegerScalarReference.GetNegate();
+    private static ScalarInvertDelegate ReferenceInvert { get; } = P256BigIntegerScalarReference.GetInvert();
 
-    private static readonly ScalarAddDelegate MontgomeryAdd = P256ScalarMontgomeryBackend.GetAdd();
-    private static readonly ScalarSubtractDelegate MontgomerySubtract = P256ScalarMontgomeryBackend.GetSubtract();
-    private static readonly ScalarMultiplyDelegate MontgomeryMultiply = P256ScalarMontgomeryBackend.GetMultiply();
-    private static readonly ScalarNegateDelegate MontgomeryNegate = P256ScalarMontgomeryBackend.GetNegate();
-    private static readonly ScalarInvertDelegate MontgomeryInvert = P256ScalarMontgomeryBackend.GetInvert();
-    private static readonly ScalarReduceDelegate MontgomeryReduce = P256ScalarMontgomeryBackend.GetReduce();
+    private static ScalarAddDelegate MontgomeryAdd { get; } = P256ScalarMontgomeryBackend.GetAdd();
+    private static ScalarSubtractDelegate MontgomerySubtract { get; } = P256ScalarMontgomeryBackend.GetSubtract();
+    private static ScalarMultiplyDelegate MontgomeryMultiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
+    private static ScalarNegateDelegate MontgomeryNegate { get; } = P256ScalarMontgomeryBackend.GetNegate();
+    private static ScalarInvertDelegate MontgomeryInvert { get; } = P256ScalarMontgomeryBackend.GetInvert();
+    private static ScalarReduceDelegate MontgomeryReduce { get; } = P256ScalarMontgomeryBackend.GetReduce();
 
     //The three edge residues every operation is pinned at: 0 (valid for add/subtract/multiply/negate,
     //non-invertible), 1 (the multiplicative identity), and n − 1 (the additive inverse of 1, the largest

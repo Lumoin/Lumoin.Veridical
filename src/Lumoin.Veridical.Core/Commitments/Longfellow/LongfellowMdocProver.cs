@@ -76,10 +76,10 @@ internal static class LongfellowMdocProver
     /// <param name="leafHash">The one-shot SHA-256 over a contiguous span.</param>
     /// <param name="hashAlgorithm">The canonical hash-function name (SHA-256).</param>
     /// <param name="pool">The pool the working buffers rent from.</param>
-    /// <returns>The full envelope <c>[6 macs] ‖ [hash ZkProof] ‖ [sig ZkProof]</c>; the caller owns it.</returns>
+    /// <returns>The pooled envelope <c>[6 macs] ‖ [hash ZkProof] ‖ [sig ZkProof]</c>; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a column or a mac/common/ap length is wrong.</exception>
-    public static byte[] Prove(
+    public static LongfellowZkProofEnvelope Prove(
         LongfellowMdocFieldProver hash,
         LongfellowMdocFieldProver sig,
         ReadOnlySpan<byte> hashWitnessColumn,
@@ -177,21 +177,31 @@ internal static class LongfellowMdocProver
 
             //prove(hash) then prove(sig): finish both proofs on the continuing transcript over the PATCHED
             //columns (the FS-init + EvaluateCircuit read the patched public region).
-            byte[] hashProof = LongfellowZkProver.ProveFromCommitment(
+            using LongfellowZkProofEnvelope hashProof = LongfellowZkProver.ProveFromCommitment(
                 hash.Circuit, hash.Parameters, hashCommit, hashColumn, transcript, hash.EncoderFactory, hash.Profile, hash.Codec,
                 hash.Add, hash.Subtract, hash.Multiply, hash.Invert, merkleHash, leafHash, hashAlgorithm, hash.Curve, pool, hash.BroadcastMultiplyAccumulate, hash.BindQuadReduce, hash.GatherMultiplyAccumulate, hash.Fp256BatchMultiply);
 
-            byte[] sigProof = LongfellowZkProver.ProveFromCommitment(
+            using LongfellowZkProofEnvelope sigProof = LongfellowZkProver.ProveFromCommitment(
                 sig.Circuit, sig.Parameters, sigCommit, sigColumn, transcript, sig.EncoderFactory, sig.Profile, sig.Codec,
                 sig.Add, sig.Subtract, sig.Multiply, sig.Invert, merkleHash, leafHash, hashAlgorithm, sig.Curve, pool, sig.BroadcastMultiplyAccumulate, sig.BindQuadReduce, sig.GatherMultiplyAccumulate, sig.Fp256BatchMultiply);
 
-            //serialize: [macs_b (96)] ‖ [hash ZkProof] ‖ [sig ZkProof].
-            byte[] envelope = new byte[macsBytes.Length + hashProof.Length + sigProof.Length];
-            macsBytes.CopyTo(envelope.AsSpan(0, macsBytes.Length));
-            hashProof.CopyTo(envelope.AsSpan(macsBytes.Length, hashProof.Length));
-            sigProof.CopyTo(envelope.AsSpan(macsBytes.Length + hashProof.Length, sigProof.Length));
+            //serialize: [macs_b (96)] ‖ [hash ZkProof] ‖ [sig ZkProof] into one pooled envelope the caller owns.
+            int envelopeLength = macsBytes.Length + hashProof.Length + sigProof.Length;
+            IMemoryOwner<byte> envelopeOwner = pool.Rent(envelopeLength);
+            try
+            {
+                Span<byte> envelope = envelopeOwner.Memory.Span[..envelopeLength];
+                macsBytes.CopyTo(envelope[..macsBytes.Length]);
+                hashProof.Bytes.CopyTo(envelope.Slice(macsBytes.Length, hashProof.Length));
+                sigProof.Bytes.CopyTo(envelope.Slice(macsBytes.Length + hashProof.Length, sigProof.Length));
 
-            return envelope;
+                return new LongfellowZkProofEnvelope(envelopeOwner, envelopeLength);
+            }
+            catch
+            {
+                envelopeOwner.Dispose();
+                throw;
+            }
         }
         finally
         {

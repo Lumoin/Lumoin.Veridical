@@ -51,8 +51,8 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </remarks>
 internal static class Bn254BigIntegerPairingReference
 {
-    private static readonly BigInteger Prime = Bn254BigIntegerG1Reference.BaseFieldPrime;
-    private static readonly BigInteger Order = Bn254BigIntegerG1Reference.ScalarFieldOrder;
+    private static BigInteger Prime { get; } = Bn254BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger Order { get; } = Bn254BigIntegerG1Reference.ScalarFieldOrder;
 
     private const int FpComponentSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
     private const int G1CompressedSize = WellKnownCurves.Bn254G1CompressedSizeBytes;
@@ -65,19 +65,19 @@ internal static class Bn254BigIntegerPairingReference
     internal static BigInteger AteLoopCount { get; } = (6 * BnParameter) + 2;
 
     /// <summary>The D-twist coefficient <c>b' = 3/(9 + u)</c>.</summary>
-    private static readonly Fp2 TwistCurveB = Bn254Fp2BigInt.Mul(new Fp2(new BigInteger(3), BigInteger.Zero), Bn254Fp2BigInt.Invert(Bn254Fp2BigInt.NonResidue));
+    private static Fp2 TwistCurveB { get; } = Bn254Fp2BigInt.Mul(new Fp2(new BigInteger(3), BigInteger.Zero), Bn254Fp2BigInt.Invert(Bn254Fp2BigInt.NonResidue));
 
     //Frobenius γ-constants, computed from ξ at static init.
-    private static readonly Fp2 FrobeniusGamma61 = Fp2Pow(Bn254Fp2BigInt.NonResidue, (Prime - 1) / 3);
-    private static readonly Fp2 FrobeniusGamma62 = Fp2Pow(Bn254Fp2BigInt.NonResidue, 2 * (Prime - 1) / 3);
-    private static readonly Fp2 FrobeniusGamma121 = Fp2Pow(Bn254Fp2BigInt.NonResidue, (Prime - 1) / 6);
+    private static Fp2 FrobeniusGamma61 { get; } = Fp2Pow(Bn254Fp2BigInt.NonResidue, (Prime - 1) / 3);
+    private static Fp2 FrobeniusGamma62 { get; } = Fp2Pow(Bn254Fp2BigInt.NonResidue, 2 * (Prime - 1) / 3);
+    private static Fp2 FrobeniusGamma121 { get; } = Fp2Pow(Bn254Fp2BigInt.NonResidue, (Prime - 1) / 6);
 
-    private static readonly BigInteger HardPartExponent = ComputeHardPartExponent();
+    private static BigInteger HardPartExponent { get; } = ComputeHardPartExponent();
 
     //w, w², w³ in Fp12 for the D-twist untwist map.
-    private static readonly Fp12 W = new(Fp6.Zero, Fp6.One);
-    private static readonly Fp12 W2 = Bn254BigIntegerFp12Reference.Fp12Multiply(W, W);
-    private static readonly Fp12 W3 = Bn254BigIntegerFp12Reference.Fp12Multiply(W2, W);
+    private static Fp12 W { get; } = new(Fp6.Zero, Fp6.One);
+    private static Fp12 W2 { get; } = Bn254BigIntegerFp12Reference.Fp12Multiply(W, W);
+    private static Fp12 W3 { get; } = Bn254BigIntegerFp12Reference.Fp12Multiply(W2, W);
 
 
     private static BigInteger ComputeHardPartExponent()

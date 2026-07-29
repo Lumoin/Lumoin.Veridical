@@ -30,9 +30,9 @@ internal static class LigeroConstraintEvaluator
 {
     private const int S = Scalar.SizeBytes;
 
-    private static readonly ScalarAddDelegate Add = P256BaseFieldReference.GetAdd();
-    private static readonly ScalarSubtractDelegate Subtract = P256BaseFieldReference.GetSubtract();
-    private static readonly ScalarMultiplyDelegate Multiply = P256BaseFieldReference.GetMultiply();
+    private static ScalarAddDelegate Add { get; } = P256BaseFieldReference.GetAdd();
+    private static ScalarSubtractDelegate Subtract { get; } = P256BaseFieldReference.GetSubtract();
+    private static ScalarMultiplyDelegate Multiply { get; } = P256BaseFieldReference.GetMultiply();
 
 
     //True iff the builder's current witness satisfies every constraint. Reads

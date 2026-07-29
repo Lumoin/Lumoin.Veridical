@@ -17,15 +17,15 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254Fp2ArithmeticTests
 {
-    private static readonly Fp2AddDelegate Add = Bn254BigIntegerFp2Reference.GetAdd();
-    private static readonly Fp2SubtractDelegate Subtract = Bn254BigIntegerFp2Reference.GetSubtract();
-    private static readonly Fp2MultiplyDelegate Multiply = Bn254BigIntegerFp2Reference.GetMultiply();
-    private static readonly Fp2SquareDelegate Square = Bn254BigIntegerFp2Reference.GetSquare();
-    private static readonly Fp2NegateDelegate Negate = Bn254BigIntegerFp2Reference.GetNegate();
-    private static readonly Fp2InvertDelegate Invert = Bn254BigIntegerFp2Reference.GetInvert();
-    private static readonly Fp2ConjugateDelegate Conjugate = Bn254BigIntegerFp2Reference.GetConjugate();
+    private static Fp2AddDelegate Add { get; } = Bn254BigIntegerFp2Reference.GetAdd();
+    private static Fp2SubtractDelegate Subtract { get; } = Bn254BigIntegerFp2Reference.GetSubtract();
+    private static Fp2MultiplyDelegate Multiply { get; } = Bn254BigIntegerFp2Reference.GetMultiply();
+    private static Fp2SquareDelegate Square { get; } = Bn254BigIntegerFp2Reference.GetSquare();
+    private static Fp2NegateDelegate Negate { get; } = Bn254BigIntegerFp2Reference.GetNegate();
+    private static Fp2InvertDelegate Invert { get; } = Bn254BigIntegerFp2Reference.GetInvert();
+    private static Fp2ConjugateDelegate Conjugate { get; } = Bn254BigIntegerFp2Reference.GetConjugate();
 
-    private static readonly BigInteger BaseFieldPrime = Bn254BigIntegerG1Reference.BaseFieldPrime;
+    private static BigInteger BaseFieldPrime { get; } = Bn254BigIntegerG1Reference.BaseFieldPrime;
     private const int CompSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
     private const int Fp2Size = 2 * WellKnownCurves.Bn254BaseFieldSizeBytes;
 

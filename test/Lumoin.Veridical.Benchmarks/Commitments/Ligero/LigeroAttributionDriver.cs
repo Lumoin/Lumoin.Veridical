@@ -25,8 +25,8 @@ namespace Lumoin.Veridical.Benchmarks.Commitments.Ligero;
 internal static class LigeroAttributionDriver
 {
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.None;
-    private static readonly BaseMemoryPool Pool = BaseMemoryPool.Shared;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
+    private static BaseMemoryPool Pool { get; } = BaseMemoryPool.Shared;
 
     private const int LadderWidth = 5;
     private const int LadderScalar = 13;
@@ -180,9 +180,9 @@ internal static class LigeroAttributionDriver
     }
 
 
-    private static readonly byte[] OperandA = MakeOperand(1);
-    private static readonly byte[] OperandB = MakeOperand(2);
-    private static readonly byte[] Scratch = new byte[ScalarSize];
+    private static byte[] OperandA { get; } = MakeOperand(1);
+    private static byte[] OperandB { get; } = MakeOperand(2);
+    private static byte[] Scratch { get; } = new byte[ScalarSize];
 
 
     private static byte[] MakeOperand(int salt)

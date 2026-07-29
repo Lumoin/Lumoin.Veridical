@@ -13,8 +13,8 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 [TestClass]
 internal sealed class R1csInstanceSatisfactionTests
 {
-    private static readonly ScalarAddDelegate ScalarAdd = Bls12Curve381BigIntegerScalarReference.GetAdd();
-    private static readonly ScalarMultiplyDelegate ScalarMul = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+    private static ScalarAddDelegate ScalarAdd { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+    private static ScalarMultiplyDelegate ScalarMul { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
 
 
     [TestMethod]

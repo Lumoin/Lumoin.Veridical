@@ -8,9 +8,15 @@ untracked local `tempdocs/longfellow-anchors/`; no reference code is committed h
 ## Upstream pin
 
 - Repository: https://github.com/google/longfellow-zk (Apache-2.0)
-- Commit: `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (`v0.9-90-gd8ad8f6`, 2026-05-29) — 90 commits
-  past the latest release tag `v0.9` (fe83ec6, 2026-03-31), and also the upstream `main` HEAD as of
-  2026-07-09.
+- Conformance pin: `3dfaac72abed4a6fbcd0ab8688b39168bb224133` (2026-07-26, the upstream `main` HEAD
+  as of 2026-07-28).
+- Capture checkout: the fixtures in this directory are reference dumps produced at commit
+  `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (2026-05-29) and re-verified at the pin: the upstream
+  range between the two commits carries no change to the serialization, transcript, prover,
+  scheduler or circuit-generation surfaces (validation-only hardening aside), the reference's own
+  gtest suite passes at the pin in the local `longfellow-ref` oracle, and every pinned
+  compile-counter dump reproduces identically there. Anchor files quote the capture checkout's
+  hash inside their dumped text; that provenance is part of the captured data and stays as dumped.
 - ZkSpec identity of the pinned mdoc bundle (upstream `lib/circuits/mdoc/zk_spec.cc`, `kZkSpecs[0]`):
   system `longfellow-libzk-v1`, version 7, num_attributes 1, block_enc_hash 4151, block_enc_sig 4096,
   circuit_hash `8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121`. The v7 circuits
@@ -53,7 +59,7 @@ on 2026-07-09; both decompress to the same raw stream (114,608,684 bytes, SHA-25
 `5a282c3f77d35a32ec5af028ece8c2c8cab612f4aa1d178f7607984dd5787010`):
 
 1. `mdoc-circuit-raw-4attr.gz` here — the decompression of the blob `generate_circuit(&kZkSpecs[3])`
-   emits at the pinned `google/longfellow-zk` commit `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2`
+   emits at the `google/longfellow-zk` capture checkout `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2`
    (the local zstd wrapper hashes to `2ab6f881…`, not the registry key, as expected);
 2. the decompression of the `5aebdaaa…` registry artifact committed by an independent
    implementation of the format, taken at that implementation's commit

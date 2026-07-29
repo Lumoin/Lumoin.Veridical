@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Analysis.Simulation;
 /// <remarks>
 /// <para>
 /// The construction leans on the protocol's own algebra instead of
-/// re-deriving messages backwards. The simulator runs the honest prover
+/// re-deriving messages backwards. The simulator runs the protocol-following prover
 /// over a uniformly random fake witness <c>f*</c> (recording every oracle
 /// response), obtaining a valid proof of <c>y* = f*(z)</c>, and then patches
 /// the single revealed mask sum: <c>σ′ = σ + (y* − y)·ρ⁻¹</c>. The
@@ -29,7 +29,7 @@ namespace Lumoin.Veridical.Analysis.Simulation;
 /// <c>y* + ρ·σ</c>, every round polynomial decompresses against the same
 /// running claim, and the terminal derivation
 /// <c>s(r) = (claim − f(r)·eq_z(r))·ρ⁻¹</c> sees identical operands — the
-/// entire numeric chain is byte-identical to the honest fake run. The one
+/// entire numeric chain is byte-identical to the fake run computed the same way. The one
 /// thing the patch breaks is challenge <em>derivation</em>: σ′ is absorbed
 /// before ρ is squeezed, so every post-divergence transcript state differs.
 /// That is exactly the gap random-oracle programming closes — verification
@@ -135,7 +135,7 @@ public static class ZkBaseFoldOpeningSimulator
 
         using MultilinearExtension fakeWitness = MultilinearExtension.FromEvaluations(fakeTable, variableCount, curve, pool);
 
-        //The honest run over f*, every oracle response recorded: a valid
+        //The run over f*, every oracle response recorded: a valid
         //proof of y* = f*(z) whose σ the patch below retargets to y.
         (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(fakeWitness, pool);
         try

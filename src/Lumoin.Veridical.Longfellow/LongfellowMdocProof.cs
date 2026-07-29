@@ -29,7 +29,7 @@ public sealed class LongfellowMdocProof: SensitiveMemory
 
     //A dual-field envelope spans GF(2^128) and P-256, so no single CurveParameterSet applies; the tag records
     //the zero-knowledge-proof role only, matching the other proof leaf types.
-    private static readonly Tag AlgebraicTag = Tag.Create(AlgebraicRole.ZkProof);
+    private static Tag AlgebraicTag { get; } = Tag.Create(AlgebraicRole.ZkProof);
 
 
     private LongfellowMdocProof(IMemoryOwner<byte> owner, Tag tag)

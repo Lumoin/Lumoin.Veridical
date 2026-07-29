@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Commitments.Ligero.Gadgets;
+using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Mdoc;
@@ -37,29 +38,29 @@ internal sealed class EcdsaVerificationGadgetTests
     private const int OpenedColumns = 4;
     private const int Block = 64;
 
-    private static readonly BigInteger P = EcdsaNonceRecovery.P;
-    private static readonly BigInteger A = EcdsaNonceRecovery.A;
-    private static readonly BigInteger B = P256BigIntegerG1Reference.CurveB;
-    private static readonly BigInteger N = EcdsaNonceRecovery.N;
+    private static BigInteger P { get; } = EcdsaNonceRecovery.P;
+    private static BigInteger A { get; } = EcdsaNonceRecovery.A;
+    private static BigInteger B { get; } = P256BigIntegerG1Reference.CurveB;
+    private static BigInteger N { get; } = EcdsaNonceRecovery.N;
 
-    private static readonly BigInteger Gx = EcdsaNonceRecovery.Gx;
-    private static readonly BigInteger Gy = EcdsaNonceRecovery.Gy;
-    private static readonly (BigInteger X, BigInteger Y) G = EcdsaNonceRecovery.G;
+    private static BigInteger Gx { get; } = EcdsaNonceRecovery.Gx;
+    private static BigInteger Gy { get; } = EcdsaNonceRecovery.Gy;
+    private static (BigInteger X, BigInteger Y) G { get; } = EcdsaNonceRecovery.G;
 
-    private static readonly byte[] CurveABytes = Bytes(A);
-    private static readonly byte[] CurveBBytes = Bytes(B);
+    private static byte[] CurveABytes { get; } = Bytes(A);
+    private static byte[] CurveBBytes { get; } = Bytes(B);
 
     //Fixed test scalars, all < n (the leading nibble keeps them below n = 0xFFFF…).
-    private static readonly BigInteger D = Hex("5b1e9f2c4a7d8e3f0a1b2c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e6f7081");
-    private static readonly BigInteger K = Hex("1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00");
-    private static readonly BigInteger E = Hex("0a1b2c3d4e5f60718293a4b5c6d7e8f9000102030405060708090a0b0c0d0e0f");
+    private static BigInteger D { get; } = Hex("5b1e9f2c4a7d8e3f0a1b2c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e6f7081");
+    private static BigInteger K { get; } = Hex("1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00");
+    private static BigInteger E { get; } = Hex("0a1b2c3d4e5f60718293a4b5c6d7e8f9000102030405060708090a0b0c0d0e0f");
 
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
-    private static readonly byte[] Domain = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.v1");
-    private static readonly byte[] RandomnessSeed = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.rng.v1");
-    private static readonly FiatShamirHashDelegate Hash = Blake3FiatShamirBackend.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = Blake3FiatShamirBackend.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
+    private static byte[] Domain { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.v1");
+    private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.rng.v1");
+    private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
     //An 8-bit difference covers any realistic age − threshold gap (0..255).
     private const int AgeDifferenceBits = 8;
@@ -465,19 +466,28 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    //A generous hang guard for the full real-credential prove+verify: the FFT
+    //row extender removes the encoder's super-linear wall, and the measured
+    //run is ~37 minutes on a desktop-class machine — the remaining prover
+    //stages walk a ~100k-constraint circuit. Two hours guards a slower runner
+    //without asserting elapsed time; the prove is synchronous and does not
+    //observe the cooperative token, so the guard is sized above the measured
+    //run rather than relied on to interrupt it.
+    private const int EndToEndHangGuardMilliseconds = 7_200_000;
+
+
     [TestMethod]
-    [Ignore("Documents the end-to-end target. The real-credential circuit is ~100k+ constraints (a "
-        + "~700-byte in-circuit SHA-256), and the Ligero encoder is super-linear at that scale — a single "
-        + "prove ran 6.6h without finishing, even on the Montgomery backend. Un-ignore once the FFT/NTT "
-        + "encoder lands; the IsSatisfied gate ProvesAgeOver18FromARealCredentialInCircuit is today's result.")]
+    [TestCategory(TestCategories.Slow)]
+    [Timeout(EndToEndHangGuardMilliseconds, CooperativeCancellation = true)]
     public async Task ProvesAndVerifiesAgeOver18FromARealCredentialEndToEnd()
     {
         //The end-to-end target: a genuine ISO 18013-5 credential's age_over_18 disclosure proved AND
-        //verified in zero knowledge through the real Ligero prover over the production Montgomery Fp256
-        //backend. Ignored: the circuit is real-credential scale (~700-byte in-circuit SHA-256 over the
-        //COSE Sig_structure, the item hash, and the three-scalar MSM ⇒ ~100k+ constraints), and the
-        //encoder is super-linear there — a single prove ran 6.6h without finishing. The FFT/NTT encoder
-        //is the gate. The seed is bound to the public statement.
+        //verified through the real Ligero prover over the production Montgomery Fp256 backend with the
+        //FFT convolution row extender. The circuit is real-credential scale (a ~700-byte in-circuit
+        //SHA-256 over the COSE Sig_structure, the item hash, and the three-scalar MSM ⇒ ~100k+
+        //constraints); the barycentric encoder was super-linear there — a single prove ran 6.6 hours
+        //without finishing — and the extender's convolution produces the byte-identical codeword in
+        //linearithmic time. The seed is bound to the public statement.
         byte[] credential = await File.ReadAllBytesAsync("../../../TestMaterial/Mdoc/mdoc-00.cbor", TestContext.CancellationToken).ConfigureAwait(false);
         MdocDisclosure disclosure = MdocDisclosure.Extract(credential, "org.iso.18013.5.1", "age_over_18");
 
@@ -589,16 +599,42 @@ internal sealed class EcdsaVerificationGadgetTests
         CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //The same prove/verify over the production Montgomery Fp256 backend (the validated faster
-    //encoder path) — byte-identical to the reference, used for the large real-credential circuit.
-    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, byte[] seed) => LigeroProver.Prove(
-        builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), seed,
-        new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
-        P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(), P256BaseFieldMontgomeryBackend.GetMultiply(),
-        P256BaseFieldMontgomeryBackend.GetInvert(), P256BaseFieldMontgomeryBackend.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    //The same prove/verify over the production Montgomery Fp256 backend with the FFT convolution
+    //row extender installed — byte-identical to the reference (the extender computes the same
+    //integer-node extension; the byte gate is Fp256LigeroRowExtenderTests), used for the large
+    //real-credential circuit where the barycentric loop was the 6.6-hour wall.
+    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, byte[] seed)
+    {
+        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
+        LongfellowFp256Encoding.RootOfUnity(root);
+        var fft = new Fp256RealFft(
+            root, LongfellowFp256Encoding.OmegaOrder,
+            P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),
+            P256BaseFieldMontgomeryBackend.GetMultiply(), P256BaseFieldMontgomeryBackend.GetInvert(),
+            WriteCanonicalUInt, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using var extenders = new Fp256LigeroRowExtenders(
+            fft,
+            P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),
+            P256BaseFieldMontgomeryBackend.GetMultiply(), P256BaseFieldMontgomeryBackend.GetInvert(),
+            WriteCanonicalUInt, CurveParameterSet.None, BaseMemoryPool.Shared);
+
+        return LigeroProver.Prove(
+            builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
+            builder.TargetBytes(), builder.QuadraticConstraints(), seed,
+            new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
+            P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(), P256BaseFieldMontgomeryBackend.GetMultiply(),
+            P256BaseFieldMontgomeryBackend.GetInvert(), P256BaseFieldMontgomeryBackend.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared,
+            rowExtenderFactory: extenders.Create);
+    }
+
+
+    private static void WriteCanonicalUInt(uint value, Span<byte> destination)
+    {
+        destination.Clear();
+        BinaryPrimitives.WriteUInt32BigEndian(destination[(ScalarSize - sizeof(uint))..], value);
+    }
 
 
     private static bool VerifyMontgomery(LigeroConstraintSystemBuilder builder, LigeroProof proof, byte[] seed) => LigeroVerifier.Verify(

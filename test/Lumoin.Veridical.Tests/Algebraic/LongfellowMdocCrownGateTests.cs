@@ -128,16 +128,18 @@ internal sealed class LongfellowMdocCrownGateTests
         Assert.HasCount(HashTemplateElementCount * Gf2128ElementBytes, hashTemplate, "The hash template is 945 * 16 element bytes.");
         Assert.HasCount(SigTemplateElementCount * Point256ElementBytes, sigTemplate, "The sig template is 4 * 32 element bytes.");
 
-        //One shared FFT/codec lifetime per side, held for the whole verify.
+        //One shared FFT/profile/codec lifetime per side, held for the whole verify.
         using Lch14AdditiveFft hashFft = NewGfFft();
+        using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
-            LongfellowGf2k128Encoding.CreateProfile(hashFft), hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
+            hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
 
         Fp256RealFft sigFft = NewFp256Fft();
-        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(NewMontgomerySigProfile());
+        using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
+        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
-        LongfellowMdocFieldVerifier hash = BuildHashBundle(hashFft, hashCodec, out _);
-        LongfellowMdocFieldVerifier sig = BuildSigBundle(sigFft, sigCodec);
+        LongfellowMdocFieldVerifier hash = BuildHashBundle(hashFft, hashProfile, hashCodec, out _);
+        LongfellowMdocFieldVerifier sig = BuildSigBundle(sigFft, sigProfile, sigCodec);
 
         using LongfellowTranscript transcript = NewTranscript(transcriptSeed);
 
@@ -215,14 +217,16 @@ internal sealed class LongfellowMdocCrownGateTests
     private static LongfellowMdocVerificationResult VerifyOnce(byte[] envelope, byte[] transcriptSeed, byte[] hashTemplate, byte[] sigTemplate)
     {
         using Lch14AdditiveFft hashFft = NewGfFft();
+        using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
-            LongfellowGf2k128Encoding.CreateProfile(hashFft), hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
+            hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
 
         Fp256RealFft sigFft = NewFp256Fft();
-        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(NewMontgomerySigProfile());
+        using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
+        using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
-        LongfellowMdocFieldVerifier hash = BuildHashBundle(hashFft, hashCodec, out _);
-        LongfellowMdocFieldVerifier sig = BuildSigBundle(sigFft, sigCodec);
+        LongfellowMdocFieldVerifier hash = BuildHashBundle(hashFft, hashProfile, hashCodec, out _);
+        LongfellowMdocFieldVerifier sig = BuildSigBundle(sigFft, sigProfile, sigCodec);
 
         using LongfellowTranscript transcript = NewTranscript(transcriptSeed);
 
@@ -236,13 +240,12 @@ internal sealed class LongfellowMdocCrownGateTests
 
 
     //The GF(2^128) hash bundle: the imported hash circuit, the v7 Ligero parameters, the GF encoding and
-    //the borrowed subfield-run codec.
-    private static LongfellowMdocFieldVerifier BuildHashBundle(Lch14AdditiveFft fft, LongfellowSubfieldRunCodec codec, out int subfieldBoundary)
+    //the borrowed field profile and subfield-run codec (both owned and disposed by the caller).
+    private static LongfellowMdocFieldVerifier BuildHashBundle(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec, out int subfieldBoundary)
     {
         LongfellowSumcheckCircuit circuit = ParseHashCircuit(out subfieldBoundary);
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
 
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
         LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
 
         return new LongfellowMdocFieldVerifier(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate());
@@ -250,14 +253,13 @@ internal sealed class LongfellowMdocCrownGateTests
 
 
     //The P-256 base-field signature bundle: the imported signature circuit, the v7 Ligero parameters, the
-    //Fp256 encoding and the borrowed subfield-run codec.
-    private static LongfellowMdocFieldVerifier BuildSigBundle(Fp256RealFft fft, LongfellowSubfieldRunCodec codec)
+    //Fp256 encoding and the borrowed field profile and subfield-run codec (both owned and disposed by the caller).
+    private static LongfellowMdocFieldVerifier BuildSigBundle(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
         LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
 
-        LongfellowFieldProfile profile = NewMontgomerySigProfile();
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
 
@@ -325,9 +327,10 @@ internal sealed class LongfellowMdocCrownGateTests
 
 
     //The Montgomery-domain Fp256 profile (Perf Increment 1): of_scalar/of_bytes_field lift canonical->Montgomery,
-    //to_bytes_field drops back, so the wire bytes are byte-identical to the canonical profile.
+    //to_bytes_field drops back, so the wire bytes are byte-identical to the canonical profile. The caller
+    //disposes it.
     private static LongfellowFieldProfile NewMontgomerySigProfile() =>
-        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery);
+        LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery, BaseMemoryPool.Shared);
 
 
     //The Montgomery-domain real-FFT: the production root is lifted per coordinate to its Montgomery residue and
@@ -337,7 +340,9 @@ internal sealed class LongfellowMdocCrownGateTests
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnityWorking(root, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, NewMontgomerySigProfile().OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using LongfellowFieldProfile profile = NewMontgomerySigProfile();
+
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, profile.OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
     }
 
 

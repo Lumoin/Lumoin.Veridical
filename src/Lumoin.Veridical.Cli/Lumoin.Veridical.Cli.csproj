@@ -13,6 +13,12 @@
 
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
+    <!-- The edge tool is a serialization boundary: it reads prove-request JSON and
+         writes proof-artifact JSON through Lumoin.Veridical.Json, and catches its
+         System.Text.Json exceptions. It is an application, not reused library code,
+         so it opts out of the repo-wide serialization ban. -->
+    <EnableSerializationBan>false</EnableSerializationBan>
+
     <!-- Tool packages ship no symbol packages: the pointer package carries only the
          RID map and the native RID packages carry an AOT binary, so their snupkgs
          would be empty and dotnet pack fails them with NU5017 (the repo-wide
@@ -54,6 +60,7 @@
     <ProjectReference Include="..\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
     <ProjectReference Include="..\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />
     <ProjectReference Include="..\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
+    <ProjectReference Include="..\Lumoin.Veridical.Json\Lumoin.Veridical.Json.csproj" />
   </ItemGroup>
 
 </Project>

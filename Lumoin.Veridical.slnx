@@ -21,6 +21,7 @@
     <Project Path="src/Lumoin.Veridical.Hashing/Lumoin.Veridical.Hashing.csproj" />
     <Project Path="src/Lumoin.Veridical.Analysis/Lumoin.Veridical.Analysis.csproj" />
     <Project Path="src/Lumoin.Veridical.Backends.Managed/Lumoin.Veridical.Backends.Managed.csproj" />
+    <Project Path="src/Lumoin.Veridical.Json/Lumoin.Veridical.Json.csproj" />
     <Project Path="src/Lumoin.Veridical.Secdsa/Lumoin.Veridical.Secdsa.csproj" />
     <Project Path="src/Lumoin.Veridical.Longfellow/Lumoin.Veridical.Longfellow.csproj" />
     <Project Path="src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj" />

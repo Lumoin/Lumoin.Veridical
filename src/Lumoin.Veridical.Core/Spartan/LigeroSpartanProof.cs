@@ -43,6 +43,9 @@ public sealed class LigeroSpartanProof: SensitiveMemory
     /// <summary>The Ligero opened-column query count the openings were produced under.</summary>
     public int QueryCount { get; }
 
+    /// <summary>The inverse code rate the openings were produced under; it fixes each opening's extension width and so its serialized length.</summary>
+    public int InverseRate { get; }
+
     /// <summary>The Merkle digest size in bytes (the witness-commitment length and the path-node width inside the openings).</summary>
     public int DigestSizeBytes { get; }
 
@@ -55,6 +58,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
         int outerRoundCount,
         int innerRoundCount,
         int queryCount,
+        int inverseRate,
         int digestSizeBytes,
         CurveParameterSet curve,
         Tag tag)
@@ -63,6 +67,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
         OuterRoundCount = outerRoundCount;
         InnerRoundCount = innerRoundCount;
         QueryCount = queryCount;
+        InverseRate = inverseRate;
         DigestSizeBytes = digestSizeBytes;
         Curve = curve;
     }
@@ -86,6 +91,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
         PolynomialOpening errorOpeningProof,
         PolynomialOpening witnessOpeningProof,
         int queryCount,
+        int inverseRate,
         int digestSizeBytes,
         BaseMemoryPool pool,
         Tag? tag = null)
@@ -102,6 +108,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
         ArgumentNullException.ThrowIfNull(witnessOpeningProof);
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
+        ArgumentOutOfRangeException.ThrowIfLessThan(inverseRate, 2);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
 
         CurveParameterSet curve = witnessCommitment.Curve;
@@ -118,8 +125,8 @@ public sealed class LigeroSpartanProof: SensitiveMemory
                 nameof(witnessCommitment));
         }
 
-        int errorOpeningSize = OpeningSizeBytes(outerRoundCount, curve, queryCount, digestSizeBytes);
-        int witnessOpeningSize = OpeningSizeBytes(innerRoundCount, curve, queryCount, digestSizeBytes);
+        int errorOpeningSize = OpeningSizeBytes(outerRoundCount, curve, queryCount, inverseRate, digestSizeBytes);
+        int witnessOpeningSize = OpeningSizeBytes(innerRoundCount, curve, queryCount, inverseRate, digestSizeBytes);
         if(errorOpeningProof.AsReadOnlySpan().Length != errorOpeningSize)
         {
             throw new ArgumentException(
@@ -134,7 +141,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
                 nameof(witnessOpeningProof));
         }
 
-        int bufferSize = GetBufferSizeBytes(outerRoundCount, innerRoundCount, queryCount, digestSizeBytes, curve);
+        int bufferSize = GetBufferSizeBytes(outerRoundCount, innerRoundCount, queryCount, inverseRate, digestSizeBytes, curve);
         IMemoryOwner<byte> owner = pool.Rent(bufferSize);
         Span<byte> buffer = owner.Memory.Span[..bufferSize];
 
@@ -157,7 +164,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
             ? ComposeTag(curve)
             : MergeAlgebraicTag(tag, curve);
 
-        return new LigeroSpartanProof(owner, outerRoundCount, innerRoundCount, queryCount, digestSizeBytes, curve, effectiveTag);
+        return new LigeroSpartanProof(owner, outerRoundCount, innerRoundCount, queryCount, inverseRate, digestSizeBytes, curve, effectiveTag);
     }
 
 
@@ -172,6 +179,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
         int outerRoundCount,
         int innerRoundCount,
         int queryCount,
+        int inverseRate,
         int digestSizeBytes,
         CurveParameterSet curve,
         BaseMemoryPool pool)
@@ -180,9 +188,10 @@ public sealed class LigeroSpartanProof: SensitiveMemory
         ArgumentOutOfRangeException.ThrowIfNegative(outerRoundCount);
         ArgumentOutOfRangeException.ThrowIfNegative(innerRoundCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
+        ArgumentOutOfRangeException.ThrowIfLessThan(inverseRate, 2);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
 
-        int expected = GetBufferSizeBytes(outerRoundCount, innerRoundCount, queryCount, digestSizeBytes, curve);
+        int expected = GetBufferSizeBytes(outerRoundCount, innerRoundCount, queryCount, inverseRate, digestSizeBytes, curve);
         if(bytes.Length != expected)
         {
             throw new ArgumentException(
@@ -193,7 +202,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
         IMemoryOwner<byte> owner = pool.Rent(expected);
         bytes.CopyTo(owner.Memory.Span[..expected]);
 
-        return new LigeroSpartanProof(owner, outerRoundCount, innerRoundCount, queryCount, digestSizeBytes, curve, ComposeTag(curve));
+        return new LigeroSpartanProof(owner, outerRoundCount, innerRoundCount, queryCount, inverseRate, digestSizeBytes, curve, ComposeTag(curve));
     }
 
 
@@ -210,7 +219,7 @@ public sealed class LigeroSpartanProof: SensitiveMemory
     public ReadOnlySpan<byte> GetErrorOpeningProofBytes()
     {
         int offset = DigestSizeBytes + SpartanSumcheckProofPart.GetSectionSizeBytes(OuterRoundCount, InnerRoundCount);
-        int length = OpeningSizeBytes(OuterRoundCount, Curve, QueryCount, DigestSizeBytes);
+        int length = OpeningSizeBytes(OuterRoundCount, Curve, QueryCount, InverseRate, DigestSizeBytes);
         return AsReadOnlySpan().Slice(offset, length);
     }
 
@@ -220,31 +229,32 @@ public sealed class LigeroSpartanProof: SensitiveMemory
     {
         int offset = DigestSizeBytes
             + SpartanSumcheckProofPart.GetSectionSizeBytes(OuterRoundCount, InnerRoundCount)
-            + OpeningSizeBytes(OuterRoundCount, Curve, QueryCount, DigestSizeBytes);
-        int length = OpeningSizeBytes(InnerRoundCount, Curve, QueryCount, DigestSizeBytes);
+            + OpeningSizeBytes(OuterRoundCount, Curve, QueryCount, InverseRate, DigestSizeBytes);
+        int length = OpeningSizeBytes(InnerRoundCount, Curve, QueryCount, InverseRate, DigestSizeBytes);
         return AsReadOnlySpan().Slice(offset, length);
     }
 
 
     /// <summary>Returns the total wire-format byte size for the supplied dimensions.</summary>
-    public static int GetBufferSizeBytes(int outerRoundCount, int innerRoundCount, int queryCount, int digestSizeBytes, CurveParameterSet curve)
+    public static int GetBufferSizeBytes(int outerRoundCount, int innerRoundCount, int queryCount, int inverseRate, int digestSizeBytes, CurveParameterSet curve)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(outerRoundCount);
         ArgumentOutOfRangeException.ThrowIfNegative(innerRoundCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
+        ArgumentOutOfRangeException.ThrowIfLessThan(inverseRate, 2);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
 
         return digestSizeBytes
             + SpartanSumcheckProofPart.GetSectionSizeBytes(outerRoundCount, innerRoundCount)
-            + OpeningSizeBytes(outerRoundCount, curve, queryCount, digestSizeBytes)
-            + OpeningSizeBytes(innerRoundCount, curve, queryCount, digestSizeBytes);
+            + OpeningSizeBytes(outerRoundCount, curve, queryCount, inverseRate, digestSizeBytes)
+            + OpeningSizeBytes(innerRoundCount, curve, queryCount, inverseRate, digestSizeBytes);
     }
 
 
     //The serialized Ligero opening for a polynomial in variableCount variables.
-    private static int OpeningSizeBytes(int variableCount, CurveParameterSet curve, int queryCount, int digestSizeBytes)
+    private static int OpeningSizeBytes(int variableCount, CurveParameterSet curve, int queryCount, int inverseRate, int digestSizeBytes)
     {
-        return LigeroPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes);
+        return LigeroPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes, inverseRate);
     }
 
 

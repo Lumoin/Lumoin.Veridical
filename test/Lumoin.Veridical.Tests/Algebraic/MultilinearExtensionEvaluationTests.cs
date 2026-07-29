@@ -20,9 +20,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class MultilinearExtensionEvaluationTests
 {
-    private static readonly MleFoldDelegate Fold = MultilinearExtensionBigIntegerReference.GetFold();
-    private static readonly MleEvaluateDelegate Evaluate = MultilinearExtensionBigIntegerReference.GetEvaluate();
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static MleFoldDelegate Fold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
+    private static MleEvaluateDelegate Evaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
     private const long IterationCount = 30;
 

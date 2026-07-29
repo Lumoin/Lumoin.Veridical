@@ -57,7 +57,7 @@ internal sealed class LongfellowZkTests
     private const int InverseRate = 4;
     private const int OpenedColumnCount = 2;
 
-    private static readonly byte[] TranscriptSeed = Encoding.ASCII.GetBytes("zk8");
+    private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
@@ -105,7 +105,7 @@ internal sealed class LongfellowZkTests
 
         //Parse the sumcheck segment out of the envelope, then drive the constraint build directly.
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         int scSize = LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile);
         ReadOnlySpan<byte> scBytes = proofBytes.AsSpan(DigestSize, scSize);
 
@@ -200,7 +200,7 @@ internal sealed class LongfellowZkTests
         //longer recompute consistently; a Ligero check fails.
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         using Lch14AdditiveFft fft = NewFft();
-        LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft);
+        using LongfellowFieldProfile profile = LongfellowGf2k128Encoding.CreateProfile(fft, BaseMemoryPool.Shared);
         int comProofStart = DigestSize + LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile);
         proofBytes[comProofStart + 4] ^= 0x01;
 

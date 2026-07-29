@@ -183,7 +183,7 @@ internal static class WycheproofEcdsaFixtures
     }
 
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static JsonSerializerOptions JsonOptions { get; } = new()
     {
         PropertyNameCaseInsensitive = true
     };

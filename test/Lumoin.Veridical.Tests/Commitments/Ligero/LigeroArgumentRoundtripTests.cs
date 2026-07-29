@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Commitments.Ligero;
+using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Algebraic;
@@ -15,7 +16,7 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
 /// <summary>
-/// End-to-end gate for the Ligero argument (LF.4b.4–LF.4b.6): an honest proof
+/// End-to-end gate for the Ligero argument (LF.4b.4–LF.4b.6): a correctly generated proof
 /// over a satisfying witness verifies, and the verifier rejects a flipped
 /// quadratic constraint, a tampered linear target, a corrupted opened column and
 /// a mismatched public input. It runs first over the small Mersenne-prime field
@@ -29,10 +30,10 @@ internal sealed class LigeroArgumentRoundtripTests
     private const int ScalarSize = Scalar.SizeBytes;
 
     //A satisfying witness: W[2] = W[0]·W[1] (6 = 2·3), W[5] = W[3]·W[4] (20 = 4·5).
-    private static readonly int[] WitnessValues = [2, 3, 6, 4, 5, 20];
+    private static int[] WitnessValues { get; } = [2, 3, 6, 4, 5, 20];
     private const int WitnessCount = 6;
 
-    private static readonly LigeroQuadraticConstraint[] QuadraticConstraints =
+    private static LigeroQuadraticConstraint[] QuadraticConstraints { get; } =
     [
         new LigeroQuadraticConstraint(0, 1, 2),
         new LigeroQuadraticConstraint(3, 4, 5),
@@ -40,13 +41,13 @@ internal sealed class LigeroArgumentRoundtripTests
 
     //Two linear constraints: c0: W[0] + W[1] = 5; c1: 2·W[3] = 8.
     private const int LinearConstraintCount = 2;
-    private static readonly LigeroLinearConstraint[] LinearConstraints =
+    private static LigeroLinearConstraint[] LinearConstraints { get; } =
     [
         new LigeroLinearConstraint(0, 0, Coefficient(1)),
         new LigeroLinearConstraint(0, 1, Coefficient(1)),
         new LigeroLinearConstraint(1, 3, Coefficient(2)),
     ];
-    private static readonly int[] LinearTargetValues = [5, 8];
+    private static int[] LinearTargetValues { get; } = [5, 8];
 
     //Soundness parameters. The interleaved-Reed-Solomon proximity error is about
     //(1 − δ)^OpenedColumns, with δ ≈ 1 − 1/InverseRate the RS relative distance
@@ -59,10 +60,10 @@ internal sealed class LigeroArgumentRoundtripTests
     private const int OpenedColumns = 8;
     private const int Block = 16;
 
-    private static readonly byte[] TranscriptSeed = [0x4C, 0x46, 0x34, 0x62, 0x36]; //"LF4b6"
-    private static readonly byte[] RandomnessSeed = [0x72, 0x61, 0x6E, 0x64];        //"rand"
+    private static byte[] TranscriptSeed { get; } = [0x4C, 0x46, 0x34, 0x62, 0x36]; //"LF4b6"
+    private static byte[] RandomnessSeed { get; } = [0x72, 0x61, 0x6E, 0x64];        //"rand"
 
-    private static readonly MerkleHashDelegate Blake3TwoToOne = HashTwoToOne;
+    private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
 
     [TestMethod]
@@ -77,7 +78,7 @@ internal sealed class LigeroArgumentRoundtripTests
         using LigeroProof proof = BuildProof(backend, parameters);
         bool verified = VerifyProof(backend, parameters, proof, QuadraticConstraints, LinearTargetValues, TranscriptSeed);
 
-        Assert.IsTrue(verified, $"An honest proof over the {field} must verify.");
+        Assert.IsTrue(verified, $"A correctly generated proof over the {field} must verify.");
     }
 
 
@@ -198,6 +199,49 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    [TestMethod]
+    public void TheProofIsByteIdenticalWithAndWithoutTheRowExtenderFactory()
+    {
+        //Pins the tableau's block/doubleBlock extender threading and the
+        //dot-response aext branch in the fast suite: without this gate the only
+        //prove that installs a factory is the [Slow] end-to-end credential
+        //test, and a transposed-extender wiring mutation would go unnoticed
+        //until it ran. P-256 base field only — that is the field the FFT
+        //convolution engine serves.
+        FieldBackend backend = Backend("p-256 base");
+        LigeroParameters parameters = NewParameters();
+
+        using LigeroProof reference = BuildProof(backend, parameters);
+        using Fp256LigeroRowExtenders extenders = NewRowExtenders(backend);
+        using LigeroProof accelerated = BuildProof(backend, parameters, RandomnessSeed, LinearTargetValues, extenders.Create);
+
+        Assert.IsTrue(accelerated.Root.AsReadOnlySpan().SequenceEqual(reference.Root.AsReadOnlySpan()), "The commitment root must be byte-identical with and without the extender.");
+        Assert.IsTrue(accelerated.LowDegreeResponse.SequenceEqual(reference.LowDegreeResponse), "y_ldt must be byte-identical with and without the extender.");
+        Assert.IsTrue(accelerated.DotResponse.SequenceEqual(reference.DotResponse), "y_dot must be byte-identical with and without the extender.");
+        Assert.IsTrue(accelerated.QuadraticResponse.SequenceEqual(reference.QuadraticResponse), "y_quad must be byte-identical with and without the extender.");
+
+        bool verified = VerifyProof(backend, parameters, accelerated, QuadraticConstraints, LinearTargetValues, TranscriptSeed);
+        Assert.IsTrue(verified, "The extender-accelerated proof must verify.");
+    }
+
+
+    private static Fp256LigeroRowExtenders NewRowExtenders(FieldBackend backend)
+    {
+        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
+        LongfellowFp256Encoding.RootOfUnity(root);
+        var fft = new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
+
+        return new Fp256LigeroRowExtenders(fft, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
+
+
+    private static void OfScalarCanonical(uint value, Span<byte> destination)
+    {
+        destination.Clear();
+        BinaryPrimitives.WriteUInt32BigEndian(destination[^sizeof(uint)..], value);
+    }
+
+
     private static LigeroParameters NewParameters() =>
         new(WitnessCount, QuadraticConstraints.Length, InverseRate, OpenedColumns, Block);
 
@@ -206,7 +250,7 @@ internal sealed class LigeroArgumentRoundtripTests
         BuildProof(backend, parameters, RandomnessSeed, LinearTargetValues);
 
 
-    private static LigeroProof BuildProof(FieldBackend backend, LigeroParameters parameters, ReadOnlySpan<byte> randomnessSeed, ReadOnlySpan<int> targetValues)
+    private static LigeroProof BuildProof(FieldBackend backend, LigeroParameters parameters, ReadOnlySpan<byte> randomnessSeed, ReadOnlySpan<int> targetValues, LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         Span<byte> witnesses = stackalloc byte[WitnessCount * ScalarSize];
         FillScalars(WitnessValues, witnesses);
@@ -236,7 +280,8 @@ internal sealed class LigeroArgumentRoundtripTests
             Blake3TwoToOne,
             WellKnownHashAlgorithms.Blake3,
             CurveParameterSet.None,
-            BaseMemoryPool.Shared);
+            BaseMemoryPool.Shared,
+            rowExtenderFactory);
     }
 
 

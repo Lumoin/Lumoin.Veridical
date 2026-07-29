@@ -28,7 +28,7 @@ public class Bn254ScalarBenchmarks
 {
     private const int ScalarBytes = 32;
     private const int BenchmarkSeed = 0x5EED5EED;
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bn254;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bn254;
 
 
     private byte[] aBytes = null!;

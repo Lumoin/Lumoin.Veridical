@@ -16,8 +16,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 internal sealed class ManagedScalarBackendTests
 {
     private const int ScalarSize = 32;
-    private static readonly CurveParameterSet Bls = CurveParameterSet.Bls12Curve381;
-    private static readonly CurveParameterSet Bn = CurveParameterSet.Bn254;
+    private static CurveParameterSet Bls { get; } = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Bn { get; } = CurveParameterSet.Bn254;
 
 
     [TestMethod]

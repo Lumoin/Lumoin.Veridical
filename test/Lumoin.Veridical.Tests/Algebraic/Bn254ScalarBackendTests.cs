@@ -47,15 +47,15 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254ScalarBackendTests
 {
-    private static readonly ScalarReduceDelegate ReduceDelegate =
+    private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bn254BigIntegerScalarReference.GetReduce();
 
 
-    private static readonly Gen<byte[]> RawScalarBytesGen =
+    private static Gen<byte[]> RawScalarBytesGen { get; } =
         Gen.Byte.Array[Scalar.SizeBytes];
 
 
-    private static readonly int[] BatchSizesToSweep = [1, 3, 4, 5, 8, 17];
+    private static int[] BatchSizesToSweep { get; } = [1, 3, 4, 5, 8, 17];
 
     private const long BatchIterationCount = 50;
 
@@ -65,7 +65,7 @@ internal sealed class Bn254ScalarBackendTests
     //hex. Cross-checked between JavaScript BigInt and CPython. The second row is
     //the order's lower neighbour r-1 paired with 2: a+b wraps to 1, a*b wraps to
     //r-2, and (r-1)^-1 is r-1 since (r-1)^2 = 1 mod r.
-    private static readonly (string A, string B, string Add, string Sub, string Mul, string NegA, string NegB, string InvA, string InvB)[] ArithmeticVectors =
+    private static (string A, string B, string Add, string Sub, string Mul, string NegA, string NegB, string InvA, string InvB)[] ArithmeticVectors { get; } =
     [
         ("0000000000000000000000000000000000000000000000000000000000000007",
          "0000000000000000000000000000000000000000000000000000000000000005",
@@ -103,7 +103,7 @@ internal sealed class Bn254ScalarBackendTests
     //The 64-byte all-ones input exercises a value far wider than the modulus; the
     //32-byte input with a high top byte (0x91...) confirms the reducer treats the
     //input as unsigned rather than tripping the BigInteger sign bit.
-    private static readonly (string Input, string Output)[] ReduceVectors =
+    private static (string Input, string Output)[] ReduceVectors { get; } =
     [
         ("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
          "0216d0b17f4e44a58c49833d53bb808553fe3ab1e35c59e31bb8e645ae216da6"),

@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Tests.Commitments;
 /// <see cref="PolynomialCommitmentProvider.CommitVector"/> /
 /// <see cref="PolynomialCommitmentProvider.OpenWeightedSum"/> /
 /// <see cref="PolynomialCommitmentProvider.VerifyWeightedSum"/> must round-trip
-/// an honest weighted opening at its own
+/// a correctly generated weighted opening at its own
 /// <see cref="PolynomialCommitmentProvider.ResolveStatisticalMaskShape"/>
 /// resolution and reject a wrong claim — exercised through the broad leaf
 /// types exactly as the masked Spartan integration consumes them.
@@ -26,19 +26,19 @@ namespace Lumoin.Veridical.Tests.Commitments;
 [TestClass]
 internal sealed class PolynomialCommitmentProviderWeightedSumTests
 {
-    private static readonly ScalarAddDelegate Add = TestScalarBackends.Bls12Curve381.Add;
-    private static readonly ScalarSubtractDelegate Subtract = TestScalarBackends.Bls12Curve381.Subtract;
-    private static readonly ScalarMultiplyDelegate Multiply = TestScalarBackends.Bls12Curve381.Multiply;
-    private static readonly ScalarInvertDelegate Invert = TestScalarBackends.Bls12Curve381.Invert;
-    private static readonly ScalarReduceDelegate Reduce = Bls12Curve381BigIntegerScalarReference.GetReduce();
-    private static readonly ScalarHashToScalarDelegate HashToScalar = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
-    private static readonly FiatShamirHashDelegate Hash = FiatShamirBlake3Reference.GetHash();
-    private static readonly FiatShamirSqueezeDelegate Squeeze = FiatShamirBlake3Reference.GetSqueeze();
-    private static readonly MerkleHashDelegate Merkle = HashTwoToOne;
-    private static readonly G1HashToCurveDelegate HashToCurve = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
-    private static readonly G1AddDelegate G1Add = Bls12Curve381BigIntegerG1Reference.GetAdd();
-    private static readonly G1ScalarMultiplyDelegate G1ScalarMul = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
-    private static readonly G1MultiScalarMultiplyDelegate G1Msm = TestG1Backends.Bls12Curve381Msm;
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
+    private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+    private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+    private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
 
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
@@ -52,7 +52,7 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
     //commit recomputes its own lift, so this only parameterizes the provider.
     private const int WitnessLiftVariableCount = 4;
 
-    private static readonly CurveParameterSet Curve = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
     [TestMethod]
@@ -129,7 +129,7 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
 
                 using FiatShamirTranscript verifyTx = NewTranscript();
                 bool verified = provider.VerifyWeightedSum(commitment, weights, claimedValue, opening, verifyTx, pool);
-                Assert.IsTrue(verified, "An honest weighted opening must verify.");
+                Assert.IsTrue(verified, "A correctly generated weighted opening must verify.");
 
                 using Scalar wrong = AddOne(claimedValue, pool);
                 using FiatShamirTranscript rejectTx = NewTranscript();

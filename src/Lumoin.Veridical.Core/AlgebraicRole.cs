@@ -211,7 +211,7 @@ public readonly struct AlgebraicRole: IEquatable<AlgebraicRole>
     public static AlgebraicRole Signature { get; } = new(31);
 
 
-    private static readonly List<AlgebraicRole> roles =
+    private static List<AlgebraicRole> roles { get; } =
     [
         None,
         Scalar,

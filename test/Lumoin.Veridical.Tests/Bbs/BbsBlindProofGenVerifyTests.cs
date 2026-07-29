@@ -25,11 +25,11 @@ namespace Lumoin.Veridical.Tests.Bbs;
 [TestClass]
 internal sealed class BbsBlindProofGenVerifyTests
 {
-    private static readonly byte[] KeyMaterial = MakeBytes(64, 0x51);
-    private static readonly byte[] KeyInfo = "blind-proof-key-info"u8.ToArray();
-    private static readonly byte[] Header = "blind-proof-header"u8.ToArray();
-    private static readonly byte[] PresentationHeaderBytes = "blind-proof-presentation"u8.ToArray();
-    private static readonly int[] FirstIndexOnly = [0];
+    private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x51);
+    private static byte[] KeyInfo { get; } = "blind-proof-key-info"u8.ToArray();
+    private static byte[] Header { get; } = "blind-proof-header"u8.ToArray();
+    private static byte[] PresentationHeaderBytes { get; } = "blind-proof-presentation"u8.ToArray();
+    private static int[] FirstIndexOnly { get; } = [0];
 
 
     private sealed record SuiteWiring(
@@ -54,8 +54,8 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
-    private static readonly SuiteWiring Sha256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Blind);
-    private static readonly SuiteWiring Shake256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Blind);
+    private static SuiteWiring Sha256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Blind);
+    private static SuiteWiring Shake256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Blind);
 
 
     /// <summary>Everything a single issuance produces that the prover needs to present and the test needs to dispose.</summary>

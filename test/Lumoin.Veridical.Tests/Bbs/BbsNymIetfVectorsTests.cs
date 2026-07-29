@@ -66,8 +66,8 @@ internal sealed class BbsNymIetfVectorsTests
     }
 
 
-    private static readonly SuiteWiring Sha256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
-    private static readonly SuiteWiring Shake256Wiring = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Pseudonym);
+    private static SuiteWiring Sha256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Pseudonym);
+    private static SuiteWiring Shake256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Pseudonym);
 
 
     public static IEnumerable<object[]> Sha256CommitVectorsData =>
