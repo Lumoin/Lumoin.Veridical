@@ -618,11 +618,11 @@ internal sealed class LongfellowJwtWitness
     }
 
 
-    /// <summary>Reduces a raw 256-bit value once modulo <paramref name="modulus"/> (the same single conditional subtraction the ECDSA witness generator uses).</summary>
+    /// <summary>Reduces a raw 256-bit value once modulo <paramref name="modulus"/> (the same single conditional subtraction the ECDSA witness generator uses); shared with the facade's verifier-side key-binding digest computation, which must reduce identically.</summary>
     /// <param name="value">The raw big-endian value.</param>
     /// <param name="modulus">The modulus.</param>
     /// <param name="destination">Receives the reduced value.</param>
-    private static void ReduceOnce(ReadOnlySpan<byte> value, ReadOnlySpan<byte> modulus, Span<byte> destination)
+    internal static void ReduceOnce(ReadOnlySpan<byte> value, ReadOnlySpan<byte> modulus, Span<byte> destination)
     {
         bool subtract = true;
         for(int i = 0; i < Scalar.SizeBytes; i++)
