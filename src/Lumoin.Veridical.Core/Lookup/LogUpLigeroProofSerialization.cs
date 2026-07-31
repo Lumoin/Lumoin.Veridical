@@ -31,9 +31,13 @@ namespace Lumoin.Veridical.Core.Lookup;
 ///   <item><description>Helper-column opening.</description></item>
 /// </list>
 /// <para>
-/// Reconstruction funnels through <see cref="LogUpProof.FromParts"/>, which
-/// rejects non-canonical scalar encodings, so an accepted proof has exactly one
-/// byte representation.
+/// Canonicity is enforced in two layers. Reconstruction funnels through
+/// <see cref="LogUpProof.FromParts"/>, which rejects non-canonical scalar
+/// encodings in the sumcheck round messages and the claimed evaluations; the
+/// scalars inside the commitment openings (the proximity and evaluation
+/// responses and the opened columns) are rejected by the Ligero opening
+/// verifier when the proof is checked. A proof that verifies therefore has
+/// exactly one byte representation.
 /// </para>
 /// </remarks>
 public static class LogUpLigeroProofSerialization
