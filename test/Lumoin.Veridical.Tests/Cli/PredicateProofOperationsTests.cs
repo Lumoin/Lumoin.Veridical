@@ -5,6 +5,7 @@ using Lumoin.Veridical.Core.Commitments;
 using Lumoin.Veridical.Core.ConstraintSystems;
 using Lumoin.Veridical.Json;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace Lumoin.Veridical.Tests.Cli;
@@ -333,6 +334,239 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>An unrecognised, garbage or empty <c>kind</c> string is rejected before any claim shape or proving work; the guard runs on the claim-parsing path both surfaces share.</summary>
+    [TestMethod]
+    public void UnrecognisedClaimKindsAreRejected()
+    {
+        string[] unrecognisedKinds = ["unrecognisedKind", "!!!garbage!!!", ""];
+        foreach(string kind in unrecognisedKinds)
+        {
+            ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() => Prove(RequestWithClaimKind(kind)), $"Kind '{kind}' must be rejected.");
+            Assert.IsTrue(exception.Message.Contains("Unknown predicate kind", StringComparison.Ordinal), exception.Message);
+        }
+    }
+
+
+    /// <summary>A <c>memberOf</c> claim carrying a range claim's comparison fields is rejected: the two kinds keep disjoint field sets so one cannot smuggle the other's parameters.</summary>
+    [TestMethod]
+    public void MemberOfClaimCarryingRangeFieldsIsRejected()
+    {
+        PredicateProofRequestClaim claim = RawClaim("material_code", "memberOf", direction: "atLeast", bound: "constant", boundValue: "3", allowedValues: ["3", "7"], measured: "3");
+
+        Assert.ThrowsExactly<ArgumentException>(() => Prove(RequestWithSingleClaim(claim)));
+    }
+
+
+    /// <summary>A <c>range</c> claim carrying an <c>allowedValues</c> list is rejected: a range claim's field set has no room for it.</summary>
+    [TestMethod]
+    public void RangeClaimCarryingAllowedValuesIsRejected()
+    {
+        PredicateProofRequestClaim claim = RawClaim("recycled_content", "range", direction: "atLeast", bound: "constant", boundValue: "30.0", allowedValues: ["3", "7"], measured: "32.5");
+
+        Assert.ThrowsExactly<ArgumentException>(() => Prove(RequestWithSingleClaim(claim)));
+    }
+
+
+    /// <summary>A <c>range</c> claim missing its <c>direction</c> and <c>bound</c> fields is rejected rather than defaulted.</summary>
+    [TestMethod]
+    public void RangeClaimMissingComparisonFieldsIsRejected()
+    {
+        PredicateProofRequestClaim claim = RawClaim("recycled_content", "range", direction: null, bound: null, boundValue: null, allowedValues: null, measured: "32.5");
+
+        Assert.ThrowsExactly<ArgumentException>(() => Prove(RequestWithSingleClaim(claim)));
+    }
+
+
+    /// <summary>Two claims sharing a name are rejected on the prove side before any proving starts — claim names identify claims within a bundle.</summary>
+    [TestMethod]
+    public void ProveRejectsDuplicateClaimNames()
+    {
+        PredicateProofRequest request = CompliantConstantRequest();
+        PredicateProofRequestClaim[] claims = [.. request.Claims];
+        claims[1] = claims[1] with { Name = claims[0].Name };
+        PredicateProofRequest duplicated = request with { Claims = claims };
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() => Prove(duplicated));
+        Assert.IsTrue(exception.Message.Contains("more than once", StringComparison.Ordinal), exception.Message);
+    }
+
+
+    /// <summary>Two claims sharing a name are rejected on the verify side too — a distinct guard from the prove-side one, reached through artifact-claim parsing.</summary>
+    [TestMethod]
+    public void VerifyRejectsDuplicateClaimNames()
+    {
+        PredicateProofArtifact artifact = VeridicalPredicateProofJson.DeserializeArtifact(CompliantArtifactJson.Value);
+        PredicateProofClaim[] claims = [.. artifact.Claims];
+        claims[1] = claims[1] with { Name = claims[0].Name };
+        string duplicated = VeridicalPredicateProofJson.Serialize(artifact with { Claims = claims });
+
+        VerificationResult result = Verify(duplicated);
+        Assert.AreEqual(VerificationStatus.Malformed, result.Status);
+        Assert.IsTrue(result.Message.Contains("more than once", StringComparison.Ordinal), result.Message);
+    }
+
+
+    /// <summary>
+    /// The allowed-value list is accepted at exactly the wired
+    /// <see cref="PredicateProofOperations.MaximumAllowedValueCount"/> cap. The
+    /// artifact is deliberately shipped with no lookup proof, so verification
+    /// fails at the cheap proof-count check right after claim parsing succeeds
+    /// — proving the cap guard passed without paying for a real 4096-entry
+    /// lookup proof.
+    /// </summary>
+    [TestMethod]
+    public void MaximumAllowedValueCountIsAccepted()
+    {
+        PredicateProofClaim claim = MemberOfArtifactClaim("material_code", SequentialAllowedValues(PredicateProofOperations.MaximumAllowedValueCount));
+        PredicateProofArtifact artifact = LookupOnlyArtifact(claim, lookupProofs: []);
+
+        VerificationResult result = PredicateProofOperations.Verify(artifact, BaseMemoryPool.Shared);
+
+        Assert.AreEqual(VerificationStatus.Malformed, result.Status);
+        Assert.IsTrue(result.Message.Contains("lookup proof", StringComparison.Ordinal), result.Message);
+    }
+
+
+    /// <summary>One allowed value past <see cref="PredicateProofOperations.MaximumAllowedValueCount"/> is rejected outright, on the prove side, before any proving work.</summary>
+    [TestMethod]
+    public void AboveMaximumAllowedValueCountIsRejected()
+    {
+        PredicateProofRequest request = LookupOnlyRequestWithAllowedValues(SequentialAllowedValues(PredicateProofOperations.MaximumAllowedValueCount + 1), measured: "0");
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() => Prove(request));
+        Assert.IsTrue(exception.Message.Contains("wired maximum", StringComparison.Ordinal), exception.Message);
+    }
+
+
+    /// <summary>An empty <c>allowedValues</c> list is rejected: a <c>memberOf</c> claim must name at least one member.</summary>
+    [TestMethod]
+    public void EmptyAllowedValuesListIsRejected()
+    {
+        PredicateProofRequest request = LookupOnlyRequestWithAllowedValues([], measured: "0");
+
+        Assert.ThrowsExactly<ArgumentException>(() => Prove(request));
+    }
+
+
+    /// <summary>An allowed value carrying finer resolution than the claim's fixed-point scale fails domain encoding and is rejected.</summary>
+    [TestMethod]
+    public void AllowedValueFailingDomainEncodingIsRejected()
+    {
+        PredicateProofRequest request = LookupOnlyRequestWithAllowedValues(["3", "3.5"], measured: "3");
+
+        Assert.ThrowsExactly<ArgumentException>(() => Prove(request));
+    }
+
+
+    /// <summary>
+    /// Duplicate entries within one <c>allowedValues</c> list are accepted, not
+    /// rejected: LogUp tables tolerate duplicate members by design, and the
+    /// claim parser applies no distinctness check of its own. The artifact
+    /// carries no lookup proof, so this is observed at the cheap proof-count
+    /// check, without a real lookup proof.
+    /// </summary>
+    [TestMethod]
+    public void DuplicateAllowedValuesAreAccepted()
+    {
+        PredicateProofClaim claim = MemberOfArtifactClaim("material_code", ["3", "3", "7"]);
+        PredicateProofArtifact artifact = LookupOnlyArtifact(claim, lookupProofs: []);
+
+        VerificationResult result = PredicateProofOperations.Verify(artifact, BaseMemoryPool.Shared);
+
+        Assert.AreEqual(VerificationStatus.Malformed, result.Status);
+        Assert.IsTrue(result.Message.Contains("lookup proof", StringComparison.Ordinal), result.Message);
+    }
+
+
+    /// <summary>A range-only bundle under format <c>/3</c> proves and verifies end to end, carrying no lookup proof — the zero-lookup code paths this bundle shape exercises.</summary>
+    [TestMethod]
+    public void RangeOnlyBundleProvesAndVerifies()
+    {
+        PredicateProofRequest request = Request(recycled: 32.5m, carbon: 11.20m, recycledBound: "constant", includeMemberOfClaim: false);
+
+        PredicateProofArtifact artifact = VeridicalPredicateProofJson.DeserializeArtifact(Prove(request));
+
+        Assert.AreNotEqual(string.Empty, artifact.Proof, "A range-only bundle carries a Spartan proof.");
+        Assert.HasCount(0, artifact.LookupProofs);
+
+        VerificationResult result = Verify(VeridicalPredicateProofJson.Serialize(artifact));
+        Assert.AreEqual(VerificationStatus.Valid, result.Status, result.Message);
+        Assert.IsTrue(result.Message.Contains("recycled_content >= 30.0 (constant)", StringComparison.Ordinal), result.Message);
+        Assert.IsFalse(result.Message.Contains("material_code", StringComparison.Ordinal), result.Message);
+    }
+
+
+    /// <summary>Every format other than the wired <c>/3</c> version is rejected on the prove side too — not just at verify, where the header guard is already pinned.</summary>
+    [TestMethod]
+    public void ProveRejectsUnsupportedRequestFormats()
+    {
+        string[] unsupportedFormats =
+        [
+            "veridical-supply-chain-predicate-request/1",
+            "veridical-supply-chain-predicate-request/2",
+            "veridical-supply-chain-predicate-request/4",
+            "not-a-format-string",
+        ];
+
+        foreach(string format in unsupportedFormats)
+        {
+            PredicateProofRequest request = CompliantConstantRequest() with { Format = format };
+
+            Assert.ThrowsExactly<ArgumentException>(() => Prove(request), $"Format '{format}' must be rejected before proving starts.");
+        }
+    }
+
+
+    /// <summary>
+    /// Swapping two <c>memberOf</c> claims' names between prove and verify does
+    /// not throw: each lookup proof was produced on a transcript that absorbed
+    /// the original name first, so the swap only diverges the transcript, and
+    /// verification comes back <see cref="VerificationStatus.Rejected"/> rather
+    /// than raising an exception.
+    /// </summary>
+    [TestMethod]
+    public void SwappedMemberOfClaimNamesAreRejectedNotThrown()
+    {
+        PredicateProofRequest request = TwoMemberOfClaimsRequest();
+        PredicateProofArtifact artifact = VeridicalPredicateProofJson.DeserializeArtifact(Prove(request));
+
+        PredicateProofClaim[] claims = [.. artifact.Claims];
+        string firstName = claims[0].Name;
+        string secondName = claims[1].Name;
+        claims[0] = claims[0] with { Name = secondName };
+        claims[1] = claims[1] with { Name = firstName };
+        string swapped = VeridicalPredicateProofJson.Serialize(artifact with { Claims = claims });
+
+        Assert.AreEqual(VerificationStatus.Rejected, Verify(swapped).Status);
+    }
+
+
+    /// <summary>The <c>kind</c> discriminator matches case-insensitively: a mixed-case spelling reaches the same kind-specific shape guard as the canonical spelling, rather than the unknown-kind guard.</summary>
+    [TestMethod]
+    public void ClaimKindMatchingIsCaseInsensitive()
+    {
+        ArgumentException rangeException = Assert.ThrowsExactly<ArgumentException>(() => Prove(RequestWithClaimKind("RANGE")));
+        Assert.IsTrue(rangeException.Message.Contains("direction", StringComparison.Ordinal), rangeException.Message);
+
+        ArgumentException memberOfException = Assert.ThrowsExactly<ArgumentException>(() => Prove(RequestWithClaimKind("MEMBEROF")));
+        Assert.IsTrue(memberOfException.Message.Contains("allowedValues", StringComparison.Ordinal), memberOfException.Message);
+    }
+
+
+    /// <summary>The artifact <c>format</c> identifier matches by ordinal comparison, not case-insensitively: a differently-cased spelling of the wired format is rejected.</summary>
+    [TestMethod]
+    public void FormatMatchingIsCaseSensitive()
+    {
+        PredicateProofArtifact artifact = VeridicalPredicateProofJson.DeserializeArtifact(CompliantArtifactJson.Value);
+        string upperFormat = VeridicalPredicateProofJson.Serialize(artifact with { Format = artifact.Format.ToUpperInvariant() });
+
+        VerificationResult result = Verify(upperFormat);
+
+        Assert.AreEqual(VerificationStatus.Malformed, result.Status);
+        Assert.IsTrue(result.Message.Contains("format", StringComparison.OrdinalIgnoreCase), result.Message);
+    }
+
+
     private static string Prove(PredicateProofRequest request)
     {
         return PredicateProofOperations.ProveToJson(VeridicalPredicateProofJson.Serialize(request), BaseMemoryPool.Shared);
@@ -381,7 +615,181 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
-    private static PredicateProofRequest Request(decimal recycled, decimal carbon, string recycledBound)
+    /// <summary>
+    /// Builds a range bundle over <c>recycled_content</c> and
+    /// <c>carbon_footprint</c>, appending the <c>material_code</c>
+    /// <c>memberOf</c> claim by default so existing callers keep exercising the
+    /// mixed-kind bundle; <paramref name="includeMemberOfClaim"/> lets a caller
+    /// opt into the range-only shape instead.
+    /// </summary>
+    private static PredicateProofRequest Request(decimal recycled, decimal carbon, string recycledBound, bool includeMemberOfClaim = true)
+    {
+        var claims = new List<PredicateProofRequestClaim>
+        {
+            new PredicateProofRequestClaim
+            {
+                Name = "recycled_content",
+                Kind = "range",
+                Direction = "atLeast",
+                FractionalDigits = 1,
+                InclusiveMaximum = "100.0",
+                Bound = recycledBound,
+                BoundValue = "30.0",
+                Measured = recycled.ToString(CultureInfo.InvariantCulture),
+            },
+            new PredicateProofRequestClaim
+            {
+                Name = "carbon_footprint",
+                Kind = "range",
+                Direction = "atMost",
+                FractionalDigits = 2,
+                InclusiveMaximum = "100.00",
+                Bound = "constant",
+                BoundValue = "12.50",
+                Measured = carbon.ToString(CultureInfo.InvariantCulture),
+            },
+        };
+
+        if(includeMemberOfClaim)
+        {
+            claims.Add(MaterialCodeClaim("7"));
+        }
+
+        return new PredicateProofRequest
+        {
+            Format = PredicateProofOperations.RequestFormat,
+            Curve = PredicateProofOperations.CurveId,
+            TranscriptDomain = TranscriptDomain,
+            QueryCount = PredicateProofOperations.WiredQueryCount,
+            LookupQueryCount = PredicateProofOperations.LookupQueryCount,
+            InverseRate = PredicateProofOperations.WiredInverseRate,
+            DigestBytes = PredicateProofOperations.WiredDigestBytes,
+            Claims = claims,
+        };
+    }
+
+
+    /// <summary>A single-claim request built from an already-shaped <see cref="PredicateProofRequestClaim"/>, for the claim-parsing guard pins that never reach proving.</summary>
+    private static PredicateProofRequest RequestWithSingleClaim(PredicateProofRequestClaim claim)
+    {
+        return new PredicateProofRequest
+        {
+            Format = PredicateProofOperations.RequestFormat,
+            Curve = PredicateProofOperations.CurveId,
+            TranscriptDomain = TranscriptDomain,
+            QueryCount = PredicateProofOperations.WiredQueryCount,
+            LookupQueryCount = PredicateProofOperations.LookupQueryCount,
+            InverseRate = PredicateProofOperations.WiredInverseRate,
+            DigestBytes = PredicateProofOperations.WiredDigestBytes,
+            Claims = [claim],
+        };
+    }
+
+
+    /// <summary>
+    /// A claim carrying whichever mix of <c>kind</c>, comparison fields and
+    /// allowed-value list a shape-guard pin needs — including combinations no
+    /// well-formed claim ever carries, since the guards under test exist to
+    /// reject exactly those combinations.
+    /// </summary>
+    private static PredicateProofRequestClaim RawClaim(
+        string name,
+        string kind,
+        string? direction,
+        string? bound,
+        string? boundValue,
+        IReadOnlyList<string>? allowedValues,
+        string measured)
+    {
+        return new PredicateProofRequestClaim
+        {
+            Name = name,
+            Kind = kind,
+            Direction = direction,
+            FractionalDigits = 0,
+            InclusiveMaximum = "9999",
+            Bound = bound,
+            BoundValue = boundValue,
+            AllowedValues = allowedValues,
+            Measured = measured,
+        };
+    }
+
+
+    /// <summary>A request whose one claim carries <paramref name="kind"/> and no other field, for pins about the <c>kind</c> discriminator itself.</summary>
+    private static PredicateProofRequest RequestWithClaimKind(string kind)
+    {
+        return RequestWithSingleClaim(RawClaim("quantity", kind, direction: null, bound: null, boundValue: null, allowedValues: null, measured: "1"));
+    }
+
+
+    /// <summary>A well-formed <c>memberOf</c> claim over <paramref name="allowedValues"/>, for pins that vary the allowed-value list itself.</summary>
+    private static PredicateProofRequestClaim MemberOfRequestClaim(string name, IReadOnlyList<string> allowedValues, string measured)
+    {
+        return RawClaim(name, "memberOf", direction: null, bound: null, boundValue: null, allowedValues: allowedValues, measured: measured);
+    }
+
+
+    /// <summary>A single-claim <c>memberOf</c> request over <paramref name="allowedValues"/>, for the allowed-value-list guard pins.</summary>
+    private static PredicateProofRequest LookupOnlyRequestWithAllowedValues(IReadOnlyList<string> allowedValues, string measured)
+    {
+        return RequestWithSingleClaim(MemberOfRequestClaim("material_code", allowedValues, measured));
+    }
+
+
+    /// <summary>The invariant-culture decimal strings <c>0</c> through <c>count - 1</c>, distinct and within the claim helpers' shared domain.</summary>
+    private static string[] SequentialAllowedValues(int count)
+    {
+        var values = new string[count];
+        for(int i = 0; i < count; i++)
+        {
+            values[i] = i.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return values;
+    }
+
+
+    /// <summary>A well-formed artifact-side <c>memberOf</c> claim descriptor over <paramref name="allowedValues"/>, for verify-side allowed-value-list guard pins.</summary>
+    private static PredicateProofClaim MemberOfArtifactClaim(string name, IReadOnlyList<string> allowedValues)
+    {
+        return new PredicateProofClaim
+        {
+            Name = name,
+            Kind = "memberOf",
+            FractionalDigits = 0,
+            InclusiveMaximum = "9999",
+            AllowedValues = allowedValues,
+        };
+    }
+
+
+    /// <summary>
+    /// A single-claim artifact carrying <paramref name="lookupProofs"/> verbatim
+    /// (deliberately left empty by the guard pins that only need to observe
+    /// claim parsing succeed, never a real lookup proof check).
+    /// </summary>
+    private static PredicateProofArtifact LookupOnlyArtifact(PredicateProofClaim claim, IReadOnlyList<string> lookupProofs)
+    {
+        return new PredicateProofArtifact
+        {
+            Format = PredicateProofOperations.ArtifactFormat,
+            Curve = PredicateProofOperations.CurveId,
+            TranscriptDomain = TranscriptDomain,
+            QueryCount = PredicateProofOperations.WiredQueryCount,
+            LookupQueryCount = PredicateProofOperations.LookupQueryCount,
+            InverseRate = PredicateProofOperations.WiredInverseRate,
+            DigestBytes = PredicateProofOperations.WiredDigestBytes,
+            Claims = [claim],
+            PublicInputs = string.Empty,
+            Proof = string.Empty,
+            LookupProofs = lookupProofs,
+        };
+    }
+
+
+    /// <summary>A request over two independent <c>memberOf</c> claims, small enough (both pad to the wired minimum table) to stay cheap while still exercising two distinct claim-name-separated transcripts.</summary>
+    private static PredicateProofRequest TwoMemberOfClaimsRequest()
     {
         return new PredicateProofRequest
         {
@@ -394,29 +802,8 @@ internal sealed class PredicateProofOperationsTests
             DigestBytes = PredicateProofOperations.WiredDigestBytes,
             Claims =
             [
-                new PredicateProofRequestClaim
-                {
-                    Name = "recycled_content",
-                    Kind = "range",
-                    Direction = "atLeast",
-                    FractionalDigits = 1,
-                    InclusiveMaximum = "100.0",
-                    Bound = recycledBound,
-                    BoundValue = "30.0",
-                    Measured = recycled.ToString(CultureInfo.InvariantCulture),
-                },
-                new PredicateProofRequestClaim
-                {
-                    Name = "carbon_footprint",
-                    Kind = "range",
-                    Direction = "atMost",
-                    FractionalDigits = 2,
-                    InclusiveMaximum = "100.00",
-                    Bound = "constant",
-                    BoundValue = "12.50",
-                    Measured = carbon.ToString(CultureInfo.InvariantCulture),
-                },
                 MaterialCodeClaim("7"),
+                MemberOfRequestClaim("batch_code", ["11", "22", "33"], "22"),
             ],
         };
     }

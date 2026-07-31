@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments;
+using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Memory;
 using System;
@@ -44,6 +45,33 @@ public static class LogUpLigeroProofSerialization
 {
     private const int ScalarSize = Scalar.SizeBytes;
 
+    /// <summary>
+    /// The largest opened-column query count the wire format accepts. The most
+    /// column-hungry supported configuration — the unique-decoding regime at
+    /// the minimum inverse rate targeting 256 bits — needs about 617 columns,
+    /// so the cap leaves ample headroom while keeping a single opening's
+    /// serialized size within <see cref="int"/> range.
+    /// </summary>
+    public const int MaximumQueryCount = 1024;
+
+    /// <summary>
+    /// The largest inverse code rate <c>c</c> the wire format accepts. The rate
+    /// is a proof-size lever — a larger <c>c</c> buys more soundness bits per
+    /// opened column at the cost of a codeword <c>c</c> times its message — and
+    /// the trade is exhausted long before this bound (256 already gives eight
+    /// bits per column under conjectured capacity), so the cap only excludes
+    /// shapes no deployment produces.
+    /// </summary>
+    public const int MaximumInverseRate = 256;
+
+    /// <summary>
+    /// The largest Merkle digest size in bytes the wire format accepts:
+    /// <see cref="WellKnownMerkleHashParameters.MaximumDigestSizeBytes"/>, the
+    /// bound the Merkle authentication-path reader enforces, so a digest size
+    /// the codec admits is never one the path walk later rejects.
+    /// </summary>
+    public const int MaximumDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
+
 
     /// <summary>
     /// The total wire-format byte size of a LogUp-over-Ligero proof with the
@@ -51,22 +79,28 @@ public static class LogUpLigeroProofSerialization
     /// </summary>
     /// <param name="variableCount">The hypercube variable count; in <c>[1, LogUpProver.MaximumVariableCount]</c>.</param>
     /// <param name="witnessColumnCount">The witness-column count; in <c>[1, LogUpProver.MaximumWitnessColumnCount]</c>.</param>
-    /// <param name="queryCount">The Ligero opened-column query count; positive.</param>
-    /// <param name="inverseRate">The Ligero inverse code rate <c>c ≥ 2</c>.</param>
-    /// <param name="digestSizeBytes">The Merkle digest size in bytes; positive.</param>
+    /// <param name="queryCount">The Ligero opened-column query count; in <c>[1, MaximumQueryCount]</c>.</param>
+    /// <param name="inverseRate">The Ligero inverse code rate; in <c>[2, MaximumInverseRate]</c>.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes; in <c>[1, MaximumDigestSizeBytes]</c>.</param>
     /// <param name="curve">The curve whose scalar field the argument runs over.</param>
     /// <returns>The exact serialized length in bytes.</returns>
     /// <exception cref="ArgumentOutOfRangeException">When a dimension is out of range.</exception>
+    /// <exception cref="ArgumentException">When the dimensions are individually in range but jointly describe a proof longer than <see cref="int.MaxValue"/> bytes.</exception>
     public static int GetBufferSizeBytes(int variableCount, int witnessColumnCount, int queryCount, int inverseRate, int digestSizeBytes, CurveParameterSet curve)
     {
         ValidateDimensions(variableCount, witnessColumnCount, queryCount, inverseRate, digestSizeBytes);
 
-        int commitmentSection = (witnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * digestSizeBytes;
-        int roundSection = variableCount * LogUpSumcheck.RoundEvaluationCount(witnessColumnCount) * ScalarSize;
-        int claimedSection = (witnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * ScalarSize;
-        int openingSection = (witnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * OpeningSizeBytes(variableCount, curve, queryCount, inverseRate, digestSizeBytes);
+        long commitmentSection = (long)(witnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * digestSizeBytes;
+        long roundSection = (long)variableCount * LogUpSumcheck.RoundEvaluationCount(witnessColumnCount) * ScalarSize;
+        long claimedSection = (long)(witnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * ScalarSize;
+        long openingSection = (long)(witnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * OpeningSizeBytes(variableCount, curve, queryCount, inverseRate, digestSizeBytes);
+        long totalSize = commitmentSection + roundSection + claimedSection + openingSection;
+        if(totalSize > int.MaxValue)
+        {
+            throw new ArgumentException($"The dimensions describe a proof of {totalSize} bytes, above the supported maximum of {int.MaxValue}.");
+        }
 
-        return commitmentSection + roundSection + claimedSection + openingSection;
+        return (int)totalSize;
     }
 
 
@@ -266,8 +300,11 @@ public static class LogUpLigeroProofSerialization
 
 
     /// <summary>
-    /// Rejects out-of-range argument dimensions before any size arithmetic, so
-    /// a hostile shape can never wrap a length computation.
+    /// Rejects out-of-range argument dimensions before any size arithmetic.
+    /// The upper caps bound every intermediate product of the capped
+    /// dimensions — in particular the per-opening size, whose worst capped
+    /// shape stays near 270 MB — so only the final section sum needs the
+    /// widened total check in <see cref="GetBufferSizeBytes"/>.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">When a dimension is out of range.</exception>
     private static void ValidateDimensions(int variableCount, int witnessColumnCount, int queryCount, int inverseRate, int digestSizeBytes)
@@ -282,8 +319,19 @@ public static class LogUpLigeroProofSerialization
             throw new ArgumentOutOfRangeException(nameof(witnessColumnCount), witnessColumnCount, $"The witness-column count must lie in [1, {LogUpProver.MaximumWitnessColumnCount}].");
         }
 
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
-        ArgumentOutOfRangeException.ThrowIfLessThan(inverseRate, 2);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        if(queryCount < 1 || queryCount > MaximumQueryCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(queryCount), queryCount, $"The query count must lie in [1, {MaximumQueryCount}].");
+        }
+
+        if(inverseRate < 2 || inverseRate > MaximumInverseRate)
+        {
+            throw new ArgumentOutOfRangeException(nameof(inverseRate), inverseRate, $"The inverse rate must lie in [2, {MaximumInverseRate}].");
+        }
+
+        if(digestSizeBytes < 1 || digestSizeBytes > MaximumDigestSizeBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(digestSizeBytes), digestSizeBytes, $"The digest size must lie in [1, {MaximumDigestSizeBytes}] bytes.");
+        }
     }
 }

@@ -56,6 +56,16 @@ internal static class InstructionSetRequirements
     }
 
 
+    /// <summary>Throws <see cref="AssertInconclusiveException"/> when the AVX-512 VPCLMULQDQ combination (AVX-512F, 512-bit carry-less multiply and AVX-512BW) is not supported on the host CPU.</summary>
+    public static void RequireAvx512Vpclmulqdq()
+    {
+        if(!Avx512F.IsSupported || !Pclmulqdq.V512.IsSupported || !Avx512BW.IsSupported)
+        {
+            Assert.Inconclusive("AVX-512 VPCLMULQDQ is not supported on this host CPU; skipping VPCLMULQDQ-specific test.");
+        }
+    }
+
+
     /// <summary>Throws <see cref="AssertInconclusiveException"/> when AArch64 NEON is not supported on the host CPU.</summary>
     public static void RequireNeon()
     {

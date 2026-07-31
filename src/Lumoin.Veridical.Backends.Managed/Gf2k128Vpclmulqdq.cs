@@ -36,8 +36,8 @@ internal static class Gf2k128Vpclmulqdq
         Vector512.Create(0x87UL, 0UL, 0x87UL, 0UL, 0x87UL, 0UL, 0x87UL, 0UL);
 
 
-    /// <summary>Whether the 512-bit carry-less multiply and the per-lane byte shift are both available.</summary>
-    public static bool IsSupported => Pclmulqdq.V512.IsSupported && Avx512BW.IsSupported;
+    /// <summary>Whether the AVX-512 foundation, the 512-bit carry-less multiply and the per-lane byte shift are all available.</summary>
+    public static bool IsSupported => Avx512F.IsSupported && Pclmulqdq.V512.IsSupported && Avx512BW.IsSupported;
 
 
     /// <summary>
