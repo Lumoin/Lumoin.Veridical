@@ -128,6 +128,20 @@ soundness rests on assumptions a consumer must uphold:
   malleability, not a soundness break — the accepted statement is unchanged — but a consumer must not
   treat a proof's byte identity (or its hash) as a deduplication, anti-replay, or nullifier key. Bind
   such keys to the statement or a canonical semantic digest instead.
+- **Prover-supplied group elements are validated before use on the Pedersen-family verify paths.**
+  The Bulletproofs range verifiers (single, aggregated, and both batched forms) and the Hyrax
+  evaluation and weighted-sum opening verifiers screen every group element that arrives from a prover
+  — the value commitments, `A`, `S`, `T₁`, `T₂`, each inner-product round point, the Hyrax row
+  commitments and `C_f` — for on-curve and prime-order-subgroup membership before any group arithmetic
+  runs, and reject rather than multiply. This matters on curves with a cofactor greater than one, where
+  a length-valid encoding can decode onto the curve while carrying a small-order component the
+  soundness argument does not account for: BLS12-381 G1 has a non-trivial cofactor, while BN254 G1 has
+  cofactor 1 and every on-curve point is already a subgroup member. The identity passes the screen
+  deliberately — unlike pairing-based BBS verification, where an identity signature point degenerates
+  the pairing equation and is rejected outright, a Pedersen or inner-product equation with an identity
+  term is the same equation minus one addend and still binds the prover. The inner-product arguments
+  themselves do not re-screen: validation is the enclosing verify funnel's obligation, documented on
+  both argument types, and every call site in the library is one of those funnels.
 - **Vector commitments are position-binding at a fixed depth, not by leaf/internal domain separation.**
   The binary Merkle trees the commitment schemes use (the BaseFold codeword trees, the Ligero and
   Longfellow column trees, the Poseidon-ready set commitment) apply **no domain separation between leaf

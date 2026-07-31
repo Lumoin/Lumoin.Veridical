@@ -52,6 +52,8 @@ internal sealed class CrossInstanceMixingTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate ScalarAdd { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate ScalarSubtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate ScalarMul { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -99,7 +101,7 @@ internal sealed class CrossInstanceMixingTests
         bool ok = openingB.Commitment.VerifyWeightedSum(
             weights, openingA.ClaimedValue, openingA.Proof, key, verifierTx,
             Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-            G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
         Assert.IsFalse(ok, "An opening produced against one commitment must not verify against a different commitment.");
     }
@@ -122,7 +124,7 @@ internal sealed class CrossInstanceMixingTests
         bool ok = openingA.Commitment.VerifyWeightedSum(
             weights, openingA.ClaimedValue, openingA.Proof, key, verifierTx,
             Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-            G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
         Assert.IsTrue(ok, "An opening must verify against the commitment it was produced for.");
     }
@@ -144,7 +146,7 @@ internal sealed class CrossInstanceMixingTests
         FiatShamirTranscript verifierTx = Track(NewRangeTranscript());
         bool ok = AggregatedBulletproofRangeVerifier.Verify(
             key, RangeBitWidth, RangeValueCount, instanceB.Commitments, instanceA.Proof, verifierTx,
-            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, G1Add, G1ScalarMul, G1Msm, pool);
+            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
         Assert.IsFalse(ok, "An aggregated range proof must not verify against a different instance's value commitments.");
     }
@@ -161,7 +163,7 @@ internal sealed class CrossInstanceMixingTests
         FiatShamirTranscript verifierTx = Track(NewRangeTranscript());
         bool ok = AggregatedBulletproofRangeVerifier.Verify(
             key, RangeBitWidth, RangeValueCount, instanceA.Commitments, instanceA.Proof, verifierTx,
-            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, G1Add, G1ScalarMul, G1Msm, pool);
+            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
         Assert.IsTrue(ok, "An aggregated range proof must verify against the commitments it was produced for.");
     }

@@ -26,6 +26,8 @@ internal sealed class HyraxBindingTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate ScalarAdd { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate ScalarSubtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate ScalarMul { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -70,7 +72,7 @@ internal sealed class HyraxBindingTests
                 bool ok = commitment.VerifyOpening(
                     point.AsSpan, claimedValueFromBogus, proof, key, verifierTx,
                     Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-                    G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+                    G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
                 Assert.IsFalse(ok, "A proof generated for mleB cannot verify against a commitment to mleA — the IPA's structure binds f to the row commitments.");
             }
@@ -119,7 +121,7 @@ internal sealed class HyraxBindingTests
                 bool ok = commitment.VerifyOpening(
                     point.AsSpan, claimedValue, proof, key, verifierTx,
                     Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-                    G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+                    G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
                 Assert.IsFalse(ok, "Verify must reject when the prover used incorrect witness blindings — the Δr check catches the mismatch.");
             }

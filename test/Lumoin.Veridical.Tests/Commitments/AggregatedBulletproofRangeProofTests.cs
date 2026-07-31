@@ -33,6 +33,8 @@ internal sealed class AggregatedBulletproofRangeProofTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -117,7 +119,7 @@ internal sealed class AggregatedBulletproofRangeProofTests
                 Assert.IsFalse(
                     AggregatedBulletproofRangeVerifier.Verify(
                         key, BitWidth, values.Length, commitments, proof, verifyTx,
-                        Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, pool),
+                        Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool),
                     "A tampered aggregated proof must be rejected.");
             }
         }
@@ -150,7 +152,7 @@ internal sealed class AggregatedBulletproofRangeProofTests
                 Assert.IsFalse(
                     AggregatedBulletproofRangeVerifier.Verify(
                         key, BitWidth, values.Length, swapped, proof, verifyTx,
-                        Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, pool),
+                        Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool),
                     "Swapped commitment slots must be rejected.");
             }
         }
@@ -175,7 +177,7 @@ internal sealed class AggregatedBulletproofRangeProofTests
             Assert.IsTrue(
                 AggregatedBulletproofRangeVerifier.Verify(
                     key, BitWidth, values.Length, commitments, rehydrated, verifyTx,
-                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, pool),
+                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool),
                 "A wire-rehydrated aggregated proof must verify.");
         }
     }
@@ -195,7 +197,7 @@ internal sealed class AggregatedBulletproofRangeProofTests
                     expectVerified,
                     AggregatedBulletproofRangeVerifier.Verify(
                         key, bitWidth, values.Length, commitments, proof, verifyTx,
-                        Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, pool),
+                        Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool),
                     $"Aggregated roundtrip at bitWidth = {bitWidth}, m = {values.Length}.");
             }
         }

@@ -37,6 +37,8 @@ internal sealed class MaskedSpartanZeroMaskRejectionTests
     private static G1AddDelegate Bn254G1Add { get; } = Bn254BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate Bn254G1ScalarMul { get; } = Bn254BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate Bn254G1Msm { get; } = TestG1Backends.Bn254Msm;
+    private static G1IsOnCurveDelegate Bn254G1IsOnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate Bn254G1IsInPrimeOrderSubgroup { get; } = Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static G1HashToCurveDelegate Bn254HashToCurve { get; } = Bn254BigIntegerG1Reference.GetHashToCurve();
     private static MleEvaluateDelegate SharedMleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
     private static MleFoldDelegate SharedMleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
@@ -115,7 +117,7 @@ internal sealed class MaskedSpartanZeroMaskRejectionTests
             commitmentKey,
             CurveParameterSet.Bn254,
             Bn254Hash, Bn254Squeeze, Bn254Reduce, Bn254Add, Bn254Subtract, Bn254Multiply, Bn254Invert, Bn254ScalarRandom,
-            Bn254G1Add, Bn254G1ScalarMul, Bn254G1Msm,
+            Bn254G1Add, Bn254G1ScalarMul, Bn254G1Msm, Bn254G1IsOnCurve, Bn254G1IsInPrimeOrderSubgroup,
             ownsKey: true);
     }
 

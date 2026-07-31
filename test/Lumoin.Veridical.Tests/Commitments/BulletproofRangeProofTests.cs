@@ -28,6 +28,8 @@ internal sealed class BulletproofRangeProofTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -108,17 +110,17 @@ internal sealed class BulletproofRangeProofTests
         bool verified = BulletproofRangeVerifier.Verify(
             key, commitment, rehydrated, verifierTx,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            G1Add, G1ScalarMul, G1Msm, pool);
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
         Assert.IsTrue(verified, "A rehydrated, correctly generated range proof must verify.");
     }
 
 
     [TestMethod]
-    [DataRow(0)]    //Inside A.
-    [DataRow(150)]  //Inside T1.
-    [DataRow(200)]  //Inside τ_x.
-    [DataRow(260)]  //Inside t̂.
+    [DataRow(0)]    //Inside A: a point slot, rejected by the subgroup screen before the algebraic check runs.
+    [DataRow(150)]  //Inside T2: a point slot, rejected by the subgroup screen before the algebraic check runs.
+    [DataRow(200)]  //Inside τ_x: a scalar slot, so this still exercises the t̂ consistency check.
+    [DataRow(260)]  //Inside t̂: a scalar slot, so this still exercises the t̂ consistency check.
     public void TamperedProofIsRejected(int byteOffset)
     {
         const int BitWidth = 16;
@@ -143,7 +145,7 @@ internal sealed class BulletproofRangeProofTests
         bool verified = BulletproofRangeVerifier.Verify(
             key, commitment, proof, verifierTx,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            G1Add, G1ScalarMul, G1Msm, pool);
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
         Assert.IsFalse(verified, $"A range proof with a flipped byte at offset {byteOffset} must be rejected.");
     }
@@ -175,7 +177,7 @@ internal sealed class BulletproofRangeProofTests
         bool verified = BulletproofRangeVerifier.Verify(
             key, otherCommitment, proof, verifierTx,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            G1Add, G1ScalarMul, G1Msm, pool);
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
         Assert.IsFalse(verified, "A range proof must be bound to its own value commitment.");
     }
@@ -234,7 +236,7 @@ internal sealed class BulletproofRangeProofTests
         bool verified = BulletproofRangeVerifier.Verify(
             key, commitment, proof, verifierTx,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            G1Add, G1ScalarMul, G1Msm, pool);
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
         Assert.AreEqual(expectVerified, verified, $"Range proof round-trip for n = {bitWidth}, v = {value}.");
     }
