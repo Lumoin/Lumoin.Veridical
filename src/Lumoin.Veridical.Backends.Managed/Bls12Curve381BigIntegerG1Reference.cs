@@ -646,7 +646,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
-    private static AffinePoint PointNegate(AffinePoint a)
+    internal static AffinePoint PointNegate(AffinePoint a)
     {
         if(a.IsInfinity)
         {
@@ -681,7 +681,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
-    private static AffinePoint ScalarMultiplyPoint(BigInteger scalar, AffinePoint point)
+    internal static AffinePoint ScalarMultiplyPoint(BigInteger scalar, AffinePoint point)
     {
         if(scalar.IsZero || point.IsInfinity)
         {
@@ -828,7 +828,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
-    private static bool TryDecode(ReadOnlySpan<byte> bytes, out AffinePoint result)
+    internal static bool TryDecode(ReadOnlySpan<byte> bytes, out AffinePoint result)
     {
         result = default;
         if(bytes.Length != WellKnownCurves.Bls12Curve381G1CompressedSizeBytes)
