@@ -32,8 +32,11 @@ public sealed record PredicateProofArtifact
     /// <summary>The Fiat-Shamir transcript domain label the prover and verifier must share.</summary>
     public required string TranscriptDomain { get; init; }
 
-    /// <summary>The Ligero opened-column query count the proof was produced under.</summary>
+    /// <summary>The Ligero opened-column query count the range-claim proof was produced under.</summary>
     public required int QueryCount { get; init; }
+
+    /// <summary>The Ligero opened-column query count each <c>memberOf</c> claim's lookup proof was produced under. Higher than <see cref="QueryCount"/>: the lookup path opens three independently forgeable columns, so its target carries a union-bound surcharge.</summary>
+    public required int LookupQueryCount { get; init; }
 
     /// <summary>The Ligero inverse code rate <c>c</c> (code rate <c>ρ = 1/c</c>) the proof was produced under.</summary>
     public required int InverseRate { get; init; }
@@ -44,9 +47,12 @@ public sealed record PredicateProofArtifact
     /// <summary>The ordered claims whose conjunction the proof attests. Carries no measured values.</summary>
     public required IReadOnlyList<PredicateProofClaim> Claims { get; init; }
 
-    /// <summary>The revealed public inputs as Base64 of the canonical big-endian scalars, in public-input declaration order; empty when every bound is a constant.</summary>
+    /// <summary>The revealed public inputs as Base64 of the canonical big-endian scalars, in public-input declaration order; empty when every bound is a constant or no <c>range</c> claim exists.</summary>
     public required string PublicInputs { get; init; }
 
-    /// <summary>The Ligero-backed Spartan proof, Base64-encoded.</summary>
+    /// <summary>The Ligero-backed Spartan proof over the <c>range</c> claims, Base64-encoded; empty when the bundle carries no <c>range</c> claim.</summary>
     public required string Proof { get; init; }
+
+    /// <summary>The LogUp-over-Ligero lookup proofs, Base64-encoded, one per <c>memberOf</c> claim in claim order; empty when the bundle carries none.</summary>
+    public required IReadOnlyList<string> LookupProofs { get; init; }
 }
