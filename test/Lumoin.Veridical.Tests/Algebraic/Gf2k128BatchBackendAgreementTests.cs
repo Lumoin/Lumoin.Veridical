@@ -27,9 +27,12 @@ internal sealed class Gf2k128BatchBackendAgreementTests
     private const int ScalarSize = 32;
     private const int ElementOffset = 16;
 
-    //Edge sizes: empty, single, an odd non-trivial count, and a large run that exercises the
-    //per-element loop well past any tail.
-    private static int[] BatchSizes { get; } = [0, 1, 2, 3, 7, 64, 257];
+    /// <summary>
+    /// Edge sizes: empty, single, the pure-tail counts below the four-element wide kernel, the
+    /// exact wide width and one past it, an odd mixed count, and a large run that exercises the
+    /// wide groups and the tail well past any boundary.
+    /// </summary>
+    private static int[] BatchSizes { get; } = [0, 1, 2, 3, 4, 5, 7, 64, 257];
 
     private static ScalarMultiplyDelegate ReferenceMultiply { get; } = Gf2k128Reference.GetMultiply();
 
