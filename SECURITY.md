@@ -120,8 +120,10 @@ soundness rests on assumptions a consumer must uphold:
   witness readers) are rejected at deserialization if they encode an integer at or above the
   scalar-field order, and a sumcheck round-polynomial coefficient at or above the order is rejected
   when the polynomial is reconstructed — at proof deserialization for BaseFold, and during
-  verification for Spartan, where it makes the verifier return `false`. The remaining scalar sections
-  of a
+  verification for Spartan, where it makes the verifier return `false`. A Ligero opening's proximity
+  response, evaluation response and every opened column are likewise rejected at the reader funnel,
+  so a Ligero opening that verifies has exactly one byte representation. The remaining scalar
+  sections of a
   proof container (for example the Spartan opening responses and the Bulletproofs inner-product
   scalars) are reduced modulo the order by the arithmetic backends rather than rejected, so a valid
   proof admits a second, byte-distinct encoding that still verifies. This is a proof-*byte*
