@@ -1,0 +1,248 @@
+using Lumoin.Veridical.Core.Algebraic;
+using Lumoin.Veridical.Core.Commitments.BaseFold;
+using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Core.Sumcheck;
+using System;
+using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
+
+namespace Lumoin.Veridical.Core.Commitments.Whir;
+
+/// <summary>
+/// Fiat-Shamir transcript operations for the WHIR IOPP, in the protocol's
+/// message order: the statement and input-oracle root, then per iteration the
+/// folded oracle's root, the out-of-domain sample and reply, the shift-query
+/// indices and combination challenge, and the sumcheck round polynomials and
+/// folding challenges; finally the cleartext final polynomial and the final
+/// query indices. Prover and verifier call these in the same order so they
+/// reach identical transcript states and therefore identical challenges and
+/// query indices.
+/// </summary>
+[SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
+public static class WhirTranscriptExtensions
+{
+    /// <summary>
+    /// Bytes squeezed for a query index. Eight bytes give a 64-bit value; the
+    /// query domain is a power of two, so the low-bit mask is unbiased
+    /// regardless of the byte count, and eight bytes comfortably cover any
+    /// practical domain size.
+    /// </summary>
+    private const int QueryIndexSqueezeBytes = sizeof(ulong);
+
+
+    extension(FiatShamirTranscript transcript)
+    {
+        /// <summary>
+        /// Absorbs the public statement — the sumcheck target <c>σ</c>
+        /// followed by every constraint's coefficient and point — under the
+        /// <see cref="WellKnownWhirTranscriptLabels.Statement"/> label, as one
+        /// operation so the challenge stream is bound to the whole claim.
+        /// </summary>
+        /// <param name="target">The sumcheck target <c>σ</c>, one element.</param>
+        /// <param name="constraintCoefficients">The constraint coefficients, one element per constraint.</param>
+        /// <param name="constraintPoints">The concatenated constraint points.</param>
+        /// <param name="hash">The transcript's fixed-output hash backend.</param>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirStatement(
+            ReadOnlySpan<byte> target,
+            ReadOnlySpan<byte> constraintCoefficients,
+            ReadOnlySpan<byte> constraintPoints,
+            FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            var label = new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.Statement);
+            transcript.AbsorbBytes(label, target, hash);
+            transcript.AbsorbBytes(label, constraintCoefficients, hash);
+            transcript.AbsorbBytes(label, constraintPoints, hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs an oracle's Merkle root under the
+        /// <see cref="WellKnownWhirTranscriptLabels.OracleRoot"/> label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="root"/> or <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirOracleRoot(MerkleRoot root, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentNullException.ThrowIfNull(root);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.OracleRoot),
+                root.AsReadOnlySpan(),
+                hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs a compressed sumcheck round polynomial under the
+        /// <see cref="WellKnownWhirTranscriptLabels.SumcheckPolynomial"/> label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+        public void AbsorbWhirSumcheckPolynomial(CompressedRoundPolynomial roundPolynomial, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            transcript.AbsorbRoundPolynomial(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.SumcheckPolynomial),
+                roundPolynomial,
+                hash);
+        }
+
+
+        /// <summary>
+        /// Squeezes a sumcheck folding challenge <c>α</c> as a canonical
+        /// scalar under the
+        /// <see cref="WellKnownWhirTranscriptLabels.FoldChallenge"/> label.
+        /// </summary>
+        /// <returns>The challenge; the caller owns its disposal.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public Scalar SqueezeWhirFoldChallenge(
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash,
+            ScalarReduceDelegate reduce,
+            CurveParameterSet curve,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            return transcript.SqueezeScalar(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.FoldChallenge),
+                squeeze,
+                hash,
+                reduce,
+                curve,
+                pool);
+        }
+
+
+        /// <summary>
+        /// Squeezes an out-of-domain sample <c>z_(i,0)</c> as a canonical
+        /// scalar under the
+        /// <see cref="WellKnownWhirTranscriptLabels.OutOfDomainPoint"/> label.
+        /// </summary>
+        /// <returns>The sample; the caller owns its disposal.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public Scalar SqueezeWhirOutOfDomainPoint(
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash,
+            ScalarReduceDelegate reduce,
+            CurveParameterSet curve,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            return transcript.SqueezeScalar(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.OutOfDomainPoint),
+                squeeze,
+                hash,
+                reduce,
+                curve,
+                pool);
+        }
+
+
+        /// <summary>
+        /// Absorbs an out-of-domain reply <c>y_(i,0)</c> under the
+        /// <see cref="WellKnownWhirTranscriptLabels.OutOfDomainReply"/> label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirOutOfDomainReply(ReadOnlySpan<byte> reply, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.OutOfDomainReply),
+                reply,
+                hash);
+        }
+
+
+        /// <summary>
+        /// Squeezes a combination challenge <c>γ</c> as a canonical scalar
+        /// under the
+        /// <see cref="WellKnownWhirTranscriptLabels.CombinationChallenge"/> label.
+        /// </summary>
+        /// <returns>The challenge; the caller owns its disposal.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public Scalar SqueezeWhirCombinationChallenge(
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash,
+            ScalarReduceDelegate reduce,
+            CurveParameterSet curve,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            return transcript.SqueezeScalar(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.CombinationChallenge),
+                squeeze,
+                hash,
+                reduce,
+                curve,
+                pool);
+        }
+
+
+        /// <summary>
+        /// Absorbs the final polynomial's cleartext coefficients under the
+        /// <see cref="WellKnownWhirTranscriptLabels.FinalPolynomial"/> label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirFinalPolynomial(ReadOnlySpan<byte> coefficients, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.FinalPolynomial),
+                coefficients,
+                hash);
+        }
+
+
+        /// <summary>
+        /// Squeezes a query block index in <c>[0, queryDomainSize)</c> under
+        /// the given label — <see cref="WellKnownWhirTranscriptLabels.ShiftQueryIndex"/>
+        /// for the main loop's shift queries,
+        /// <see cref="WellKnownWhirTranscriptLabels.FinalQueryIndex"/> for the
+        /// final phase. The domain size must be a power of two (every WHIR
+        /// folded query domain is), so the reduction is an unbiased low-bit
+        /// mask.
+        /// </summary>
+        /// <param name="label">The operation label naming the query family.</param>
+        /// <param name="queryDomainSize">The number of distinct query blocks; a power of two.</param>
+        /// <param name="squeeze">The XOF backend.</param>
+        /// <param name="hash">The fixed-output hash backend, used by the post-squeeze state update.</param>
+        /// <returns>A block index in <c>[0, queryDomainSize)</c>.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">When <paramref name="queryDomainSize"/> is not a positive power of two.</exception>
+        public int SqueezeWhirQueryIndex(
+            string label,
+            int queryDomainSize,
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryDomainSize);
+
+            if(!BitOperations.IsPow2((uint)queryDomainSize))
+            {
+                throw new ArgumentException($"Query domain size must be a power of two; received {queryDomainSize}.", nameof(queryDomainSize));
+            }
+
+            Span<byte> bytes = stackalloc byte[QueryIndexSqueezeBytes];
+            transcript.SqueezeBytes(
+                new FiatShamirOperationLabel(label),
+                bytes,
+                squeeze,
+                hash);
+
+            ulong value = BinaryPrimitives.ReadUInt64BigEndian(bytes);
+
+            //Power-of-two domain: the low bits are an unbiased uniform sample.
+            return (int)(value & (ulong)(queryDomainSize - 1));
+        }
+    }
+}
