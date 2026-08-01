@@ -495,6 +495,14 @@ internal static class LongfellowKernelZkTestHarness
             out LongfellowZkVerificationResult result);
 
         Assert.AreEqual(expectedAccept, accepted, $"The Fp256 verdict must be {(expectedAccept ? "accept" : "reject")} (result {result}).");
+
+        if(!expectedAccept)
+        {
+            //A soundness reject must surface as a Ligero rejection, not a parse/transcript-shape failure;
+            //pinning the cause stops a regression that rejects for a MalformedProof reason from
+            //masquerading as a soundness reject.
+            Assert.AreEqual(LongfellowZkVerificationResult.LigeroRejected, result, "A tampered Fp256 proof must reject with the Ligero soundness cause.");
+        }
     }
 
 
