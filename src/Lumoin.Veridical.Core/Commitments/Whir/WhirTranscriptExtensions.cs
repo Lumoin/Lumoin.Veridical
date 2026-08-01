@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Core.Sumcheck;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -199,6 +200,84 @@ public static class WhirTranscriptExtensions
                 new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.FinalPolynomial),
                 coefficients,
                 hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs a public batch statement — every claim's target and
+        /// constraint list, prefixed by an explicit fixed-width encoding of
+        /// the claim boundaries — under the
+        /// <see cref="WellKnownWhirTranscriptLabels.BatchStatement"/> label.
+        /// Absorbing the boundary encoding pins how the flat spans split
+        /// into claims, so two different batches can never absorb identical
+        /// bytes. The batch combination challenge is bound to this statement
+        /// and to the input oracle's root absorbed after it.
+        /// </summary>
+        /// <param name="claimTargets">The claim targets <c>σ_i</c>, one element per claim.</param>
+        /// <param name="claimConstraintCounts">The per-claim constraint counts splitting the flat constraint spans.</param>
+        /// <param name="constraintCoefficients">Every claim's constraint coefficients, concatenated in claim order.</param>
+        /// <param name="constraintPoints">Every claim's constraint points, concatenated in claim order.</param>
+        /// <param name="hash">The transcript's fixed-output hash backend.</param>
+        /// <param name="pool">The pool to rent the boundary encoding from.</param>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public void AbsorbWhirBatchStatement(
+            ReadOnlySpan<byte> claimTargets,
+            ReadOnlySpan<int> claimConstraintCounts,
+            ReadOnlySpan<byte> constraintCoefficients,
+            ReadOnlySpan<byte> constraintPoints,
+            FiatShamirHashDelegate hash,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentNullException.ThrowIfNull(pool);
+
+            var label = new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BatchStatement);
+
+            int encodedLength = sizeof(int) * (1 + claimConstraintCounts.Length);
+            using IMemoryOwner<byte> boundariesOwner = pool.Rent(encodedLength);
+            Span<byte> boundaries = boundariesOwner.Memory.Span[..encodedLength];
+            BinaryPrimitives.WriteInt32BigEndian(boundaries, claimConstraintCounts.Length);
+            for(int claim = 0; claim < claimConstraintCounts.Length; claim++)
+            {
+                BinaryPrimitives.WriteInt32BigEndian(boundaries.Slice(sizeof(int) * (1 + claim), sizeof(int)), claimConstraintCounts[claim]);
+            }
+
+            transcript.AbsorbBytes(label, boundaries, hash);
+            transcript.AbsorbBytes(label, claimTargets, hash);
+            transcript.AbsorbBytes(label, constraintCoefficients, hash);
+            transcript.AbsorbBytes(label, constraintPoints, hash);
+        }
+
+
+        /// <summary>
+        /// Squeezes the batch combination challenge <c>γ</c> of WHIR
+        /// Construction 5.5 as a canonical scalar under the
+        /// <see cref="WellKnownWhirTranscriptLabels.BatchCombinationChallenge"/>
+        /// label.
+        /// </summary>
+        /// <param name="squeeze">The XOF backend.</param>
+        /// <param name="hash">The transcript's fixed-output hash backend.</param>
+        /// <param name="reduce">The scalar-reduce backend for deriving the challenge.</param>
+        /// <param name="curve">The curve whose scalar field the challenge lands in.</param>
+        /// <param name="pool">The pool to rent the challenge from.</param>
+        /// <returns>The challenge; the caller owns its disposal.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public Scalar SqueezeWhirBatchCombinationChallenge(
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash,
+            ScalarReduceDelegate reduce,
+            CurveParameterSet curve,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            return transcript.SqueezeScalar(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BatchCombinationChallenge),
+                squeeze,
+                hash,
+                reduce,
+                curve,
+                pool);
         }
 
 

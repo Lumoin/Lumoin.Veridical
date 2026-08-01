@@ -3,7 +3,8 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// <summary>
 /// The kind of verifier message a WHIR round-by-round soundness ledger row
 /// prices: the five error families of WHIR Theorem 5.2, one per kind of
-/// randomness the verifier sends.
+/// randomness the verifier sends, plus the batch combination randomness of
+/// WHIR Theorem 5.6 that prefixes them when separate claims are batched.
 /// </summary>
 public enum WhirRoundErrorKind
 {
@@ -38,5 +39,14 @@ public enum WhirRoundErrorKind
     /// <c>ε ≤ (1-δ_{M-1})^t</c> for <c>t</c> the queries paid against the
     /// last oracle.
     /// </summary>
-    FinalQueries = 4
+    FinalQueries = 4,
+
+    /// <summary>
+    /// The batch combination randomness <c>γ</c> of WHIR Construction 5.5,
+    /// combining <c>t</c> separate claims into one:
+    /// <c>ε ≤ (t-1)·ℓ/|F|</c> for <c>ℓ</c> the initial code's list-size
+    /// bound (WHIR Theorem 5.6); the row prefixes the single-statement
+    /// ledger.
+    /// </summary>
+    ConstraintBatching = 5
 }

@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Commitments.Ligero;
+using Lumoin.Veridical.Core.Commitments.Whir;
 using System;
 
 namespace Lumoin.Veridical.Core.Commitments;
@@ -220,6 +221,39 @@ public static class WellKnownSecurityLevels
         double weight = OneAndAHalfJohnsonCommitFailureWeight * (double)roundCount;
 
         return ScalarFieldSoundnessFloorBits(curve) - (2 * OneAndAHalfJohnsonSlackExponentBits) - Math.Log2(weight);
+    }
+
+
+    /// <summary>
+    /// The round-by-round soundness a WHIR IOPP realises for the given shape:
+    /// the worst row of the derived schedule's Theorem 5.2 ledger, the figure
+    /// the BCS transformation compiles. Unlike the single-rate Ligero and
+    /// BaseFold figures the WHIR ledger prices every round at its own
+    /// improving rate, so the whole ledger is derived rather than a single
+    /// query product; the derivation itself is the clamp — a shape that
+    /// cannot reach <paramref name="securityLevelBits"/> throws with the
+    /// realised figure rather than returning a degraded one.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the codes live in.</param>
+    /// <param name="variableCount">The committed polynomial's variable count <c>m</c>.</param>
+    /// <param name="initialRateLog2">The initial inverse-rate exponent <c>c ≥ 1</c>.</param>
+    /// <param name="foldingParameter">The folding parameter <c>k</c>; defaults to <see cref="WellKnownWhirParameters.DefaultFoldingParameter"/>.</param>
+    /// <param name="securityLevelBits">The per-round soundness target <c>λ</c>; defaults to <see cref="WellKnownWhirParameters.ClassicalSecurityLevelBits"/>.</param>
+    /// <param name="regime">The soundness regime; defaults to the fully-proven <see cref="WhirSoundnessRegime.UniqueDecoding"/>.</param>
+    /// <returns>The realised round-by-round soundness in bits, at least <paramref name="securityLevelBits"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range or the regime cannot carry a soundness claim.</exception>
+    /// <exception cref="ArgumentException">When the shape cannot carry a schedule reaching the target.</exception>
+    public static double WhirProximitySoundnessBits(
+        CurveParameterSet curve,
+        int variableCount,
+        int initialRateLog2,
+        int foldingParameter = WellKnownWhirParameters.DefaultFoldingParameter,
+        int securityLevelBits = WellKnownWhirParameters.ClassicalSecurityLevelBits,
+        WhirSoundnessRegime regime = WellKnownWhirParameters.ClassicalSecurityRegime)
+    {
+        WhirParameterSchedule schedule = WhirParameterSchedule.Create(curve, variableCount, initialRateLog2, foldingParameter, securityLevelBits, regime);
+
+        return schedule.MinimumRoundBits;
     }
 
 
@@ -565,6 +599,35 @@ public static class WellKnownSecurityLevels
                 $"so a {queryCount}-column opening clamps to {dimensions.OpenedColumnCount} and realises about {realisedBits:0.#} soundness bit(s) " +
                 $"under the {regime} regime instead of the targeted count. Raise the inverse rate (widen the code) or use a larger circuit.");
         }
+    }
+
+
+    /// <summary>
+    /// The loud WHIR shape guard, the parity of
+    /// <see cref="ThrowIfLigeroSoundnessClamped"/>: derives the schedule for
+    /// the shape and lets the derivation's own failures propagate — a round
+    /// whose query count cannot fit its folded query domain and a ledger
+    /// whose worst row lands under the target both throw with the realised
+    /// figures. A tool that pins a security target calls this up front so an
+    /// under-target shape fails loudly instead of at the first proof.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the codes live in.</param>
+    /// <param name="variableCount">The committed polynomial's variable count <c>m</c>.</param>
+    /// <param name="initialRateLog2">The initial inverse-rate exponent <c>c ≥ 1</c>.</param>
+    /// <param name="foldingParameter">The folding parameter <c>k</c>; defaults to <see cref="WellKnownWhirParameters.DefaultFoldingParameter"/>.</param>
+    /// <param name="securityLevelBits">The per-round soundness target <c>λ</c>; defaults to <see cref="WellKnownWhirParameters.ClassicalSecurityLevelBits"/>.</param>
+    /// <param name="regime">The soundness regime; defaults to the fully-proven <see cref="WhirSoundnessRegime.UniqueDecoding"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range or the regime cannot carry a soundness claim.</exception>
+    /// <exception cref="ArgumentException">When the shape cannot carry a schedule reaching the target.</exception>
+    public static void ThrowIfWhirSoundnessClamped(
+        CurveParameterSet curve,
+        int variableCount,
+        int initialRateLog2,
+        int foldingParameter = WellKnownWhirParameters.DefaultFoldingParameter,
+        int securityLevelBits = WellKnownWhirParameters.ClassicalSecurityLevelBits,
+        WhirSoundnessRegime regime = WellKnownWhirParameters.ClassicalSecurityRegime)
+    {
+        WhirParameterSchedule.Create(curve, variableCount, initialRateLog2, foldingParameter, securityLevelBits, regime);
     }
 
 

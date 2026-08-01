@@ -45,4 +45,10 @@ public static class WellKnownWhirTranscriptLabels
 
     /// <summary>Label for squeezing a final-query block index into the last oracle's folded query domain.</summary>
     public const string FinalQueryIndex = "whir.iopp.final.query.index";
+
+    /// <summary>Label for absorbing a batch of separate claims — the claim boundaries, targets and constraint lists — ahead of the batch combination challenge.</summary>
+    public const string BatchStatement = "whir.iopp.batch.statement";
+
+    /// <summary>Label for squeezing the batch combination challenge <c>γ</c> of WHIR Construction 5.5.</summary>
+    public const string BatchCombinationChallenge = "whir.iopp.batch.combination.challenge";
 }

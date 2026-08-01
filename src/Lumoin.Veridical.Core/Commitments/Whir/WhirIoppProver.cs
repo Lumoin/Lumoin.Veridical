@@ -335,6 +335,69 @@ public static class WhirIoppProver
 
 
     /// <summary>
+    /// Computes the input oracle's Merkle root for the given coefficient
+    /// vector without producing a proof: the same deterministic
+    /// encode-and-commit the prover performs, exposed so a caller can bind
+    /// the commitment into a transcript before proving — the batching layer
+    /// and the polynomial-commitment surface both commit first and prove
+    /// later.
+    /// </summary>
+    /// <param name="schedule">The parameter schedule fixing the initial domain and leaf shape.</param>
+    /// <param name="coefficients">The multilinear coefficient vector, <c>2^m</c> elements for the schedule's variable count <c>m</c>.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="subtract">Scalar-subtract backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="pool">The pool to rent working buffers from.</param>
+    /// <returns>The input oracle's Merkle root; the caller owns its disposal.</returns>
+    /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When the coefficient vector does not match the schedule's shape.</exception>
+    public static MerkleRoot ComputeInputCommitment(
+        WhirParameterSchedule schedule,
+        ReadOnlySpan<byte> coefficients,
+        MerkleHashDelegate merkleHash,
+        ScalarAddDelegate add,
+        ScalarSubtractDelegate subtract,
+        ScalarMultiplyDelegate multiply,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(schedule);
+        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(add);
+        ArgumentNullException.ThrowIfNull(subtract);
+        ArgumentNullException.ThrowIfNull(multiply);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        int messageLength = 1 << schedule.VariableCount;
+        if(coefficients.Length != messageLength * ScalarSize)
+        {
+            throw new ArgumentException(
+                $"The coefficient vector must carry {messageLength} elements ({messageLength * ScalarSize} bytes); received {coefficients.Length}.",
+                nameof(coefficients));
+        }
+
+        int domainSizeLog2 = schedule.Rounds[0].DomainSizeLog2;
+        int foldingParameter = schedule.FoldingParameter;
+        int domainLength = 1 << domainSizeLog2;
+        int blockCount = domainLength >> foldingParameter;
+        int blockSize = 1 << foldingParameter;
+
+        var encoder = WhirCosetEncoder.Create(add, subtract, multiply, schedule.Curve, pool);
+        using IMemoryOwner<byte> leavesOwner = pool.Rent(domainLength * ScalarSize);
+        Span<byte> leaves = leavesOwner.Memory.Span[..(domainLength * ScalarSize)];
+        encoder.EncodeToCosetLeaves(coefficients, domainSizeLog2, foldingParameter, leaves);
+
+        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * ScalarSize);
+        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * ScalarSize)];
+        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleHash, digests, pool);
+
+        using MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleHash, pool);
+
+        return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
+    }
+
+
+    /// <summary>
     /// Validates the statement spans against the schedule's shape.
     /// </summary>
     private static void ValidateStatementShape(
