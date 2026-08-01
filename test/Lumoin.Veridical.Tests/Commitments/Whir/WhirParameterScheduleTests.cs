@@ -247,6 +247,47 @@ internal sealed class WhirParameterScheduleTests
 
 
     [TestMethod]
+    public void JohnsonRegimePricesFewerQueriesThanProvenDefault()
+    {
+        //Both regimes target the same 2^-128 per-round soundness on the same
+        //shape. The Johnson schedule pays strictly fewer queries in every
+        //round — a 46% total discount — through its larger proximity radius,
+        //and that radius is priced ONLY by WHIR Conjecture 4.12 Item 1. This
+        //test pins both totals side by side so the conjecture-bought gap
+        //stays visible and can never be mistaken for a free improvement.
+        const int ProvenTotalQueryCount = 838;
+        const int ConjecturedTotalQueryCount = 449;
+
+        WhirParameterSchedule proven = WhirParameterSchedule.Create(
+            Curve,
+            PinnedVariableCount,
+            PinnedInitialRateLog2,
+            regime: WhirSoundnessRegime.UniqueDecoding);
+        WhirParameterSchedule conjectured = WhirParameterSchedule.Create(
+            Curve,
+            PinnedVariableCount,
+            PinnedInitialRateLog2,
+            regime: WhirSoundnessRegime.ListDecodingJohnson);
+
+        Assert.AreEqual(ProvenTotalQueryCount, proven.Rounds.Sum(static round => round.QueryCount));
+        Assert.AreEqual(ConjecturedTotalQueryCount, conjectured.Rounds.Sum(static round => round.QueryCount));
+
+        for (int i = 0; i < proven.IterationCount; i++)
+        {
+            //The mechanism of the discount: a strictly larger radius per
+            //round, hence strictly fewer queries per round.
+            Assert.IsGreaterThan(proven.Rounds[i].ProximityParameter, conjectured.Rounds[i].ProximityParameter);
+            Assert.IsLessThan(proven.Rounds[i].QueryCount, conjectured.Rounds[i].QueryCount);
+        }
+
+        //Same soundness target on both sides of the gap: what differs is the
+        //assumption carrying it, not the claimed level.
+        Assert.IsGreaterThanOrEqualTo(ClassicalSecurityBits, proven.MinimumRoundBits);
+        Assert.IsGreaterThanOrEqualTo(ClassicalSecurityBits, conjectured.MinimumRoundBits);
+    }
+
+
+    [TestMethod]
     public void MutualCorrelatedAgreementErrorMatchesConjectureUnderJohnson()
     {
         //Conjecture 4.12 Item 1 at ℓ = 2 and slack η = √ρ/20:
