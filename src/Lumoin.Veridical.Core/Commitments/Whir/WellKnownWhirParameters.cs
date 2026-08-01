@@ -34,10 +34,13 @@ public static class WellKnownWhirParameters
     public const int ClassicalSecurityLevelBits = 128;
 
     /// <summary>
-    /// The default soundness regime. Unique decoding is the only regime whose
-    /// mutual-correlated-agreement chain is fully proven for smooth
-    /// Reed-Solomon codes, and is therefore the conservative default even
-    /// though it prices the most queries.
+    /// The default soundness regime. Unique decoding rests on the least
+    /// machinery — proximity gaps plus the loss-free mutual upgrade of
+    /// WHIR Lemma 4.10, with every list size exactly 1 — and is therefore
+    /// the conservative default even though it prices the most queries;
+    /// <see cref="WhirSoundnessRegime.ListDecodingJohnson"/> is likewise
+    /// theorem-backed and trades a longer proof chain for roughly a third
+    /// fewer queries.
     /// </summary>
     public const WhirSoundnessRegime ClassicalSecurityRegime = WhirSoundnessRegime.UniqueDecoding;
 
@@ -68,12 +71,17 @@ public static class WellKnownWhirParameters
     public const int SumcheckDegreeBound = 3;
 
     /// <summary>
-    /// The divisor in the Johnson-regime slack <c>η = √ρ / 20</c>
-    /// (WHIR Section 6.2, the WHIR-JB configuration; the same <c>√ρ/20</c>
-    /// appears as the error-expression cap in the proven plain
-    /// correlated-agreement bound).
+    /// The default Johnson proximity parameter <c>m</c> of BCHKS25
+    /// Theorem 1.5 (Ben-Sasson, Carmon, Haböck, Kopparty, Saraf, "On
+    /// Proximity Gaps for Reed-Solomon Codes", IACR ePrint 2025/2055): the
+    /// Johnson-regime slack is <c>η = √ρ/(2m)</c> and the correlated-agreement
+    /// error constant is <c>2·(m+0.5)^5/3</c>, so a larger <c>m</c> buys a
+    /// larger proximity radius — fewer queries — priced by a larger error
+    /// constant and list size. At the default <c>m = 10</c> the slack is the
+    /// WHIR paper's canonical <c>η = √ρ/20</c> (WHIR Section 6.2, the WHIR-JB
+    /// configuration).
     /// </summary>
-    public const int JohnsonSlackDivisor = 20;
+    public const int DefaultJohnsonProximityParameter = 10;
 
     /// <summary>
     /// The divisor in the capacity-regime slack <c>η = ρ / 2</c>
@@ -91,11 +99,16 @@ public static class WellKnownWhirParameters
     /// </summary>
     /// <param name="regime">The soundness regime.</param>
     /// <param name="rateLog2">The round's inverse-rate exponent: <c>ρ = 2^-rateLog2</c>, at least 1.</param>
+    /// <param name="johnsonProximityParameter">The BCHKS25 Johnson proximity parameter <c>m ≥ 1</c> fixing the slack <c>η = √ρ/(2m)</c>; ignored outside the Johnson regime.</param>
     /// <returns>The proximity parameter <c>δ</c> in <c>(0, 1)</c>.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">When the rate exponent is out of range or the regime is unrecognised.</exception>
-    public static double ProximityParameter(WhirSoundnessRegime regime, int rateLog2)
+    /// <exception cref="ArgumentOutOfRangeException">When the rate exponent or Johnson parameter is out of range or the regime is unrecognised.</exception>
+    public static double ProximityParameter(
+        WhirSoundnessRegime regime,
+        int rateLog2,
+        int johnsonProximityParameter = DefaultJohnsonProximityParameter)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(rateLog2, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(johnsonProximityParameter, 1);
 
         double rate = Math.Pow(2.0, -rateLog2);
 
@@ -104,8 +117,8 @@ public static class WellKnownWhirParameters
             //Unique decoding: half the Reed-Solomon relative minimum distance 1 - ρ.
             WhirSoundnessRegime.UniqueDecoding => (1.0 - rate) / 2.0,
 
-            //Johnson: δ = 1 - √ρ - η with η = √ρ/20, i.e. 1 - (21/20)·√ρ.
-            WhirSoundnessRegime.ListDecodingJohnson => 1.0 - ((1.0 + (1.0 / JohnsonSlackDivisor)) * Math.Sqrt(rate)),
+            //Johnson: δ = 1 - √ρ - η with η = √ρ/(2m), i.e. 1 - (1 + 1/(2m))·√ρ.
+            WhirSoundnessRegime.ListDecodingJohnson => 1.0 - ((1.0 + (0.5 / johnsonProximityParameter)) * Math.Sqrt(rate)),
 
             //Capacity: δ = 1 - ρ - η with η = ρ/2, i.e. 1 - (3/2)·ρ. Comparison only.
             WhirSoundnessRegime.ConjecturedCapacity => 1.0 - ((1.0 + (1.0 / CapacitySlackDivisor)) * rate),
@@ -124,13 +137,18 @@ public static class WellKnownWhirParameters
     /// <param name="securityLevelBits">The per-round soundness target <c>λ</c> in bits, positive.</param>
     /// <param name="rateLog2">The round's inverse-rate exponent.</param>
     /// <param name="regime">The soundness regime fixing <c>δ</c>.</param>
+    /// <param name="johnsonProximityParameter">The BCHKS25 Johnson proximity parameter <c>m ≥ 1</c>; ignored outside the Johnson regime.</param>
     /// <returns>The query repetition count <c>t ≥ 1</c>.</returns>
     /// <exception cref="ArgumentOutOfRangeException">When an argument is out of range.</exception>
-    public static int ComputeQueryCount(int securityLevelBits, int rateLog2, WhirSoundnessRegime regime)
+    public static int ComputeQueryCount(
+        int securityLevelBits,
+        int rateLog2,
+        WhirSoundnessRegime regime,
+        int johnsonProximityParameter = DefaultJohnsonProximityParameter)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(securityLevelBits);
 
-        double delta = ProximityParameter(regime, rateLog2);
+        double delta = ProximityParameter(regime, rateLog2, johnsonProximityParameter);
 
         //Per-query accept probability is at most (1 - δ); t independent queries
         //give (1 - δ)^t ≤ 2^-λ ⟺ t ≥ λ / -log2(1 - δ).
@@ -146,23 +164,28 @@ public static class WellKnownWhirParameters
     /// smooth Reed-Solomon code of rate <c>ρ = 2^-rateLog2</c>: the number of
     /// codewords the union-bound ledger rows multiply by. Inside the
     /// unique-decoding radius the list is a single codeword; at the Johnson
-    /// radius with slack <c>η = √ρ/20</c> the Johnson bound
-    /// (WHIR Theorem 4.3) gives <c>ℓ ≤ 1/(2η√ρ) = 10/ρ</c>.
+    /// radius with slack <c>η = √ρ/(2m)</c> the Johnson bound
+    /// (WHIR Theorem 4.3) gives <c>ℓ ≤ 1/(2η√ρ) = m/ρ</c>.
     /// </summary>
     /// <param name="regime">The soundness regime.</param>
     /// <param name="rateLog2">The round's inverse-rate exponent.</param>
+    /// <param name="johnsonProximityParameter">The BCHKS25 Johnson proximity parameter <c>m ≥ 1</c>; ignored outside the Johnson regime.</param>
     /// <returns>The list-size bound <c>ℓ ≥ 1</c>.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">When the rate exponent is out of range, the regime is unrecognised, or the regime pins no list-size bound.</exception>
-    public static double ListSizeBound(WhirSoundnessRegime regime, int rateLog2)
+    /// <exception cref="ArgumentOutOfRangeException">When the rate exponent or Johnson parameter is out of range, the regime is unrecognised, or the regime pins no list-size bound.</exception>
+    public static double ListSizeBound(
+        WhirSoundnessRegime regime,
+        int rateLog2,
+        int johnsonProximityParameter = DefaultJohnsonProximityParameter)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(rateLog2, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(johnsonProximityParameter, 1);
 
         return regime switch
         {
             WhirSoundnessRegime.UniqueDecoding => 1.0,
 
-            //Johnson bound at η = √ρ/20: 1/(2·(√ρ/20)·√ρ) = 10/ρ = 10·2^rateLog2.
-            WhirSoundnessRegime.ListDecodingJohnson => JohnsonSlackDivisor / 2.0 * Math.Pow(2.0, rateLog2),
+            //Johnson bound at η = √ρ/(2m): 1/(2·(√ρ/(2m))·√ρ) = m/ρ = m·2^rateLog2.
+            WhirSoundnessRegime.ListDecodingJohnson => johnsonProximityParameter * Math.Pow(2.0, rateLog2),
 
             //Conjecture 4.12 Item 2 leaves the capacity-radius list size unpinned.
             WhirSoundnessRegime.ConjecturedCapacity => throw new ArgumentOutOfRangeException(
@@ -183,34 +206,46 @@ public static class WellKnownWhirParameters
     /// <c>2^fieldFloorBits</c> elements. Under unique decoding this is the
     /// proven bound of WHIR Corollary 4.11,
     /// <c>err* = 2^m / (ρ·|F|)</c> at generator length 2; under the Johnson
-    /// regime it is the expression of WHIR Conjecture 4.12 Item 1 at the
-    /// wired slack, <c>err* = 2^(2m) / (|F| · (√ρ/10)^7)</c>.
+    /// regime it is the proven bound of BCHKS25 Theorem 1.5 at slack
+    /// <c>η = √ρ/(2m_J)</c> for Johnson proximity parameter <c>m_J</c>,
+    /// <c>err* = (2·(m_J + 1/2)^5/3) · 2^m · ρ^(-5/2) / |F|</c> — the message
+    /// length <c>2^m</c> and <c>ρ^(-5/2)</c> form of the paper's
+    /// codeword-length bound <c>O(n/η^5)</c> under <c>n = 2^m/ρ</c>. The
+    /// mutual form the folding rounds need follows from the Guruswami-Sudan
+    /// generalization of Haböck's note (IACR ePrint 2025/2110).
     /// </summary>
     /// <param name="regime">The soundness regime.</param>
     /// <param name="fieldFloorBits">The floor of <c>log2(|F|)</c> in whole bits.</param>
     /// <param name="foldedVariableCount">The variable count <c>m</c> of the folded code the round lands in.</param>
     /// <param name="rateLog2">The round's inverse-rate exponent.</param>
+    /// <param name="johnsonProximityParameter">The BCHKS25 Johnson proximity parameter <c>m_J ≥ 1</c>; ignored outside the Johnson regime.</param>
     /// <returns>The error in bits, <c>-log2(err*)</c>.</returns>
     /// <exception cref="ArgumentOutOfRangeException">When an argument is out of range or the regime prices no proven or conjectured error expression.</exception>
     public static double MutualCorrelatedAgreementErrorBits(
         WhirSoundnessRegime regime,
         int fieldFloorBits,
         int foldedVariableCount,
-        int rateLog2)
+        int rateLog2,
+        int johnsonProximityParameter = DefaultJohnsonProximityParameter)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(fieldFloorBits);
         ArgumentOutOfRangeException.ThrowIfNegative(foldedVariableCount);
         ArgumentOutOfRangeException.ThrowIfLessThan(rateLog2, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(johnsonProximityParameter, 1);
 
         return regime switch
         {
             //Corollary 4.11 at ℓ = 2: err* = 2^m/(ρ·|F|) = 2^(m + rateLog2 - fieldFloorBits).
             WhirSoundnessRegime.UniqueDecoding => fieldFloorBits - foldedVariableCount - rateLog2,
 
-            //Conjecture 4.12 Item 1 at ℓ = 2 and the wired slack η = √ρ/20, where
-            //min{1 - √ρ - δ, √ρ/20} = √ρ/20: err* = 2^(2m)·(10/√ρ)^7/|F|.
+            //BCHKS25 Theorem 1.5 at η = √ρ/(2m_J): the error constant is
+            //computed FROM the chosen m_J, so any m_J self-prices — no slack
+            //floor needs asserting, unlike a fixed-constant wiring.
             WhirSoundnessRegime.ListDecodingJohnson =>
-                fieldFloorBits - (2.0 * foldedVariableCount) - (7.0 * (Math.Log2(10.0) + (rateLog2 / 2.0))),
+                fieldFloorBits
+                    - Math.Log2(2.0 * Math.Pow(johnsonProximityParameter + 0.5, 5.0) / 3.0)
+                    - foldedVariableCount
+                    - (2.5 * rateLog2),
 
             WhirSoundnessRegime.ConjecturedCapacity => throw new ArgumentOutOfRangeException(
                 nameof(regime),

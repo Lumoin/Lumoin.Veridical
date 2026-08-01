@@ -17,17 +17,24 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// radius the mutual upgrade is loss-free for every linear code
 /// (WHIR Lemma 4.10) on top of the proven Reed-Solomon correlated-agreement
 /// theorem (Ben-Sasson, Carmon, Ishai, Kopparty, Saraf, FOCS 2020 /
-/// J.ACM 2023), so <see cref="UniqueDecoding"/> carries a full proof; beyond
-/// it the mutual form is conjectured (WHIR Conjecture 4.12).
+/// J.ACM 2023); at the Johnson radius correlated agreement is proven with
+/// the improved <c>O(n/η^5)</c> error of BCHKS25 Theorem 1.5 and the mutual
+/// form follows by the Guruswami-Sudan generalization of Haböck's note, so
+/// both <see cref="UniqueDecoding"/> and <see cref="ListDecodingJohnson"/>
+/// carry theorem-backed ledgers; only beyond the Johnson radius does the
+/// mutual form remain conjectured (WHIR Conjecture 4.12 Item 2).
 /// </para>
 /// <para>
 /// References: Arnon, Chiesa, Fenzi, Yogev, "WHIR: Reed-Solomon Proximity
 /// Testing with Super-Fast Verification" (EUROCRYPT 2025, IACR ePrint
 /// 2024/1586) — Construction 5.1, Theorem 5.2, Lemma 4.10, Conjecture 4.12,
 /// Section 6.2; Ben-Sasson, Carmon, Ishai, Kopparty, Saraf, "Proximity Gaps
-/// for Reed-Solomon Codes" (FOCS 2020 / J.ACM 2023); Crites, Stewart (IACR
-/// ePrint 2025/2046) and Krachun, Kazanin, Haböck (IACR ePrint 2026/782) for
-/// the refutation of the plain-form capacity conjectures.
+/// for Reed-Solomon Codes" (FOCS 2020 / J.ACM 2023); Ben-Sasson, Carmon,
+/// Haböck, Kopparty, Saraf, "On Proximity Gaps for Reed-Solomon Codes" (IACR
+/// ePrint 2025/2055) — Theorem 1.5; Haböck, "A note on mutual correlated
+/// agreement for Reed-Solomon codes" (IACR ePrint 2025/2110); Crites, Stewart
+/// (IACR ePrint 2025/2046) and Krachun, Kazanin, Haböck (IACR ePrint
+/// 2026/782) for the refutation of the plain-form capacity conjectures.
 /// </para>
 /// </remarks>
 public enum WhirSoundnessRegime
@@ -35,12 +42,12 @@ public enum WhirSoundnessRegime
     /// <summary>
     /// Unique decoding: <c>δ_i = (1 - ρ_i) / 2</c>, half the Reed-Solomon
     /// relative minimum distance. The most queries of the three regimes and
-    /// the wired default, because it is the only regime whose soundness chain
-    /// is <b>fully proven</b>: correlated agreement at this radius is the
-    /// Reed-Solomon proximity-gap theorem (Ben-Sasson, Carmon, Ishai,
-    /// Kopparty, Saraf, FOCS 2020), and the mutual-correlated-agreement form
-    /// the folding rounds need follows loss-free from WHIR Lemma 4.10, whose
-    /// radius cap <c>min(1 - δ_min/2, B)</c> this regime's radius sits inside
+    /// the wired default, because its soundness chain rests on the least
+    /// machinery: correlated agreement at this radius is the Reed-Solomon
+    /// proximity-gap theorem (Ben-Sasson, Carmon, Ishai, Kopparty, Saraf,
+    /// FOCS 2020), and the mutual-correlated-agreement form the folding
+    /// rounds need follows loss-free from WHIR Lemma 4.10, whose radius cap
+    /// <c>min(1 - δ_min/2, B)</c> this regime's radius sits inside
     /// (WHIR Corollary 4.11 gives <c>B* = (1 + ρ)/2</c> and error
     /// <c>(ℓ-1)·2^m / (ρ·|F|)</c>). List sizes are 1 inside this radius, so
     /// every union-bound ledger row is exact. One boundary note: the priced
@@ -51,17 +58,19 @@ public enum WhirSoundnessRegime
     UniqueDecoding = 0,
 
     /// <summary>
-    /// List decoding at the Johnson radius with the WHIR paper's slack:
-    /// <c>δ_i = 1 - √ρ_i - η_i</c> for <c>η_i = √ρ_i / 20</c>
-    /// (WHIR Section 6.2, the WHIR-JB configuration). Roughly a third fewer
-    /// total queries than <see cref="UniqueDecoding"/> at the wired rates.
-    /// <b>Conjecture-dependent</b>: plain correlated agreement is proven to
-    /// this radius (Ben-Sasson, Carmon, Ishai, Kopparty, Saraf, FOCS 2020,
-    /// Theorem 4.8 shape), but the folding rounds need the <i>mutual</i> form,
-    /// which beyond the unique-decoding radius is WHIR Conjecture 4.12
-    /// Item 1 (with the same error expression as the proven plain form). List
-    /// sizes follow the Johnson bound <c>ℓ ≤ 1/(2η√ρ) = 10/ρ</c>
-    /// (WHIR Theorem 4.3).
+    /// List decoding at the Johnson radius:
+    /// <c>δ_i = 1 - √ρ_i - η_i</c> for slack <c>η_i = √ρ_i / (2·m_J)</c> with
+    /// Johnson proximity parameter <c>m_J</c>, whose default 10 gives the
+    /// WHIR paper's <c>η = √ρ/20</c> (Section 6.2, the WHIR-JB
+    /// configuration). Roughly a third fewer total queries than
+    /// <see cref="UniqueDecoding"/> at the wired rates. <b>Theorem-backed</b>:
+    /// correlated agreement to this radius carries the proven
+    /// <c>O(n/η^5)</c> error of BCHKS25 Theorem 1.5 (IACR ePrint 2025/2055),
+    /// and the <i>mutual</i> form the folding rounds need follows by the
+    /// Guruswami-Sudan generalization of Haböck's note (IACR ePrint
+    /// 2025/2110), superseding the WHIR paper's Conjecture 4.12 Item 1
+    /// pricing at this radius. List sizes follow the Johnson bound
+    /// <c>ℓ ≤ 1/(2η√ρ) = m_J/ρ</c> (WHIR Theorem 4.3).
     /// </summary>
     ListDecodingJohnson = 1,
 

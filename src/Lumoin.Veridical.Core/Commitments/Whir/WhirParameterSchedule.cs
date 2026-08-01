@@ -49,6 +49,9 @@ public sealed class WhirParameterSchedule
     /// <summary>The constant folding parameter <c>k</c>: variables folded per iteration.</summary>
     public int FoldingParameter { get; }
 
+    /// <summary>The BCHKS25 Johnson proximity parameter <c>m_J</c> fixing the Johnson-regime slack <c>η = √ρ/(2m_J)</c>; carried for endpoint agreement even when the regime ignores it.</summary>
+    public int JohnsonProximityParameter { get; }
+
     /// <summary>The initial inverse-rate exponent <c>c</c>: the input oracle's rate is <c>2^-c</c>.</summary>
     public int InitialRateLog2 { get; }
 
@@ -88,6 +91,7 @@ public sealed class WhirParameterSchedule
         int securityLevelBits,
         int variableCount,
         int foldingParameter,
+        int johnsonProximityParameter,
         int initialRateLog2,
         int fieldFloorBits,
         WhirRoundParameters[] rounds,
@@ -100,6 +104,7 @@ public sealed class WhirParameterSchedule
         SecurityLevelBits = securityLevelBits;
         VariableCount = variableCount;
         FoldingParameter = foldingParameter;
+        JohnsonProximityParameter = johnsonProximityParameter;
         InitialRateLog2 = initialRateLog2;
         IterationCount = rounds.Length;
         FinalVariableCount = variableCount - (rounds.Length * foldingParameter);
@@ -124,6 +129,7 @@ public sealed class WhirParameterSchedule
     /// <param name="foldingParameter">The folding parameter <c>k ≥ 1</c>; defaults to <see cref="WellKnownWhirParameters.DefaultFoldingParameter"/>.</param>
     /// <param name="securityLevelBits">The per-round soundness target <c>λ</c>; defaults to <see cref="WellKnownWhirParameters.ClassicalSecurityLevelBits"/>.</param>
     /// <param name="regime">The soundness regime; defaults to the fully-proven <see cref="WhirSoundnessRegime.UniqueDecoding"/>.</param>
+    /// <param name="johnsonProximityParameter">The BCHKS25 Johnson proximity parameter <c>m_J ≥ 1</c> fixing the Johnson-regime slack <c>η = √ρ/(2m_J)</c>; defaults to <see cref="WellKnownWhirParameters.DefaultJohnsonProximityParameter"/> and is ignored outside the Johnson regime.</param>
     /// <returns>The validated schedule.</returns>
     /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range or the regime cannot carry a soundness claim.</exception>
     /// <exception cref="ArgumentException">When the field's two-adicity cannot carry the initial domain, a query count exceeds its query domain, or the realised ledger misses the target.</exception>
@@ -133,12 +139,14 @@ public sealed class WhirParameterSchedule
         int initialRateLog2,
         int foldingParameter = WellKnownWhirParameters.DefaultFoldingParameter,
         int securityLevelBits = WellKnownWhirParameters.ClassicalSecurityLevelBits,
-        WhirSoundnessRegime regime = WellKnownWhirParameters.ClassicalSecurityRegime)
+        WhirSoundnessRegime regime = WellKnownWhirParameters.ClassicalSecurityRegime,
+        int johnsonProximityParameter = WellKnownWhirParameters.DefaultJohnsonProximityParameter)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(securityLevelBits);
         ArgumentOutOfRangeException.ThrowIfLessThan(foldingParameter, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(initialRateLog2, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(variableCount, foldingParameter);
+        ArgumentOutOfRangeException.ThrowIfLessThan(johnsonProximityParameter, 1);
 
         if (regime == WhirSoundnessRegime.ConjecturedCapacity)
         {
@@ -167,9 +175,9 @@ public sealed class WhirParameterSchedule
             int roundVariableCount = variableCount - (i * foldingParameter);
             int domainSizeLog2 = initialDomainSizeLog2 - i;
             int rateLog2 = domainSizeLog2 - roundVariableCount;
-            double proximity = WellKnownWhirParameters.ProximityParameter(regime, rateLog2);
-            double listSize = WellKnownWhirParameters.ListSizeBound(regime, rateLog2);
-            int queryCount = WellKnownWhirParameters.ComputeQueryCount(securityLevelBits, rateLog2, regime);
+            double proximity = WellKnownWhirParameters.ProximityParameter(regime, rateLog2, johnsonProximityParameter);
+            double listSize = WellKnownWhirParameters.ListSizeBound(regime, rateLog2, johnsonProximityParameter);
+            int queryCount = WellKnownWhirParameters.ComputeQueryCount(securityLevelBits, rateLog2, regime, johnsonProximityParameter);
 
             //Shift and final queries land on the 2^k-coset-folded domain. The
             //paper's (1 - δ)^t bound tolerates repeated samples, so this is a
@@ -187,7 +195,7 @@ public sealed class WhirParameterSchedule
         }
 
         int fieldFloorBits = WellKnownSecurityLevels.ScalarFieldSoundnessFloorBits(curve);
-        WhirSoundnessLedgerRow[] ledgerRows = ComputeLedger(regime, fieldFloorBits, foldingParameter, rounds);
+        WhirSoundnessLedgerRow[] ledgerRows = ComputeLedger(regime, fieldFloorBits, foldingParameter, johnsonProximityParameter, rounds);
 
         double minimumRoundBits = double.PositiveInfinity;
         double totalError = 0.0;
@@ -210,6 +218,7 @@ public sealed class WhirParameterSchedule
             securityLevelBits,
             variableCount,
             foldingParameter,
+            johnsonProximityParameter,
             initialRateLog2,
             fieldFloorBits,
             rounds,
@@ -228,12 +237,14 @@ public sealed class WhirParameterSchedule
     /// <param name="regime">The soundness regime.</param>
     /// <param name="fieldFloorBits">The floor of the scalar field's size in bits.</param>
     /// <param name="foldingParameter">The folding parameter <c>k</c>.</param>
+    /// <param name="johnsonProximityParameter">The BCHKS25 Johnson proximity parameter <c>m_J</c>.</param>
     /// <param name="rounds">The derived per-oracle rounds.</param>
     /// <returns>The ledger rows in protocol order.</returns>
     private static WhirSoundnessLedgerRow[] ComputeLedger(
         WhirSoundnessRegime regime,
         int fieldFloorBits,
         int foldingParameter,
+        int johnsonProximityParameter,
         WhirRoundParameters[] rounds)
     {
         int iterationCount = rounds.Length;
@@ -269,7 +280,8 @@ public sealed class WhirParameterSchedule
                     regime,
                     fieldFloorBits,
                     round.VariableCount - s,
-                    round.RateLog2);
+                    round.RateLog2,
+                    johnsonProximityParameter);
                 ledger.Add(new WhirSoundnessLedgerRow(foldKind, i, s, CombineErrorBits(identityTermBits, agreementBits)));
             }
         }

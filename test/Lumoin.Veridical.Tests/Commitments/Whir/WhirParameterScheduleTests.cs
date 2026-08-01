@@ -247,56 +247,57 @@ internal sealed class WhirParameterScheduleTests
 
 
     [TestMethod]
-    public void JohnsonRegimePricesFewerQueriesThanProvenDefault()
+    public void JohnsonRegimePricesFewerQueriesThanUniqueDecoding()
     {
         //Both regimes target the same 2^-128 per-round soundness on the same
         //shape. The Johnson schedule pays strictly fewer queries in every
         //round — a 46% total discount — through its larger proximity radius,
-        //and that radius is priced ONLY by WHIR Conjecture 4.12 Item 1. This
-        //test pins both totals side by side so the conjecture-bought gap
-        //stays visible and can never be mistaken for a free improvement.
-        const int ProvenTotalQueryCount = 838;
-        const int ConjecturedTotalQueryCount = 449;
+        //priced by the BCHKS25 Theorem 1.5 correlated-agreement error. This
+        //test pins both totals side by side so the radius-bought gap stays
+        //visible and can never be mistaken for a free improvement.
+        const int UniqueDecodingTotalQueryCount = 838;
+        const int JohnsonTotalQueryCount = 449;
 
-        WhirParameterSchedule proven = WhirParameterSchedule.Create(
+        WhirParameterSchedule uniqueDecoding = WhirParameterSchedule.Create(
             Curve,
             PinnedVariableCount,
             PinnedInitialRateLog2,
             regime: WhirSoundnessRegime.UniqueDecoding);
-        WhirParameterSchedule conjectured = WhirParameterSchedule.Create(
+        WhirParameterSchedule johnson = WhirParameterSchedule.Create(
             Curve,
             PinnedVariableCount,
             PinnedInitialRateLog2,
             regime: WhirSoundnessRegime.ListDecodingJohnson);
 
-        Assert.AreEqual(ProvenTotalQueryCount, proven.Rounds.Sum(static round => round.QueryCount));
-        Assert.AreEqual(ConjecturedTotalQueryCount, conjectured.Rounds.Sum(static round => round.QueryCount));
+        Assert.AreEqual(UniqueDecodingTotalQueryCount, uniqueDecoding.Rounds.Sum(static round => round.QueryCount));
+        Assert.AreEqual(JohnsonTotalQueryCount, johnson.Rounds.Sum(static round => round.QueryCount));
 
-        for (int i = 0; i < proven.IterationCount; i++)
+        for (int i = 0; i < uniqueDecoding.IterationCount; i++)
         {
             //The mechanism of the discount: a strictly larger radius per
             //round, hence strictly fewer queries per round.
-            Assert.IsGreaterThan(proven.Rounds[i].ProximityParameter, conjectured.Rounds[i].ProximityParameter);
-            Assert.IsLessThan(proven.Rounds[i].QueryCount, conjectured.Rounds[i].QueryCount);
+            Assert.IsGreaterThan(uniqueDecoding.Rounds[i].ProximityParameter, johnson.Rounds[i].ProximityParameter);
+            Assert.IsLessThan(uniqueDecoding.Rounds[i].QueryCount, johnson.Rounds[i].QueryCount);
         }
 
         //Same soundness target on both sides of the gap: what differs is the
-        //assumption carrying it, not the claimed level.
-        Assert.IsGreaterThanOrEqualTo(ClassicalSecurityBits, proven.MinimumRoundBits);
-        Assert.IsGreaterThanOrEqualTo(ClassicalSecurityBits, conjectured.MinimumRoundBits);
+        //length of the proof chain carrying it, not the claimed level.
+        Assert.IsGreaterThanOrEqualTo(ClassicalSecurityBits, uniqueDecoding.MinimumRoundBits);
+        Assert.IsGreaterThanOrEqualTo(ClassicalSecurityBits, johnson.MinimumRoundBits);
     }
 
 
     [TestMethod]
-    public void MutualCorrelatedAgreementErrorMatchesConjectureUnderJohnson()
+    public void MutualCorrelatedAgreementErrorMatchesBchks25TheoremUnderJohnson()
     {
-        //Conjecture 4.12 Item 1 at ℓ = 2 and slack η = √ρ/20:
-        //err* = 2^(2m)·(10/√ρ)^7/|F|, so at m = 19 and rate 1/2 the bits are
-        //254 - 38 - 7·(log2(10) + 1/2) ≈ 189.2465 — a literal pin so a sign or
-        //coefficient slip cannot hide above the coarse ledger threshold.
+        //BCHKS25 Theorem 1.5 at the default m_J = 10:
+        //err* = (2·10.5^5/3)·2^m·ρ^(-5/2)/|F|, so at m = 19 and rate 1/2 the
+        //bits are 254 - log2(2·10.5^5/3) - 19 - 2.5 ≈ 216.1234 — a literal pin
+        //so a sign or coefficient slip cannot hide above the coarse ledger
+        //threshold.
         const int FieldFloorBits = 254;
         const int FoldedVariableCount = 19;
-        const double ExpectedBits = 189.24650333578846;
+        const double ExpectedBits = 216.12337538682704;
         const double Tolerance = 1e-9;
 
         double errorBits = WellKnownWhirParameters.MutualCorrelatedAgreementErrorBits(
@@ -306,5 +307,99 @@ internal sealed class WhirParameterScheduleTests
             PinnedInitialRateLog2);
 
         Assert.AreEqual(ExpectedBits, errorBits, Tolerance);
+    }
+
+
+    [TestMethod]
+    public void JohnsonAgreementErrorMatchesIndependentTheoremAnchor()
+    {
+        //An independent hand-derivation of BCHKS25 Theorem 1.5 at a shape
+        //small enough to check on paper: message length 2^4, rate 1/4 and a
+        //64-bit field give 64 - log2(2·10.5^5/3) - 4 - 2.5·2
+        //= 38.623375386827 bits, anchoring the constant and both exponents
+        //against a value derived outside this codebase's formula.
+        const int AnchorFieldBits = 64;
+        const int AnchorVariableCount = 4;
+        const int AnchorRateLog2 = 2;
+        const double AnchorBits = 38.623375386827;
+        const double Tolerance = 1e-9;
+
+        double errorBits = WellKnownWhirParameters.MutualCorrelatedAgreementErrorBits(
+            WhirSoundnessRegime.ListDecodingJohnson,
+            AnchorFieldBits,
+            AnchorVariableCount,
+            AnchorRateLog2);
+
+        Assert.AreEqual(AnchorBits, errorBits, Tolerance);
+    }
+
+
+    [TestMethod]
+    public void Bchks25ErrorStrictlyImprovesOnSupersededConjecturePricing()
+    {
+        //The superseded Conjecture 4.12 Item 1 pricing at ℓ = 2 and η = √ρ/20
+        //was err* = 2^(2m)·(10/√ρ)^7/|F|; the proven BCHKS25 bound must price
+        //strictly MORE bits at every wired shape, so the theorem upgrade can
+        //never silently weaken a ledger row.
+        const int FieldFloorBits = 254;
+        const int FoldedVariableCount = 19;
+
+        double supersededConjectureBits = FieldFloorBits
+            - (2.0 * FoldedVariableCount)
+            - (7.0 * (Math.Log2(10.0) + (PinnedInitialRateLog2 / 2.0)));
+        double provenBits = WellKnownWhirParameters.MutualCorrelatedAgreementErrorBits(
+            WhirSoundnessRegime.ListDecodingJohnson,
+            FieldFloorBits,
+            FoldedVariableCount,
+            PinnedInitialRateLog2);
+
+        Assert.IsGreaterThan(supersededConjectureBits, provenBits);
+    }
+
+
+    [TestMethod]
+    public void JohnsonProximityParameterSelfPricesRadiusListAndError()
+    {
+        //The BCHKS25 Johnson proximity parameter m_J trades along one axis:
+        //a larger m_J shrinks the slack η = √ρ/(2m_J), widening the radius
+        //(fewer queries) while growing both the list bound m_J/ρ and the
+        //error constant 2·(m_J + 1/2)^5/3. Every figure is computed FROM the
+        //chosen m_J, so any choice self-prices; this pins the formulas at a
+        //non-default value and the trade's direction across values.
+        const int SmallJohnsonParameter = 4;
+        const int FieldFloorBits = 254;
+        const int FoldedVariableCount = 19;
+        const double Tolerance = 1e-12;
+
+        double delta = WellKnownWhirParameters.ProximityParameter(
+            WhirSoundnessRegime.ListDecodingJohnson,
+            PinnedInitialRateLog2,
+            SmallJohnsonParameter);
+        Assert.AreEqual(1.0 - (1.125 / Math.Sqrt(2.0)), delta, Tolerance);
+
+        double listSize = WellKnownWhirParameters.ListSizeBound(
+            WhirSoundnessRegime.ListDecodingJohnson,
+            PinnedInitialRateLog2,
+            SmallJohnsonParameter);
+        Assert.AreEqual(SmallJohnsonParameter * Math.Pow(2.0, PinnedInitialRateLog2), listSize, Tolerance);
+
+        //Direction of the trade against the default m_J = 10: smaller m_J
+        //means a smaller radius (more queries) but a smaller error constant
+        //(more bits per row).
+        Assert.IsLessThan(
+            WellKnownWhirParameters.ProximityParameter(WhirSoundnessRegime.ListDecodingJohnson, PinnedInitialRateLog2),
+            delta);
+        Assert.IsGreaterThan(
+            WellKnownWhirParameters.MutualCorrelatedAgreementErrorBits(
+                WhirSoundnessRegime.ListDecodingJohnson,
+                FieldFloorBits,
+                FoldedVariableCount,
+                PinnedInitialRateLog2),
+            WellKnownWhirParameters.MutualCorrelatedAgreementErrorBits(
+                WhirSoundnessRegime.ListDecodingJohnson,
+                FieldFloorBits,
+                FoldedVariableCount,
+                PinnedInitialRateLog2,
+                SmallJohnsonParameter));
     }
 }
