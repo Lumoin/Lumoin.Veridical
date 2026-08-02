@@ -282,6 +282,70 @@ public static class WhirTranscriptExtensions
 
 
         /// <summary>
+        /// Absorbs a masked-sumcheck batch's interleaved mask oracle root
+        /// under the
+        /// <see cref="WellKnownWhirTranscriptLabels.MaskOracleRoot"/> label
+        /// (eprint 2026/391 Construction 6.3, step 2).
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="root"/> or <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirMaskOracleRoot(MerkleRoot root, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentNullException.ThrowIfNull(root);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.MaskOracleRoot),
+                root.AsReadOnlySpan(),
+                hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs the mask total <c>μ̃</c> under the
+        /// <see cref="WellKnownWhirTranscriptLabels.MaskTotal"/> label —
+        /// before the combination challenge is squeezed, so the total cannot
+        /// depend on it.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirMaskTotal(ReadOnlySpan<byte> maskTotal, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.MaskTotal),
+                maskTotal,
+                hash);
+        }
+
+
+        /// <summary>
+        /// Squeezes the mask combination challenge <c>ε</c> as a canonical
+        /// scalar under the
+        /// <see cref="WellKnownWhirTranscriptLabels.MaskCombinationChallenge"/>
+        /// label.
+        /// </summary>
+        /// <returns>The challenge; the caller owns its disposal.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public Scalar SqueezeWhirMaskCombinationChallenge(
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash,
+            ScalarReduceDelegate reduce,
+            CurveParameterSet curve,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            return transcript.SqueezeScalar(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.MaskCombinationChallenge),
+                squeeze,
+                hash,
+                reduce,
+                curve,
+                pool);
+        }
+
+
+        /// <summary>
         /// Squeezes a query block index in <c>[0, queryDomainSize)</c> under
         /// the given label — <see cref="WellKnownWhirTranscriptLabels.ShiftQueryIndex"/>
         /// for the main loop's shift queries,

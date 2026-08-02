@@ -51,4 +51,13 @@ public static class WellKnownWhirTranscriptLabels
 
     /// <summary>Label for squeezing the batch combination challenge <c>γ</c> of WHIR Construction 5.5.</summary>
     public const string BatchCombinationChallenge = "whir.iopp.batch.combination.challenge";
+
+    /// <summary>Label for absorbing a masked-sumcheck batch's interleaved mask oracle root (eprint 2026/391 Construction 6.3).</summary>
+    public const string MaskOracleRoot = "whir.iopp.mask.oracle.root";
+
+    /// <summary>Label for absorbing the mask total <c>μ̃</c> — the sum of every mask polynomial over the batch's Boolean cube, sent before any challenge.</summary>
+    public const string MaskTotal = "whir.iopp.mask.total";
+
+    /// <summary>Label for squeezing the mask combination challenge <c>ε</c> blending the plain sumcheck contribution into the masked rounds.</summary>
+    public const string MaskCombinationChallenge = "whir.iopp.mask.combination.challenge";
 }

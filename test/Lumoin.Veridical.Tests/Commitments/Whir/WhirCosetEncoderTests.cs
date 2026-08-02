@@ -118,6 +118,118 @@ internal sealed class WhirCosetEncoderTests
 
 
     [TestMethod]
+    public void ZeroKnowledgeEncodeWithEmptyRandomnessMatchesThePlainPaths()
+    {
+        //The t = 0 degeneration pin: with no randomness the zero-knowledge
+        //encode must reproduce the plain layout byte for byte, on both the
+        //natural-order and the coset-leaf surfaces.
+        ScalarArithmeticBackend backend = TestScalarBackends.Bls12Curve381;
+        CurveParameterSet curve = backend.Curve;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        WhirCosetEncoder encoder = WhirCosetEncoder.Create(backend.Add, backend.Subtract, backend.Multiply, curve, pool);
+
+        int coefficientCount = 1 << VariableCount;
+        int domainLength = 1 << DomainSizeLog2;
+        using IMemoryOwner<byte> buffersOwner = pool.Rent((coefficientCount + (4 * domainLength)) * ScalarSize);
+        Span<byte> buffers = buffersOwner.Memory.Span[..((coefficientCount + (4 * domainLength)) * ScalarSize)];
+        Span<byte> coefficients = buffers[..(coefficientCount * ScalarSize)];
+        Span<byte> plainNatural = buffers.Slice(coefficientCount * ScalarSize, domainLength * ScalarSize);
+        Span<byte> zeroKnowledgeNatural = buffers.Slice((coefficientCount + domainLength) * ScalarSize, domainLength * ScalarSize);
+        Span<byte> plainLeaves = buffers.Slice((coefficientCount + (2 * domainLength)) * ScalarSize, domainLength * ScalarSize);
+        Span<byte> zeroKnowledgeLeaves = buffers.Slice((coefficientCount + (3 * domainLength)) * ScalarSize, domainLength * ScalarSize);
+        DeterministicScalarFill.FillCanonical(coefficients, CoefficientSalt, backend.Reduce, curve);
+
+        encoder.Encode(coefficients, DomainSizeLog2, plainNatural);
+        encoder.EncodeWithRandomness(coefficients, ReadOnlySpan<byte>.Empty, DomainSizeLog2, zeroKnowledgeNatural);
+        encoder.EncodeToCosetLeaves(coefficients, DomainSizeLog2, FoldingParameter, plainLeaves);
+        encoder.EncodeToCosetLeavesWithRandomness(coefficients, ReadOnlySpan<byte>.Empty, DomainSizeLog2, FoldingParameter, zeroKnowledgeLeaves);
+
+        Assert.IsTrue(plainNatural.SequenceEqual(zeroKnowledgeNatural), "With no randomness the natural-order encode must match the plain encode.");
+        Assert.IsTrue(plainLeaves.SequenceEqual(zeroKnowledgeLeaves), "With no randomness the coset-leaf encode must match the plain encode.");
+    }
+
+
+    [TestMethod]
+    public void ZeroKnowledgeEncodeIsThePlainEncodeOfTheExtendedCoefficientVector()
+    {
+        //The C1-Q1 orientation pin: the randomness is a contiguous
+        //coefficient block appended at the message degree, consumed by the
+        //same single transform — Enc(f, r) = Σ f_j·x^j + Σ r_s·x^(len+s).
+        ScalarArithmeticBackend backend = TestScalarBackends.Bls12Curve381;
+        CurveParameterSet curve = backend.Curve;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        WhirCosetEncoder encoder = WhirCosetEncoder.Create(backend.Add, backend.Subtract, backend.Multiply, curve, pool);
+
+        int coefficientCount = 1 << VariableCount;
+        int randomnessCount = 1 << FoldingParameter;
+        int extendedCount = coefficientCount + randomnessCount;
+        int domainLength = 1 << DomainSizeLog2;
+        using IMemoryOwner<byte> buffersOwner = pool.Rent((extendedCount + (2 * domainLength)) * ScalarSize);
+        Span<byte> buffers = buffersOwner.Memory.Span[..((extendedCount + (2 * domainLength)) * ScalarSize)];
+        Span<byte> extended = buffers[..(extendedCount * ScalarSize)];
+        Span<byte> coefficients = extended[..(coefficientCount * ScalarSize)];
+        Span<byte> randomness = extended.Slice(coefficientCount * ScalarSize, randomnessCount * ScalarSize);
+        Span<byte> natural = buffers.Slice(extendedCount * ScalarSize, domainLength * ScalarSize);
+        Span<byte> leaves = buffers.Slice((extendedCount + domainLength) * ScalarSize, domainLength * ScalarSize);
+        DeterministicScalarFill.FillCanonical(extended, CoefficientSalt, backend.Reduce, curve);
+
+        encoder.EncodeWithRandomness(coefficients, randomness, DomainSizeLog2, natural);
+        encoder.EncodeToCosetLeavesWithRandomness(coefficients, randomness, DomainSizeLog2, FoldingParameter, leaves);
+
+        //Naive Horner over the extended vector at every domain point, and the
+        //coset layout as the stride gather of the natural order.
+        Span<byte> root = stackalloc byte[ScalarSize];
+        Span<byte> point = stackalloc byte[ScalarSize];
+        Span<byte> expected = stackalloc byte[ScalarSize];
+        encoder.DeriveDomainRoot(DomainSizeLog2, root);
+        int blockCount = domainLength >> FoldingParameter;
+        int blockSize = 1 << FoldingParameter;
+        for(int exponent = 0; exponent < domainLength; exponent++)
+        {
+            WhirFold.ComputeDomainPoint(root, exponent, point, backend.Multiply, curve);
+            EvaluateNaiveHorner(extended, extendedCount, point, expected, backend, curve);
+
+            Assert.IsTrue(
+                expected.SequenceEqual(natural.Slice(exponent * ScalarSize, ScalarSize)),
+                $"The zero-knowledge encoding must match the naive evaluation of the extended vector at ω^{exponent}.");
+
+            int block = exponent % blockCount;
+            int position = exponent / blockCount;
+            Assert.IsTrue(
+                expected.SequenceEqual(leaves.Slice(((block * blockSize) + position) * ScalarSize, ScalarSize)),
+                $"The zero-knowledge coset layout must gather ω^{exponent} into leaf ({block}, {position}).");
+        }
+    }
+
+
+    [TestMethod]
+    public void ZeroKnowledgeRandomnessNotAMultipleOfTheLimbCountIsRejected()
+    {
+        Assert.Throws<ArgumentException>(static () => EncodeZeroKnowledgeLeavesWithShape(
+            coefficientElements: 1 << VariableCount,
+            randomnessElements: (1 << FoldingParameter) - 1));
+    }
+
+
+    [TestMethod]
+    public void ZeroKnowledgeOverfilledDomainIsRejected()
+    {
+        Assert.Throws<ArgumentException>(static () => EncodeZeroKnowledgeLeavesWithShape(
+            coefficientElements: 1 << VariableCount,
+            randomnessElements: 1 << DomainSizeLog2));
+    }
+
+
+    [TestMethod]
+    public void ZeroKnowledgeNonPowerOfTwoMessageIsRejectedOnTheCosetSurface()
+    {
+        Assert.Throws<ArgumentException>(static () => EncodeZeroKnowledgeLeavesWithShape(
+            coefficientElements: 3,
+            randomnessElements: 1 << FoldingParameter));
+    }
+
+
+    [TestMethod]
     public void MismatchedDestinationLengthIsRejected()
     {
         Assert.Throws<ArgumentException>(static () => EncodeWithShape(coefficientElements: 2, destinationElements: 3));
@@ -143,6 +255,22 @@ internal sealed class WhirCosetEncoderTests
         Span<byte> coefficients = stackalloc byte[coefficientElements * ScalarSize];
         Span<byte> destination = stackalloc byte[destinationElements * ScalarSize];
         encoder.Encode(coefficients, DomainSizeLog2, destination);
+    }
+
+
+    /// <summary>
+    /// Runs one zero-knowledge coset-leaf encode with the given zeroed shape;
+    /// the guard tests assert on the exceptions this raises.
+    /// </summary>
+    private static void EncodeZeroKnowledgeLeavesWithShape(int coefficientElements, int randomnessElements)
+    {
+        ScalarArithmeticBackend backend = TestScalarBackends.Bls12Curve381;
+        WhirCosetEncoder encoder = WhirCosetEncoder.Create(backend.Add, backend.Subtract, backend.Multiply, backend.Curve, BaseMemoryPool.Shared);
+
+        Span<byte> coefficients = stackalloc byte[coefficientElements * ScalarSize];
+        Span<byte> randomness = stackalloc byte[randomnessElements * ScalarSize];
+        Span<byte> destination = stackalloc byte[(1 << DomainSizeLog2) * ScalarSize];
+        encoder.EncodeToCosetLeavesWithRandomness(coefficients, randomness, DomainSizeLog2, FoldingParameter, destination);
     }
 
 
