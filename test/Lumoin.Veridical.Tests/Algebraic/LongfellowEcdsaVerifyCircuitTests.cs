@@ -92,7 +92,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
             Assert.AreEqual(reference.Count, generator.ElementCount, "Both fillers must emit the same column length.");
             for(int i = 0; i < reference.Count; i++)
             {
-                CollectionAssert.AreEqual(reference[i], column.AsSpan(i * ScalarSize, ScalarSize).ToArray(), $"Column element {i} must agree between the production and reference fillers.");
+                Assert.AreSequenceEqual(reference[i], column.AsSpan(i * ScalarSize, ScalarSize).ToArray(), $"Column element {i} must agree between the production and reference fillers.");
             }
         }
     }

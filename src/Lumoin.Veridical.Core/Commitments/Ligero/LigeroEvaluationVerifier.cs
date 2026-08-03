@@ -61,6 +61,14 @@ internal static class LigeroEvaluationVerifier
         ReadOnlySpan<byte> u = opening[..(columnCount * ScalarSize)];
         ReadOnlySpan<byte> v = opening.Slice(columnCount * ScalarSize, columnCount * ScalarSize);
 
+        //Canonicity is enforced at this reader funnel: a non-canonical spelling of any
+        //opening scalar would give the same opening a second accepted byte representation,
+        //so u and v reject here and each opened column rejects before authentication.
+        if(!AreCanonicalScalars(u, curve) || !AreCanonicalScalars(v, curve))
+        {
+            return false;
+        }
+
         //Replay the schedule: absorb root, squeeze γ, absorb u and v, draw indices.
         transcript.AbsorbBytes(new FiatShamirOperationLabel(WellKnownLigeroEvaluationLabels.CommitmentRoot), commitmentRoot, hash);
 
@@ -100,6 +108,11 @@ internal static class LigeroEvaluationVerifier
             ReadOnlySpan<byte> column = opening.Slice(queryBase + (q * perQueryBytes), rowCount * ScalarSize);
             ReadOnlySpan<byte> pathSpan = opening.Slice(queryBase + (q * perQueryBytes) + (rowCount * ScalarSize), pathBytes);
 
+            if(!AreCanonicalScalars(column, curve))
+            {
+                return false;
+            }
+
             //(a) Merkle authentication of the opened column against the root.
             columnHash(column, leaf, hashAlgorithm);
             if(!AuthenticatePath(pathSpan, digestSizeBytes, root, idx, leaf, merkleHash, pool))
@@ -129,6 +142,25 @@ internal static class LigeroEvaluationVerifier
         LigeroEvaluationTensor.InnerProduct(v, rTensor, columnCount, combined, add, multiply, curve);
 
         return combined.SequenceEqual(claimedValue);
+    }
+
+
+    /// <summary>
+    /// Checks that every <see cref="Scalar.SizeBytes"/>-stride element of
+    /// <paramref name="scalars"/> is the canonical byte spelling of a reduced
+    /// scalar for <paramref name="curve"/>.
+    /// </summary>
+    internal static bool AreCanonicalScalars(ReadOnlySpan<byte> scalars, CurveParameterSet curve)
+    {
+        for(int offset = 0; offset < scalars.Length; offset += ScalarSize)
+        {
+            if(!WellKnownCurves.IsCanonicalScalar(scalars.Slice(offset, ScalarSize), curve))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
 

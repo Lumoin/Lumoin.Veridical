@@ -156,6 +156,31 @@ its query count realises its target for every polynomial size.
   discrete log); its binding is computational (DL), so the hash-grinding model
   above does not transfer verbatim and no ledger factory is provided for it
   here.
+- **WHIR (plain)** — `Whir/WhirParameterSchedule.Create` computes the full WHIR
+  round-by-round soundness ledger (the initial and main-loop folding,
+  out-of-domain, shift-query, final-randomness, and constraint-batching error
+  families) at derivation and throws when the worst row misses the target;
+  `WellKnownSecurityLevels.WhirProximitySoundnessBits` and
+  `ThrowIfWhirSoundnessClamped` surface the same figure to consumers. Unique
+  decoding is the wired default and is fully proven; the Johnson list-decoding
+  regime prices its mutual-correlated-agreement error from the proven BCHKS25
+  Theorem 1.5 bound (IACR ePrint 2025/2055, mutual form per Haböck ePrint
+  2025/2110), so both offered regimes are theorem-backed; the capacity regime is
+  refused for soundness claims. Binding, **not hiding** (deterministic Merkle
+  root, cleartext final polynomial and opened coset blocks).
+- **Hiding WHIR (HVZK)** — `Whir/WhirZkParameters.Create` prices the
+  zero-knowledge soundness ledger: the masked-sumcheck fold rows (the identity
+  term carries the mask message length and both decoding lists), one mask
+  spot-check row per mask group at the derived spot-check count, and the same
+  loud under-target clamp. The honest-verifier zero-knowledge distance — the
+  private out-of-domain admissibility union — is reported as the separate
+  `PrivacyErrorBits` figure: like ZK-BaseFold's hiding axis above, privacy
+  bounds a different adversary and is never folded into the soundness minimum.
+  **Statistically hiding**: every scheduled opening is simulatable within the
+  enforced per-oracle encoding-randomness budgets (the codeword-slack fit guard
+  refuses any shape whose opened set could saturate a limb), and the
+  witness-free transcript simulator in `Lumoin.Veridical.Analysis` exercises
+  the simulation argument end to end.
 
 ## What this ledger does not cover
 

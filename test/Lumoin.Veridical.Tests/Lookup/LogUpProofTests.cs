@@ -43,6 +43,8 @@ internal sealed class LogUpProofTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static G1HashToCurveDelegate G1HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
 
     private const int ScalarSize = Scalar.SizeBytes;
@@ -483,7 +485,7 @@ internal sealed class LogUpProofTests
 
         return HyraxPolynomialCommitmentScheme.Create(
             key, Curve, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
-            G1Add, G1ScalarMul, G1Msm, ownsKey: true);
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, ownsKey: true);
     }
 
 

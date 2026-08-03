@@ -74,21 +74,10 @@
     <AssemblyInformationalVersion>0.0.0</AssemblyInformationalVersion>
     <NeutralLanguage>en-US</NeutralLanguage>
 
-    <AppendToReleaseNotesProperty>
-      <![CDATA[
-See full changelog at https://github.com/lumoin/Lumoin.Veridical/blob/main/CHANGELOG.md.]]>
-    </AppendToReleaseNotesProperty>
-    <ChangelogFile>../../CHANGELOG.md</ChangelogFile>
-
-
     <AnalysisLevel>latest</AnalysisLevel>
     <AnalysisMode>All</AnalysisMode>
 
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="SIL.ReleaseTasks" PrivateAssets="all" />
-  </ItemGroup>
 
   <!-- As this file is used in project file locations, the path is relative to them. -->
   <!-- Only include logo in packable (non-test) projects. -->

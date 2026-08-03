@@ -70,7 +70,7 @@ internal sealed class Fp24SexticBackendTests
             next.CopyTo(power.AsSpan());
         }
 
-        CollectionAssert.AreEqual(FromLimbs(ExtensionResidue, 0, 0, 0, 0, 0), power, "x^6 must equal the extension residue.");
+        Assert.AreSequenceEqual(FromLimbs(ExtensionResidue, 0, 0, 0, 0, 0), power, "x^6 must equal the extension residue.");
     }
 
 
@@ -88,13 +88,13 @@ internal sealed class Fp24SexticBackendTests
             byte[] rightBytes = FromLimbs(right);
 
             Add(leftBytes, rightBytes, result, CurveParameterSet.None);
-            CollectionAssert.AreEqual(FromLimbs(ModelAdd(left, right)), result, $"Addition must match the model at pair {pair}.");
+            Assert.AreSequenceEqual(FromLimbs(ModelAdd(left, right)), result, $"Addition must match the model at pair {pair}.");
 
             Subtract(leftBytes, rightBytes, result, CurveParameterSet.None);
-            CollectionAssert.AreEqual(FromLimbs(ModelSubtract(left, right)), result, $"Subtraction must match the model at pair {pair}.");
+            Assert.AreSequenceEqual(FromLimbs(ModelSubtract(left, right)), result, $"Subtraction must match the model at pair {pair}.");
 
             Multiply(leftBytes, rightBytes, result, CurveParameterSet.None);
-            CollectionAssert.AreEqual(FromLimbs(ModelMultiply(left, right)), result, $"Multiplication must match the model at pair {pair}.");
+            Assert.AreSequenceEqual(FromLimbs(ModelMultiply(left, right)), result, $"Multiplication must match the model at pair {pair}.");
         }
     }
 
@@ -117,11 +117,11 @@ internal sealed class Fp24SexticBackendTests
             byte[] element = FromLimbs(limbs);
             Invert(element, inverse, CurveParameterSet.None);
             Multiply(element, inverse, product, CurveParameterSet.None);
-            CollectionAssert.AreEqual(FromLimbs(1, 0, 0, 0, 0, 0), product, "An element times its inverse must be one.");
+            Assert.AreSequenceEqual(FromLimbs(1, 0, 0, 0, 0, 0), product, "An element times its inverse must be one.");
         }
 
         Invert(new byte[ScalarSize], inverse, CurveParameterSet.None);
-        CollectionAssert.AreEqual(new byte[ScalarSize], inverse, "Zero must invert to zero under the Fermat convention.");
+        Assert.AreSequenceEqual(new byte[ScalarSize], inverse, "Zero must invert to zero under the Fermat convention.");
     }
 
 
@@ -142,7 +142,7 @@ internal sealed class Fp24SexticBackendTests
             expected[4 * i] = (byte)(i + 1);
         }
 
-        CollectionAssert.AreEqual(expected, serialized, "The little-endian serialization must reproduce the reference coefficient order.");
+        Assert.AreSequenceEqual(expected, serialized, "The little-endian serialization must reproduce the reference coefficient order.");
     }
 
 
@@ -154,9 +154,9 @@ internal sealed class Fp24SexticBackendTests
 
         var product = new byte[ScalarSize];
         field.Compiler.Multiply(field.Two.Span, field.Half.Span, product, field.Compiler.Curve);
-        CollectionAssert.AreEqual(field.Compiler.One.ToArray(), product, "Two times half must be one.");
+        Assert.AreSequenceEqual(field.Compiler.One.ToArray(), product, "Two times half must be one.");
 
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             FromLimbs(1u << LastRepresentableBasisIndex, 0, 0, 0, 0, 0),
             field.Beta(LastRepresentableBasisIndex).ToArray(),
             "The last representable basis element must embed in the constant coefficient.");

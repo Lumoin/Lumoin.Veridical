@@ -298,7 +298,7 @@ internal static class LongfellowKernelZkTestHarness
     /// <param name="destination">Receives the public input bytes; exactly the public input count times the sextic element width.</param>
     public static void FillFp24SexticPublicInputs(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> witnessColumn, Span<byte> destination)
     {
-        Assert.AreEqual(circuit.PublicInputCount * Fp24SexticElementBytes, destination.Length, "The public input buffer must match the declared width.");
+        Assert.HasCount(circuit.PublicInputCount * Fp24SexticElementBytes, destination, "The public input buffer must match the declared width.");
         for(int i = 0; i < circuit.PublicInputCount; i++)
         {
             for(int b = 0; b < Fp24SexticElementBytes; b++)
@@ -495,6 +495,14 @@ internal static class LongfellowKernelZkTestHarness
             out LongfellowZkVerificationResult result);
 
         Assert.AreEqual(expectedAccept, accepted, $"The Fp256 verdict must be {(expectedAccept ? "accept" : "reject")} (result {result}).");
+
+        if(!expectedAccept)
+        {
+            //A soundness reject must surface as a Ligero rejection, not a parse/transcript-shape failure;
+            //pinning the cause stops a regression that rejects for a MalformedProof reason from
+            //masquerading as a soundness reject.
+            Assert.AreEqual(LongfellowZkVerificationResult.LigeroRejected, result, "A tampered Fp256 proof must reject with the Ligero soundness cause.");
+        }
     }
 
 

@@ -63,6 +63,14 @@ public static class LogUpProver
     /// </summary>
     public const int MaximumWitnessColumnCount = 64;
 
+    /// <summary>
+    /// The auxiliary committed-column count of the argument: the multiplicity
+    /// and helper columns, whose commitments and openings join the witness
+    /// columns' — a consumer sizing a union bound or a wire buffer counts
+    /// <c>witnessColumnCount + AuxiliaryColumnCount</c> openings.
+    /// </summary>
+    public const int AuxiliaryColumnCount = LogUpSumcheck.AuxiliaryColumnCount;
+
 
     /// <summary>
     /// Proves that every value of the <paramref name="witnessEvaluations"/>

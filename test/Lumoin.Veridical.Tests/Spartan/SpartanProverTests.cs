@@ -34,6 +34,8 @@ internal sealed class SpartanProverTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
@@ -67,11 +69,11 @@ internal sealed class SpartanProverTests
 
         for(int i = 0; i < proof.OuterRoundCount; i++)
         {
-            Assert.AreEqual(3 * Scalar.SizeBytes, proof.GetOuterRoundCompressedBytes(i).Length);
+            Assert.HasCount(3 * Scalar.SizeBytes, proof.GetOuterRoundCompressedBytes(i));
         }
         for(int i = 0; i < proof.InnerRoundCount; i++)
         {
-            Assert.AreEqual(2 * Scalar.SizeBytes, proof.GetInnerRoundCompressedBytes(i).Length);
+            Assert.HasCount(2 * Scalar.SizeBytes, proof.GetInnerRoundCompressedBytes(i));
         }
 
         Assert.AreEqual(AlgebraicRole.ZkProof, proof.Tag.Get<AlgebraicRole>());
@@ -126,7 +128,7 @@ internal sealed class SpartanProverTests
             proof.IpaRoundCount,
             proof.ErrorIpaRoundCount,
             proof.Curve);
-        Assert.AreEqual(expectedLength, proof.AsReadOnlySpan().Length);
+        Assert.HasCount(expectedLength, proof.AsReadOnlySpan());
     }
 
 
@@ -143,7 +145,7 @@ internal sealed class SpartanProverTests
             commitmentKey,
             CurveParameterSet.Bls12Curve381,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random,
-            G1Add, G1ScalarMul, G1Msm,
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup,
             ownsKey: true));
 
         return new SpartanProver(provingKey);

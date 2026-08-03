@@ -77,8 +77,8 @@ internal sealed class ZkInterfaceCursorDecoderTests
         //CircuitHeader.
         Assert.AreEqual(6UL, sink.FreeVariableId, "free_variable_id");
         Assert.IsFalse(sink.FieldMaximumSeen, "field_maximum is absent in the toy sample");
-        CollectionAssert.AreEqual(new ulong[] { 1, 2, 3 }, sink.InstanceVariableIds, "instance variable ids");
-        CollectionAssert.AreEqual(new uint[] { 3, 4, 25 }, sink.InstanceVariableValues, "instance variable values");
+        Assert.AreSequenceEqual(new ulong[] { 1, 2, 3 }, sink.InstanceVariableIds, "instance variable ids");
+        Assert.AreSequenceEqual(new uint[] { 3, 4, 25 }, sink.InstanceVariableValues, "instance variable values");
 
         //ConstraintSystem: three constraints, each coefficient the field element 1.
         Assert.AreEqual(3, sink.ConstraintCount, "constraint count");
@@ -97,8 +97,8 @@ internal sealed class ZkInterfaceCursorDecoderTests
         AssertTerms(sink, 2, ZkInterfaceConstraintMatrix.C, [3]);
 
         //Witness.
-        CollectionAssert.AreEqual(new ulong[] { 4, 5 }, sink.WitnessVariableIds, "witness variable ids");
-        CollectionAssert.AreEqual(new uint[] { 9, 16 }, sink.WitnessVariableValues, "witness variable values");
+        Assert.AreSequenceEqual(new ulong[] { 4, 5 }, sink.WitnessVariableIds, "witness variable ids");
+        Assert.AreSequenceEqual(new uint[] { 9, 16 }, sink.WitnessVariableValues, "witness variable values");
     }
 
 
@@ -291,7 +291,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
             }
         }
 
-        CollectionAssert.AreEqual(expectedIds, ids, $"variable ids for constraint {constraintIndex} matrix {matrix}");
+        Assert.AreSequenceEqual(expectedIds, ids, $"variable ids for constraint {constraintIndex} matrix {matrix}");
     }
 
 

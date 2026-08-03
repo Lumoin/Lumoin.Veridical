@@ -39,6 +39,8 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
 
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
@@ -88,7 +90,7 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
 
         using PolynomialCommitmentProvider provider = HyraxPolynomialCommitmentScheme.Create(
             key, Curve, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            MakeFixedRandom(seed: 2222), G1Add, G1ScalarMul, G1Msm);
+            MakeFixedRandom(seed: 2222), G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup);
 
         RunWeightedRoundtrip(provider);
     }

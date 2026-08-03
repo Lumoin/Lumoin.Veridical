@@ -1,11 +1,13 @@
 # Regenerating the owned ZkInterface fixtures
 
 The `.zkif` byte files in `bls12_381/` and `bn254/` are checked in so the test
-suite runs with no toolchain installed. This file records the owned producer
-source (in `producer/`), the pinned tool versions, and the exact command that
-regenerates the bytes — so the provenance is verifiable rather than imported on
-trust. (The separate `example.zkif` is *vendored* upstream, not generated here;
-its provenance is in `FIXTURES.md`.)
+suite runs with no toolchain installed. This repository carries **no producer
+source** — the repository holds no third-party or Rust code, only
+reference-computed bytes — so this file records everything a regeneration
+needs: the exact fixture specification, the pinned tool versions, and the
+expected output hashes, making the provenance verifiable rather than imported
+on trust. (The separate `example.zkif` is *vendored* upstream data, not
+generated here; its provenance is in `FIXTURES.md`.)
 
 ## What they are
 
@@ -35,25 +37,25 @@ FlatBuffers code**, not by Veridical. So the hand-written reader in
 `src/.../Interop/ZkInterface/` parsing them is a genuine interop check against the
 reference implementation, not a round-trip against our own assumptions.
 
+## Regenerating
+
+The producer is a minimal Rust binary crate maintained **outside this
+repository** (it lives with the other machine-local reference harnesses). Its
+whole content is determined by this document: it depends on the `zkinterface`
+crate pinned below, builds the circuit specified above with the crate's
+`CircuitHeaderOwned` / `ConstraintSystemOwned` / `WitnessOwned` types, and
+writes each curve's stream to `bls12_381/` and `bn254/` under this `Fixtures/`
+directory. A regeneration is correct exactly when the emitted bytes match the
+SHA-256 table above.
+
 ## Pinned toolchain
 
 | Tool | Version | Notes |
 |------|---------|-------|
 | rustc / cargo | `1.95.0` | |
-| `zkinterface` crate | `=1.3.4` | pinned in `producer/Cargo.toml`; matches the upstream `zkinterface.fbs` schema the reader targets |
-| `flatbuffers` crate | `0.5.0` | the transitive dep that actually serializes the wire format; pinned by the committed `producer/Cargo.lock` |
+| `zkinterface` crate | `=1.3.4` | matches the upstream `zkinterface.fbs` schema the reader targets |
+| `flatbuffers` crate | `0.5.0` | the transitive dep that actually serializes the wire format; pin it in the harness lockfile |
 
-`producer/Cargo.lock` pins every transitive dependency, so a regeneration with the
-same rustc reproduces the bytes.
-
-## Command
-
-```bash
-# From this Fixtures/ directory; writes bls12_381/ and bn254/ subfolders.
-cargo run --release --manifest-path producer/Cargo.toml -- .
-```
-
-The producer (`producer/src/main.rs`) is curve-independent except for the two
-`field_maximum` constants (the big-endian scalar field orders minus one, reversed
-to little-endian on the way in). Keep the produced `.zkif` bytes; the Rust
-`target/` directory is a build artifact and need not be checked in.
+Pin every transitive dependency in the harness's `Cargo.lock`, so a
+regeneration with the same rustc reproduces the bytes; verify against the
+SHA-256 table either way.

@@ -28,7 +28,7 @@ internal sealed class PolynomialCommitmentSurfaceTests
 
         Assert.AreEqual(CurveParameterSet.Bls12Curve381.Code, commitment.Curve.Code, "curve");
         Assert.AreEqual(CommitmentScheme.Hyrax, commitment.Scheme, "scheme");
-        Assert.AreEqual(SampleByteLength, commitment.AsReadOnlySpan().Length, "byte length preserved");
+        Assert.HasCount(SampleByteLength, commitment.AsReadOnlySpan(), "byte length preserved");
     }
 
 

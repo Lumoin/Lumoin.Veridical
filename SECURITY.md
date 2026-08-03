@@ -120,14 +120,33 @@ soundness rests on assumptions a consumer must uphold:
   witness readers) are rejected at deserialization if they encode an integer at or above the
   scalar-field order, and a sumcheck round-polynomial coefficient at or above the order is rejected
   when the polynomial is reconstructed — at proof deserialization for BaseFold, and during
-  verification for Spartan, where it makes the verifier return `false`. The remaining scalar sections
-  of a
+  verification for Spartan, where it makes the verifier return `false`. A Ligero opening's proximity
+  response, evaluation response and every opened column are likewise rejected at the reader funnel,
+  so a Ligero opening that verifies has exactly one byte representation. The remaining scalar
+  sections of a
   proof container (for example the Spartan opening responses and the Bulletproofs inner-product
   scalars) are reduced modulo the order by the arithmetic backends rather than rejected, so a valid
   proof admits a second, byte-distinct encoding that still verifies. This is a proof-*byte*
   malleability, not a soundness break — the accepted statement is unchanged — but a consumer must not
   treat a proof's byte identity (or its hash) as a deduplication, anti-replay, or nullifier key. Bind
   such keys to the statement or a canonical semantic digest instead.
+- **Prover-supplied group elements are validated before use on the Pedersen-family verify paths.**
+  The Bulletproofs range verifiers (single, aggregated, and both batched forms) and the Hyrax
+  evaluation and weighted-sum opening verifiers screen every group element that arrives from a prover
+  — the value commitments, `A`, `S`, `T₁`, `T₂`, each inner-product round point, the Hyrax row
+  commitments and `C_f` — for on-curve and prime-order-subgroup membership before any group arithmetic
+  runs, and reject rather than multiply. This matters on curves with a cofactor greater than one, where
+  a length-valid encoding can decode onto the curve while carrying a small-order component the
+  soundness argument does not account for: BLS12-381 G1 has a non-trivial cofactor, while BN254 G1 has
+  cofactor 1 and every on-curve point is already a subgroup member. On BLS12-381 the subgroup test is
+  the endomorphism check of Scott (IACR ePrint 2021/1130, section 6), `ψ(P) = [−u²]P`, agreement-gated
+  against the naive subgroup-order multiplication and roughly halving the screen's dominant
+  scalar-multiplication cost. The identity passes the screen
+  deliberately — unlike pairing-based BBS verification, where an identity signature point degenerates
+  the pairing equation and is rejected outright, a Pedersen or inner-product equation with an identity
+  term is the same equation minus one addend and still binds the prover. The inner-product arguments
+  themselves do not re-screen: validation is the enclosing verify funnel's obligation, documented on
+  both argument types, and every call site in the library is one of those funnels.
 - **Vector commitments are position-binding at a fixed depth, not by leaf/internal domain separation.**
   The binary Merkle trees the commitment schemes use (the BaseFold codeword trees, the Ligero and
   Longfellow column trees, the Poseidon-ready set commitment) apply **no domain separation between leaf
@@ -154,7 +173,15 @@ soundness rests on assumptions a consumer must uphold:
   tool's wired set (BLS12-381, Ligero inverse rate 16, 64 opened columns) realises the
   128-bit-classical proximity target under the conservative Johnson list-decoding regime
   (Johnson-radius pricing; the η technicality and its sub-0.1-bit cost are documented in
-  `SECURITY-BITS.md`).
+  `SECURITY-BITS.md`). The WHIR schedule computes its full round-by-round soundness ledger at
+  derivation and refuses any shape whose worst row misses the target; its hiding extension
+  additionally computes a zero-knowledge soundness ledger and a priced honest-verifier
+  zero-knowledge distance, kept as a separate figure rather than folded into the soundness minimum.
+- **Hostile wire input is capped before allocation.** The LogUp proof codecs enforce named dimension
+  caps (query count, inverse rate, digest size) and reject joint shapes whose buffer arithmetic would
+  overflow; the Circom and ZkInterface readers bound allocation by input length; and the WHIR codecs
+  accept exactly one parameter-derived byte length per proof shape, so a length-valid but oversized,
+  truncated, or padded envelope is rejected before any allocation scales with it.
 
 ## Post-quantum posture
 
@@ -162,7 +189,8 @@ The library mixes proof systems and signatures with different post-quantum stand
 where each path stands against a quantum adversary; none of it changes the classical soundness above.
 
 - **Plausibly post-quantum (in the random-oracle model): the hash-committed argument stack.** Spartan
-  composed over BaseFold or ZkBaseFold — and WHIR when it lands — rests on the collision resistance of the
+  composed over BaseFold or ZkBaseFold, the WHIR commitment paths — including the hiding WHIR variant —
+  and the LogUp lookup argument over Ligero rest on the collision resistance of the
   wired hash and the Fiat-Shamir random oracle, with no discrete-logarithm or pairing assumption in the
   soundness argument. These are the paths to reach for when a consumer needs a plausibly quantum-resistant
   proof, subject to the usual caveats (a quantum random-oracle analysis, and hash output sizes chosen for

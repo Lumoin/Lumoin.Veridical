@@ -34,6 +34,8 @@ internal sealed class BatchBulletproofRangeProofTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -64,7 +66,7 @@ internal sealed class BatchBulletproofRangeProofTests
             Assert.IsTrue(
                 BatchBulletproofRangeVerifier.Verify(
                     key, commitments, proofs, batchTx, () => NewTranscript(TranscriptDomain),
-                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, pool),
+                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool),
                 $"A batch of {count} valid proofs must verify.");
         }
         finally
@@ -95,12 +97,12 @@ internal sealed class BatchBulletproofRangeProofTests
             using FiatShamirTranscript perProofTx = NewTranscript(TranscriptDomain);
             bool perProof = BulletproofRangeVerifier.Verify(
                 key, commitments.Span, proofs[0], perProofTx,
-                Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, pool);
+                Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
             using FiatShamirTranscript batchTx = NewTranscript(BatchDomain);
             bool batch = BatchBulletproofRangeVerifier.Verify(
                 key, commitments.Span, proofs, batchTx, () => NewTranscript(TranscriptDomain),
-                Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, pool);
+                Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
 
             Assert.IsTrue(perProof, "The per-proof verifier must accept the correctly generated proof.");
             Assert.AreEqual(perProof, batch, "The single-proof batch must agree with the per-proof verifier.");
@@ -134,7 +136,7 @@ internal sealed class BatchBulletproofRangeProofTests
             Assert.IsFalse(
                 BatchBulletproofRangeVerifier.Verify(
                     key, commitments, proofs, batchTx, () => NewTranscript(TranscriptDomain),
-                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, pool),
+                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool),
                 "A batch containing one tampered proof must be rejected.");
         }
         finally
@@ -172,7 +174,7 @@ internal sealed class BatchBulletproofRangeProofTests
             Assert.IsFalse(
                 BatchBulletproofRangeVerifier.Verify(
                     key, swapped, proofs, batchTx, () => NewTranscript(TranscriptDomain),
-                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, pool),
+                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool),
                 "A batch with mismatched commitments must be rejected.");
         }
         finally

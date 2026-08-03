@@ -35,7 +35,7 @@ internal sealed class Blake3PortableConformanceTests
         hasher.Update(input);
         hasher.FinalizeXof(actual);
 
-        CollectionAssert.AreEqual(expected, actual);
+        Assert.AreSequenceEqual(expected, actual);
     }
 
 
@@ -52,7 +52,7 @@ internal sealed class Blake3PortableConformanceTests
         hasher.Update(input);
         hasher.FinalizeXof(actual);
 
-        CollectionAssert.AreEqual(expected, actual);
+        Assert.AreSequenceEqual(expected, actual);
     }
 
 
@@ -69,7 +69,7 @@ internal sealed class Blake3PortableConformanceTests
         hasher.Update(keyMaterial);
         hasher.FinalizeXof(actual);
 
-        CollectionAssert.AreEqual(expected, actual);
+        Assert.AreSequenceEqual(expected, actual);
     }
 
 

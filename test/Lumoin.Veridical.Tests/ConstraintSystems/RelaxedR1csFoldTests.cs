@@ -116,7 +116,7 @@ internal sealed class RelaxedR1csFoldTests
             commitmentKey,
             Curve,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, ScalarRandom,
-            G1Add, G1ScalarMul, G1Msm,
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup,
             ownsKey: false);
 
         using PreparedPair a = PreparedPair.From(BuildOneMultiplyInstance(), BuildOneMultiplyWitness());
@@ -172,7 +172,7 @@ internal sealed class RelaxedR1csFoldTests
                     bool verified = errorCommitment.VerifyOpening(
                         point, claimedValue, proof, commitmentKey, verifyTranscript,
                         Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-                        G1Add, G1ScalarMul, G1Msm, Pool);
+                        G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, Pool);
 
                     Assert.IsTrue(
                         verified,

@@ -52,12 +52,12 @@ internal sealed class FlatBufferCursorTests
 
         Assert.IsTrue(header.TryGetSubTable(HeaderInstanceVariablesSlot, out FlatBufferTable instanceVariables), "instance_variables present");
 
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new ulong[] { 1, 2, 3 },
             VariableIds(instanceVariables),
             "instance_variables.variable_ids");
 
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new uint[] { 3, 4, 25 },
             ElementValues(instanceVariables, expectedCount: 3),
             "instance_variables.values (3 four-byte little-endian elements)");
@@ -96,8 +96,8 @@ internal sealed class FlatBufferCursorTests
         FlatBufferTable witness = UnionValueTable(file, witnessSpan);
         Assert.IsTrue(witness.TryGetSubTable(WitnessAssignedVariablesSlot, out FlatBufferTable assigned), "assigned_variables present");
 
-        CollectionAssert.AreEqual(new ulong[] { 4, 5 }, VariableIds(assigned), "assigned_variables.variable_ids");
-        CollectionAssert.AreEqual(new uint[] { 9, 16 }, ElementValues(assigned, expectedCount: 2), "assigned_variables.values");
+        Assert.AreSequenceEqual(new ulong[] { 4, 5 }, VariableIds(assigned), "assigned_variables.variable_ids");
+        Assert.AreSequenceEqual(new uint[] { 9, 16 }, ElementValues(assigned, expectedCount: 2), "assigned_variables.values");
     }
 
 
@@ -112,7 +112,7 @@ internal sealed class FlatBufferCursorTests
     private static void AssertLinearCombination(FlatBufferTable constraint, int slot, ulong[] expectedIds)
     {
         Assert.IsTrue(constraint.TryGetSubTable(slot, out FlatBufferTable combination), $"linear combination in slot {slot} present");
-        CollectionAssert.AreEqual(expectedIds, VariableIds(combination), $"variable_ids in slot {slot}");
+        Assert.AreSequenceEqual(expectedIds, VariableIds(combination), $"variable_ids in slot {slot}");
 
         //Every coefficient in the toy example is the field element 1, stored
         //in a single byte (element size = values.length / variable_ids.length).

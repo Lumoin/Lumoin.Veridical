@@ -213,7 +213,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests
 
         byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, list[EvalListedIndex].Span, list);
 
-        CollectionAssert.AreEqual(new byte[ScalarSize], inverse, "A listed identifier's product inverse must be the zero non-witness.");
+        Assert.AreSequenceEqual(new byte[ScalarSize], inverse, "A listed identifier's product inverse must be the zero non-witness.");
     }
 
 

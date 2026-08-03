@@ -248,7 +248,7 @@ internal sealed class R1csCircuitCompilationTests
             commitmentKey,
             backend.Curve,
             backend.Hash, backend.Squeeze, backend.Reduce, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, backend.Random,
-            backend.G1Add, backend.G1ScalarMul, backend.G1Msm,
+            backend.G1Add, backend.G1ScalarMul, backend.G1Msm, backend.G1IsOnCurve, backend.G1IsInPrimeOrderSubgroup,
             ownsKey: true);
     }
 
@@ -297,6 +297,8 @@ internal sealed class R1csCircuitCompilationTests
         Bls12Curve381BigIntegerG1Reference.GetAdd(),
         Bls12Curve381BigIntegerG1Reference.GetScalarMultiply(),
         TestG1Backends.Bls12Curve381Msm,
+        Bls12Curve381BigIntegerG1Reference.GetIsOnCurve(),
+        Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup(),
         Bls12Curve381BigIntegerG1Reference.GetHashToCurve(),
         MultilinearExtensionBigIntegerReference.GetEvaluate(),
         MultilinearExtensionBigIntegerReference.GetFold());
@@ -315,6 +317,8 @@ internal sealed class R1csCircuitCompilationTests
         Bn254BigIntegerG1Reference.GetAdd(),
         Bn254BigIntegerG1Reference.GetScalarMultiply(),
         TestG1Backends.Bn254Msm,
+        Bn254BigIntegerG1Reference.GetIsOnCurve(),
+        Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup(),
         Bn254BigIntegerG1Reference.GetHashToCurve(),
         MultilinearExtensionBigIntegerReference.GetEvaluate(),
         MultilinearExtensionBigIntegerReference.GetFold());
@@ -333,6 +337,8 @@ internal sealed class R1csCircuitCompilationTests
         G1AddDelegate G1Add,
         G1ScalarMultiplyDelegate G1ScalarMul,
         G1MultiScalarMultiplyDelegate G1Msm,
+        G1IsOnCurveDelegate G1IsOnCurve,
+        G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup,
         G1HashToCurveDelegate HashToCurve,
         MleEvaluateDelegate MleEvaluate,
         MleFoldDelegate MleFold);

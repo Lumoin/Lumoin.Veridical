@@ -64,6 +64,14 @@ internal sealed class LongfellowMdocVerifierTests
     private static LongfellowFieldProfile Fp256Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange, BaseMemoryPool.Shared);
 
 
+    /// <summary>Disposes the class-lifetime Fp256 profile.</summary>
+    [ClassCleanup]
+    public static void ClassCleanup()
+    {
+        Fp256Profile.Dispose();
+    }
+
+
     [TestMethod]
     public void BothRootsAbsorbBeforeAvAndFlippingThemChangesAv()
     {
