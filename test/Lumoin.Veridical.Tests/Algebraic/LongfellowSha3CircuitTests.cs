@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using System;
 using System.Collections.Generic;
+using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -48,7 +49,7 @@ internal sealed class LongfellowSha3CircuitTests
             var output = new byte[expected.Length];
             LongfellowSha3Witness.Shake256Hash(seed, output);
 
-            CollectionAssert.AreEqual(expected, output, $"The host SHAKE256 must reproduce reference vector {i}.");
+            Assert.AreSequenceEqual(expected, output, $"The host SHAKE256 must reproduce reference vector {i}.");
         }
     }
 
@@ -191,21 +192,5 @@ internal sealed class LongfellowSha3CircuitTests
         }
 
         return wires;
-    }
-
-
-    /// <summary>Builds the sextic-extension field bundle over the backend delegates.</summary>
-    /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp24SexticBundle()
-    {
-        var minusOne = new byte[Scalar.SizeBytes];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(minusOne.AsSpan(Scalar.SizeBytes - 4, 4), Fp24SexticBackend.Modulus - 1);
-
-        return LongfellowLogicFieldOperations.CreateFp24Sextic(
-            Fp24SexticBackend.GetAdd(),
-            Fp24SexticBackend.GetSubtract(),
-            Fp24SexticBackend.GetMultiply(),
-            Fp24SexticBackend.GetInvert(),
-            minusOne);
     }
 }

@@ -21,8 +21,11 @@ public sealed record PredicateProofRequest
     /// <summary>The Fiat-Shamir transcript domain label to bind the proof to.</summary>
     public required string TranscriptDomain { get; init; }
 
-    /// <summary>The Ligero opened-column query count to prove under.</summary>
+    /// <summary>The Ligero opened-column query count to prove the range-claim circuit under.</summary>
     public required int QueryCount { get; init; }
+
+    /// <summary>The Ligero opened-column query count to prove each <c>memberOf</c> claim's lookup argument under. Higher than <see cref="QueryCount"/>: the lookup path opens three independently forgeable columns, so its target carries a union-bound surcharge.</summary>
+    public required int LookupQueryCount { get; init; }
 
     /// <summary>The Ligero inverse code rate <c>c</c> (code rate <c>ρ = 1/c</c>) to prove under.</summary>
     public required int InverseRate { get; init; }

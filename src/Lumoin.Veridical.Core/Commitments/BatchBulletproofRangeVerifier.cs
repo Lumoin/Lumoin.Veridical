@@ -70,6 +70,8 @@ public static class BatchBulletproofRangeVerifier
     /// <param name="multiply">Backend scalar multiplication.</param>
     /// <param name="invert">Backend scalar inversion.</param>
     /// <param name="g1Msm">Backend G1 multi-scalar multiplication.</param>
+    /// <param name="g1IsOnCurve">Backend G1 on-curve predicate; screens every prover-supplied point before the combined multiexponentiation.</param>
+    /// <param name="g1IsInPrimeOrderSubgroup">Backend G1 prime-order-subgroup predicate; on-curve alone does not imply subgroup membership on a cofactor &gt; 1 curve.</param>
     /// <param name="pool">The pool to rent the working buffers from.</param>
     /// <returns><see langword="true"/> iff every proof verifies.</returns>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
@@ -88,6 +90,8 @@ public static class BatchBulletproofRangeVerifier
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         G1MultiScalarMultiplyDelegate g1Msm,
+        G1IsOnCurveDelegate g1IsOnCurve,
+        G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup,
         BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -102,6 +106,8 @@ public static class BatchBulletproofRangeVerifier
         ArgumentNullException.ThrowIfNull(multiply);
         ArgumentNullException.ThrowIfNull(invert);
         ArgumentNullException.ThrowIfNull(g1Msm);
+        ArgumentNullException.ThrowIfNull(g1IsOnCurve);
+        ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
         ArgumentNullException.ThrowIfNull(pool);
 
         int m = proofs.Count;
@@ -131,6 +137,17 @@ public static class BatchBulletproofRangeVerifier
 
         try
         {
+            //Screen every prover-supplied point of every proof before any point
+            //reaches the combined multiexponentiation: on-curve alone does not
+            //imply prime-order-subgroup membership on a cofactor > 1 curve.
+            for(int p = 0; p < m; p++)
+            {
+                if(!ProverSuppliedPointValidation.AreRangeProofPointsInPrimeOrderSubgroup(proofs[p], valueCommitmentsConcatenated.Slice(p * g1Size, g1Size), 1, g1IsOnCurve, g1IsInPrimeOrderSubgroup, curve))
+                {
+                    return false;
+                }
+            }
+
             return VerifyCore(key, valueCommitmentsConcatenated, proofs, batchTranscript, newTranscript, hash, squeeze, reduce, add, subtract, multiply, invert, g1Msm, pool, m, n, g1Size, rounds);
         }
         catch(InvalidOperationException)

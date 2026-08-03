@@ -38,6 +38,8 @@ internal static class MaskedSpartanTestFixtures
     public static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     public static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     public static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    public static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    public static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     public static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
     public static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
     public static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
@@ -160,7 +162,7 @@ internal static class MaskedSpartanTestFixtures
             commitmentKey,
             CurveParameterSet.Bls12Curve381,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
-            G1Add, G1ScalarMul, G1Msm,
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup,
             ownsKey: true);
     }
 

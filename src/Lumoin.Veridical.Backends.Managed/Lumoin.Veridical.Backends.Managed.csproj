@@ -18,6 +18,11 @@
          Montgomery multiply and the base-field prime) into the dual-field mdoc prover it
          wraps; these backends are internal, so the facade reaches them by friend access. -->
     <InternalsVisibleTo Include="Lumoin.Veridical.Longfellow" />
+    <!-- The direct SIMD kernel agreement tests call the internal per-ISA kernel
+         classes (for example the GF(2^128) VPCLMULQDQ batch kernels) without the
+         dispatch facade in between, so the wide paths are pinned against the
+         serial reference even where dispatch would not pick them. -->
+    <InternalsVisibleTo Include="Lumoin.Veridical.Tests" />
   </ItemGroup>
 
 </Project>

@@ -34,6 +34,8 @@ public class BatchRangeProofVerifyBenchmarks
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -105,7 +107,7 @@ public class BatchRangeProofVerifyBenchmarks
             using FiatShamirTranscript tx = NewTranscript(TranscriptDomain);
             if(BulletproofRangeVerifier.Verify(
                 key, commitmentsOwner.Memory.Span.Slice(i * g1Size, g1Size), proofs[i], tx,
-                Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, pool))
+                Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool))
             {
                 accepted++;
             }
@@ -124,7 +126,7 @@ public class BatchRangeProofVerifyBenchmarks
 
         return BatchBulletproofRangeVerifier.Verify(
             key, commitmentsOwner.Memory.Span[..commitmentBytes], proofs, batchTx, () => NewTranscript(TranscriptDomain),
-            Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, pool);
+            Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, pool);
     }
 
 

@@ -159,7 +159,7 @@ internal sealed class Fp24SexticReedSolomonTests
             using var encoder = new Fp24SexticReedSolomon(dimension, blockLength, Pool);
             encoder.Interpolate(row);
 
-            CollectionAssert.AreEqual(oracle.ToArray(), row.ToArray(), $"The sextic engine must equal the barycentric oracle byte-for-byte at shape ({dimension}, {blockLength}).");
+            Assert.AreSequenceEqual(oracle.ToArray(), row.ToArray(), $"The sextic engine must equal the barycentric oracle byte-for-byte at shape ({dimension}, {blockLength}).");
         }
     }
 

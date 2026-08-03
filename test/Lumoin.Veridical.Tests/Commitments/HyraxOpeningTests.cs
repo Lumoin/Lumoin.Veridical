@@ -28,6 +28,8 @@ internal sealed class HyraxOpeningTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate ScalarAdd { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate ScalarSubtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate ScalarMul { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -69,7 +71,7 @@ internal sealed class HyraxOpeningTests
                 bool ok = commitment.VerifyOpening(
                     point.AsSpan, claimedValue, proof, key, verifierTx,
                     Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-                    G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+                    G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
                 Assert.IsTrue(ok, $"Open / Verify round-trip must succeed for n = {variableCount}.");
             }
@@ -109,7 +111,7 @@ internal sealed class HyraxOpeningTests
                 bool ok = commitment.VerifyOpening(
                     point.AsSpan, wrong, proof, key, verifierTx,
                     Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-                    G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+                    G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
                 Assert.IsFalse(ok, "Verify must reject when the claimed value differs from the actual evaluation.");
             }
@@ -146,7 +148,7 @@ internal sealed class HyraxOpeningTests
                 bool ok = commitment.VerifyOpening(
                     pointB.AsSpan, claimedValue, proof, key, verifierTx,
                     Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-                    G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+                    G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
                 Assert.IsFalse(ok, "Verify must reject when the evaluation point at verify differs from the point at open.");
             }
@@ -155,9 +157,10 @@ internal sealed class HyraxOpeningTests
 
 
     [TestMethod]
-    [DataRow(0)]   //First byte of C_f
-    [DataRow(50)]  //Inside C_f bytes
-    [DataRow(100)] //Inside IPA round pairs
+    [DataRow(0)]   //First byte of C_f: a point slot, rejected by the subgroup screen before the algebraic check runs.
+    [DataRow(50)]  //Inside the first IPA round's L point: a point slot, rejected by the subgroup screen before the algebraic check runs.
+    [DataRow(100)] //Inside the first IPA round's R point: a point slot, rejected by the subgroup screen before the algebraic check runs.
+    [DataRow(250)] //Inside the IPA's final scalar a': a scalar slot, so this still exercises the algebraic check.
     public void VerifyWithCorruptedProofFails(int byteOffset)
     {
         const int VariableCount = 4;
@@ -187,7 +190,7 @@ internal sealed class HyraxOpeningTests
                 bool ok = commitment.VerifyOpening(
                     point.AsSpan, claimedValue, proof, key, verifierTx,
                     Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert,
-                    G1Add, G1ScalarMul, G1Msm, BaseMemoryPool.Shared);
+                    G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, BaseMemoryPool.Shared);
 
                 Assert.IsFalse(ok, $"Verify must reject after a bit-flip at byte offset {byteOffset} in the proof.");
             }

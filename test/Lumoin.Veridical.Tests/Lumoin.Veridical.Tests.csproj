@@ -29,9 +29,6 @@
     <PackageReference Include="LiquidTestReports.Markdown" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="ModelContextProtocol" />
-    <PackageReference Update="Microsoft.Testing.Extensions.CodeCoverage">
-      <VersionOverride>18.7.0</VersionOverride>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -59,54 +56,6 @@
     <None Update="Cryptography\Wycheproof\Fixtures\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="Microsoft.Testing.Extensions.AzureDevOpsReport">
-      <VersionOverride>2.2.3</VersionOverride>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="Microsoft.Testing.Extensions.CrashDump">
-      <VersionOverride>2.2.3</VersionOverride>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="Microsoft.Testing.Extensions.HangDump">
-      <VersionOverride>2.2.3</VersionOverride>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="Microsoft.Testing.Extensions.HotReload">
-      <VersionOverride>2.2.3</VersionOverride>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="Microsoft.Testing.Extensions.Retry">
-      <VersionOverride>2.2.3</VersionOverride>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="Microsoft.Testing.Extensions.TrxReport">
-      <VersionOverride>2.2.3</VersionOverride>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="MSTest.TestAdapter">
-      <VersionOverride>4.2.3</VersionOverride>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="MSTest.TestFramework">
-      <VersionOverride>4.2.3</VersionOverride>
-    </PackageReference>
   </ItemGroup>
 
 </Project>

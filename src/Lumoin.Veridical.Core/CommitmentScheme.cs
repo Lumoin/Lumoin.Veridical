@@ -105,9 +105,18 @@ public readonly struct CommitmentScheme: IEquatable<CommitmentScheme>
     /// </summary>
     public static CommitmentScheme Ligero { get; } = new(9);
 
+    /// <summary>
+    /// WHIR. Transparent, hash-based, post-quantum-resistant multilinear
+    /// polynomial commitment built on an IOPP for constrained Reed-Solomon
+    /// codes over smooth evaluation domains; its per-round rate improvement
+    /// yields a query count that shrinks across rounds. Needs no trusted
+    /// setup and pairs with sumcheck-based proof systems.
+    /// </summary>
+    public static CommitmentScheme Whir { get; } = new(10);
+
 
     private static List<CommitmentScheme> commitmentSchemes { get; } =
-        [None, Kzg, HyperKzg, Mercury, Ipa, Fri, Hyrax, Pedersen, BaseFold, Ligero];
+        [None, Kzg, HyperKzg, Mercury, Ipa, Fri, Hyrax, Pedersen, BaseFold, Ligero, Whir];
 
 
     /// <summary>Gets all registered commitment scheme values.</summary>
@@ -185,6 +194,7 @@ public static class CommitmentSchemeNames
         var c when c == CommitmentScheme.Pedersen.Code => nameof(CommitmentScheme.Pedersen),
         var c when c == CommitmentScheme.BaseFold.Code => nameof(CommitmentScheme.BaseFold),
         var c when c == CommitmentScheme.Ligero.Code => nameof(CommitmentScheme.Ligero),
+        var c when c == CommitmentScheme.Whir.Code => nameof(CommitmentScheme.Whir),
         _ => $"Custom ({code})"
     };
 }

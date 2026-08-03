@@ -10,6 +10,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
@@ -21,7 +22,8 @@ namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 /// the opened claimed value equals the multilinear extension evaluated at the
 /// point (so the proximity/evaluation tensor split is correct), and a tampered
 /// opening (in the proximity response, an opened column, or a Merkle path), a
-/// tampered commitment, or a wrong claimed value are each rejected.
+/// tampered commitment, a wrong claimed value, or an arithmetically equivalent
+/// but non-canonical spelling of an opening scalar are each rejected.
 /// </summary>
 [TestClass]
 internal sealed class LigeroPolynomialCommitmentSchemeTests
@@ -127,6 +129,92 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
 
                     Assert.IsFalse(verified, $"A tampered opening ({region}) must be rejected.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>
+    /// Pins the opening-scalar canonicity gate directly: zero and the largest
+    /// reduced value are canonical, the field order itself (a second spelling of
+    /// zero) is not, and the stride walk rejects a non-canonical element at any
+    /// position, not just the first.
+    /// </summary>
+    [TestMethod]
+    public void NonCanonicalScalarSpellingIsDetectedAtEveryStride()
+    {
+        Span<byte> orderBytes = stackalloc byte[ScalarSize];
+        WriteBigEndian(WellKnownCurves.GetScalarFieldOrder(Curve), orderBytes);
+
+        Span<byte> canonicalMax = stackalloc byte[ScalarSize];
+        WriteBigEndian(WellKnownCurves.GetScalarFieldOrder(Curve) - BigInteger.One, canonicalMax);
+
+        Span<byte> zero = stackalloc byte[ScalarSize];
+        zero.Clear();
+
+        Assert.IsTrue(LigeroEvaluationVerifier.AreCanonicalScalars(zero, Curve), "Zero is a canonical scalar spelling.");
+        Assert.IsTrue(LigeroEvaluationVerifier.AreCanonicalScalars(canonicalMax, Curve), "The largest reduced value is a canonical scalar spelling.");
+        Assert.IsFalse(LigeroEvaluationVerifier.AreCanonicalScalars(orderBytes, Curve), "The field order is a non-canonical spelling of zero and must be rejected.");
+
+        Span<byte> pair = stackalloc byte[2 * ScalarSize];
+        canonicalMax.CopyTo(pair[..ScalarSize]);
+        orderBytes.CopyTo(pair[ScalarSize..]);
+
+        Assert.IsFalse(LigeroEvaluationVerifier.AreCanonicalScalars(pair, Curve), "A non-canonical element after a canonical one must still be rejected.");
+    }
+
+
+    /// <summary>
+    /// Rejects the malleability shape a bit-flip tamper cannot represent: lifting
+    /// an opening scalar by the field order yields byte-distinct bytes that denote
+    /// the same residue, the encoding class the verifier's canonicity gate exists
+    /// to reject before the bytes reach transcript absorbs or arithmetic.
+    /// </summary>
+    [TestMethod]
+    public void ArithmeticallyEquivalentNonCanonicalOpeningIsRejected()
+    {
+        const int VariableCount = 4;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 12, pool);
+        Scalar[] point = BuildPoint(VariableCount, 13, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    Span<byte> uFirst = MemoryMarshal.AsMemory(opening.AsReadOnlyMemory()).Span[..ScalarSize];
+                    var value = new BigInteger(uFirst, isUnsigned: true, isBigEndian: true);
+
+                    Span<byte> lifted = stackalloc byte[ScalarSize];
+                    WriteBigEndian(value + WellKnownCurves.GetScalarFieldOrder(Curve), lifted);
+
+                    Span<byte> reduced = stackalloc byte[ScalarSize];
+                    Reduce(lifted, reduced, Curve);
+                    Assert.IsTrue(reduced.SequenceEqual(uFirst), "The lifted spelling must denote the same residue as the canonical one.");
+                    Assert.IsFalse(WellKnownCurves.IsCanonicalScalar(lifted, Curve), "The lifted spelling must be non-canonical.");
+
+                    lifted.CopyTo(uFirst);
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
+
+                    Assert.IsFalse(verified, "An arithmetically equivalent but non-canonical opening-scalar spelling must be rejected.");
                 }
             }
         }
@@ -344,6 +432,18 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
         Add(value.AsReadOnlySpan(), one, owner.Memory.Span[..ScalarSize], Curve);
 
         return new Scalar(owner, Curve, WellKnownAlgebraicTags.ScalarFor(Curve));
+    }
+
+
+    /// <summary>
+    /// Writes <paramref name="value"/> as unsigned big-endian bytes right-aligned
+    /// into <paramref name="destination"/>, zero-padding the leading bytes.
+    /// </summary>
+    private static void WriteBigEndian(BigInteger value, Span<byte> destination)
+    {
+        destination.Clear();
+        int byteCount = value.GetByteCount(isUnsigned: true);
+        value.TryWriteBytes(destination[^byteCount..], out _, isUnsigned: true, isBigEndian: true);
     }
 
 

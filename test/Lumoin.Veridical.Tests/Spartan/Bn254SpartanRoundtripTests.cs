@@ -36,6 +36,8 @@ internal sealed class Bn254SpartanRoundtripTests
     private static G1AddDelegate G1Add { get; } = Bn254BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bn254BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bn254Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static G1HashToCurveDelegate HashToCurve { get; } = Bn254BigIntegerG1Reference.GetHashToCurve();
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
@@ -145,7 +147,7 @@ internal sealed class Bn254SpartanRoundtripTests
             commitmentKey,
             CurveParameterSet.Bn254,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random,
-            G1Add, G1ScalarMul, G1Msm,
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup,
             ownsKey: true);
     }
 

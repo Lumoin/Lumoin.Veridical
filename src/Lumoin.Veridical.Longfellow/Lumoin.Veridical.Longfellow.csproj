@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <RootNamespace>Lumoin.Veridical.Longfellow</RootNamespace>
-    <Description>High-level, consumable Longfellow-style zero-knowledge over ECDSA-signed mdoc credentials: a facade over the dual-field prover/verifier (the GF(2^128) hash circuit and the P-256 Fp256 signature circuit) that is byte-conformant to google/longfellow-zk. The library stays serialization-free — the mdoc/CBOR walk and the public-input templates are supplied by the caller through delegate seams, while circuit provisioning, the shared transcript, the cross-field MAC binding and the proof envelope are owned by the facade. Proof material is pool-backed; no naked byte arrays cross the public surface.</Description>
-    <PackageTags>cryptography zero-knowledge mdoc longfellow ecdsa p-256 eudi-wallet selective-disclosure</PackageTags>
+    <Description>High-level, consumable Longfellow-style zero-knowledge over ECDSA-signed credentials — mdoc and JWT (JWS compact serialization) — as facades over the dual-field prover/verifier (the GF(2^128) hash circuit and the P-256 Fp256 signature circuit); the mdoc statement is byte-conformant to google/longfellow-zk. The library stays serialization-free — the mdoc/CBOR walk, the JWS base64url decoding and the public-input templates are supplied by the caller through delegate seams, while circuit provisioning, the shared transcript, the cross-field MAC binding and the proof envelope are owned by the facades. Proof material is pool-backed; no naked byte arrays cross the public surface.</Description>
+    <PackageTags>cryptography zero-knowledge mdoc jwt sd-jwt longfellow ecdsa p-256 eudi-wallet selective-disclosure</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

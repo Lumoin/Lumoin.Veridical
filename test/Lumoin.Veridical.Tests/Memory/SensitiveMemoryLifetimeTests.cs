@@ -65,7 +65,7 @@ internal sealed class SensitiveMemoryLifetimeTests
 
         using(PlainSensitiveMemory memory = new(pool.Rent(SegmentBytes)))
         {
-            Assert.AreEqual(SegmentBytes, memory.AsReadOnlySpan().Length);
+            Assert.HasCount(SegmentBytes, memory.AsReadOnlySpan());
         }
 
         //The only rental was returned by Dispose, so the slab is fully
@@ -81,6 +81,6 @@ internal sealed class SensitiveMemoryLifetimeTests
     private static void AllocateAndLeak(BaseMemoryPool pool)
     {
         PlainSensitiveMemory leaked = new(pool.Rent(SegmentBytes));
-        Assert.AreEqual(SegmentBytes, leaked.AsReadOnlySpan().Length);
+        Assert.HasCount(SegmentBytes, leaked.AsReadOnlySpan());
     }
 }

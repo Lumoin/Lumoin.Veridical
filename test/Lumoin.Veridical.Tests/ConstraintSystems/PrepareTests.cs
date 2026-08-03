@@ -31,7 +31,7 @@ internal sealed class PrepareTests
 
         int scalarSize = Scalar.SizeBytes;
         ReadOnlySpan<byte> u = prepared.GetUBytes();
-        Assert.AreEqual(scalarSize, u.Length);
+        Assert.HasCount(scalarSize, u);
 
         //u = 1 in canonical big-endian: 31 zero bytes then 0x01.
         var uValue = new BigInteger(u, isUnsigned: true, isBigEndian: true);

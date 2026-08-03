@@ -13,9 +13,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <summary>
 /// The evaluation-mode semantic gates for the ported JWT statement, following google/longfellow-zk
 /// <c>circuits/tests/jwt/jwt_test.cc</c>'s <c>EvalJWT</c>/<c>EvalFailureJWT</c>: the reference
-/// token's full witness satisfies <c>AssertJwtAttributes</c> under a panicking evaluation backend,
-/// every malformed reference token is rejected by the witness generator, and the block-capacity
-/// guard rejects an oversized token.
+/// token's full witness satisfies <c>AssertJwtAttributes</c> (the non-panicking backend makes the
+/// latched-flag check the live failure signal), every malformed reference token is rejected by the
+/// witness generator, and the block-capacity guard rejects an oversized token.
 /// </summary>
 [TestClass]
 internal sealed class LongfellowJwtCircuitTests
@@ -48,12 +48,12 @@ internal sealed class LongfellowJwtCircuitTests
     private static ScalarInvertDelegate OrderInvert { get; } = P256ScalarMontgomeryBackend.GetInvert();
 
 
-    /// <summary>Pins that the reference token's witness satisfies the whole statement under a panicking evaluation backend, and that the witness generator's key-binding digest equals the reference vector's public <c>e2</c>.</summary>
+    /// <summary>Pins that the reference token's witness satisfies the whole statement in evaluation — the non-panicking backend makes the latched-flag check the live failure signal — and that the witness generator's key-binding digest equals the reference vector's public <c>e2</c>.</summary>
     [TestMethod]
     public void TheReferenceTokenSatisfiesTheStatementInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: true);
+        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         var logic = new LongfellowLogic(backend, field);
 
         LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
@@ -65,7 +65,7 @@ internal sealed class LongfellowJwtCircuitTests
 
         var generator = NewWitnessGenerator(field);
         Assert.IsTrue(generator.ComputeWitness(token, pkX, pkY, [attribute]), "The reference token must produce a witness.");
-        CollectionAssert.AreEqual(e2, generator.KbDigest.ToArray(), "The key-binding digest must equal the reference vector's public e2.");
+        Assert.AreSequenceEqual(e2, generator.KbDigest.ToArray(), "The key-binding digest must equal the reference vector's public e2.");
 
         var circuit = new LongfellowJwtCircuit(logic, Curve, EvalShaBlocks);
         LongfellowJwtWitnessWires witness = InternWitness(backend, logic, field, generator, attributeCount: 1);

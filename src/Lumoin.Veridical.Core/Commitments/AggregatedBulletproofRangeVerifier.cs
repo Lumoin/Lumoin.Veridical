@@ -15,7 +15,11 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <c>t̂·g + τ_x·h == Σ_j z^{2+j}·V_j + δ(y,z)·g + x·T₁ + x²·T₂</c> with the
 /// aggregated <c>δ(y,z) = (z−z²)·⟨1, y^{nm}⟩ − Σ_j z^{3+j}·⟨1, 2^n⟩</c>, and
 /// runs the two-vector inner-product verification over the <c>n·m</c>-length
-/// generator families. Exception-safe against malformed proof bytes.
+/// generator families. Every prover-supplied point (the value commitments,
+/// <c>A</c>, <c>S</c>, <c>T₁</c>, <c>T₂</c>, and the IPA round points) is
+/// screened for on-curve and prime-order-subgroup membership before any
+/// multi-scalar multiplication runs. Exception-safe against malformed proof
+/// bytes.
 /// </summary>
 public static class AggregatedBulletproofRangeVerifier
 {
@@ -49,6 +53,8 @@ public static class AggregatedBulletproofRangeVerifier
         G1AddDelegate g1Add,
         G1ScalarMultiplyDelegate g1ScalarMul,
         G1MultiScalarMultiplyDelegate g1Msm,
+        G1IsOnCurveDelegate g1IsOnCurve,
+        G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup,
         BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -64,6 +70,8 @@ public static class AggregatedBulletproofRangeVerifier
         ArgumentNullException.ThrowIfNull(g1Add);
         ArgumentNullException.ThrowIfNull(g1ScalarMul);
         ArgumentNullException.ThrowIfNull(g1Msm);
+        ArgumentNullException.ThrowIfNull(g1IsOnCurve);
+        ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
         ArgumentNullException.ThrowIfNull(pool);
 
         AggregatedBulletproofRangeProver.ValidateShape(key, bitWidth, valueCount);
@@ -89,6 +97,14 @@ public static class AggregatedBulletproofRangeVerifier
         //invariants anywhere below; every such failure is a rejection.
         try
         {
+            //Screen every prover-supplied point before any point reaches a
+            //multi-scalar multiplication: on-curve alone does not imply
+            //prime-order-subgroup membership on a cofactor > 1 curve.
+            if(!ProverSuppliedPointValidation.AreRangeProofPointsInPrimeOrderSubgroup(proof, valueCommitmentsConcatenated, valueCount, g1IsOnCurve, g1IsInPrimeOrderSubgroup, curve))
+            {
+                return false;
+            }
+
             return VerifyCore(key, bitWidth, valueCount, valueCommitmentsConcatenated, proof, transcript, hash, squeeze, reduce, add, subtract, multiply, invert, g1Add, g1ScalarMul, g1Msm, pool);
         }
         catch(InvalidOperationException)

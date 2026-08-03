@@ -47,7 +47,7 @@ internal sealed class Sha256AgreementTests
         byte[] actual = new byte[Sha256Hasher.DigestSizeBytes];
         Sha256.HashData(input, actual);
 
-        CollectionAssert.AreEqual(expected, actual);
+        Assert.AreSequenceEqual(expected, actual);
     }
 
 
@@ -61,12 +61,12 @@ internal sealed class Sha256AgreementTests
         foreach(int chunk in new[] { 1, 7, 13, 64, 1000 })
         {
             byte[] actual = HashInChunks(input, chunk);
-            CollectionAssert.AreEqual(expected, actual, $"fixed chunk size {chunk} (input length {length})");
+            Assert.AreSequenceEqual(expected, actual, $"fixed chunk size {chunk} (input length {length})");
         }
 
         //A deterministic pseudo-random split: chunk sizes derived from the length so the test is repeatable.
         byte[] randomSplit = HashInRandomChunks(input, seed: unchecked((uint)length * 2654435761u + 1u));
-        CollectionAssert.AreEqual(expected, randomSplit, $"random split (input length {length})");
+        Assert.AreSequenceEqual(expected, randomSplit, $"random split (input length {length})");
     }
 
 
@@ -90,7 +90,7 @@ internal sealed class Sha256AgreementTests
         Sha256Hasher fork1 = live;
         byte[] k1 = new byte[Sha256Hasher.DigestSizeBytes];
         fork1.Finalize(k1);
-        CollectionAssert.AreEqual(expectedPart, k1, "fork at the prefix length");
+        Assert.AreSequenceEqual(expectedPart, k1, "fork at the prefix length");
 
         //The fork's finalize must not have consumed the live hasher: it keeps absorbing.
         live.Update(rest);
@@ -98,14 +98,14 @@ internal sealed class Sha256AgreementTests
         Sha256Hasher fork2 = live;
         byte[] k2 = new byte[Sha256Hasher.DigestSizeBytes];
         fork2.Finalize(k2);
-        CollectionAssert.AreEqual(expectedWhole, k2, "fork at the full length");
+        Assert.AreSequenceEqual(expectedWhole, k2, "fork at the full length");
 
         //Forking the same live hasher a third time at the same length reproduces k2 — the running state
         //was untouched by the two prior fork-finalizes.
         Sha256Hasher fork3 = live;
         byte[] k3 = new byte[Sha256Hasher.DigestSizeBytes];
         fork3.Finalize(k3);
-        CollectionAssert.AreEqual(expectedWhole, k3, "second fork at the full length reproduces the digest");
+        Assert.AreSequenceEqual(expectedWhole, k3, "second fork at the full length reproduces the digest");
     }
 
 

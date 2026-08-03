@@ -42,8 +42,11 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <para>
 /// Each 64×64→128 carry-less product is PCLMULQDQ on x86, the ARM PMULL (vmull_p64) intrinsic on
 /// AArch64 (<see cref="CarrylessMultiply64"/>), the shared 4-bit-window software path
-/// (<see cref="Gf2k128Backend.SoftwareCarrylessMultiply64"/>) otherwise. The paths are
-/// byte-identical and all gated by the agreement tests.
+/// (<see cref="Gf2k128Backend.SoftwareCarrylessMultiply64"/>) otherwise. On AVX-512 VPCLMULQDQ
+/// hardware the regular-shape loops (batch multiply, both fused-multiply-accumulate shapes, the
+/// butterfly) additionally take a four-element-wide kernel (<see cref="Gf2k128Vpclmulqdq"/>) for
+/// full groups, with the scalar loop keeping the tail. The paths are byte-identical and all gated
+/// by the agreement tests.
 /// </para>
 /// </remarks>
 public static class Gf2k128BatchBackend
@@ -52,7 +55,7 @@ public static class Gf2k128BatchBackend
     private const int ElementOffset = 16;
     private const int LimbSize = 8;
 
-    //The reduction constant for x^128 ≡ x^7 + x^2 + x + 1 (longfellow-zk lib/gf2k modulus).
+    /// <summary>The reduction constant for <c>x^128 ≡ x^7 + x^2 + x + 1</c> (longfellow-zk lib/gf2k modulus).</summary>
     private const ulong ReductionPolynomial = 0x87;
 
 
@@ -140,7 +143,14 @@ public static class Gf2k128BatchBackend
         CryptographicOperationCounters.Increment(CryptographicOperationKind.ScalarBatchMultiply, curve, count);
         ValidatePairBuffers(leftOperandsConcatenated, rightOperandsConcatenated, resultsConcatenated, count);
 
-        for(int i = 0; i < count; i++)
+        //Full four-element groups take the VPCLMULQDQ kernel where the ISA
+        //carries it (byte-identical lane arithmetic); the scalar loop takes
+        //the tail — and the whole batch on narrower hardware.
+        int start = Gf2k128Vpclmulqdq.IsSupported
+            ? Gf2k128Vpclmulqdq.BatchMultiply(leftOperandsConcatenated, rightOperandsConcatenated, resultsConcatenated, count)
+            : 0;
+
+        for(int i = start; i < count; i++)
         {
             int offset = i * ScalarSize;
             (ulong leftHigh, ulong leftLow) = Unpack(leftOperandsConcatenated.Slice(offset, ScalarSize));
@@ -167,7 +177,13 @@ public static class Gf2k128BatchBackend
         CryptographicOperationCounters.Increment(CryptographicOperationKind.ScalarBatchMultiplyAccumulate, curve, count);
         ValidatePairBuffers(leftOperandsConcatenated, rightOperandsConcatenated, accumulatorsConcatenated, count);
 
-        for(int i = 0; i < count; i++)
+        //Full four-element groups take the VPCLMULQDQ kernel; the scalar loop
+        //takes the tail.
+        int start = Gf2k128Vpclmulqdq.IsSupported
+            ? Gf2k128Vpclmulqdq.BatchMultiplyAccumulate(leftOperandsConcatenated, rightOperandsConcatenated, accumulatorsConcatenated, accumulate, count)
+            : 0;
+
+        for(int i = start; i < count; i++)
         {
             int offset = i * ScalarSize;
             (ulong leftHigh, ulong leftLow) = Unpack(leftOperandsConcatenated.Slice(offset, ScalarSize));
@@ -212,7 +228,14 @@ public static class Gf2k128BatchBackend
 
         //The shared multiplier's limbs are read once and reused across the whole span.
         (ulong scalarHigh, ulong scalarLow) = Unpack(scalar);
-        for(int i = 0; i < count; i++)
+
+        //Full four-element groups take the VPCLMULQDQ kernel; the scalar loop
+        //takes the tail.
+        int start = Gf2k128Vpclmulqdq.IsSupported
+            ? Gf2k128Vpclmulqdq.BroadcastMultiplyAccumulate(scalarHigh, scalarLow, operandsConcatenated, accumulatorsConcatenated, accumulate, count)
+            : 0;
+
+        for(int i = start; i < count; i++)
         {
             int offset = i * ScalarSize;
             (ulong operandHigh, ulong operandLow) = Unpack(operandsConcatenated.Slice(offset, ScalarSize));
@@ -310,7 +333,14 @@ public static class Gf2k128BatchBackend
 
         //The twiddle is broadcast once for the whole group.
         (ulong twiddleHigh, ulong twiddleLow) = Unpack(twiddle);
-        for(int offset = 0; offset < stride; offset++)
+
+        //Full four-element groups take the VPCLMULQDQ kernel; the scalar loop
+        //takes the tail.
+        int start = Gf2k128Vpclmulqdq.IsSupported
+            ? Gf2k128Vpclmulqdq.ButterflyBatch(twiddleHigh, twiddleLow, lowConcatenated, highConcatenated, stride)
+            : 0;
+
+        for(int offset = start; offset < stride; offset++)
         {
             int byteOffset = offset * ScalarSize;
             Span<byte> lowSlot = lowConcatenated.Slice(byteOffset, ScalarSize);
@@ -406,9 +436,13 @@ public static class Gf2k128BatchBackend
     }
 
 
-    //One full GF(2^128) multiply with the 0x87 fold applied immediately: the same single-product
-    //reduce the batch multiply uses (one MultiplyAccumulate + one AccumulateReduce), pinned
-    //byte-identical to the scalar backend multiply by the BatchMultiply agreement gate.
+    /// <summary>
+    /// One full GF(2^128) multiply with the <c>0x87</c> fold applied
+    /// immediately: the same single-product reduce the batch multiply uses
+    /// (one <see cref="MultiplyAccumulate"/> + one
+    /// <see cref="AccumulateReduce"/>), pinned byte-identical to the scalar
+    /// backend multiply by the batch-multiply agreement gate.
+    /// </summary>
     private static (ulong High, ulong Low) MultiplyReduceOnce(ulong leftHigh, ulong leftLow, ulong rightHigh, ulong rightLow)
     {
         Accumulator accumulator = default;
@@ -499,24 +533,43 @@ public static class Gf2k128BatchBackend
     }
 
 
-    //The three-lane unreduced accumulator: the reference's gf2_128_accum_t. Each lane is one
-    //128-bit value as (High, Low) limbs. Lane 0 holds the weight-1 products, lane 1 the
-    //weight-x^64 (middle) products, lane 2 the weight-x^128 (top) products — all XOR-accumulated
-    //without reduction. The 0x87 fold is applied once, in AccumulateReduce.
+    /// <summary>
+    /// The three-lane unreduced accumulator: the reference's
+    /// <c>gf2_128_accum_t</c>. Each lane is one 128-bit value as
+    /// <c>(High, Low)</c> limbs. Lane 0 holds the weight-1 products, lane 1
+    /// the weight-<c>x^64</c> (middle) products, lane 2 the
+    /// weight-<c>x^128</c> (top) products — all XOR-accumulated without
+    /// reduction. The <c>0x87</c> fold is applied once, in
+    /// <see cref="AccumulateReduce"/>.
+    /// </summary>
     private struct Accumulator
     {
+        /// <summary>The weight-1 lane's high limb.</summary>
         public ulong Lane0High;
+
+        /// <summary>The weight-1 lane's low limb.</summary>
         public ulong Lane0Low;
+
+        /// <summary>The weight-<c>x^64</c> lane's high limb.</summary>
         public ulong Lane1High;
+
+        /// <summary>The weight-<c>x^64</c> lane's low limb.</summary>
         public ulong Lane1Low;
+
+        /// <summary>The weight-<c>x^128</c> lane's high limb.</summary>
         public ulong Lane2High;
+
+        /// <summary>The weight-<c>x^128</c> lane's low limb.</summary>
         public ulong Lane2Low;
     }
 
 
-    //gf2_128_mac: the four 64×64 carry-less halves of x·y, XOR-accumulated into the three lanes
-    //WITHOUT reducing. t0 = xLo·yLo (weight 1), t1 = xLo·yHi ⊕ xHi·yLo (weight x^64),
-    //t2 = xHi·yHi (weight x^128).
+    /// <summary>
+    /// <c>gf2_128_mac</c>: the four 64×64 carry-less halves of <c>x·y</c>,
+    /// XOR-accumulated into the three lanes WITHOUT reducing.
+    /// <c>t0 = xLo·yLo</c> (weight 1), <c>t1 = xLo·yHi ⊕ xHi·yLo</c> (weight
+    /// <c>x^64</c>), <c>t2 = xHi·yHi</c> (weight <c>x^128</c>).
+    /// </summary>
     private static void MultiplyAccumulate(ref Accumulator accumulator, ulong leftHigh, ulong leftLow, ulong rightHigh, ulong rightLow)
     {
         (ulong t0High, ulong t0Low) = CarrylessMultiply64(leftLow, rightLow);
@@ -533,8 +586,11 @@ public static class Gf2k128BatchBackend
     }
 
 
-    //gf2_128_accum_reduce: fold the three unreduced lanes down to one GF(2^128) element with the
-    //two-stage 0x87 reduction. Reduce(lane1, lane2) then Reduce(lane0, that).
+    /// <summary>
+    /// <c>gf2_128_accum_reduce</c>: fold the three unreduced lanes down to one
+    /// GF(2^128) element with the two-stage <c>0x87</c> reduction —
+    /// <c>Reduce(lane1, lane2)</c> then <c>Reduce(lane0, that)</c>.
+    /// </summary>
     private static (ulong High, ulong Low) AccumulateReduce(Accumulator accumulator)
     {
         (ulong t1High, ulong t1Low) = Reduce(accumulator.Lane1High, accumulator.Lane1Low, accumulator.Lane2High, accumulator.Lane2Low);
@@ -543,10 +599,15 @@ public static class Gf2k128BatchBackend
     }
 
 
-    //gf2_128_reduce: returns the 128-bit value lowValue ⊕ x^64·highValue, folded modulo the poly.
-    //Shifting `high` left by 64 bits inside the 128-bit register moves its low limb to the high
-    //position (its high limb spills out); the spilled high limb times 0x87 is the carry that folds
-    //back. Mirrors the reference's _mm_slli_si128(t1, 8) ⊕ _mm_clmulepi64_si128(t1, poly, 0x01).
+    /// <summary>
+    /// <c>gf2_128_reduce</c>: returns the 128-bit value
+    /// <c>lowValue ⊕ x^64·highValue</c>, folded modulo the polynomial.
+    /// Shifting <c>high</c> left by 64 bits inside the 128-bit register moves
+    /// its low limb to the high position (its high limb spills out); the
+    /// spilled high limb times <c>0x87</c> is the carry that folds back.
+    /// Mirrors the reference's <c>_mm_slli_si128(t1, 8) ⊕
+    /// _mm_clmulepi64_si128(t1, poly, 0x01)</c>.
+    /// </summary>
     private static (ulong High, ulong Low) Reduce(ulong lowValueHigh, ulong lowValueLow, ulong highValueHigh, ulong highValueLow)
     {
         (ulong carryHigh, ulong carryLow) = CarrylessMultiply64(highValueHigh, ReductionPolynomial);
@@ -558,9 +619,11 @@ public static class Gf2k128BatchBackend
     }
 
 
-    //One 64×64 carry-less multiply: PCLMULQDQ on x86, the ARM PMULL (vmull_p64) intrinsic on
-    //AArch64, the shared 4-bit-window software path otherwise. The paths are gated byte-identical
-    //by the agreement tests.
+    /// <summary>
+    /// One 64×64 carry-less multiply: PCLMULQDQ on x86, the ARM PMULL
+    /// (vmull_p64) intrinsic on AArch64, the shared 4-bit-window software path
+    /// otherwise. The paths are gated byte-identical by the agreement tests.
+    /// </summary>
     private static (ulong High, ulong Low) CarrylessMultiply64(ulong a, ulong b)
     {
         if(Pclmulqdq.IsSupported)
@@ -645,6 +708,8 @@ public static class Gf2k128BatchBackend
     }
 
 
+    /// <summary>Rejects operand/result buffers whose length is not exactly <c>count</c> canonical slots.</summary>
+    /// <exception cref="ArgumentException">When a buffer length mismatches the count.</exception>
     private static void ValidatePairBuffers(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, ReadOnlySpan<byte> result, int count)
     {
         if(left.Length != count * ScalarSize || right.Length != count * ScalarSize || result.Length != count * ScalarSize)
@@ -654,6 +719,8 @@ public static class Gf2k128BatchBackend
     }
 
 
+    /// <summary>Rejects operand/accumulator buffers whose length is not exactly <c>count</c> canonical slots.</summary>
+    /// <exception cref="ArgumentException">When a buffer length mismatches the count.</exception>
     private static void ValidateSpanBuffers(ReadOnlySpan<byte> operands, ReadOnlySpan<byte> accumulators, int count)
     {
         if(operands.Length != count * ScalarSize || accumulators.Length != count * ScalarSize)

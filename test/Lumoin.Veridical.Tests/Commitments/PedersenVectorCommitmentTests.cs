@@ -101,7 +101,7 @@ internal sealed class PedersenVectorCommitmentTests
 
     private static PoolScalarArray AddScalarVectors(PoolScalarArray a, PoolScalarArray b)
     {
-        Assert.AreEqual(a.AsSpan.Length, b.AsSpan.Length);
+        Assert.HasCount(a.AsSpan.Length, b.AsSpan);
         var sum = new Scalar[a.AsSpan.Length];
         for(int i = 0; i < a.AsSpan.Length; i++)
         {

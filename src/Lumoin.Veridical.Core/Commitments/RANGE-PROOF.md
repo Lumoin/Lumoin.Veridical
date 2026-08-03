@@ -40,6 +40,15 @@ last over the same `RangeProof` wire container and the same generator key:
   commitment with the `H′`-basis weights expressed directly on `H_i`
   (`w_i = z + z²·2^i·y^{−i}`), and verifies the inner-product argument.
   The verifier is exception-safe: malformed proof bytes reject, never throw.
+  Before any group arithmetic runs, every prover-supplied point — the value
+  commitment `V`, `A`, `S`, `T₁`, `T₂` and each inner-product round point —
+  is screened for on-curve and prime-order-subgroup membership, so a point
+  carrying a small-order component the soundness argument does not account
+  for is rejected rather than multiplied. The screen matters on curves with
+  a cofactor greater than one: BLS12-381 G1 has a non-trivial cofactor,
+  while BN254 G1 has cofactor 1 and every on-curve point is already a
+  subgroup member. The aggregated and both batched verifiers screen the same
+  way, per proof.
 - **`TwoVectorInnerProductArgument`** — Bulletproofs Protocol 2, the
   two-secret-vector sibling of the Hyrax opening's public-vector
   `InnerProductArgument`: proves `c = ⟨a, b⟩` against

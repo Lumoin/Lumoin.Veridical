@@ -35,6 +35,8 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
     private static ScalarAddDelegate ScalarAdd { get; } = TestScalarBackends.Bls12Curve381.Add;
     private static ScalarSubtractDelegate ScalarSubtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
     private static ScalarMultiplyDelegate ScalarMul { get; } = TestScalarBackends.Bls12Curve381.Multiply;
@@ -62,7 +64,8 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
         ScalarRandomDelegate providerRandom = MakeFixedRandom(SampleSeed);
         using PolynomialCommitmentProvider provider = HyraxPolynomialCommitmentScheme.Create(
             key, CurveParameterSet.Bls12Curve381,
-            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, providerRandom, G1Add, G1ScalarMul, G1Msm);
+            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, providerRandom, G1Add, G1ScalarMul, G1Msm,
+            G1IsOnCurve, G1IsInPrimeOrderSubgroup);
 
         var (providerCommitment, providerBlind) = provider.Commit(mle, BaseMemoryPool.Shared);
 
@@ -116,7 +119,8 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
         ScalarRandomDelegate random = MakeFixedRandom(SampleSeed);
         using PolynomialCommitmentProvider provider = HyraxPolynomialCommitmentScheme.Create(
             key, CurveParameterSet.Bls12Curve381,
-            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, random, G1Add, G1ScalarMul, G1Msm);
+            Hash, Squeeze, ScalarReduce, ScalarAdd, ScalarSubtract, ScalarMul, ScalarInvert, random, G1Add, G1ScalarMul, G1Msm,
+            G1IsOnCurve, G1IsInPrimeOrderSubgroup);
 
         Assert.AreEqual(CommitmentScheme.Hyrax, provider.Scheme, "scheme identity");
         Assert.AreEqual(CurveParameterSet.Bls12Curve381.Code, provider.Curve.Code, "curve identity");
