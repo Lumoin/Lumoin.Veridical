@@ -46,7 +46,7 @@ inputs and witness variables, add constraints as linear-combination
 expressions, and compile against input bindings to a `RawR1csInstance` /
 `RawR1csWitness` pair; a small predicate library (range checks, equality,
 ordering, set membership) composes on top. See
-[`CONSTRAINT-BUILDER.md`](CONSTRAINT-BUILDER.md) for the model and worked
+the constraint-builder design notes for the model and worked
 examples.
 
 ## Adapters

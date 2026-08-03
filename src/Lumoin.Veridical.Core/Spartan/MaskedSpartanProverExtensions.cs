@@ -15,7 +15,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// <summary>
 /// Produces a <see cref="MaskedSpartanProof"/> for the masked Spartan2 ZK
 /// construction (the statistical sum-of-univariates masks of SM.7b, design v3
-/// of <c>ZK-STATMASK-DESIGN.md</c>; lineage CFS 2017 / Libra 2019).
+/// of the statistical-mask design notes; lineage CFS 2017 / Libra 2019).
 /// </summary>
 /// <remarks>
 /// <para>

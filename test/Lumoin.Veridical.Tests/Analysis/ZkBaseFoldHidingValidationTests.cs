@@ -29,7 +29,7 @@ namespace Lumoin.Veridical.Tests.Analysis;
 /// <para>
 /// <b>Verdicts are logged, not asserted.</b> The
 /// sumcheck mask is the statistical mask
-/// (<c>ZK-STATMASK-DESIGN.md</c> v3): every round coefficient is
+/// (the statistical-mask design notes, v3): every round coefficient is
 /// blended with exact degrees-of-freedom coverage, the mask's terminal value is
 /// bound by a filler-laundered weighted opening, and the byte-distribution
 /// experiment assesses its statistic against a label-permutation null (the
@@ -155,7 +155,7 @@ internal sealed class ZkBaseFoldHidingValidationTests
 
         //The at-scale companion of the run-to-completion case above: the same
         //three experiments at the figure-grade sample count the leakage
-        //write-up quotes (BASEFOLD-LEAKAGE.md). Verdicts stay logged-not-
+        //write-up quotes (the BaseFold-leakage design notes). Verdicts stay logged-not-
         //asserted — sample-scale statistics must not be flaky CI gates — but a
         //named, repeatable case replaces the one-off observation the doc's
         //full-ZK figures previously rested on.

@@ -11,9 +11,9 @@ is transparent (no trusted setup) and discrete-log-based.
 
 For the full protocol description, see SPARTAN2.md in this directory.
 For the zero-knowledge transformations layered on the base prover —
-round-message masking and fold-with-randomness — see
-SPARTAN-ZK-DESIGN.md, and FOLDING.md for the as-built Nova-style folding
-(`FoldChain`).
+round-message masking and fold-with-randomness — see the Spartan
+zero-knowledge design notes, and the folding design notes for the
+as-built Nova-style folding (`FoldChain`).
 
 ## On wire-format interoperability
 

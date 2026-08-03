@@ -30,7 +30,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// The masked construction's zero-knowledge guarantee assumes a hiding
 /// commitment; BaseFold's Merkle commitment is binding but not hiding, so this
 /// exercises structural correctness (a sound argument of knowledge), not the
-/// witness privacy the "masked" name implies. See BASEFOLD.md.
+/// witness privacy the "masked" name implies. See the BaseFold design notes.
 /// </remarks>
 [TestClass]
 internal sealed class BaseFoldMaskedSpartanRoundtripTests

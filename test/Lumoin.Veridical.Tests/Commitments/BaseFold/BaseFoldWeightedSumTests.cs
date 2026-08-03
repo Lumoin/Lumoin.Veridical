@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// evaluation opening is the special case <c>W = eq_z</c>, pinned here by a
 /// byte-identity test so the generalisation provably did not move the existing
 /// wire format. This is the binding primitive the statistical-mask construction
-/// (<c>ZK-STATMASK-DESIGN.md</c> levels 2 and 3) opens its mask
+/// (the statistical-mask design notes, levels 2 and 3) opens its mask
 /// coefficients with. Real BLS12-381 arithmetic and production BLAKE3.
 /// </summary>
 [TestClass]

@@ -5,7 +5,7 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 
 /// <summary>
 /// The resolved shape of a statistical sumcheck mask's coefficient commitment
-/// (<c>ZK-STATMASK-DESIGN.md</c> §2 v3): the committed vector
+/// (the statistical-mask design notes, §2 v3): the committed vector
 /// <c>C* = (mask coefficients ‖ random filler)</c> lives on
 /// <c>2^CoefficientVariableCount</c> coordinates and — over BaseFold — is
 /// dimension-lifted by <see cref="ExtraVariableCount"/> for its

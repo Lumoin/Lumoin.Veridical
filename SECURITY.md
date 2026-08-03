@@ -165,15 +165,15 @@ soundness rests on assumptions a consumer must uphold:
 - **A parameter set's realised soundness is computed, not assumed.** The per-path knowledge-soundness
   accounting — the opened-column/query proximity term, the Spartan sumcheck Fiat-Shamir term, and the
   low-order field terms, with the effective level their minimum — is computed by
-  `WellKnownSecurityLevels` and documented in `src/Lumoin.Veridical.Core/Commitments/SECURITY-BITS.md`.
+  `WellKnownSecurityLevels`.
   The practically important hazard it closes: a Ligero opening is clamped to the code's extension
   width, so a small circuit can silently realise far fewer soundness bits than its query count
   nominally targets; `WellKnownSecurityLevels.ThrowIfLigeroSoundnessClamped` turns that into a loud
   failure, and the `veridical prove`/`verify` tool enforces it at both prove and verify time. The
   tool's wired set (BLS12-381, Ligero inverse rate 16, 64 opened columns) realises the
   128-bit-classical proximity target under the conservative Johnson list-decoding regime
-  (Johnson-radius pricing; the η technicality and its sub-0.1-bit cost are documented in
-  `SECURITY-BITS.md`). The WHIR schedule computes its full round-by-round soundness ledger at
+  (Johnson-radius pricing; the η technicality costs under 0.1 of the 128 proximity bits at the
+  wired shape). The WHIR schedule computes its full round-by-round soundness ledger at
   derivation and refuses any shape whose worst row misses the target; its hiding extension
   additionally computes a zero-knowledge soundness ledger and a priced honest-verifier
   zero-knowledge distance, kept as a separate figure rather than folded into the soundness minimum.

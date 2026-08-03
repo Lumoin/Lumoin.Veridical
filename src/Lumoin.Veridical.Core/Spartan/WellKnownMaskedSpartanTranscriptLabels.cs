@@ -5,7 +5,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// statistical-mask ZK construction implemented by
 /// <c>MaskedSpartanProver</c> (the sum-of-univariates kernel masks with
 /// the filler-laundered weighted-opening binding, design v3 of
-/// <c>ZK-STATMASK-DESIGN.md</c>; SM.7b). Pinned strings so the
+/// the statistical-mask design notes; SM.7b). Pinned strings so the
 /// verifier replays the prover's transcript byte-for-byte.
 /// </summary>
 /// <remarks>

@@ -22,7 +22,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// the codeword — binding but <em>not</em> hiding — so a masked Spartan proof
 /// over BaseFold is a sound argument of knowledge but does <em>not</em> achieve
 /// the witness privacy the "masked" name implies; full ZK needs a hiding
-/// BaseFold variant (a blinded codeword), which is out of scope. See BASEFOLD.md.
+/// BaseFold variant (a blinded codeword), which is out of scope. See the BaseFold design notes.
 /// </para>
 /// <para>
 /// Buffer layout, in order: witness root, outer-mask root, inner-mask root,

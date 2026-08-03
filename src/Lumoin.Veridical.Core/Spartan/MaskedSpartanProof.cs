@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// <summary>
 /// A Spartan2 wire-format proof produced by <c>MaskedSpartanProver</c>:
 /// the base proof's contents augmented with the per-sumcheck statistical
-/// mask sections (SM.7b, design v3 of <c>ZK-STATMASK-DESIGN.md</c>;
+/// mask sections (SM.7b, design v3 of the statistical-mask design notes;
 /// lineage Libra §4.1 / CFS 2017): the two mask coefficient-vector
 /// commitments (single Pedersen rows), the sums <c>σ</c> and filler sums
 /// <c>σ_F</c>, and the two weighted-opening IPA proofs binding the masks'

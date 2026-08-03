@@ -31,7 +31,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// coefficients of each round message carry information about the
 /// underlying polynomial that varies with the witness — the
 /// documented leak structure from <c>SPARTAN2.md</c> §10.5 and
-/// <c>SPARTAN-ZK-DESIGN.md</c> §9, not a regression.
+/// the Spartan zero-knowledge design notes (§9), not a regression.
 /// </para>
 /// <para>
 /// With 50 samples per witness across 256 byte buckets the test is

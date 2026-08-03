@@ -9,7 +9,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 
 /// <summary>
 /// The statistical-ZK sumcheck mask (Libra, IACR ePrint 2019/317 §4.1; lineage
-/// CFS, ePrint 2017/305; design <c>ZK-STATMASK-DESIGN.md</c> §2 v2):
+/// CFS, ePrint 2017/305; the statistical-mask design notes, §2 v2):
 /// uniformly random coefficients over an explicit public
 /// <see cref="MonomialBasis"/> of per-variable degree at most two, blended into
 /// a degree-2 sumcheck as <c>h_k + ρ·s_k</c> so every revealed round

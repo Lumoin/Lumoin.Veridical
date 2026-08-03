@@ -5,7 +5,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// (tag) level. The variant identifier is what distinguishes a base
 /// <see cref="SpartanProof"/> from a <see cref="MaskedSpartanProof"/>
 /// and from future ZK-construction sibling proof types per the
-/// taxonomy in <c>SPARTAN-ZK-DESIGN.md</c>.
+/// taxonomy in the Spartan zero-knowledge design notes.
 /// </summary>
 /// <param name="Identifier">A stable string identifying the variant; the same identifier appears in proof tag entries for runtime discrimination.</param>
 /// <remarks>
@@ -38,7 +38,7 @@ public readonly record struct SpartanProofVariant(string Identifier)
     /// sum-of-univariates kernel masks (Libra, Xie et al CRYPTO 2019
     /// §4.1; lineage Chiesa, Forbes, Spooner 2017, IACR ePrint
     /// 2017/305) with the filler-laundered weighted-opening binding of
-    /// <c>ZK-STATMASK-DESIGN.md</c> v3. The round messages and
+    /// the statistical-mask design notes (v3). The round messages and
     /// terminating evaluations are statistically masked; the
     /// end-to-end ZK flavor follows the commitment scheme — DLOG-rooted
     /// computational over Pedersen/IPA, statistical in the ROM over

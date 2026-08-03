@@ -14,7 +14,7 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
 /// ZK.2b route-A prototype (the dimension-lift design fork, recorded in
-/// <c>BASEFOLD.md</c>, <em>Zero-knowledge BaseFold</em>):
+/// the BaseFold design notes, <em>Zero-knowledge BaseFold</em>):
 /// de-risks the dimension-lifting realisation of the zero-knowledge BaseFold
 /// evaluation. The query/π₀ leakage is closed by committing the real
 /// <c>d</c>-variable witness <c>f</c> as the <c>Y = 0</c> slice of a

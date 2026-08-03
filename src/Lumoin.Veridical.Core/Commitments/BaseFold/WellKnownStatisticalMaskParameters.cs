@@ -4,7 +4,7 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 
 /// <summary>
 /// The deterministic parameter policy of the statistical sumcheck mask
-/// (<c>ZK-STATMASK-DESIGN.md</c> §2 v3): from the masked sumcheck's
+/// (the statistical-mask design notes, §2 v3): from the masked sumcheck's
 /// shape alone it derives where the mask's coefficient commitment lives, so the
 /// prover and verifier agree on every size without wire data. The mask itself
 /// is the Libra sum-of-univariates (<c>perVariableDegree·d + 1</c>

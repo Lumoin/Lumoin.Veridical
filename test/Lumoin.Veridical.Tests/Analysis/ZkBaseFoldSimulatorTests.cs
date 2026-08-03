@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Tests.Analysis;
 
 /// <summary>
 /// The programmable-Fiat-Shamir-oracle simulator gates — the literal
-/// real-versus-simulated proof test <c>ZK-STATMASK-DESIGN.md</c> §7 recorded
+/// real-versus-simulated proof test the statistical-mask design notes §7 recorded
 /// as the open follow-on. <see cref="ZkBaseFoldOpeningSimulator"/> produces,
 /// from the public statement alone, a commitment and opening that a verifier
 /// holding the programmed oracle accepts; the structural gates assert the

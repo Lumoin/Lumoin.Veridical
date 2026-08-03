@@ -2,7 +2,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 
 /// <summary>
 /// Fixed protocol shape of the masked Spartan2 statistical masks (SM.7b,
-/// design v3 of <c>ZK-STATMASK-DESIGN.md</c>): the per-variable
+/// design v3 of the statistical-mask design notes): the per-variable
 /// degree of each sumcheck's sum-of-univariates kernel mask, matching the
 /// round format the mask must blanket. Pinned here so the prover, the
 /// verifier, and the proof containers derive identical mask shapes.

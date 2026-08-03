@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// The construction is the Libra sum-of-univariates mask (Xie et al,
 /// CRYPTO 2019, §4.1; lineage Chiesa, Forbes, Spooner 2017, IACR ePrint
 /// 2017/305) with the v3 filler-laundered weighted-opening binding of
-/// <c>ZK-STATMASK-DESIGN.md</c>. The mask's univariates match the
+/// the statistical-mask design notes. The mask's univariates match the
 /// masked round degree (3 for the outer sumcheck, 2 for the inner), so every
 /// revealed round coefficient — including the top one a multilinear mask
 /// left bare — is uniform given the mask's degrees of freedom.

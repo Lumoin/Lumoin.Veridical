@@ -29,7 +29,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// opening of the mask's committed coefficient vector against
 /// <c>v = g(r) + σ_F</c> under the public weights it builds from the
 /// mask basis and its own challenges (design v3 of
-/// <c>ZK-STATMASK-DESIGN.md</c>). This keeps the proof wire
+/// the statistical-mask design notes). This keeps the proof wire
 /// format compact and the verifier's side derivable from public data.
 /// </para>
 /// </remarks>

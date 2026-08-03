@@ -162,7 +162,7 @@ public static class BaseFoldEvaluationProver
     /// masks the interleaved sumcheck's round polynomials so the opening is a
     /// statistically zero-knowledge argument in the ROM (the Libra
     /// sum-of-univariates mask, IACR ePrint 2019/317 §4.1, with the v3 binding of
-    /// <c>ZK-STATMASK-DESIGN.md</c>). A fresh mask <c>s</c> with
+    /// the statistical-mask design notes). A fresh mask <c>s</c> with
     /// <c>2d + 1</c> random coefficients is sampled; its coefficient vector,
     /// extended by laundering filler, is committed salted-and-lifted under
     /// <paramref name="maskCommitmentCode"/>; <c>com(C*)</c>, <c>σ = Σ_b s(b)</c>,
@@ -232,7 +232,7 @@ public static class BaseFoldEvaluationProver
     /// transcript and proof); a general <c>W</c> proves any public linear
     /// functional of <c>f</c>'s hypercube evaluations, which is how the
     /// statistical-mask construction binds its mask coefficients
-    /// (<c>ZK-STATMASK-DESIGN.md</c> levels 2 and 3).
+    /// (the statistical-mask design notes, levels 2 and 3).
     /// </summary>
     /// <remarks>
     /// The multiplier must be public and known to the verifier — the protocol

@@ -100,7 +100,7 @@ the stack (computational ZK in the random-oracle model rooted in
 the discrete-log assumption — the openings are Pedersen/IPA); over
 the full-ZK BaseFold provider the same construction yields the
 statistical-in-ROM flavor. See the cross-stack lineage section in
-`SPARTAN-ZK-DESIGN.md` for the full map.
+the Spartan zero-knowledge design notes for the full map.
 
 ## 4. Transcript schedule
 
@@ -291,7 +291,7 @@ cross-implementation fixtures.
 
 The `MaskedSpartanProver` type wraps the base prover with the
 statistically-masked Category A ZK construction (SM.7b, design v3
-of `ZK-STATMASK-DESIGN.md`). The construction hides the
+of the statistical-mask design notes). The construction hides the
 per-round sumcheck messages and the terminating evaluations beyond
 what the base prover's Hyrax witness commitment already hides —
 and unlike the earlier multilinear mask, the masking is
@@ -355,7 +355,7 @@ The construction lineage: the mask shape is Libra's (Xie et al,
 Computation", CRYPTO 2019, §4.1), degree-matched per CFS (Chiesa,
 Forbes, Spooner, "A Zero Knowledge Sumcheck and its Applications",
 IACR ePrint 2017/305); the binding is the filler-laundered
-weighted opening of `../Commitments/BaseFold/ZK-STATMASK-DESIGN.md` v3 — `O(d)`
+weighted opening of the statistical-mask design notes (v3) — `O(d)`
 mask cost where CFS's faithful Construction 6.6 would pay
 `3^d`/`4^d`.
 
@@ -499,7 +499,7 @@ end-to-end flavor is available today by proving over the full-ZK
 BaseFold provider (`ProveZkBaseFold`).
 
 The cross-stack ZK-flavor lineage section in
-`SPARTAN-ZK-DESIGN.md` records the upgrade paths available for
+the Spartan zero-knowledge design notes records the upgrade paths available for
 each primitive currently in the codebase and the observation
 that end-to-end statistical ZK requires every primitive in the
 composition to provide statistical ZK individually — upgrading

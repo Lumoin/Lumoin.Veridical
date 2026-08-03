@@ -22,8 +22,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <remarks>
 /// <para>
 /// This is how the statistical-mask construction binds its sumcheck-mask
-/// coefficients over the Hyrax path (<c>ZK-STATMASK-DESIGN.md</c> §2
-/// v3): the committed vector is <c>C* = (mask coefficients ‖ filler)</c> and
+/// coefficients over the Hyrax path (the statistical-mask design notes,
+/// §2 v3): the committed vector is <c>C* = (mask coefficients ‖ filler)</c> and
 /// the weights are the mask basis's monomials at the bound challenges with
 /// field one on the filler block. The weight vector must be public and known
 /// to the verifier — the protocol neither commits nor transmits it, exactly

@@ -244,7 +244,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// <summary>
     /// Builds a hiding provider whose <em>evaluation opening</em> is additionally
     /// query/base-oracle hiding via the dimension-lift construction (ZK.2b, design
-    /// fork resolved for dimension lifting; <c>BaseFold/BASEFOLD.md</c>,
+    /// fork resolved for dimension lifting; the BaseFold design notes,
     /// <em>Zero-knowledge BaseFold</em>). The real
     /// <c>d</c>-variable witness <c>f</c> is committed as the <c>Y = 0</c> slice of
     /// a <c>(d + extraVariableCount)</c>-variable polynomial <c>f'</c> whose
@@ -920,8 +920,8 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// polynomial) must cover every codeword position an opening can reveal. The
     /// reveal bound counts, per query, the two top-layer fold-pair entries plus one
     /// new sibling per lower layer (the folded partner is determined by the layer
-    /// above), and the cleartext base oracle sent in full — see the design notes in
-    /// <c>BaseFold/BASEFOLD.md</c>.
+    /// above), and the cleartext base oracle sent in full — see the BaseFold
+    /// design notes.
     /// </summary>
     /// <param name="variableCount">The real witness's variable count <c>d</c>.</param>
     /// <param name="extraVariableCount">The lift <c>t</c> under consideration; must be positive.</param>

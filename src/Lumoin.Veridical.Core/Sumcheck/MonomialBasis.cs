@@ -14,7 +14,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 /// <remarks>
 /// <para>
 /// Two factory shapes cover the statistical-mask design
-/// (<c>ZK-STATMASK-DESIGN.md</c> §2, v2):
+/// notes (§2, v2):
 /// <see cref="SumOfUnivariatesWithPad"/> is the Libra mask — constant,
 /// <c>x_j</c>, <c>x_j²</c> — extended by <c>padPairCount</c>
 /// weight-bearing pad pairs <c>{m_i, x_1·m_i}</c> over multilinear monomials

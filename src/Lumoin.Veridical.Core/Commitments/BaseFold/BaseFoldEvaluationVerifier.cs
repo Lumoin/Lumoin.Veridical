@@ -320,8 +320,8 @@ public static class BaseFoldEvaluationVerifier
 
     /// <summary>
     /// Verifies a statistically zero-knowledge BaseFold evaluation opening
-    /// (<see cref="BaseFoldEvaluationProver.ProveZeroKnowledge"/>, design doc
-    /// <c>ZK-STATMASK-DESIGN.md</c> §2 v3): replays the masked
+    /// (<see cref="BaseFoldEvaluationProver.ProveZeroKnowledge"/>, per the
+    /// statistical-mask design notes (§2, v3)): replays the masked
     /// transcript, chains the blended claim, derives the mask evaluation from
     /// the terminal (<c>s(r) = (claim − f(r)·eq_z(r))·ρ⁻¹</c>), and checks the
     /// nested weighted opening of the mask's coefficient commitment against the

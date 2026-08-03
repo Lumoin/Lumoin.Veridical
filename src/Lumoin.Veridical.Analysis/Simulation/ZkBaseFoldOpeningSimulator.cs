@@ -10,9 +10,9 @@ namespace Lumoin.Veridical.Analysis.Simulation;
 
 /// <summary>
 /// The witness-free simulator of the full zero-knowledge BaseFold opening —
-/// the running counterpart of <c>ZK-STATMASK-DESIGN.md</c> Appendix A's
-/// simulator construction, and the artifact §7 recorded as the open
-/// follow-on. Given only the public statement (the evaluation point
+/// the running counterpart of the statistical-mask design notes
+/// (Appendix A)'s simulator construction, and the artifact §7 recorded as
+/// the open follow-on. Given only the public statement (the evaluation point
 /// <c>z</c> and the claimed value <c>y</c>), it produces a commitment and
 /// an opening that verify against <c>(z, y)</c> under a programmed
 /// Fiat-Shamir oracle, without ever holding a witness that evaluates to
