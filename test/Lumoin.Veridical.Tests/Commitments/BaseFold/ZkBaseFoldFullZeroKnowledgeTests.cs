@@ -99,7 +99,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
                             //The serialized opening must match the size helper exactly.
                             int expectedSize = ZkBaseFoldPolynomialCommitmentScheme.GetFullZeroKnowledgeEvaluationProofSizeBytes(
                                 realVariableCount, extraVariableCount, Curve, TestQueryCount, DigestSizeBytes);
-                            Assert.AreEqual(expectedSize, opening.AsReadOnlySpan().Length, "The full-ZK opening length must match the size helper.");
+                            Assert.HasCount(expectedSize, opening.AsReadOnlySpan(), "The full-ZK opening length must match the size helper.");
 
                             using FiatShamirTranscript verifyTx = NewTranscript();
                             Assert.IsTrue(

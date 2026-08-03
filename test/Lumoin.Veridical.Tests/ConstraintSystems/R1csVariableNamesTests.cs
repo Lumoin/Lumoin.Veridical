@@ -34,7 +34,12 @@ internal sealed class R1csVariableNamesTests
     [TestMethod]
     public void EmptyIsShared()
     {
-        Assert.AreSame(R1csVariableNames.Empty, R1csVariableNames.Empty);
-        Assert.IsEmpty(R1csVariableNames.Empty);
+        //Two separate reads must observe one shared instance — the property
+        //is a singleton, not a per-read allocation.
+        R1csVariableNames first = R1csVariableNames.Empty;
+        R1csVariableNames second = R1csVariableNames.Empty;
+
+        Assert.AreSame(first, second);
+        Assert.IsEmpty(first);
     }
 }

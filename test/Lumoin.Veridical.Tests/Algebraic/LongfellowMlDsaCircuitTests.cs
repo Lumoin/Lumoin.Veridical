@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using System;
 using System.Collections.Generic;
+using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -62,13 +63,13 @@ internal sealed class LongfellowMlDsaCircuitTests
     {
         var emptyDigest = new byte[Fips202EmptyMessageDigest.Length / 2];
         LongfellowSha3Witness.Shake128Hash([], emptyDigest);
-        CollectionAssert.AreEqual(Convert.FromHexString(Fips202EmptyMessageDigest), emptyDigest, "The host SHAKE128 must reproduce the FIPS 202 empty-message example.");
+        Assert.AreSequenceEqual(Convert.FromHexString(Fips202EmptyMessageDigest), emptyDigest, "The host SHAKE128 must reproduce the FIPS 202 empty-message example.");
 
         var longMessage = new byte[Fips202ExampleMessageBytes];
         Array.Fill(longMessage, Fips202ExampleMessageByte);
         var longDigest = new byte[Fips202LongMessageDigest.Length / 2];
         LongfellowSha3Witness.Shake128Hash(longMessage, longDigest);
-        CollectionAssert.AreEqual(Convert.FromHexString(Fips202LongMessageDigest), longDigest, "The host SHAKE128 must reproduce the FIPS 202 1600-bit-message example.");
+        Assert.AreSequenceEqual(Convert.FromHexString(Fips202LongMessageDigest), longDigest, "The host SHAKE128 must reproduce the FIPS 202 1600-bit-message example.");
     }
 
 
@@ -118,11 +119,11 @@ internal sealed class LongfellowMlDsaCircuitTests
 
             var forward = (uint[])vector.Input.Clone();
             LongfellowMlDsaReference.NumberTheoreticTransform(forward);
-            CollectionAssert.AreEqual(vector.Output, forward, $"The host NTT must reproduce reference vector {t}.");
+            Assert.AreSequenceEqual(vector.Output, forward, $"The host NTT must reproduce reference vector {t}.");
 
             var backward = (uint[])vector.Output.Clone();
             LongfellowMlDsaReference.InverseNumberTheoreticTransform(backward);
-            CollectionAssert.AreEqual(vector.Input, backward, $"The host inverse NTT must invert reference vector {t}.");
+            Assert.AreSequenceEqual(vector.Input, backward, $"The host inverse NTT must invert reference vector {t}.");
         }
     }
 
@@ -327,7 +328,7 @@ internal sealed class LongfellowMlDsaCircuitTests
         {
             for(int column = 0; column < parameters.ColumnCount; column++)
             {
-                CollectionAssert.AreEqual(
+                Assert.AreSequenceEqual(
                     expected[row][column],
                     matrix[row][column],
                     $"The {setName} expanded matrix must match the reference at row {row} column {column}.");
@@ -345,7 +346,7 @@ internal sealed class LongfellowMlDsaCircuitTests
         for(int t = 0; t < vectors.Count; t++)
         {
             uint[] challenge = LongfellowMlDsaReference.SampleInBall(parameters, vectors[t].Seed);
-            CollectionAssert.AreEqual(vectors[t].Coefficients, challenge, $"The {setName} host SampleInBall must reproduce reference vector {t}.");
+            Assert.AreSequenceEqual(vectors[t].Coefficients, challenge, $"The {setName} host SampleInBall must reproduce reference vector {t}.");
         }
     }
 
@@ -383,7 +384,7 @@ internal sealed class LongfellowMlDsaCircuitTests
             }
 
             byte[] encoded = LongfellowMlDsaReference.W1Encode(parameters, highBits);
-            CollectionAssert.AreEqual(vectors[t].Encoded, encoded, $"The {setName} host w1Encode must reproduce reference vector {t}.");
+            Assert.AreSequenceEqual(vectors[t].Encoded, encoded, $"The {setName} host w1Encode must reproduce reference vector {t}.");
         }
     }
 
@@ -398,7 +399,7 @@ internal sealed class LongfellowMlDsaCircuitTests
         {
             LongfellowMlDsaWitness? witness = ComputeWitness(parameters, examples[t]);
             Assert.IsNotNull(witness, $"The {setName} witness must compute for example {t}.");
-            CollectionAssert.AreEqual(
+            Assert.AreSequenceEqual(
                 Convert.FromHexString(examples[t].Mu),
                 witness.Mu,
                 $"The {setName} witness must reproduce example {t}'s transcribed message representative.");
@@ -953,21 +954,5 @@ internal sealed class LongfellowMlDsaCircuitTests
         }
 
         return (ulong)reduced;
-    }
-
-
-    /// <summary>Builds the sextic-extension field bundle over the backend delegates.</summary>
-    /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp24SexticBundle()
-    {
-        var minusOne = new byte[Scalar.SizeBytes];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(minusOne.AsSpan(Scalar.SizeBytes - 4, 4), Fp24SexticBackend.Modulus - 1);
-
-        return LongfellowLogicFieldOperations.CreateFp24Sextic(
-            Fp24SexticBackend.GetAdd(),
-            Fp24SexticBackend.GetSubtract(),
-            Fp24SexticBackend.GetMultiply(),
-            Fp24SexticBackend.GetInvert(),
-            minusOne);
     }
 }

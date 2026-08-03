@@ -59,25 +59,37 @@ verification to fail. The proof attests that the *described* statement is satisf
 `verify` prints that statement so an operator confirms it is the compliance claim they
 require.
 
-The commitment parameters (curve, query count, inverse rate, digest size) are pinned to
-one wired set that both verbs enforce, so an artifact cannot silently weaken them.
+Every claim carries a `kind` discriminator. A **`range`** claim compares a measured
+quantity against a bound (`atLeast` / `atMost`); the bundle's range claims are proven
+together over Spartan-over-Ligero. A **`memberOf`** claim states that a measured
+quantity is one of a public list of `allowedValues`; each is proven by its own
+LogUp-over-Ligero lookup argument, whose proofs travel in the artifact's
+`lookupProofs`. The same disclosure note applies to both kinds.
+
+The commitment parameters (curve, query count, lookup query count, inverse rate,
+digest size) are pinned to one wired set that both verbs enforce, so an artifact
+cannot silently weaken them. The lookup query count is higher than the range one: the
+lookup argument opens three independently forgeable columns, so its 128-bit target
+carries a union-bound surcharge (65 columns instead of 64 at rate 1/16).
 
 ### Example
 
-A request proving recycled content ≥ 30.0% and carbon footprint ≤ 12.50, over private
-measurements of 32.5% and 11.20:
+A request proving recycled content ≥ 30.0%, carbon footprint ≤ 12.50, and a material
+code drawn from an allowed list, over private measurements of 32.5%, 11.20 and 7:
 
 ```json
 {
-  "format": "veridical-supply-chain-predicate-request/2",
+  "format": "veridical-supply-chain-predicate-request/3",
   "curve": "bls12-381",
   "transcriptDomain": "veridical.supplychain.batterypassport.v1",
   "queryCount": 64,
+  "lookupQueryCount": 65,
   "inverseRate": 16,
   "digestBytes": 32,
   "claims": [
-    { "name": "recycled_content", "direction": "atLeast", "fractionalDigits": 1, "inclusiveMaximum": "100.0", "bound": "constant", "boundValue": "30.0", "measured": "32.5" },
-    { "name": "carbon_footprint", "direction": "atMost", "fractionalDigits": 2, "inclusiveMaximum": "100.00", "bound": "constant", "boundValue": "12.50", "measured": "11.20" }
+    { "name": "recycled_content", "kind": "range", "direction": "atLeast", "fractionalDigits": 1, "inclusiveMaximum": "100.0", "bound": "constant", "boundValue": "30.0", "measured": "32.5" },
+    { "name": "carbon_footprint", "kind": "range", "direction": "atMost", "fractionalDigits": 2, "inclusiveMaximum": "100.00", "bound": "constant", "boundValue": "12.50", "measured": "11.20" },
+    { "name": "material_code", "kind": "memberOf", "fractionalDigits": 0, "inclusiveMaximum": "9999", "allowedValues": ["3", "7", "42", "1001"], "measured": "7" }
   ]
 }
 ```
@@ -85,7 +97,7 @@ measurements of 32.5% and 11.20:
 ```
 veridical prove request.json > artifact.json
 veridical verify artifact.json
-# VALID: proves recycled_content >= 30.0 (constant); carbon_footprint <= 12.50 (constant)
+# VALID: proves recycled_content >= 30.0 (constant); carbon_footprint <= 12.50 (constant); material_code in {3, 7, 42, 1001} (4 allowed value(s))
 ```
 
 The artifact and request JSON are serialized by `Lumoin.Veridical.Json`, an AOT-safe

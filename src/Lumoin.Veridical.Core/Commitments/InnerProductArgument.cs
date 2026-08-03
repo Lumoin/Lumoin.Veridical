@@ -172,7 +172,11 @@ internal static class InnerProductArgument
 
 
     /// <summary>
-    /// Runs the IPA verifier.
+    /// Runs the IPA verifier. The caller screens the prover-supplied round
+    /// points in <paramref name="roundPairs"/> and the initial commitment for
+    /// prime-order-subgroup membership before invoking this — the Hyrax
+    /// verify funnels do exactly that — because this argument feeds them into
+    /// group arithmetic unchecked.
     /// </summary>
     /// <returns>True iff the IPA's final algebraic check holds.</returns>
     public static bool Verify(

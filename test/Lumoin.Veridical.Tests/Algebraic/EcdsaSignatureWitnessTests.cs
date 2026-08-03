@@ -200,7 +200,7 @@ internal sealed class EcdsaSignatureWitnessTests
         Assert.HasCount(EcdsaSignatureWitness.ElementCount, second, "The second fill must produce the full column.");
         for(int i = 0; i < first.Count; i++)
         {
-            CollectionAssert.AreEqual(first[i], second[i], $"Element {i} must be identical across fills.");
+            Assert.AreSequenceEqual(first[i], second[i], $"Element {i} must be identical across fills.");
         }
     }
 

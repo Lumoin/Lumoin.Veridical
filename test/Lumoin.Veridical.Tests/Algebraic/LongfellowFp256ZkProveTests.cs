@@ -11,6 +11,7 @@ using System.IO;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
+using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -199,73 +200,6 @@ internal sealed class LongfellowFp256ZkProveTests
             WellKnownHashAlgorithms.Sha256,
             CurveParameterSet.None,
             BaseMemoryPool.Shared);
-    }
-
-
-    //Verifies an Fp256 envelope through the field-generic verifier: parse the envelope, absorb the root,
-    //then drive VerifyFromAbsorbedRoot with the Fp256 encoder factory and profile.
-    private static void AssertFp256Verifies(
-        LongfellowSumcheckCircuit circuit,
-        LongfellowLigeroParameters parameters,
-        ReadOnlySpan<byte> proof,
-        byte[] publicInputs,
-        byte[] seed,
-        bool expectedAccept)
-    {
-        Fp256RealFft fft = NewFp256Fft();
-        LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
-            fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
-        using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
-
-        //Parse the envelope: com (32) || sc || com_proof, the field-generic counterpart of the GF Verify
-        //single-call parse (which the GF convenience builds for GF(2^128) only).
-        ReadOnlySpan<byte> proofSpan = proof;
-        ReadOnlySpan<byte> root = proofSpan[..DigestSize];
-        int scSize = LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile);
-        ReadOnlySpan<byte> scBytes = proofSpan.Slice(DigestSize, scSize);
-        ReadOnlySpan<byte> comProofBytes = proofSpan[(DigestSize + scSize)..];
-
-        using LongfellowSumcheckProof? sumcheckProof = LongfellowSumcheckProofSerializer.Read(circuit, profile, BaseMemoryPool.Shared, scBytes, out _);
-        Assert.IsNotNull(sumcheckProof, "The sumcheck segment must parse.");
-
-        using LongfellowLigeroProof? ligeroProof = LongfellowLigeroProofSerializer.Read(parameters, profile, codec, BaseMemoryPool.Shared, comProofBytes, out _);
-        Assert.IsNotNull(ligeroProof, "The Ligero segment must parse.");
-
-        using LongfellowTranscript transcript = NewTranscript(seed, Fp256ElementBytes);
-        LongfellowZkVerifier.RecvCommitment(root, transcript);
-
-        bool accepted = LongfellowZkVerifier.VerifyFromAbsorbedRoot(
-            circuit,
-            parameters,
-            sumcheckProof,
-            ligeroProof,
-            root,
-            publicInputs,
-            transcript,
-            encoderFactory,
-            profile,
-            Fp256Add,
-            Fp256Subtract,
-            Fp256Multiply,
-            Fp256Invert,
-            Sha256TwoToOne,
-            Sha256OneShot,
-            WellKnownHashAlgorithms.Sha256,
-            CurveParameterSet.None,
-            BaseMemoryPool.Shared,
-            out LongfellowZkVerificationResult result);
-
-        Assert.AreEqual(expectedAccept, accepted, $"The Fp256 verdict must be {(expectedAccept ? "accept" : "reject")} (result {result}).");
-
-        if(!expectedAccept)
-        {
-            //A soundness reject must surface as a Ligero rejection, not a parse/transcript-shape failure:
-            //the tampered byte or public input diverges the challenge stream and the opening no longer
-            //matches the commitment. Asserting the specific cause stops a future regression that rejects
-            //for a MalformedProof reason from masquerading as a soundness reject.
-            Assert.AreEqual(LongfellowZkVerificationResult.LigeroRejected, result, "A tampered Fp256 proof must reject with the Ligero soundness cause.");
-        }
     }
 
 

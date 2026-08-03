@@ -225,65 +225,6 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
-    private static void AssertFp256Verifies(
-        LongfellowSumcheckCircuit circuit,
-        LongfellowLigeroParameters parameters,
-        ReadOnlySpan<byte> proof,
-        byte[] publicInputs,
-        byte[] seed,
-        bool expectedAccept)
-    {
-        Fp256RealFft fft = NewFp256Fft();
-        LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
-            fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
-        using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
-        using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
-
-        ReadOnlySpan<byte> proofSpan = proof;
-        ReadOnlySpan<byte> root = proofSpan[..DigestSize];
-        int scSize = LongfellowSumcheckProofSerializer.SerializedSize(circuit, profile);
-        ReadOnlySpan<byte> scBytes = proofSpan.Slice(DigestSize, scSize);
-        ReadOnlySpan<byte> comProofBytes = proofSpan[(DigestSize + scSize)..];
-
-        using LongfellowSumcheckProof? sumcheckProof = LongfellowSumcheckProofSerializer.Read(circuit, profile, BaseMemoryPool.Shared, scBytes, out _);
-        Assert.IsNotNull(sumcheckProof, "The sumcheck segment must parse.");
-
-        using LongfellowLigeroProof? ligeroProof = LongfellowLigeroProofSerializer.Read(parameters, profile, codec, BaseMemoryPool.Shared, comProofBytes, out _);
-        Assert.IsNotNull(ligeroProof, "The Ligero segment must parse.");
-
-        using LongfellowTranscript transcript = NewFp256Transcript(seed);
-        LongfellowZkVerifier.RecvCommitment(root, transcript);
-
-        bool accepted = LongfellowZkVerifier.VerifyFromAbsorbedRoot(
-            circuit,
-            parameters,
-            sumcheckProof,
-            ligeroProof,
-            root,
-            publicInputs,
-            transcript,
-            encoderFactory,
-            profile,
-            Fp256Add,
-            Fp256Subtract,
-            Fp256Multiply,
-            Fp256Invert,
-            Sha256TwoToOne,
-            Sha256OneShot,
-            WellKnownHashAlgorithms.Sha256,
-            CurveParameterSet.None,
-            BaseMemoryPool.Shared,
-            out LongfellowZkVerificationResult result);
-
-        Assert.AreEqual(expectedAccept, accepted, $"The Fp256 verdict must be {(expectedAccept ? "accept" : "reject")} (result {result}).");
-
-        if(!expectedAccept)
-        {
-            Assert.AreEqual(LongfellowZkVerificationResult.LigeroRejected, result, "A tampered Fp256 proof must reject with the Ligero soundness cause.");
-        }
-    }
-
-
     private static byte[] CanonicalOne()
     {
         byte[] one = new byte[ScalarSize];

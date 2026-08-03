@@ -167,7 +167,11 @@ internal static class TwoVectorInnerProductArgument
 
 
     /// <summary>
-    /// Runs the two-vector IPA verifier.
+    /// Runs the two-vector IPA verifier. The caller screens the
+    /// prover-supplied round points in <paramref name="roundPairs"/> for
+    /// prime-order-subgroup membership before invoking this — the range-proof
+    /// verify funnels do exactly that — because this argument feeds them into
+    /// group arithmetic unchecked.
     /// </summary>
     /// <param name="pCommitment">The commitment <c>P − c·U</c> side: the caller's <c>⟨a,G⟩ + ⟨b,H⟩</c> aggregate (the claimed value is supplied separately and folded in here).</param>
     /// <param name="claimedInnerProductBytes">The claimed inner product <c>c</c>, canonical scalar bytes.</param>

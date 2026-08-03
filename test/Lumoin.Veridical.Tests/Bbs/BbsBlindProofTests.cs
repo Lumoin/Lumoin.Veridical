@@ -60,7 +60,7 @@ internal sealed class BbsBlindProofTests
             Assert.AreEqual(0, proof.UndisclosedMessageCount);
             Assert.AreEqual(0, proof.DisclosedIndexCount);
             Assert.AreEqual(0, proof.CommittedDisclosureCount);
-            Assert.AreEqual(BbsProof.MinimumSizeBytes, proof.GetCoreProofBytes().Length);
+            Assert.HasCount(BbsProof.MinimumSizeBytes, proof.GetCoreProofBytes());
         }
     }
 
@@ -77,7 +77,7 @@ internal sealed class BbsBlindProofTests
             Assert.AreEqual(1, proof.UndisclosedMessageCount);
             Assert.AreEqual(2, proof.DisclosedIndexCount);
             Assert.AreEqual(2, proof.CommittedDisclosureCount);
-            Assert.AreEqual(BbsProof.ComputeSizeBytes(1), proof.GetCoreProofBytes().Length);
+            Assert.HasCount(BbsProof.ComputeSizeBytes(1), proof.GetCoreProofBytes());
             Assert.AreEqual(0, proof.GetDisclosedIndex(0));
             Assert.AreEqual(2, proof.GetDisclosedIndex(1));
             Assert.IsTrue(PointFiller.SequenceEqual(proof.GetCommittedDisclosurePointBytes(0)));

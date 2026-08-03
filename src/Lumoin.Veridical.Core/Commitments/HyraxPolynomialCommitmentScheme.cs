@@ -50,6 +50,8 @@ public static class HyraxPolynomialCommitmentScheme
     /// <param name="g1Add">G1 addition backend.</param>
     /// <param name="g1ScalarMul">G1 scalar-multiplication backend.</param>
     /// <param name="g1Msm">G1 multi-scalar-multiplication backend.</param>
+    /// <param name="g1IsOnCurve">G1 on-curve predicate; the verify paths screen every prover-supplied point with it before any multi-scalar multiplication.</param>
+    /// <param name="g1IsInPrimeOrderSubgroup">G1 prime-order-subgroup predicate; on-curve alone does not imply subgroup membership on a cofactor &gt; 1 curve.</param>
     /// <param name="ownsKey">
     /// When <see langword="true"/>, the returned provider takes ownership of
     /// <paramref name="key"/> and disposes it when the provider is disposed
@@ -73,6 +75,8 @@ public static class HyraxPolynomialCommitmentScheme
         G1AddDelegate g1Add,
         G1ScalarMultiplyDelegate g1ScalarMul,
         G1MultiScalarMultiplyDelegate g1Msm,
+        G1IsOnCurveDelegate g1IsOnCurve,
+        G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup,
         bool ownsKey = false)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -87,6 +91,8 @@ public static class HyraxPolynomialCommitmentScheme
         ArgumentNullException.ThrowIfNull(g1Add);
         ArgumentNullException.ThrowIfNull(g1ScalarMul);
         ArgumentNullException.ThrowIfNull(g1Msm);
+        ArgumentNullException.ThrowIfNull(g1IsOnCurve);
+        ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
 
         PolynomialCommitDelegate commit = (polynomial, pool) =>
         {
@@ -183,6 +189,8 @@ public static class HyraxPolynomialCommitmentScheme
                 g1Add,
                 g1ScalarMul,
                 g1Msm,
+                g1IsOnCurve,
+                g1IsInPrimeOrderSubgroup,
                 pool);
         };
 
@@ -291,6 +299,8 @@ public static class HyraxPolynomialCommitmentScheme
                     g1Add,
                     g1ScalarMul,
                     g1Msm,
+                    g1IsOnCurve,
+                    g1IsInPrimeOrderSubgroup,
                     pool);
             }
         };

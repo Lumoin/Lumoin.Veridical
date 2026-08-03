@@ -191,8 +191,12 @@ public static class HyraxOpeningProofExtensions
 
         /// <summary>
         /// Verifies an opening proof against the receiver commitment, a
-        /// claimed evaluation value, and the evaluation point. Returns
-        /// true iff every algebraic check passes.
+        /// claimed evaluation value, and the evaluation point. Every
+        /// prover-supplied point (the row commitments, <c>C_f</c>, and the
+        /// IPA round points) is screened for on-curve and
+        /// prime-order-subgroup membership before any multi-scalar
+        /// multiplication runs. Returns true iff every algebraic check
+        /// passes.
         /// </summary>
         public bool VerifyOpening(
             ReadOnlySpan<Scalar> evaluationPoint,
@@ -210,6 +214,8 @@ public static class HyraxOpeningProofExtensions
             G1AddDelegate g1Add,
             G1ScalarMultiplyDelegate g1ScalarMul,
             G1MultiScalarMultiplyDelegate g1Msm,
+            G1IsOnCurveDelegate g1IsOnCurve,
+            G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup,
             BaseMemoryPool pool)
         {
             ArgumentNullException.ThrowIfNull(commitment);
@@ -227,6 +233,8 @@ public static class HyraxOpeningProofExtensions
             ArgumentNullException.ThrowIfNull(g1Add);
             ArgumentNullException.ThrowIfNull(g1ScalarMul);
             ArgumentNullException.ThrowIfNull(g1Msm);
+            ArgumentNullException.ThrowIfNull(g1IsOnCurve);
+            ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
             ArgumentNullException.ThrowIfNull(pool);
 
             ValidateVerifyShape(commitment, proof, evaluationPoint, key);
@@ -236,6 +244,19 @@ public static class HyraxOpeningProofExtensions
             int scalarSize = Scalar.SizeBytes;
             var curve = key.Curve;
             int g1Size = WellKnownCurves.GetG1CompressedSizeBytes(curve);
+
+            //Screen every prover-supplied point before any point reaches a
+            //multi-scalar multiplication: on-curve alone does not imply
+            //prime-order-subgroup membership on a cofactor > 1 curve.
+            int screenedRoundPointCount = proof.IpaRoundCount * 2;
+            if(!ProverSuppliedPointValidation.AreAllInPrimeOrderSubgroup(commitment.AsReadOnlySpan(), rowCount, g1IsOnCurve, g1IsInPrimeOrderSubgroup, curve)
+                || !ProverSuppliedPointValidation.AreAllInPrimeOrderSubgroup(proof.GetFCommitment(), 1, g1IsOnCurve, g1IsInPrimeOrderSubgroup, curve)
+                || !ProverSuppliedPointValidation.AreAllInPrimeOrderSubgroup(proof.AsReadOnlySpan().Slice(g1Size, screenedRoundPointCount * g1Size), screenedRoundPointCount, g1IsOnCurve, g1IsInPrimeOrderSubgroup, curve))
+            {
+                CryptographicOperationCounters.Increment(CryptographicOperationKind.HyraxVerify, curve);
+
+                return false;
+            }
 
             int rowVarCount = (commitment.VariableCount + 1) / 2;
             int colVarCount = commitment.VariableCount / 2;

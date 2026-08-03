@@ -37,7 +37,7 @@ internal sealed class MultilinearExtensionFactoryTests
             Assert.AreEqual(1 << variableCount, mle.EvaluationCount, "EvaluationCount should equal 2^variableCount.");
             Assert.AreEqual(Scalar.SizeBytes, mle.FieldElementSizeBytes, "FieldElementSizeBytes should match the BLS12-381 scalar size.");
             Assert.AreEqual(CurveParameterSet.Bls12Curve381.Code, mle.Curve.Code, "Curve should be BLS12-381.");
-            Assert.AreEqual(mle.EvaluationCount * mle.FieldElementSizeBytes, mle.AsReadOnlySpan().Length, "Buffer length should be evaluationCount * fieldElementSize.");
+            Assert.HasCount(mle.EvaluationCount * mle.FieldElementSizeBytes, mle.AsReadOnlySpan(), "Buffer length should be evaluationCount * fieldElementSize.");
         }
     }
 

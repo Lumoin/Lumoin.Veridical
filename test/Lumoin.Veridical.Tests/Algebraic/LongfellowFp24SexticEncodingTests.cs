@@ -117,7 +117,7 @@ internal sealed class LongfellowFp24SexticEncodingTests
 
         Span<byte> restored = stackalloc byte[ScalarSize];
         Assert.IsTrue(profile.TryFromBytesField(wire, restored), "The wire bytes must decode.");
-        CollectionAssert.AreEqual(element.ToArray(), restored.ToArray(), "The wire round trip must reproduce the canonical element.");
+        Assert.AreSequenceEqual(element.ToArray(), restored.ToArray(), "The wire round trip must reproduce the canonical element.");
 
         //An out-of-range coordinate on the wire is the reference's of_bytes_field nullopt.
         BinaryPrimitives.WriteUInt32LittleEndian(wire.Slice(2 * LimbBytes, LimbBytes), Modulus);
@@ -190,7 +190,7 @@ internal sealed class LongfellowFp24SexticEncodingTests
 
         Span<byte> restored = stackalloc byte[ScalarSize];
         Assert.IsTrue(codec.OfBytesSubfield(subfieldBytes, restored), "The subfield bytes must decode.");
-        CollectionAssert.AreEqual(element.ToArray(), restored.ToArray(), "The subfield round trip must reproduce the element.");
+        Assert.AreSequenceEqual(element.ToArray(), restored.ToArray(), "The subfield round trip must reproduce the element.");
 
         BinaryPrimitives.WriteUInt32BigEndian(element.Slice(LimbZeroOffset - (2 * LimbBytes), LimbBytes), 1);
         Assert.IsFalse(codec.InSubfield(element), "A nonzero upper coordinate leaves the base field.");
@@ -224,7 +224,7 @@ internal sealed class LongfellowFp24SexticEncodingTests
 
         Span<byte> actual = stackalloc byte[ScalarSize];
         profile.CopyThirdEvaluationPoint(actual);
-        CollectionAssert.AreEqual(expected.ToArray(), actual.ToArray(), "The third evaluation point must be of_scalar(2).");
+        Assert.AreSequenceEqual(expected.ToArray(), actual.ToArray(), "The third evaluation point must be of_scalar(2).");
 
         profile.Dispose();
         using IMemoryOwner<byte> targetOwner = Pool.Rent(ScalarSize);

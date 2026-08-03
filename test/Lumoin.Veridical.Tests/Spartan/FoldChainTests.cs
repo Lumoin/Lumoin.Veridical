@@ -62,7 +62,7 @@ internal sealed class FoldChainTests
             commitmentKey,
             Curve,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, ScalarRandom,
-            G1Add, G1ScalarMul, G1Msm,
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup,
             ownsKey: false);
         using RawR1csInstance template = BuildOneMultiplyInstance();
         using FiatShamirTranscript foldTranscript = FreshTranscript();
@@ -102,7 +102,7 @@ internal sealed class FoldChainTests
                 bool verified = errorCommitment.VerifyOpening(
                     point, claimedValue, proof, commitmentKey, verifyTranscript,
                     Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-                    G1Add, G1ScalarMul, G1Msm, Pool);
+                    G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup, Pool);
 
                 Assert.IsTrue(
                     verified,
