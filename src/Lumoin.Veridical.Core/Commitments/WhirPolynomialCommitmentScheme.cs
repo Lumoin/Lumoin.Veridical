@@ -33,10 +33,12 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// Plain WHIR is <em>not hiding</em>: the commitment is a deterministic
 /// Merkle root over the codeword and openings reveal queried coset blocks.
 /// The blind on the surface is therefore a placeholder with no secret state.
-/// The weighted-opening quartet is not supplied — the wired IOPP statement
-/// carries equality-kernel weights only, so the provider is binding-only
-/// like the Ligero sibling and masked Spartan refuses it; a dense-weight
-/// statement extension is the hiding arc's concern.
+/// <see cref="CreateZeroKnowledge"/> is the hiding sibling — HVZK-WHIR's
+/// randomized encoding with the encoding randomness as the blind. The
+/// weighted-opening quartet is not supplied by either factory — the wired
+/// IOPP statement carries equality-kernel weights only, so both providers
+/// are refused by masked Spartan; a dense-weight statement extension remains
+/// future work.
 /// </para>
 /// <para>
 /// The schedule is re-derived per call from the captured figures and the
@@ -254,6 +256,234 @@ public static class WhirPolynomialCommitmentScheme
 
 
     /// <summary>
+    /// Builds a hiding WHIR-backed provider (HVZK-WHIR, eprint 2026/391
+    /// Construction 9.7) at the given rate, schedule and mask figures. The
+    /// commitment is the zero-knowledge encoding's Merkle root — randomized
+    /// by fresh per-commit encoding randomness, which travels as the
+    /// commitment's blind — and the opening is the serialized hiding IOPP
+    /// proof, whose queried blocks are simulatable within the derived
+    /// budgets. The returned provider reports
+    /// <see cref="PolynomialCommitmentProvider.IsHiding"/> as
+    /// <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// The weighted-opening quartet is still not supplied: the hiding path
+    /// changes the commitment and the opening, not the wired
+    /// equality-kernel statement, so masked Spartan refuses this provider
+    /// exactly as it refuses the plain one. The zero-knowledge extension is
+    /// re-derived per call from the captured figures and the polynomial's
+    /// variable count, like the plain factory.
+    /// </remarks>
+    /// <param name="curve">The curve every produced artifact is tagged with.</param>
+    /// <param name="initialRateLog2">The initial inverse-rate exponent <c>c ≥ 1</c>: the input oracle's rate is <c>2^-c</c>.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="hash">Fiat-Shamir absorb backend.</param>
+    /// <param name="squeeze">Fiat-Shamir squeeze backend.</param>
+    /// <param name="reduce">Scalar reduction backend.</param>
+    /// <param name="add">Scalar addition backend.</param>
+    /// <param name="subtract">Scalar subtraction backend.</param>
+    /// <param name="multiply">Scalar multiplication backend.</param>
+    /// <param name="invert">Scalar inversion backend (for the fold recomputations on both sides).</param>
+    /// <param name="maskRandom">The entropy-sourced sampler behind every hiding ingredient: encoding randomness, masks, pads and blinds.</param>
+    /// <param name="foldingParameter">The folding parameter <c>k</c>; defaults to <see cref="WellKnownWhirParameters.DefaultFoldingParameter"/>.</param>
+    /// <param name="securityLevelBits">The per-round soundness target <c>λ</c>; defaults to <see cref="WellKnownWhirParameters.ClassicalSecurityLevelBits"/>.</param>
+    /// <param name="regime">The soundness regime; defaults to the fully-proven <see cref="WhirSoundnessRegime.UniqueDecoding"/>.</param>
+    /// <param name="digestSizeBytes">The Merkle node digest size <paramref name="merkleHash"/> produces; defaults to <see cref="WellKnownMerkleHashParameters.DefaultDigestSizeBytes"/>.</param>
+    /// <param name="maskMessageLength">The mask message length <c>ℓ_zk</c>; defaults to <see cref="WhirZkParameters.DefaultMaskMessageLength"/>.</param>
+    /// <param name="maskRateLog2">The mask codes' inverse-rate exponent; defaults to <see cref="WhirZkParameters.DefaultMaskRateLog2"/>.</param>
+    /// <returns>A hiding provider whose commit / open / verify route to the HVZK-WHIR IOPP.</returns>
+    /// <exception cref="ArgumentNullException">When any reference argument is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range.</exception>
+    public static PolynomialCommitmentProvider CreateZeroKnowledge(
+        CurveParameterSet curve,
+        int initialRateLog2,
+        MerkleHashDelegate merkleHash,
+        FiatShamirHashDelegate hash,
+        FiatShamirSqueezeDelegate squeeze,
+        ScalarReduceDelegate reduce,
+        ScalarAddDelegate add,
+        ScalarSubtractDelegate subtract,
+        ScalarMultiplyDelegate multiply,
+        ScalarInvertDelegate invert,
+        ScalarRandomDelegate maskRandom,
+        int foldingParameter = WellKnownWhirParameters.DefaultFoldingParameter,
+        int securityLevelBits = WellKnownWhirParameters.ClassicalSecurityLevelBits,
+        WhirSoundnessRegime regime = WellKnownWhirParameters.ClassicalSecurityRegime,
+        int digestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes,
+        int maskMessageLength = WhirZkParameters.DefaultMaskMessageLength,
+        int maskRateLog2 = WhirZkParameters.DefaultMaskRateLog2)
+    {
+        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(hash);
+        ArgumentNullException.ThrowIfNull(squeeze);
+        ArgumentNullException.ThrowIfNull(reduce);
+        ArgumentNullException.ThrowIfNull(add);
+        ArgumentNullException.ThrowIfNull(subtract);
+        ArgumentNullException.ThrowIfNull(multiply);
+        ArgumentNullException.ThrowIfNull(invert);
+        ArgumentNullException.ThrowIfNull(maskRandom);
+        ArgumentOutOfRangeException.ThrowIfLessThan(initialRateLog2, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(foldingParameter, 1);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(securityLevelBits);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maskMessageLength, WhirZkParameters.MinimumMaskMessageLength);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maskRateLog2, 1);
+
+        WhirZkParameters DeriveParameters(int variableCount)
+        {
+            return WhirZkParameters.Create(
+                WhirParameterSchedule.Create(curve, variableCount, initialRateLog2, foldingParameter, securityLevelBits, regime),
+                maskMessageLength,
+                maskRateLog2);
+        }
+
+        PolynomialCommitDelegate commit = (polynomial, pool) =>
+        {
+            WhirZkParameters parameters = DeriveParameters(polynomial.VariableCount);
+            int messageBytes = (1 << polynomial.VariableCount) * ScalarSize;
+            int randomnessBytes = parameters.OracleRandomnessElementCount(0) * ScalarSize;
+
+            using IMemoryOwner<byte> workOwner = pool.Rent(messageBytes + randomnessBytes);
+            Span<byte> work = workOwner.Memory.Span[..(messageBytes + randomnessBytes)];
+            Span<byte> coefficients = work[..messageBytes];
+            Span<byte> randomness = work.Slice(messageBytes, randomnessBytes);
+            polynomial.InterpolateToCoefficients(coefficients, subtract);
+            ZkWhirIoppProver.FillWithScalars(randomness, maskRandom, curve);
+
+            using MerkleRoot root = ZkWhirIoppProver.ComputeInputCommitment(
+                parameters, coefficients, randomness, merkleHash, add, subtract, multiply, pool);
+
+            PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
+                root.AsReadOnlySpan(), curve, CommitmentScheme.Whir, pool);
+
+            //The encoding randomness is the commitment's secret state: the
+            //open operation must encode the same randomized codeword the
+            //root fingerprints, so it travels as the blind.
+            PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
+                randomness, curve, CommitmentScheme.Whir, pool);
+
+            return (commitment, blind);
+        };
+
+        PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
+        {
+            int variableCount = polynomial.VariableCount;
+            WhirZkParameters parameters = DeriveParameters(variableCount);
+            int messageBytes = (1 << variableCount) * ScalarSize;
+            int pointBytes = variableCount * ScalarSize;
+
+            using IMemoryOwner<byte> workOwner = pool.Rent(messageBytes + pointBytes + (2 * ScalarSize));
+            Span<byte> work = workOwner.Memory.Span[..(messageBytes + pointBytes + (2 * ScalarSize))];
+            Span<byte> coefficients = work[..messageBytes];
+            Span<byte> point = work.Slice(messageBytes, pointBytes);
+            Span<byte> scale = work.Slice(messageBytes + pointBytes, ScalarSize);
+            Span<byte> target = work.Slice(messageBytes + pointBytes + ScalarSize, ScalarSize);
+
+            polynomial.InterpolateToCoefficients(coefficients, subtract);
+            CopyEvaluationPoint(evaluationPoint, point);
+            scale.Clear();
+            scale[ScalarSize - 1] = 0x01;
+            WhirMultilinear.EvaluateCoefficientsAtPoint(coefficients, point, variableCount, target, add, multiply, curve, pool);
+
+            (ZkWhirIoppProof proof, MerkleRoot root) = ZkWhirIoppProver.Prove(
+                parameters,
+                coefficients,
+                blind.AsReadOnlySpan(),
+                scale,
+                point,
+                target,
+                transcript,
+                merkleHash,
+                hash,
+                squeeze,
+                reduce,
+                add,
+                subtract,
+                multiply,
+                invert,
+                maskRandom,
+                pool);
+
+            using(proof)
+            using(root)
+            {
+                (IMemoryOwner<byte> bytesOwner, int length) = ZkWhirProofSerialization.ToBytes(proof, digestSizeBytes, pool);
+                using(bytesOwner)
+                {
+                    PolynomialOpening opening = PolynomialOpening.FromBytes(
+                        bytesOwner.Memory.Span[..length], curve, CommitmentScheme.Whir, pool);
+
+                    return (opening, WrapScalar(target, curve, pool));
+                }
+            }
+        };
+
+        PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
+        {
+            int variableCount = evaluationPoint.Length;
+            WhirZkParameters parameters = DeriveParameters(variableCount);
+
+            ZkWhirIoppProof? proof = null;
+            try
+            {
+                proof = ZkWhirProofSerialization.FromBytes(opening.AsReadOnlySpan(), parameters, digestSizeBytes, pool);
+            }
+            catch(ArgumentException)
+            {
+                //Malformed opening bytes are a rejection, not a fault.
+                return false;
+            }
+
+            int pointBytes = variableCount * ScalarSize;
+            using(proof)
+            using(MerkleRoot root = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+            using(IMemoryOwner<byte> workOwner = pool.Rent(pointBytes + ScalarSize))
+            {
+                Span<byte> work = workOwner.Memory.Span[..(pointBytes + ScalarSize)];
+                Span<byte> point = work[..pointBytes];
+                Span<byte> scale = work.Slice(pointBytes, ScalarSize);
+                CopyEvaluationPoint(evaluationPoint, point);
+                scale.Clear();
+                scale[ScalarSize - 1] = 0x01;
+
+                return ZkWhirIoppVerifier.Verify(
+                    parameters,
+                    root,
+                    proof,
+                    scale,
+                    point,
+                    claimedValue.AsReadOnlySpan(),
+                    transcript,
+                    merkleHash,
+                    hash,
+                    squeeze,
+                    reduce,
+                    add,
+                    subtract,
+                    multiply,
+                    invert,
+                    pool);
+            }
+        };
+
+        return new PolynomialCommitmentProvider(
+            CommitmentScheme.Whir, curve, commit, open, verifyEvaluation,
+            ownedResource: null,
+            queryCount: null, digestSizeBytes: digestSizeBytes,
+            //Still a Merkle-root commitment — binding, not additively
+            //homomorphic — but hiding: the root fingerprints a randomized
+            //codeword and every scheduled opening is simulatable within the
+            //derived per-oracle budgets.
+            isAdditivelyHomomorphic: false, isHiding: true,
+            extraVariableCount: null,
+            commitVector: null, openWeightedSum: null, verifyWeightedSum: null,
+            resolveStatisticalMaskShape: null,
+            inverseRate: 1 << initialRateLog2);
+    }
+
+
+    /// <summary>
     /// Returns the byte size of the serialized WHIR evaluation proof (the
     /// opening) for a multilinear polynomial in
     /// <paramref name="variableCount"/> variables under the given schedule
@@ -283,6 +513,44 @@ public static class WhirPolynomialCommitmentScheme
         WhirParameterSchedule schedule = WhirParameterSchedule.Create(curve, variableCount, initialRateLog2, foldingParameter, securityLevelBits, regime);
 
         return WhirProofSerialization.ComputeLength(schedule, digestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// Returns the byte size of the serialized hiding WHIR evaluation proof
+    /// (the opening a <see cref="CreateZeroKnowledge"/> provider produces)
+    /// for a multilinear polynomial in <paramref name="variableCount"/>
+    /// variables under the given schedule and mask figures.
+    /// </summary>
+    /// <param name="variableCount">The committed polynomial's variable count.</param>
+    /// <param name="curve">The curve the codes are over.</param>
+    /// <param name="initialRateLog2">The initial inverse-rate exponent the provider was built with.</param>
+    /// <param name="foldingParameter">The folding parameter the provider was built with.</param>
+    /// <param name="securityLevelBits">The per-round soundness target the provider was built with.</param>
+    /// <param name="regime">The soundness regime the provider was built with.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size the provider was built with.</param>
+    /// <param name="maskMessageLength">The mask message length the provider was built with.</param>
+    /// <param name="maskRateLog2">The mask-code inverse-rate exponent the provider was built with.</param>
+    /// <returns>The opening's serialized byte length.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range.</exception>
+    /// <exception cref="ArgumentException">When the shape cannot carry a schedule or its hiding extension at the given figures.</exception>
+    public static int GetZeroKnowledgeEvaluationProofSizeBytes(
+        int variableCount,
+        CurveParameterSet curve,
+        int initialRateLog2,
+        int foldingParameter = WellKnownWhirParameters.DefaultFoldingParameter,
+        int securityLevelBits = WellKnownWhirParameters.ClassicalSecurityLevelBits,
+        WhirSoundnessRegime regime = WellKnownWhirParameters.ClassicalSecurityRegime,
+        int digestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes,
+        int maskMessageLength = WhirZkParameters.DefaultMaskMessageLength,
+        int maskRateLog2 = WhirZkParameters.DefaultMaskRateLog2)
+    {
+        WhirZkParameters parameters = WhirZkParameters.Create(
+            WhirParameterSchedule.Create(curve, variableCount, initialRateLog2, foldingParameter, securityLevelBits, regime),
+            maskMessageLength,
+            maskRateLog2);
+
+        return ZkWhirProofSerialization.ComputeLength(parameters, digestSizeBytes);
     }
 
 

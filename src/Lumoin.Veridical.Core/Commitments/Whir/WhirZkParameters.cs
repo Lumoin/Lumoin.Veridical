@@ -117,6 +117,51 @@ public sealed class WhirZkParameters
     /// </summary>
     public IReadOnlyList<WhirMaskCodeShape> SwitchMaskShapes { get; }
 
+    /// <summary>
+    /// The zero-knowledge round-by-round soundness ledger: the plain
+    /// schedule's rows with every folding row repriced for the masked
+    /// sumcheck of Construction 6.3, followed by one
+    /// <see cref="WhirRoundErrorKind.MaskOracleQueries"/> row per mask group
+    /// in creation order. The non-fold rows carry over unchanged — the
+    /// out-of-domain, shift-query and final-randomness bindings are the same
+    /// error families in the hiding path.
+    /// </summary>
+    public IReadOnlyList<WhirSoundnessLedgerRow> LedgerRows { get; }
+
+    /// <summary>
+    /// The worst zero-knowledge ledger row in bits — at least the schedule's
+    /// <see cref="WhirParameterSchedule.SecurityLevelBits"/> by construction;
+    /// a shape whose masked rows land under the target is refused.
+    /// </summary>
+    public double MinimumRoundBits { get; }
+
+    /// <summary>
+    /// The union-bound total across all zero-knowledge ledger rows in bits,
+    /// <c>-log2(Σ ε_row)</c>: the straight-line soundness figure for
+    /// accounting that sums rather than takes the worst round.
+    /// </summary>
+    public double UnionBoundBits { get; }
+
+    /// <summary>
+    /// The honest-verifier zero-knowledge distance in bits:
+    /// <c>-log2(Σ_rounds (t_ood² + t_ood)/(2·|F|))</c> — per code-switch
+    /// round, the union of the pairwise-collision and zero-point events of
+    /// the private out-of-domain draw, the hiding path's sole statistical
+    /// distance (the mask codes' Reed-Solomon encodings simulate exactly).
+    /// <see cref="double.PositiveInfinity"/> for a base-case-only shape,
+    /// which draws no private points.
+    /// </summary>
+    /// <remarks>
+    /// A privacy figure, not a soundness row: it bounds a different
+    /// adversary, so it is deliberately kept out of <see cref="LedgerRows"/>
+    /// and its minimum — mirroring how the cross-scheme ledger reports the
+    /// hiding axis as a kind rather than folding it into the soundness bits.
+    /// The wired endpoints enforce the inadmissible draw loudly instead of
+    /// proceeding, so an honest transcript is within this distance of the
+    /// simulation.
+    /// </remarks>
+    public double PrivacyErrorBits { get; }
+
 
     private WhirZkParameters(
         WhirParameterSchedule schedule,
@@ -126,7 +171,11 @@ public sealed class WhirZkParameters
         int maskOracleUnionLog2,
         int[] oracleRandomnessCounts,
         WhirMaskCodeShape sumcheckMaskShape,
-        WhirMaskCodeShape[] switchMaskShapes)
+        WhirMaskCodeShape[] switchMaskShapes,
+        WhirSoundnessLedgerRow[] ledgerRows,
+        double minimumRoundBits,
+        double unionBoundBits,
+        double privacyErrorBits)
     {
         Schedule = schedule;
         MaskMessageLength = maskMessageLength;
@@ -136,14 +185,19 @@ public sealed class WhirZkParameters
         OracleRandomnessCounts = oracleRandomnessCounts;
         SumcheckMaskShape = sumcheckMaskShape;
         SwitchMaskShapes = switchMaskShapes;
+        LedgerRows = ledgerRows;
+        MinimumRoundBits = minimumRoundBits;
+        UnionBoundBits = unionBoundBits;
+        PrivacyErrorBits = privacyErrorBits;
     }
 
 
     /// <summary>
     /// Derives the zero-knowledge extension for the given schedule,
     /// validating the mask floors, the per-oracle randomness fit and the mask
-    /// domains' two-adicity. The derivation fails loudly rather than silently
-    /// degrade hiding.
+    /// domains' two-adicity, and pricing the zero-knowledge soundness ledger
+    /// and the honest-verifier zero-knowledge distance. The derivation fails
+    /// loudly rather than silently degrade hiding or soundness.
     /// </summary>
     /// <param name="schedule">The plain schedule to extend.</param>
     /// <param name="maskMessageLength">The mask message length <c>ℓ_zk</c>, at least <see cref="MinimumMaskMessageLength"/>; defaults to <see cref="DefaultMaskMessageLength"/>.</param>
@@ -151,7 +205,7 @@ public sealed class WhirZkParameters
     /// <returns>The validated extension.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="schedule"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When a mask parameter is under its floor.</exception>
-    /// <exception cref="ArgumentException">When an oracle's randomness budget does not fit its codeword slack or a mask domain exceeds the field's two-adicity.</exception>
+    /// <exception cref="ArgumentException">When an oracle's randomness budget does not fit its codeword slack, a mask domain exceeds the field's two-adicity, or the zero-knowledge ledger's worst row lands under the schedule's target.</exception>
     public static WhirZkParameters Create(
         WhirParameterSchedule schedule,
         int maskMessageLength = DefaultMaskMessageLength,
@@ -214,6 +268,32 @@ public sealed class WhirZkParameters
             ThrowIfMaskDomainExceedsTwoAdicity(shape, twoAdicity);
         }
 
+        WhirSoundnessLedgerRow[] ledgerRows = ComputeLedger(schedule, maskMessageLength, maskRateLog2, maskQueryCount);
+        double minimumRoundBits = double.PositiveInfinity;
+        double totalError = 0.0;
+        foreach(WhirSoundnessLedgerRow row in ledgerRows)
+        {
+            minimumRoundBits = Math.Min(minimumRoundBits, row.ErrorBits);
+            totalError += Math.Pow(2.0, -row.ErrorBits);
+        }
+
+        if(minimumRoundBits < schedule.SecurityLevelBits)
+        {
+            throw new ArgumentException(
+                $"The realised zero-knowledge round-by-round soundness is {minimumRoundBits:F2} bits, under the schedule's {schedule.SecurityLevelBits}-bit target.",
+                nameof(schedule));
+        }
+
+        //The private out-of-domain draw is the hiding path's sole statistical
+        //distance: each round's t_ood points must be nonzero and pairwise
+        //distinct, a (t_ood² + t_ood)/(2|F|) union per code-switch round. A
+        //base-case-only shape draws none and simulates exactly.
+        const int privateSampleCount = OutOfDomainSamplesPerIteration;
+        const double perRoundEventCount = ((privateSampleCount * privateSampleCount) + privateSampleCount) / 2.0;
+        double privacyErrorBits = iterationCount > 1
+            ? schedule.FieldFloorBits - Math.Log2((iterationCount - 1) * perRoundEventCount)
+            : double.PositiveInfinity;
+
         return new WhirZkParameters(
             schedule,
             maskMessageLength,
@@ -222,7 +302,11 @@ public sealed class WhirZkParameters
             maskOracleUnionLog2,
             oracleRandomnessCounts,
             sumcheckMaskShape,
-            switchMaskShapes);
+            switchMaskShapes,
+            ledgerRows,
+            minimumRoundBits,
+            -Math.Log2(totalError),
+            privacyErrorBits);
     }
 
 
@@ -241,6 +325,66 @@ public sealed class WhirZkParameters
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(oracleIndex, OracleRandomnessCounts.Count);
 
         return OracleRandomnessCounts[oracleIndex] << Schedule.FoldingParameter;
+    }
+
+
+    /// <summary>
+    /// Prices the zero-knowledge ledger. Every plain row carries over except
+    /// the folding rows, whose identity term is repriced for the masked wire
+    /// of Construction 6.3 — the plain degree bound becomes the mask message
+    /// length <c>ℓ_zk</c> and the mask code's own decoding list joins the
+    /// union: <c>ε ≤ ℓ_zk·ℓ_i·ℓ_Czk/|F| + err*(C^{(i,s)}, 2, δ_i)</c>. One
+    /// <see cref="WhirRoundErrorKind.MaskOracleQueries"/> row is appended per
+    /// mask group in creation order — the batch-0 sumcheck group, then per
+    /// main-loop iteration its code-switch and sumcheck groups.
+    /// </summary>
+    /// <param name="schedule">The plain schedule.</param>
+    /// <param name="maskMessageLength">The mask message length <c>ℓ_zk</c>.</param>
+    /// <param name="maskRateLog2">The mask codes' inverse-rate exponent.</param>
+    /// <param name="maskQueryCount">The mask spot-check count <c>t_zk</c>.</param>
+    /// <returns>The zero-knowledge ledger rows in protocol order.</returns>
+    private static WhirSoundnessLedgerRow[] ComputeLedger(
+        WhirParameterSchedule schedule,
+        int maskMessageLength,
+        int maskRateLog2,
+        int maskQueryCount)
+    {
+        int maskGroupCount = (2 * schedule.IterationCount) - 1;
+        var ledger = new List<WhirSoundnessLedgerRow>(schedule.LedgerRows.Count + maskGroupCount);
+
+        double maskListSizeBound = WellKnownWhirParameters.ListSizeBound(schedule.Regime, maskRateLog2, schedule.JohnsonProximityParameter);
+        foreach(WhirSoundnessLedgerRow row in schedule.LedgerRows)
+        {
+            if(row.Kind is WhirRoundErrorKind.InitialSumcheckFold or WhirRoundErrorKind.MainSumcheckFold)
+            {
+                WhirRoundParameters round = schedule.Rounds[row.Iteration];
+                double identityTermBits = schedule.FieldFloorBits
+                    - Math.Log2(maskMessageLength * round.ListSizeBound * maskListSizeBound);
+                double agreementBits = WellKnownWhirParameters.MutualCorrelatedAgreementErrorBits(
+                    schedule.Regime,
+                    schedule.FieldFloorBits,
+                    round.VariableCount - row.SumcheckRound,
+                    round.RateLog2,
+                    schedule.JohnsonProximityParameter);
+                ledger.Add(new WhirSoundnessLedgerRow(row.Kind, row.Iteration, row.SumcheckRound, WhirParameterSchedule.CombineErrorBits(identityTermBits, agreementBits)));
+            }
+            else
+            {
+                ledger.Add(row);
+            }
+        }
+
+        //Each group's carried and fresh oracles are bound by one joint
+        //identity per spot position, so a group is a single (1 - δ_zk)^t_zk
+        //branch, priced at the mask codes' guaranteed rate floor.
+        double maskProximity = WellKnownWhirParameters.ProximityParameter(schedule.Regime, maskRateLog2, schedule.JohnsonProximityParameter);
+        double maskRowBits = maskQueryCount * -Math.Log2(1.0 - maskProximity);
+        for(int group = 0; group < maskGroupCount; group++)
+        {
+            ledger.Add(new WhirSoundnessLedgerRow(WhirRoundErrorKind.MaskOracleQueries, group, 0, maskRowBits));
+        }
+
+        return [.. ledger];
     }
 
 

@@ -534,9 +534,10 @@ public static class ZkWhirIoppVerifier
     /// The chronological mask-group layout both endpoints derive from the
     /// parameters: the initial batch's sumcheck group, then per code-switch
     /// round the width-one switch group and the following batch's sumcheck
-    /// group — <c>2M − 1</c> groups.
+    /// group — <c>2M − 1</c> groups. Shared with the wire codec, whose
+    /// opening sections it sizes.
     /// </summary>
-    private static List<(WhirMaskCodeShape Shape, int Width)> DeriveGroupLayout(WhirZkParameters parameters)
+    internal static List<(WhirMaskCodeShape Shape, int Width)> DeriveGroupLayout(WhirZkParameters parameters)
     {
         int iterationCount = parameters.Schedule.IterationCount;
         int foldingParameter = parameters.Schedule.FoldingParameter;

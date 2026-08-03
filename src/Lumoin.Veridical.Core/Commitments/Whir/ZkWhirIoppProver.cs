@@ -68,7 +68,6 @@ public static class ZkWhirIoppProver
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span length does not match the schedule's shape, or the statement does not hold for the coefficients.</exception>
     /// <exception cref="InvalidOperationException">When a squeezed private out-of-domain point is inadmissible — a probability-<c>1/|F|</c> transcript event that must fail loudly rather than leak.</exception>
-    [SuppressMessage("Reliability", "CA2000", Justification = "Working buffers, trees and mask groups are disposed in the finally block; the parts the proof keeps transfer ownership to the returned proof, and on a failed run the partial parts are disposed before rethrowing.")]
     public static (ZkWhirIoppProof Proof, MerkleRoot InputCommitment) Prove(
         WhirZkParameters parameters,
         ReadOnlySpan<byte> coefficients,
@@ -99,6 +98,108 @@ public static class ZkWhirIoppProver
         ArgumentNullException.ThrowIfNull(invert);
         ArgumentNullException.ThrowIfNull(maskRandom);
         ArgumentNullException.ThrowIfNull(pool);
+
+        //Every argument is validated before the sampler is touched, so an
+        //invalid call never advances a stateful sampler. Sampling the input
+        //oracle's randomness first then preserves the draw order of the
+        //single-call path, so both entry points produce identical
+        //transcripts from the same sampler state.
+        int inputRandomnessBytes = parameters.OracleRandomnessElementCount(0) * ScalarSize;
+        using IMemoryOwner<byte> inputRandomnessOwner = pool.Rent(inputRandomnessBytes);
+        Span<byte> inputRandomness = inputRandomnessOwner.Memory.Span[..inputRandomnessBytes];
+        FillWithScalars(inputRandomness, maskRandom, parameters.Schedule.Curve);
+
+        return Prove(
+            parameters,
+            coefficients,
+            inputRandomness,
+            constraintCoefficients,
+            constraintPoints,
+            target,
+            transcript,
+            merkleHash,
+            hash,
+            squeeze,
+            reduce,
+            add,
+            subtract,
+            multiply,
+            invert,
+            maskRandom,
+            pool);
+    }
+
+
+    /// <summary>
+    /// Produces an HVZK-WHIR proof as the sampling overload does, with the
+    /// input oracle's encoding randomness supplied by the caller instead of
+    /// drawn from the sampler. This is the commit-then-open seam: a
+    /// polynomial-commitment provider samples the randomness at commit time,
+    /// computes the public commitment with
+    /// <see cref="ComputeInputCommitment"/>, carries the randomness as the
+    /// commitment's blind, and re-supplies it here so the proof's input
+    /// oracle is the committed one.
+    /// </summary>
+    /// <param name="parameters">The zero-knowledge parameter extension both endpoints derive from the same public figures.</param>
+    /// <param name="coefficients">The multilinear coefficient vector, <c>2^m</c> elements for the schedule's variable count <c>m</c>.</param>
+    /// <param name="inputRandomness">The input oracle's encoding randomness, <c>t_0·2^k</c> canonical elements the caller sampled at commit time.</param>
+    /// <param name="constraintCoefficients">The constraint scales <c>λ_c</c>, one element per constraint; may be empty for plain proximity.</param>
+    /// <param name="constraintPoints">The constraint points <c>p_c</c>, <c>m</c> elements per constraint, first variable first.</param>
+    /// <param name="target">The claimed sum <c>σ</c>, one element.</param>
+    /// <param name="transcript">The Fiat-Shamir transcript, already initialised with the protocol's public context.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="hash">The transcript's fixed-output hash backend.</param>
+    /// <param name="squeeze">The transcript's XOF backend.</param>
+    /// <param name="reduce">The scalar-reduce backend for deriving challenges.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="subtract">Scalar-subtract backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="invert">Scalar-invert backend, for the auxiliary carry and covector rescale factors.</param>
+    /// <param name="maskRandom">The entropy-sourced sampler behind every remaining hiding ingredient: later oracles' encoding randomness, masks, pads and blinds.</param>
+    /// <param name="pool">The pool to rent working and proof buffers from.</param>
+    /// <returns>The proof and the input oracle's Merkle root — the public commitment the verifier needs; the caller owns both.</returns>
+    /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When a span length does not match the schedule's shape, or the statement does not hold for the coefficients.</exception>
+    /// <exception cref="InvalidOperationException">When a squeezed private out-of-domain point is inadmissible — a probability-<c>1/|F|</c> transcript event that must fail loudly rather than leak.</exception>
+    [SuppressMessage("Reliability", "CA2000", Justification = "Working buffers, trees and mask groups are disposed in the finally block; the parts the proof keeps transfer ownership to the returned proof, and on a failed run the partial parts are disposed before rethrowing.")]
+    public static (ZkWhirIoppProof Proof, MerkleRoot InputCommitment) Prove(
+        WhirZkParameters parameters,
+        ReadOnlySpan<byte> coefficients,
+        ReadOnlySpan<byte> inputRandomness,
+        ReadOnlySpan<byte> constraintCoefficients,
+        ReadOnlySpan<byte> constraintPoints,
+        ReadOnlySpan<byte> target,
+        FiatShamirTranscript transcript,
+        MerkleHashDelegate merkleHash,
+        FiatShamirHashDelegate hash,
+        FiatShamirSqueezeDelegate squeeze,
+        ScalarReduceDelegate reduce,
+        ScalarAddDelegate add,
+        ScalarSubtractDelegate subtract,
+        ScalarMultiplyDelegate multiply,
+        ScalarInvertDelegate invert,
+        ScalarRandomDelegate maskRandom,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(transcript);
+        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(hash);
+        ArgumentNullException.ThrowIfNull(squeeze);
+        ArgumentNullException.ThrowIfNull(reduce);
+        ArgumentNullException.ThrowIfNull(add);
+        ArgumentNullException.ThrowIfNull(subtract);
+        ArgumentNullException.ThrowIfNull(multiply);
+        ArgumentNullException.ThrowIfNull(invert);
+        ArgumentNullException.ThrowIfNull(maskRandom);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        if(inputRandomness.Length != parameters.OracleRandomnessElementCount(0) * ScalarSize)
+        {
+            throw new ArgumentException(
+                $"The input oracle's encoding randomness must be {parameters.OracleRandomnessElementCount(0) * ScalarSize} bytes; received {inputRandomness.Length}.",
+                nameof(inputRandomness));
+        }
 
         WhirParameterSchedule schedule = parameters.Schedule;
         int variableCount = schedule.VariableCount;
@@ -158,10 +259,7 @@ public static class ZkWhirIoppProver
             coefficients.CopyTo(working);
             int currentMessageLength = messageLength;
             int currentRandomnessLength = parameters.OracleRandomnessElementCount(0);
-            FillWithScalars(
-                working.Slice(currentMessageLength * ScalarSize, currentRandomnessLength * ScalarSize),
-                maskRandom,
-                curve);
+            inputRandomness.CopyTo(working.Slice(currentMessageLength * ScalarSize, currentRandomnessLength * ScalarSize));
 
             Span<byte> functionTable = RentTracked(messageLength * ScalarSize, pool, disposables);
             coefficients.CopyTo(functionTable);
@@ -1069,9 +1167,10 @@ public static class ZkWhirIoppProver
 
     /// <summary>
     /// Fills a buffer with freshly sampled canonical scalars, one delegate
-    /// call per element.
+    /// call per element. Shared with the polynomial-commitment seam, which
+    /// samples the input oracle's encoding randomness at commit time.
     /// </summary>
-    private static void FillWithScalars(Span<byte> destination, ScalarRandomDelegate random, CurveParameterSet curve)
+    internal static void FillWithScalars(Span<byte> destination, ScalarRandomDelegate random, CurveParameterSet curve)
     {
         for(int offset = 0; offset < destination.Length; offset += ScalarSize)
         {

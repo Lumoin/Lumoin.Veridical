@@ -3,8 +3,10 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// <summary>
 /// The kind of verifier message a WHIR round-by-round soundness ledger row
 /// prices: the five error families of WHIR Theorem 5.2, one per kind of
-/// randomness the verifier sends, plus the batch combination randomness of
-/// WHIR Theorem 5.6 that prefixes them when separate claims are batched.
+/// randomness the verifier sends, the batch combination randomness of
+/// WHIR Theorem 5.6 that prefixes them when separate claims are batched, and
+/// the mask spot checks the hiding extension of HVZK-WHIR Construction 9.7
+/// appends.
 /// </summary>
 public enum WhirRoundErrorKind
 {
@@ -48,5 +50,14 @@ public enum WhirRoundErrorKind
     /// bound (WHIR Theorem 5.6); the row prefixes the single-statement
     /// ledger.
     /// </summary>
-    ConstraintBatching = 5
+    ConstraintBatching = 5,
+
+    /// <summary>
+    /// The base-case spot checks against one mask group of the hiding path:
+    /// <c>ε ≤ (1-δ_zk)^t_zk</c> for <c>t_zk</c> positions at the mask code's
+    /// rate, where the group's carried and fresh oracles are bound by one
+    /// joint per-position identity (HVZK-WHIR Construction 9.7). One row per
+    /// mask group in creation order; only zero-knowledge ledgers carry it.
+    /// </summary>
+    MaskOracleQueries = 6
 }

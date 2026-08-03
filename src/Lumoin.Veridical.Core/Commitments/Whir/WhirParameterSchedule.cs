@@ -296,12 +296,13 @@ public sealed class WhirParameterSchedule
 
 
     /// <summary>
-    /// Combines two error terms in bits: <c>-log2(2^-a + 2^-b)</c>.
+    /// Combines two error terms in bits: <c>-log2(2^-a + 2^-b)</c>. Shared
+    /// with the zero-knowledge extension's ledger derivation.
     /// </summary>
     /// <param name="firstBits">The first term in bits.</param>
     /// <param name="secondBits">The second term in bits.</param>
     /// <returns>The combined error in bits, at most the smaller input.</returns>
-    private static double CombineErrorBits(double firstBits, double secondBits)
+    internal static double CombineErrorBits(double firstBits, double secondBits)
     {
         return -Math.Log2(Math.Pow(2.0, -firstBits) + Math.Pow(2.0, -secondBits));
     }

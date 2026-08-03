@@ -306,7 +306,7 @@ public static class WhirProofSerialization
     /// <param name="pool">The pool to rent the opening's buffers from.</param>
     /// <returns>The opening; ownership transfers to the caller.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The values and path buffers transfer ownership to the returned opening; the catch block releases them on a failed parse.")]
-    private static WhirQueryOpening ReadOpening(
+    internal static WhirQueryOpening ReadOpening(
         ReadOnlySpan<byte> bytes,
         ref int offset,
         int blockBytes,
@@ -351,7 +351,7 @@ public static class WhirProofSerialization
     /// <param name="sectionName">The section name for the rejection message.</param>
     /// <returns>The scalar; ownership transfers to the caller.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The rented buffer transfers ownership to the returned scalar.")]
-    private static Scalar ReadCanonicalScalar(ReadOnlySpan<byte> bytes, CurveParameterSet curve, BaseMemoryPool pool, string sectionName)
+    internal static Scalar ReadCanonicalScalar(ReadOnlySpan<byte> bytes, CurveParameterSet curve, BaseMemoryPool pool, string sectionName)
     {
         ThrowIfNotCanonicalScalars(bytes, curve, sectionName);
 
@@ -370,7 +370,7 @@ public static class WhirProofSerialization
     /// <param name="scalars">The section's bytes, a whole number of elements.</param>
     /// <param name="curve">The curve identifying the scalar field.</param>
     /// <param name="sectionName">The section name for the rejection message.</param>
-    private static void ThrowIfNotCanonicalScalars(ReadOnlySpan<byte> scalars, CurveParameterSet curve, string sectionName)
+    internal static void ThrowIfNotCanonicalScalars(ReadOnlySpan<byte> scalars, CurveParameterSet curve, string sectionName)
     {
         for(int offset = 0; offset < scalars.Length; offset += ScalarSize)
         {
@@ -391,7 +391,7 @@ public static class WhirProofSerialization
     /// <param name="actual">The part's actual figure.</param>
     /// <param name="expected">The schedule-derived figure.</param>
     /// <param name="partName">The part name for the failure message.</param>
-    private static void ThrowIfLengthMismatch(int actual, int expected, string partName)
+    internal static void ThrowIfLengthMismatch(int actual, int expected, string partName)
     {
         if(actual != expected)
         {
@@ -405,7 +405,7 @@ public static class WhirProofSerialization
     /// the failed-parse cleanup of parts not yet owned by a proof.
     /// </summary>
     /// <param name="items">The part array.</param>
-    private static void DisposeAll<T>(T?[] items) where T: class, IDisposable
+    internal static void DisposeAll<T>(T?[] items) where T: class, IDisposable
     {
         foreach(T? item in items)
         {
