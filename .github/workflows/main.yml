@@ -32,8 +32,8 @@ env:
   # Library NuGet packages that will be packed and uploaded. Each is a
   # shippable library (carries a NuGet <Description> and packs by default),
   # and each gets a `dotnet pack` in the canonical pack step below. The
-  # downstream libraries reference only Core, so their packed packages
-  # depend on the Lumoin.Veridical.Core package published in the same run.
+  # downstream libraries reference only sibling projects in this list, so
+  # their packed packages depend only on packages published in the same run.
   # As the project grows this list grows alongside (future hash, backend,
   # or protocol packages); add the project name here.
   LIBRARY_PROJECTS: >
@@ -42,6 +42,8 @@ env:
     Lumoin.Veridical.Bbs
     Lumoin.Veridical.Core
     Lumoin.Veridical.Hashing
+    Lumoin.Veridical.Json
+    Lumoin.Veridical.Longfellow
     Lumoin.Veridical.Secdsa
 
   # Single test project — its compiled executable is the input to
