@@ -6,14 +6,13 @@ include "circomlib/circuits/poseidon.circom";
 // Poseidon digest is `out`. Mirrors the shape of the previously-imported
 // poseidon fixture (a circomlib Poseidon(2) two-input preimage).
 //
-// The target curve is a compile-time `--prime` flag (see REGENERATE.md); the
-// source is curve-independent. The exact constraint and wire counts are
+// The target curve is a compile-time `--prime` flag; the source is
+// curve-independent. The exact constraint and wire counts are
 // circomlib-VERSION-dependent — Poseidon's round constants are field-specific
-// and emitted by circom per `--prime` — so REGENERATE.md pins the circomlib
-// version. A regeneration with a different circomlib version may produce a
-// different constraint count than the historically-imported fixture's 100; the
-// reader/satisfaction tests assert PROPERTIES (parse succeeds, witness
-// satisfies), not a frozen shape.
+// and emitted by circom per `--prime`. A recompilation with a different
+// circomlib version may produce a different constraint count than the
+// historically-imported fixture's 100; the reader/satisfaction tests assert
+// PROPERTIES (parse succeeds, witness satisfies), not a frozen shape.
 template Poseidon2() {
     signal input in[2];
     signal output out;

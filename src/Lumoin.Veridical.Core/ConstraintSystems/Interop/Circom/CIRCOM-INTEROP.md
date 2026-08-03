@@ -202,10 +202,9 @@ real toolchain output rather than just the hand-crafted minimum.
 ## § 8 Reproducibility
 
 The `.r1cs` and `.wtns` byte files stay checked into the repository so the test
-suite runs with no toolchain installed. Alongside them, `REGENERATE.md` records
-the exact pinned versions of `circom`, `snarkjs`, and `circomlib`, the `.circom`
-sources, the `input.json` files, and the command sequences that regenerate the
-bytes. Anyone with the pinned tooling can reproduce identical fixtures from
-sources we own — so the provenance is verifiable rather than imported on trust,
-and adding a fixture for a new curve is the same one-command step as regenerating
-an existing one.
+suite runs with no toolchain installed. The committed bytes are authoritative:
+they are compiled from the `.circom` sources and `input.json` files we own, and
+their SHA-256 hashes are recorded alongside the fixtures in `Circom/FIXTURES.md`
+— so the provenance is verifiable rather than imported on trust, and adding a
+fixture for a new curve is the same compile-and-commit step as the existing
+ones.

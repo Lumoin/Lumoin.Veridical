@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Hashing.Internal;
 /// <remarks>
 /// <para>
 /// All multi-word constants are stored as little-endian 32-bit words,
-/// matching the spec's u32 layout and the reference native implementation.
+/// matching the spec's u32 layout and the reference implementation.
 /// The portable backend and the accelerated backends share these
 /// constants so a byte-identical wire format is impossible to drift on.
 /// </para>

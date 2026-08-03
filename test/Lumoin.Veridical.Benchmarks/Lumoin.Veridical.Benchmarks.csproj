@@ -56,7 +56,7 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
-    <!-- xoofx native-FFI BLAKE3 binding kept here so the Blake3 head-to-head
+    <!-- xoofx native BLAKE3 binding kept here so the Blake3 head-to-head
          benchmark can measure the managed implementation against it. The
          src/ tree and Lumoin.Veridical.Tests do not reference this
          package after batch O. -->

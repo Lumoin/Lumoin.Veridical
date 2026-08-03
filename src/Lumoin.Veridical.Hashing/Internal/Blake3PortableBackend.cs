@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Hashing.Internal;
 
 /// <summary>
 /// Portable scalar implementation of the BLAKE3 compression function.
-/// Mirrors the reference native implementation distributed with the
+/// Mirrors the reference implementation distributed with the
 /// BLAKE3 specification: seven rounds of the BLAKE2-style G mixing
 /// function with the BLAKE3 message permutation between rounds, then
 /// a final XOR-folding step that produces the sixteen-word output.

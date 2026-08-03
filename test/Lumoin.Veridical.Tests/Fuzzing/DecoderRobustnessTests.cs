@@ -312,7 +312,7 @@ internal sealed class DecoderRobustnessTests
         string path = Path.Combine(directory, fileName);
         if(!File.Exists(path))
         {
-            Assert.Inconclusive($"Fixture file not found: {path}. Regenerate from the owned source per Fixtures/REGENERATE.md.");
+            Assert.Inconclusive($"Fixture file not found: {path}. Restore the committed fixture bytes.");
         }
 
         return File.ReadAllBytes(path);
@@ -348,7 +348,7 @@ internal sealed class DecoderRobustnessTests
         string path = Path.Combine(directory, "multiplier2.zkif");
         if(!File.Exists(path))
         {
-            Assert.Inconclusive($"Fixture file not found: {path}. Regenerate per Fixtures/REGENERATE.md.");
+            Assert.Inconclusive($"Fixture file not found: {path}. Restore the committed fixture bytes.");
         }
 
         return File.ReadAllBytes(path);

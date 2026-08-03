@@ -239,7 +239,7 @@ internal sealed class PoseidonPermutationTests
         string wtnsPath = Path.Combine(directory, "poseidon2.wtns");
         if(!File.Exists(wtnsPath))
         {
-            Assert.Inconclusive($"Fixture file not found: {wtnsPath}. Regenerate per Fixtures/REGENERATE.md.");
+            Assert.Inconclusive($"Fixture file not found: {wtnsPath}. Restore the committed fixture bytes.");
         }
 
         return File.ReadAllBytes(wtnsPath);

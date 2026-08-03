@@ -4,7 +4,7 @@ This document describes the managed hash implementations shipped in
 `Lumoin.Veridical.Hashing`. It is written for someone who has read the
 code and wants the construction made explicit; the BLAKE3 specification
 document by Aumasson, Neves, O'Connor, and Wilcox-O'Hearn (January 2020)
-and the reference native implementation distributed alongside it are the
+and the reference implementation distributed alongside it are the
 construction authority.
 
 ## § 1 What this project provides
@@ -22,7 +22,7 @@ into a hash implementation through the Fiat-Shamir transcript's
 `FiatShamirHashDelegate` and `FiatShamirSqueezeDelegate`, which any
 backend can satisfy. BLAKE3 is the wire-format choice for the
 zero-knowledge proof stack; the managed implementation here removes the
-runtime dependency on a native native binary.
+runtime dependency on a native binary.
 
 ## § 2 BLAKE3 implementation overview
 

@@ -25,7 +25,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// The polynomial-commitment surface mirrors Microsoft Research's
 /// Spartan2 PCS abstraction (the <c>PCSEngineTrait</c> / <c>Commitment</c>
 /// associated type); structural inspiration only, no code dependency. See
-/// microsoft/Spartan2 on GitHub for the canonical native implementation.
+/// microsoft/Spartan2 on GitHub for the canonical implementation.
 /// </para>
 /// </remarks>
 public sealed class PolynomialCommitment: SensitiveMemory

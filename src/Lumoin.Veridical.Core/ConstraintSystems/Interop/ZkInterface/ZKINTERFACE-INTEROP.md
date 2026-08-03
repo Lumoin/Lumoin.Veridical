@@ -132,7 +132,7 @@ allocation.
 
 The fixture gate proves **interop correctness** against the reference
 implementation. The owned `bls12_381/multiplier2.zkif` and
-`bn254/multiplier2.zkif` are serialised by the **canonical `zkinterface` native
+`bn254/multiplier2.zkif` are serialised by the **canonical `zkinterface`
 crate's own FlatBuffers code** — not by Veridical — so a reader that parses them
 correctly has agreed with the reference producer, not merely with our own
 serialiser (Veridical has none; it never emits `.zkif`). The end-to-end test parses
@@ -141,9 +141,7 @@ in-field arithmetic (`CheckSatisfiedBy` — the load-bearing assertion, since an
 endianness or column error parses cleanly yet fails satisfaction), and, for the
 power-of-two multiplier2 shape, runs a Spartan prove-and-verify round trip.
 
-The `.zkif` bytes stay checked into the repository so the suite runs with no native
-toolchain. Alongside them, `Fixtures/REGENERATE.md` records the pinned crate
-version, the owned producer source, and the regeneration command — so the
-provenance is verifiable rather than imported on trust. The vendored upstream
+The `.zkif` bytes stay checked into the repository so the suite runs with no
+external toolchain installed. The vendored upstream
 `example.zkif` (a toy field, used only to pin the FlatBuffers cursor structurally)
 has its own provenance note in `Fixtures/FIXTURES.md`.

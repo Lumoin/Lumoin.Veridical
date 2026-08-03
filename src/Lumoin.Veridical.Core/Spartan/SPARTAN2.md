@@ -279,13 +279,13 @@ commitment surface (a new provider, a layout refactor) must keep these
 green, alongside the prove→verify round-trip and indistinguishability
 suites.
 
-Cross-validation against the reference native Spartan2 is **precluded by
+Cross-validation against the reference upstream Spartan2 is **precluded by
 design**, not omitted by oversight: per §8, Veridical's wire format is its
 own and there is no universal Spartan2 wire format, so neither byte
-equality nor mutual proof acceptance against the native implementation is
+equality nor mutual proof acceptance against the upstream implementation is
 achievable. The discipline is therefore Veridical-internal — before/after
 byte-identity (the fixtures) and round-trip soundness — with no external
-native fixtures.
+cross-implementation fixtures.
 
 ## 10. Masked variant
 

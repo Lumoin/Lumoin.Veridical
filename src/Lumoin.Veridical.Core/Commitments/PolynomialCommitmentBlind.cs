@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <para>
 /// Mirrors Microsoft Research's Spartan2 PCS <c>Blind</c> associated type;
 /// structural inspiration only, no code dependency. See microsoft/Spartan2
-/// on GitHub for the canonical native implementation.
+/// on GitHub for the canonical implementation.
 /// </para>
 /// </remarks>
 public sealed class PolynomialCommitmentBlind: SensitiveMemory

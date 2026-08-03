@@ -10,14 +10,21 @@ Two fixture pairs live in this folder:
   `Fixtures/bn254/poseidon2.{r1cs,wtns}`: a `circomlib` Poseidon(2)
   two-input preimage compiled per curve from the owned source
   `Fixtures/circuits/poseidon2.circom`, used by the parser /
-  satisfaction-check gate. Pinned toolchain and regeneration commands
-  live in `Fixtures/REGENERATE.md`.
+  satisfaction-check gate. The committed bytes are the source of
+  truth; their SHA-256 hashes are recorded below.
 
 Both fixture sets match the iden3 binary format spec
 (`https://github.com/iden3/r1csfile/blob/master/doc/r1cs_bin_format.md`).
 The hand-crafted multiplier2 hex is owned by construction; the Poseidon
-bytes are regenerable from owned `.circom` sources with the pinned
-toolchain recorded in `Fixtures/REGENERATE.md`.
+bytes are compiled from the owned `.circom` sources and committed as
+reference bytes, with the SHA-256 of each file pinned below.
+
+| Fixture | SHA-256 |
+|---------|---------|
+| `Fixtures/bls12_381/poseidon2.r1cs` | `a3dd59c3a21ca31501ea3927031b46bd690bf0df49fc6a3a1379316b312787dd` |
+| `Fixtures/bls12_381/poseidon2.wtns` | `ac48aefa1853ff6cf18a9c04836f6c3b57fefa37fdeb9f973e7910b883c71a12` |
+| `Fixtures/bn254/poseidon2.r1cs` | `cef4e08172b8edf5ad699fcbce6261cef5d8bb79f24a1cee841f923e818ce839` |
+| `Fixtures/bn254/poseidon2.wtns` | `6092b12aae30d24b0a3e37a2fe03dbeae0d96c24872bbdb688eca3a8bed89660` |
 
 ## `Multiplier2Bytes` (`.r1cs`, 384 bytes)
 

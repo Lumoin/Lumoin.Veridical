@@ -20,8 +20,8 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 
 /// <summary>
 /// Real-fixture gate: owned <c>.zkif</c> files produced by the canonical
-/// <c>zkinterface</c> native crate (see <c>Fixtures/REGENERATE.md</c>) parse
-/// through the Veridical instance and witness readers and satisfy
+/// <c>zkinterface</c> implementation parse through the Veridical instance
+/// and witness readers and satisfy
 /// <c>A·z ∘ B·z = C·z</c> in the curve's scalar arithmetic. Because the
 /// bytes come from the reference producer, this is a genuine interop check
 /// of the hand-written FlatBuffers reader, not a self-test against our own
@@ -100,7 +100,7 @@ internal sealed class ZkInterfaceFixtureTests
         string path = Path.Combine(directory, "multiplier2.zkif");
         if(!File.Exists(path))
         {
-            Assert.Inconclusive($"Fixture file not found: {path}. Regenerate per Fixtures/REGENERATE.md.");
+            Assert.Inconclusive($"Fixture file not found: {path}. Restore the committed fixture bytes.");
         }
 
         return File.ReadAllBytes(path);

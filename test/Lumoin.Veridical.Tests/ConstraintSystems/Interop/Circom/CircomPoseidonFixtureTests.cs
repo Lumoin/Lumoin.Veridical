@@ -29,8 +29,8 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 /// the parser end-to-end through Spartan; this proves it scales to a non-trivial
 /// audited circuit (a few hundred constraints) and that snarkjs's
 /// constraints-first section ordering is handled. The exact constraint/wire
-/// counts are circomlib-version-specific (see <c>Fixtures/REGENERATE.md</c>), so
-/// the structural assertions check consistency and scale, not frozen numbers.
+/// counts are circomlib-version-specific, so the structural assertions check
+/// consistency and scale, not frozen numbers.
 /// Poseidon's shape is not a power of two, so it does not feed the Spartan prover.
 /// </remarks>
 [TestClass]
@@ -119,13 +119,13 @@ internal sealed class CircomPoseidonFixtureTests
         if(!File.Exists(r1csPath))
         {
             Assert.Inconclusive(
-                $"Fixture file not found: {r1csPath}. Regenerate from the owned source per Fixtures/REGENERATE.md.");
+                $"Fixture file not found: {r1csPath}. Restore the committed fixture bytes.");
         }
 
         if(!File.Exists(wtnsPath))
         {
             Assert.Inconclusive(
-                $"Fixture file not found: {wtnsPath}. Regenerate from the owned source per Fixtures/REGENERATE.md.");
+                $"Fixture file not found: {wtnsPath}. Restore the committed fixture bytes.");
         }
 
         return (File.ReadAllBytes(r1csPath), File.ReadAllBytes(wtnsPath));

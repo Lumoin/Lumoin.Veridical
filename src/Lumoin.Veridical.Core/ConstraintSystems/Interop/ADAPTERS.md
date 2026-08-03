@@ -193,9 +193,9 @@ on a minimal canonical layout. The second test gate, in
 `CircomPoseidonFixtureTests`, exercises the adapters against
 `.r1cs` + `.wtns` pairs compiled — for both BLS12-381 and BN254 — by a
 pinned `circom` / `snarkjs` / `circomlib` from the owned source
-`circuits/poseidon2.circom`. The pinned toolchain and regeneration
-commands are documented in
-`test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/Circom/Fixtures/REGENERATE.md`.
+`circuits/poseidon2.circom`. The committed fixture bytes are the
+source of truth; their SHA-256 hashes are recorded alongside them in
+`test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/Circom/FIXTURES.md`.
 
 Two properties of this fixture matter for the adapter contract:
 
@@ -333,9 +333,11 @@ The fixture gate (`ZkInterfaceFixtureTests`) parses owned
 `bls12_381/multiplier2.zkif` and `bn254/multiplier2.zkif` through both
 readers, checks `CheckSatisfiedBy` on each curve, and runs a Spartan
 prove-and-verify round trip on the BLS12-381 instance. Crucially the
-fixture bytes are produced by the **canonical `zkinterface` native
-crate's own FlatBuffers serializer** (pinned `=1.3.4`; see
-`test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/ZkInterface/Fixtures/REGENERATE.md`),
+fixture bytes are produced by the **canonical `zkinterface`**
+implementation's own FlatBuffers serializer (pinned `=1.3.4`); the
+committed bytes are the source of truth, and their SHA-256 hashes are
+recorded alongside them in
+`test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/ZkInterface/Fixtures/FIXTURES.md`,
 so the hand-written reader parsing them is a genuine interop check
 against the reference implementation rather than a round trip against
 our own assumptions. The fixtures mix full-width 32-byte instance and

@@ -98,7 +98,7 @@ for the original Spartan: send each sumcheck round message as a
 Pedersen commitment with auxiliary equality, product, and knowledge
 proofs so the verifier checks the round identity without seeing the
 cleartext message. The same paper's open-source descendant, the
-`microsoft/Spartan2` native crate, ships a category-B construction
+upstream `microsoft/Spartan2` source, ships a category-B construction
 instead: the prover's verifier-circuit-of-the-base-Spartan-verifier
 witness is folded through a NIFS-style scheme and the folded
 accumulator is the final ZK object. Both are valid Spartan ZK
@@ -543,7 +543,7 @@ witness satisfies the accumulator's relation; the resulting
 `SpartanProof` plus a small wrapper carrying the folded accumulator
 bytes is the `FoldedSpartanProof`.
 
-The `microsoft/Spartan2` native source is informant for the
+The upstream `microsoft/Spartan2` source is informant for the
 construction's mechanics but is not a byte-faithful target. The
 codebase's design freedom on wire format, transcript schedule, and
 delegate signatures applies to the category-B implementations the
@@ -880,7 +880,7 @@ implementation efforts:
 The constructions and ideas in this document trace to the
 following sources. The citations were verified against the PDFs
 collected in `tempdocs/Spartan/` (gitignored) and against the
-`microsoft/Spartan2` native source where the architecture refers to
+upstream `microsoft/Spartan2` source where the architecture refers to
 existing implementations.
 
 Setty, "Spartan: Efficient and general-purpose zkSNARKs without
@@ -948,16 +948,15 @@ adopt some of its techniques in a future optimisation batch; that
 adoption is independent of the ZK architecture this document
 describes.
 
-The `microsoft/Spartan2` native source (the `Spartan2-main`
-codebase) is informant rather than reference target throughout
-this document. Its `src/spartan_zk.rs` implements a category-B
-construction along the lines of §4.4; its `src/zk.rs` contains the
-verifier circuit that NovaBlindFold folds into the running
-accumulator; its `src/sumcheck.rs` contains a
+The upstream `microsoft/Spartan2` source is informant rather than
+reference target throughout this document. Its `src/spartan_zk.rs`
+implements a category-B construction along the lines of §4.4; its
+`src/zk.rs` contains the verifier circuit that NovaBlindFold folds
+into the running accumulator; its `src/sumcheck.rs` contains a
 `prove_cubic_with_additive_term_zk` function that integrates the
 verifier circuit with the outer sumcheck. The C# codebase's
 category-B implementation will share the construction's
-mathematical content with the native source while making its own
+mathematical content with the upstream source while making its own
 wire-format, transcript-schedule, and delegate-signature choices.
 
 ## § 9 Cross-stack ZK-security-flavor lineage
