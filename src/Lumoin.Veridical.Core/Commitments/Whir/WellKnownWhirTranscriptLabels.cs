@@ -60,4 +60,37 @@ public static class WellKnownWhirTranscriptLabels
 
     /// <summary>Label for squeezing the mask combination challenge <c>ε</c> blending the plain sumcheck contribution into the masked rounds.</summary>
     public const string MaskCombinationChallenge = "whir.iopp.mask.combination.challenge";
+
+    /// <summary>Label for absorbing the joint claim (source claim plus mask-claim total) bound at each masked-sumcheck batch entry, before the batch's mask oracle root (eprint 2026/391 Construction 6.3).</summary>
+    public const string MaskBatchClaim = "whir.iopp.mask.batch.claim";
+
+    /// <summary>Label for absorbing a code-switch round's fresh mask oracle root — folded randomness plus private out-of-domain pad (eprint 2026/391 Construction 9.7).</summary>
+    public const string CodeSwitchMaskRoot = "whir.iopp.switch.mask.root";
+
+    /// <summary>Label for squeezing a private out-of-domain sample of a code-switch round (eprint 2026/391 Construction 9.7).</summary>
+    public const string PrivateOutOfDomainPoint = "whir.iopp.private.ood.point";
+
+    /// <summary>Label for absorbing the zero-evader-padded reply to a private out-of-domain sample (eprint 2026/391 Construction 9.7).</summary>
+    public const string PrivateOutOfDomainReply = "whir.iopp.private.ood.reply";
+
+    /// <summary>Label for absorbing the masked base case's fresh main-oracle commitment (eprint 2026/391 Construction 7.2, move 1a).</summary>
+    public const string BaseCaseFreshRoot = "whir.iopp.basecase.fresh.root";
+
+    /// <summary>Label for absorbing one fresh blind commitment per carried mask group of the masked base case (eprint 2026/391 Construction 7.2, move 1b).</summary>
+    public const string BaseCaseMaskRoot = "whir.iopp.basecase.mask.root";
+
+    /// <summary>Label for absorbing the masked base-case claim μ_g, fixed before the blinding challenge (eprint 2026/391 Construction 7.2).</summary>
+    public const string BaseCaseClaim = "whir.iopp.basecase.claim";
+
+    /// <summary>Label for squeezing the base case's blinding challenge <c>γ</c> (eprint 2026/391 Construction 7.2).</summary>
+    public const string BaseCaseCombinationChallenge = "whir.iopp.basecase.combination.challenge";
+
+    /// <summary>Label for absorbing the blinded source reveals — message then encoding randomness — of the masked base case (eprint 2026/391 Construction 7.2).</summary>
+    public const string BaseCaseReveal = "whir.iopp.basecase.reveal";
+
+    /// <summary>Label for absorbing the blinded mask reveals — message then encoding randomness, per group member — of the masked base case (eprint 2026/391 Construction 7.2).</summary>
+    public const string BaseCaseMaskReveal = "whir.iopp.basecase.mask.reveal";
+
+    /// <summary>Label for squeezing a mask-oracle spot-check index of the masked base case (eprint 2026/391 Construction 7.2).</summary>
+    public const string MaskQueryIndex = "whir.iopp.mask.query.index";
 }

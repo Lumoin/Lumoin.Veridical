@@ -344,9 +344,11 @@ public static class WhirIoppVerifier
     /// <summary>
     /// One symbolic weight constraint <c>λ·eq(p, ·)</c>: the scale mutates as
     /// challenges bind coordinates and the cursor tracks how many leading
-    /// coordinates have been consumed.
+    /// coordinates have been consumed. Shared with the hiding verifier, whose
+    /// source-claim tracking is the same machinery with <c>ε</c>-rescaled
+    /// coefficients.
     /// </summary>
-    private sealed class TrackedConstraint: IDisposable
+    internal sealed class TrackedConstraint: IDisposable
     {
         /// <summary>The mutable scale <c>λ</c>, one element.</summary>
         public IMemoryOwner<byte> Coefficient { get; }
@@ -457,7 +459,7 @@ public static class WhirIoppVerifier
     /// registers the tracked constraint for disposal.
     /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The rented coefficient and coordinate buffers transfer ownership to the returned constraint, which is registered in the disposables list.")]
-    private static TrackedConstraint TrackConstraint(
+    internal static TrackedConstraint TrackConstraint(
         ReadOnlySpan<byte> coefficient,
         ReadOnlySpan<byte> coordinates,
         int coordinateCount,
@@ -482,7 +484,7 @@ public static class WhirIoppVerifier
     /// the equality factor <c>eq(p, α) = 2pα − p − α + 1</c> of its next
     /// coordinate.
     /// </summary>
-    private static void FoldConstraints(
+    internal static void FoldConstraints(
         List<TrackedConstraint> constraints,
         ReadOnlySpan<byte> challenge,
         ScalarAddDelegate add,
@@ -515,7 +517,7 @@ public static class WhirIoppVerifier
     /// Recomputes the coset leaf digest from the revealed values and
     /// authenticates it at the block index against the oracle's root.
     /// </summary>
-    private static bool AuthenticateOpening(
+    internal static bool AuthenticateOpening(
         WhirQueryOpening opening,
         MerkleRoot root,
         int blockIndex,

@@ -9,12 +9,16 @@ using System.Numerics;
 namespace Lumoin.Veridical.Core.Commitments.Whir;
 
 /// <summary>
-/// One committed batch of masked-sumcheck masks of the hiding WHIR path
-/// (eprint 2026/391 Construction 6.3, steps 1-2): <c>k</c> univariate masks of
-/// degree <c>ℓ_zk - 1</c> over the scalar field — one per sumcheck round of a
-/// fold batch — each encoded under the batch's zero-knowledge mask code and
-/// committed together as one interleaved oracle, so a single Merkle path
-/// authenticates every mask's value at an opened position.
+/// One committed mask group of the hiding WHIR path: <c>width</c> univariate
+/// mask polynomials over the scalar field, each encoded under the group's
+/// zero-knowledge mask code and committed together as one interleaved oracle,
+/// so a single Merkle path authenticates every member's value at an opened
+/// position. The masked sumcheck (eprint 2026/391 Construction 6.3,
+/// steps 1-2) commits one group of <c>k</c> freshly sampled masks per fold
+/// batch; a code-switch round (Construction 9.7) commits a width-one group
+/// whose message is the folded oracle randomness followed by the private
+/// out-of-domain pad; the masked base case (Construction 7.2) commits one
+/// fresh blind group per carried group.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,16 +36,33 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// values.
 /// </para>
 /// </remarks>
-public sealed class ZkWhirSumcheckMasks: IDisposable
+public sealed class ZkWhirMaskGroup: IDisposable
 {
     /// <summary>The byte size of one field element.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    private readonly IMemoryOwner<byte> coefficientsOwner;
-    private readonly IMemoryOwner<byte> encodingRandomnessOwner;
-    private readonly IMemoryOwner<byte> leavesOwner;
+    /// <summary>
+    /// The member-count cap: the cube scale <c>2^(k-1)</c> and the round
+    /// scales <c>2^(k-j)</c> are injected through a 32-bit canonical write,
+    /// and every admissible schedule sits far below this, so the cap is a
+    /// loud guard, not a working bound.
+    /// </summary>
+    private const int MaximumMaskCount = 32;
+
+    //The tree field backs the disposal-guarded public accessor below and the
+    //disposed flag mutates on disposal; both are the articulable field cases.
     private readonly MerkleTree tree;
     private bool disposed;
+
+
+    /// <summary>The pooled mask coefficients, <c>MaskCount · MessageLength</c> elements; scrubbed by the pool on disposal.</summary>
+    private IMemoryOwner<byte> CoefficientsOwner { get; }
+
+    /// <summary>The pooled encoding randomness, <c>MaskCount · RandomnessLength</c> elements; scrubbed by the pool on disposal.</summary>
+    private IMemoryOwner<byte> EncodingRandomnessOwner { get; }
+
+    /// <summary>The pooled interleaved leaves the spot-check openings reveal from.</summary>
+    private IMemoryOwner<byte> LeavesOwner { get; }
 
 
     /// <summary>The mask code every mask in the batch is encoded under.</summary>
@@ -79,12 +100,12 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
         {
             ObjectDisposedException.ThrowIf(disposed, this);
 
-            return leavesOwner.Memory.Span[..(Shape.DomainSize * PaddedRowWidth * ScalarSize)];
+            return LeavesOwner.Memory.Span[..(Shape.DomainSize * PaddedRowWidth * ScalarSize)];
         }
     }
 
 
-    private ZkWhirSumcheckMasks(
+    private ZkWhirMaskGroup(
         WhirMaskCodeShape shape,
         int maskCount,
         int paddedRowWidth,
@@ -98,9 +119,9 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
         MaskCount = maskCount;
         PaddedRowWidth = paddedRowWidth;
         Curve = curve;
-        this.coefficientsOwner = coefficientsOwner;
-        this.encodingRandomnessOwner = encodingRandomnessOwner;
-        this.leavesOwner = leavesOwner;
+        CoefficientsOwner = coefficientsOwner;
+        EncodingRandomnessOwner = encodingRandomnessOwner;
+        LeavesOwner = leavesOwner;
         this.tree = tree;
     }
 
@@ -122,7 +143,7 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
     /// <returns>The committed batch; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="maskCount"/> is not positive.</exception>
-    public static ZkWhirSumcheckMasks Create(
+    public static ZkWhirMaskGroup Create(
         WhirMaskCodeShape shape,
         int maskCount,
         WhirCosetEncoder encoder,
@@ -135,28 +156,121 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
         ArgumentNullException.ThrowIfNull(merkleHash);
         ArgumentNullException.ThrowIfNull(maskRandom);
         ArgumentNullException.ThrowIfNull(pool);
+        ValidateGroupShape(maskCount, curve);
+
+        int coefficientsLength = maskCount * shape.MessageLength * ScalarSize;
+        IMemoryOwner<byte>? coefficientsOwner = null;
+        try
+        {
+            coefficientsOwner = pool.Rent(coefficientsLength);
+            FillWithScalars(coefficientsOwner.Memory.Span[..coefficientsLength], maskRandom, curve);
+        }
+        catch
+        {
+            coefficientsOwner?.Dispose();
+            throw;
+        }
+
+        return CreateCore(shape, maskCount, coefficientsOwner, encoder, merkleHash, maskRandom, curve, pool);
+    }
+
+
+    /// <summary>
+    /// Encodes and commits a group whose messages the caller supplies — the
+    /// code-switch masks, whose message is the folded oracle randomness
+    /// followed by the fresh out-of-domain pad, and any group whose message
+    /// is protocol-derived rather than freshly sampled. The encoding
+    /// randomness is still drawn fresh from <paramref name="maskRandom"/>.
+    /// </summary>
+    /// <param name="shape">The group's mask code shape.</param>
+    /// <param name="maskCount">The member count; at least 1.</param>
+    /// <param name="messages">The member messages, <c>maskCount · MessageLength</c> concatenated elements; copied into pooled storage.</param>
+    /// <param name="encoder">The coset encoder routing the mask encodes.</param>
+    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="maskRandom">The entropy-sourced sampler for the encoding randomness.</param>
+    /// <param name="curve">The curve whose scalar field the masks live in.</param>
+    /// <param name="pool">The pool every buffer rents from.</param>
+    /// <returns>The committed group; the caller owns its disposal.</returns>
+    /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="maskCount"/> is out of range.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="messages"/> does not match the shape.</exception>
+    public static ZkWhirMaskGroup CreateFromMessages(
+        WhirMaskCodeShape shape,
+        int maskCount,
+        ReadOnlySpan<byte> messages,
+        WhirCosetEncoder encoder,
+        MerkleHashDelegate merkleHash,
+        ScalarRandomDelegate maskRandom,
+        CurveParameterSet curve,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(encoder);
+        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(maskRandom);
+        ArgumentNullException.ThrowIfNull(pool);
+        ValidateGroupShape(maskCount, curve);
+
+        int coefficientsLength = maskCount * shape.MessageLength * ScalarSize;
+        if(messages.Length != coefficientsLength)
+        {
+            throw new ArgumentException(
+                $"The messages must carry {maskCount * shape.MessageLength} elements ({coefficientsLength} bytes); received {messages.Length}.",
+                nameof(messages));
+        }
+
+        IMemoryOwner<byte>? coefficientsOwner = null;
+        try
+        {
+            coefficientsOwner = pool.Rent(coefficientsLength);
+            messages.CopyTo(coefficientsOwner.Memory.Span[..coefficientsLength]);
+        }
+        catch
+        {
+            coefficientsOwner?.Dispose();
+            throw;
+        }
+
+        return CreateCore(shape, maskCount, coefficientsOwner, encoder, merkleHash, maskRandom, curve, pool);
+    }
+
+
+    /// <summary>
+    /// Validates the member count and curve wiring shared by both factories.
+    /// </summary>
+    private static void ValidateGroupShape(int maskCount, CurveParameterSet curve)
+    {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maskCount);
-
-        //The cube scale 2^(k-1) and the round scales 2^(k-j) are injected
-        //through a 32-bit canonical write; every admissible schedule sits far
-        //below this, so the cap is a loud guard, not a working bound.
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maskCount, 32);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maskCount, MaximumMaskCount);
         WellKnownCurves.ThrowIfCurveNotWired(curve);
+    }
 
+
+    /// <summary>
+    /// Encodes the pooled messages, samples the encoding randomness, commits
+    /// the interleaved codewords and assembles the group. Takes ownership of
+    /// <paramref name="coefficientsOwner"/> on every path.
+    /// </summary>
+    private static ZkWhirMaskGroup CreateCore(
+        WhirMaskCodeShape shape,
+        int maskCount,
+        IMemoryOwner<byte> coefficientsOwner,
+        WhirCosetEncoder encoder,
+        MerkleHashDelegate merkleHash,
+        ScalarRandomDelegate maskRandom,
+        CurveParameterSet curve,
+        BaseMemoryPool pool)
+    {
         int coefficientsLength = maskCount * shape.MessageLength * ScalarSize;
         int randomnessLength = maskCount * shape.RandomnessLength * ScalarSize;
         int paddedRowWidth = (int)BitOperations.RoundUpToPowerOf2((uint)maskCount);
         int leavesLength = shape.DomainSize * paddedRowWidth * ScalarSize;
 
-        IMemoryOwner<byte>? coefficientsOwner = null;
         IMemoryOwner<byte>? encodingRandomnessOwner = null;
         IMemoryOwner<byte>? leavesOwner = null;
         MerkleTree? tree = null;
         try
         {
-            coefficientsOwner = pool.Rent(coefficientsLength);
             Span<byte> coefficients = coefficientsOwner.Memory.Span[..coefficientsLength];
-            FillWithScalars(coefficients, maskRandom, curve);
 
             encodingRandomnessOwner = pool.Rent(randomnessLength);
             Span<byte> encodingRandomness = encodingRandomnessOwner.Memory.Span[..randomnessLength];
@@ -189,14 +303,14 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
             WhirCosetLeaf.ComputeLeafDigests(leaves, shape.DomainSize, paddedRowWidth, merkleHash, digests, pool);
             tree = MerkleTree.Build(digests, shape.DomainSize, merkleHash, pool);
 
-            return new ZkWhirSumcheckMasks(shape, maskCount, paddedRowWidth, curve, coefficientsOwner, encodingRandomnessOwner, leavesOwner, tree);
+            return new ZkWhirMaskGroup(shape, maskCount, paddedRowWidth, curve, coefficientsOwner, encodingRandomnessOwner, leavesOwner, tree);
         }
         catch
         {
             tree?.Dispose();
             leavesOwner?.Dispose();
             encodingRandomnessOwner?.Dispose();
-            coefficientsOwner?.Dispose();
+            coefficientsOwner.Dispose();
             throw;
         }
     }
@@ -215,7 +329,7 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(maskIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maskIndex, MaskCount);
 
-        return coefficientsOwner.Memory.Span.Slice(maskIndex * Shape.MessageLength * ScalarSize, Shape.MessageLength * ScalarSize);
+        return CoefficientsOwner.Memory.Span.Slice(maskIndex * Shape.MessageLength * ScalarSize, Shape.MessageLength * ScalarSize);
     }
 
 
@@ -233,7 +347,7 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(maskIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maskIndex, MaskCount);
 
-        return encodingRandomnessOwner.Memory.Span.Slice(maskIndex * Shape.RandomnessLength * ScalarSize, Shape.RandomnessLength * ScalarSize);
+        return EncodingRandomnessOwner.Memory.Span.Slice(maskIndex * Shape.RandomnessLength * ScalarSize, Shape.RandomnessLength * ScalarSize);
     }
 
 
@@ -366,9 +480,9 @@ public sealed class ZkWhirSumcheckMasks: IDisposable
 
         disposed = true;
         tree.Dispose();
-        leavesOwner.Dispose();
-        encodingRandomnessOwner.Dispose();
-        coefficientsOwner.Dispose();
+        LeavesOwner.Dispose();
+        EncodingRandomnessOwner.Dispose();
+        CoefficientsOwner.Dispose();
     }
 
 

@@ -62,6 +62,9 @@ internal sealed class ZkWhirMaskedSumcheckTests
     /// <summary>A fill salt for the weight table, distinct from the function stream.</summary>
     private const int WeightSalt = 42;
 
+    /// <summary>A fill salt for the auxiliary constant, distinct from both table streams.</summary>
+    private const int AuxSalt = 43;
+
     /// <summary>The BLS12-381 scalar backend bundle.</summary>
     private static ScalarArithmeticBackend Bls { get; } = TestScalarBackends.Bls12Curve381;
 
@@ -82,7 +85,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     public void MaskTotalMatchesTheBruteForceCubeSum()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using ZkWhirSumcheckMasks masks = NewMasks(pool);
+        using ZkWhirMaskGroup masks = NewMasks(pool);
 
         Span<byte> maskTotal = stackalloc byte[ScalarSize];
         masks.WriteMaskTotal(maskTotal, Bls.Add, Bls.Multiply);
@@ -112,7 +115,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     public void ProverAndReplayAgreeAndTheResidualDecomposes()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using ZkWhirSumcheckMasks masks = NewMasks(pool);
+        using ZkWhirMaskGroup masks = NewMasks(pool);
 
         int size = 1 << TableVariableCount;
         using IMemoryOwner<byte> tablesOwner = pool.Rent(2 * size * ScalarSize);
@@ -139,14 +142,19 @@ internal sealed class ZkWhirMaskedSumcheckTests
         Span<byte> maskTotal = stackalloc byte[ScalarSize];
         masks.WriteMaskTotal(maskTotal, Bls.Add, Bls.Multiply);
 
+        //A nonzero auxiliary constant: the carried mask-claim total of the
+        //code-switch composition, deterministic and distinct from the tables.
+        Span<byte> auxClaim = stackalloc byte[ScalarSize];
+        DeterministicScalarFill.FillCanonical(auxClaim, AuxSalt, Bls.Reduce, Bls.Curve);
+
         Span<byte> proverEpsilon = stackalloc byte[ScalarSize];
         Span<byte> proverChallenges = stackalloc byte[MaskCount * ScalarSize];
         CompressedRoundPolynomial[] wires;
         using(FiatShamirTranscript proverTranscript = NewTranscript())
         {
             wires = ZkWhirMaskedSumcheckProver.RunBatch(
-                functionTable, weightTable, size, masks, proverTranscript,
-                Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool,
+                functionTable, weightTable, size, masks, plainClaim, auxClaim, proverTranscript,
+                Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert, pool,
                 proverEpsilon, proverChallenges);
         }
 
@@ -158,7 +166,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
             using(FiatShamirTranscript replayTranscript = NewTranscript())
             {
                 ZkWhirMaskedSumcheckVerifier.ReplayBatch(
-                    wires, masks.Tree.Root, maskTotal, plainClaim, WhirZkParameters.DefaultMaskMessageLength,
+                    wires, masks.Tree.Root, maskTotal, plainClaim, auxClaim, WhirZkParameters.DefaultMaskMessageLength,
                     replayTranscript, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply,
                     Bls.Curve, pool, replayEpsilon, replayChallenges, residual);
             }
@@ -168,16 +176,23 @@ internal sealed class ZkWhirMaskedSumcheckTests
 
             //The load-bearing identity: after the batch the tables are bound
             //to f(γ)·w(γ), and the chained residual must decompose as
-            //ε·(plain final claim) + Σ_j s_j(γ_j). Every 2^(k-j) weight, the
-            //past-evaluation carry and the future-endpoint carry feed this.
+            //ε·(plain final claim) + Σ_j s_j(γ_j) + ε·aux·2^(-k). Every
+            //2^(k-j) weight, the past-evaluation carry, the future-endpoint
+            //carry and the auxiliary halving feed this.
             Span<byte> expectedResidual = stackalloc byte[ScalarSize];
             Bls.Multiply(functionTable[..ScalarSize], weightTable[..ScalarSize], expectedResidual, Bls.Curve);
             Bls.Multiply(expectedResidual, proverEpsilon, expectedResidual, Bls.Curve);
             Span<byte> maskResidual = stackalloc byte[ScalarSize];
             masks.WriteMaskResidual(proverChallenges, maskResidual, Bls.Add, Bls.Multiply);
             Bls.Add(expectedResidual, maskResidual, expectedResidual, Bls.Curve);
+            Span<byte> auxCarry = stackalloc byte[ScalarSize];
+            WriteCanonicalUInt(1u << MaskCount, auxCarry);
+            Bls.Invert(auxCarry, auxCarry, Bls.Curve);
+            Bls.Multiply(auxCarry, auxClaim, auxCarry, Bls.Curve);
+            Bls.Multiply(auxCarry, proverEpsilon, auxCarry, Bls.Curve);
+            Bls.Add(expectedResidual, auxCarry, expectedResidual, Bls.Curve);
 
-            Assert.IsTrue(expectedResidual.SequenceEqual(residual), "The chained residual must decompose into the scaled plain claim plus the mask residual.");
+            Assert.IsTrue(expectedResidual.SequenceEqual(residual), "The chained residual must decompose into the scaled plain claim, the mask residual and the halved auxiliary constant.");
         }
         finally
         {
@@ -193,7 +208,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     public void ResidualCovectorsReproduceTheMaskResidual()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using ZkWhirSumcheckMasks masks = NewMasks(pool);
+        using ZkWhirMaskGroup masks = NewMasks(pool);
 
         Span<byte> challenges = stackalloc byte[MaskCount * ScalarSize];
         DeterministicScalarFill.FillCanonical(challenges, FunctionSalt, Bls.Reduce, Bls.Curve);
@@ -233,7 +248,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     public void WireDegreeMismatchIsRejectedOnReplay()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using ZkWhirSumcheckMasks masks = NewMasks(pool);
+        using ZkWhirMaskGroup masks = NewMasks(pool);
 
         int size = 1 << TableVariableCount;
         using IMemoryOwner<byte> tablesOwner = pool.Rent(2 * size * ScalarSize);
@@ -245,14 +260,16 @@ internal sealed class ZkWhirMaskedSumcheckTests
 
         Span<byte> maskTotal = stackalloc byte[ScalarSize];
         masks.WriteMaskTotal(maskTotal, Bls.Add, Bls.Multiply);
+        Span<byte> zeroClaim = stackalloc byte[ScalarSize];
+        Span<byte> zeroAux = stackalloc byte[ScalarSize];
         Span<byte> epsilon = stackalloc byte[ScalarSize];
         Span<byte> challenges = stackalloc byte[MaskCount * ScalarSize];
         CompressedRoundPolynomial[] wires;
         using(FiatShamirTranscript proverTranscript = NewTranscript())
         {
             wires = ZkWhirMaskedSumcheckProver.RunBatch(
-                functionTable, weightTable, size, masks, proverTranscript,
-                Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool,
+                functionTable, weightTable, size, masks, zeroClaim, zeroAux, proverTranscript,
+                Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert, pool,
                 epsilon, challenges);
         }
 
@@ -280,7 +297,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
         WhirMaskCodeShape shape = WhirMaskCodeShape.Derive(WhirZkParameters.DefaultMaskMessageLength, TestMaskQueryCount, TestMaskRateLog2);
 
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => ZkWhirSumcheckMasks.Create(
+            () => ZkWhirMaskGroup.Create(
                 shape, maskCount: 0, encoder, Merkle, new DeterministicScalarRandom(MaskSeed).AsDelegate(), backend.Curve, pool));
     }
 
@@ -291,18 +308,19 @@ internal sealed class ZkWhirMaskedSumcheckTests
     /// </summary>
     private static void ReplayWithMaskMessageLength(
         CompressedRoundPolynomial[] wires,
-        ZkWhirSumcheckMasks masks,
+        ZkWhirMaskGroup masks,
         BaseMemoryPool pool,
         int maskMessageLength)
     {
         Span<byte> zeroTotal = stackalloc byte[ScalarSize];
         Span<byte> zeroClaim = stackalloc byte[ScalarSize];
+        Span<byte> zeroAux = stackalloc byte[ScalarSize];
         Span<byte> replayEpsilon = stackalloc byte[ScalarSize];
         Span<byte> replayChallenges = stackalloc byte[MaskCount * ScalarSize];
         Span<byte> residual = stackalloc byte[ScalarSize];
         using FiatShamirTranscript replayTranscript = NewTranscript();
         ZkWhirMaskedSumcheckVerifier.ReplayBatch(
-            wires, masks.Tree.Root, zeroTotal, zeroClaim, maskMessageLength,
+            wires, masks.Tree.Root, zeroTotal, zeroClaim, zeroAux, maskMessageLength,
             replayTranscript, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply,
             Bls.Curve, pool, replayEpsilon, replayChallenges, residual);
     }
@@ -312,12 +330,12 @@ internal sealed class ZkWhirMaskedSumcheckTests
     /// Builds one committed reference mask batch of <see cref="MaskCount"/>
     /// masks over the test-scale mask code.
     /// </summary>
-    private static ZkWhirSumcheckMasks NewMasks(BaseMemoryPool pool)
+    private static ZkWhirMaskGroup NewMasks(BaseMemoryPool pool)
     {
         WhirCosetEncoder encoder = WhirCosetEncoder.Create(Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Curve, pool);
         WhirMaskCodeShape shape = WhirMaskCodeShape.Derive(WhirZkParameters.DefaultMaskMessageLength, TestMaskQueryCount, TestMaskRateLog2);
 
-        return ZkWhirSumcheckMasks.Create(
+        return ZkWhirMaskGroup.Create(
             shape, MaskCount, encoder, Merkle, new DeterministicScalarRandom(MaskSeed).AsDelegate(), Bls.Curve, pool);
     }
 
@@ -334,6 +352,19 @@ internal sealed class ZkWhirMaskedSumcheckTests
             WellKnownHashAlgorithms.Blake3,
             Hash,
             BaseMemoryPool.Shared);
+    }
+
+
+    /// <summary>
+    /// Writes a small integer as a canonical big-endian field element.
+    /// </summary>
+    private static void WriteCanonicalUInt(uint value, Span<byte> destination)
+    {
+        destination.Clear();
+        destination[ScalarSize - 4] = (byte)(value >> 24);
+        destination[ScalarSize - 3] = (byte)(value >> 16);
+        destination[ScalarSize - 2] = (byte)(value >> 8);
+        destination[ScalarSize - 1] = (byte)value;
     }
 
 

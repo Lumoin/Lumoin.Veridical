@@ -11,12 +11,13 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// <summary>
 /// The verifier side of one masked-sumcheck fold batch of the hiding WHIR
 /// path (eprint 2026/391 Construction 6.3): replays the transcript in the
-/// prover's order — mask oracle root, mask total <c>μ̃</c>, combining
-/// challenge <c>ε</c>, then per round the wire polynomial and fold
+/// prover's order — joint claim, mask oracle root, mask total <c>μ̃</c>,
+/// combining challenge <c>ε</c>, then per round the wire polynomial and fold
 /// challenge — reconstructing every elided linear coefficient from the
 /// running chain and carrying the chained target
 /// <c>h_j(0) + h_j(1) = h_(j-1)(γ_(j-1))</c> forward from the opening claim
-/// <c>ε·μ + μ̃</c>.
+/// <c>ε·μ + μ̃</c>, where <c>μ</c> is the joint claim: the source claim plus
+/// the carried mask-claim total riding the batch as its auxiliary constant.
 /// </summary>
 /// <remarks>
 /// The replay is deterministic bookkeeping, not an accept/reject decision:
@@ -25,9 +26,10 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// soundness is enforced where the residual claim meets the oracles — the
 /// code-switch rounds and the masked base case of Construction 9.7. The
 /// residual this replay hands off satisfies
-/// <c>residual = ε·(plain final claim) + Σ_j s_j(γ_j)</c> for an honest
-/// prover; the mask part is later discharged through the mask oracle's
-/// openings via the residual covectors.
+/// <c>residual = ε·(plain final claim) + Σ_j s_j(γ_j) + ε·aux·2^(-k)</c> for
+/// an honest prover; the mask parts are later discharged through the mask
+/// oracles' openings via the residual covectors, the carried ones rescaled by
+/// <c>ε·2^(-k)</c>.
 /// </remarks>
 public static class ZkWhirMaskedSumcheckVerifier
 {
@@ -42,7 +44,8 @@ public static class ZkWhirMaskedSumcheckVerifier
     /// <param name="wires">The batch's compressed wire polynomials in round order.</param>
     /// <param name="maskOracleRoot">The batch's mask oracle root, absorbed as the prover did.</param>
     /// <param name="maskTotal">The mask total <c>μ̃</c>, one element.</param>
-    /// <param name="plainClaim">The batch's incoming plain sumcheck claim <c>μ</c>, one element.</param>
+    /// <param name="sourceClaim">The batch's incoming source sumcheck claim, one element.</param>
+    /// <param name="auxClaim">The carried mask-claim total entering the batch as its auxiliary constant, one element; zero for the initial batch.</param>
     /// <param name="maskMessageLength">The mask message length <c>ℓ_zk</c> both endpoints derive from the public parameters; fixes the expected wire degree <c>max(ℓ_zk - 1, 2)</c>.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
@@ -62,7 +65,8 @@ public static class ZkWhirMaskedSumcheckVerifier
         IReadOnlyList<CompressedRoundPolynomial> wires,
         MerkleRoot maskOracleRoot,
         ReadOnlySpan<byte> maskTotal,
-        ReadOnlySpan<byte> plainClaim,
+        ReadOnlySpan<byte> sourceClaim,
+        ReadOnlySpan<byte> auxClaim,
         int maskMessageLength,
         FiatShamirTranscript transcript,
         FiatShamirHashDelegate hash,
@@ -90,7 +94,17 @@ public static class ZkWhirMaskedSumcheckVerifier
         ArgumentOutOfRangeException.ThrowIfLessThan(maskMessageLength, WhirZkParameters.MinimumMaskMessageLength);
 
         int expectedDegree = Math.Max(maskMessageLength - 1, 2);
-        ValidateReplayShape(wires.Count, maskTotal.Length, plainClaim.Length, epsilon.Length, challenges.Length, residualClaim.Length);
+        ValidateReplayShape(wires.Count, maskTotal.Length, sourceClaim.Length, epsilon.Length, challenges.Length, residualClaim.Length);
+        if(auxClaim.Length != ScalarSize)
+        {
+            throw new ArgumentException($"The auxiliary claim must be one element ({ScalarSize} bytes); received {auxClaim.Length}.", nameof(auxClaim));
+        }
+
+        //The joint claim μ binds first so every batch transcript is
+        //self-contained, mirroring the reference domain-separator order.
+        Span<byte> jointClaim = stackalloc byte[ScalarSize];
+        add(sourceClaim, auxClaim, jointClaim, curve);
+        transcript.AbsorbWhirMaskBatchClaim(jointClaim, hash);
 
         transcript.AbsorbWhirMaskOracleRoot(maskOracleRoot, hash);
         transcript.AbsorbWhirMaskTotal(maskTotal, hash);
@@ -102,7 +116,7 @@ public static class ZkWhirMaskedSumcheckVerifier
         //The opening claim of the chain: ε·μ + μ̃, established before any
         //wire is read.
         Span<byte> target = stackalloc byte[ScalarSize];
-        multiply(plainClaim, epsilon, target, curve);
+        multiply(jointClaim, epsilon, target, curve);
         add(target, maskTotal, target, curve);
 
         Span<byte> linearTerm = stackalloc byte[ScalarSize];

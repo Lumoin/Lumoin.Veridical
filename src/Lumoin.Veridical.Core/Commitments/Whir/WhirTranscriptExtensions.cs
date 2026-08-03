@@ -16,9 +16,10 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// folded oracle's root, the out-of-domain sample and reply, the shift-query
 /// indices and combination challenge, and the sumcheck round polynomials and
 /// folding challenges; finally the cleartext final polynomial and the final
-/// query indices. Prover and verifier call these in the same order so they
-/// reach identical transcript states and therefore identical challenges and
-/// query indices.
+/// query indices, and, on the hiding path, the masked-sumcheck, code-switch
+/// and masked base-case messages. Prover and verifier call these in the same
+/// order so they reach identical transcript states and therefore identical
+/// challenges and query indices.
 /// </summary>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class WhirTranscriptExtensions
@@ -387,5 +388,207 @@ public static class WhirTranscriptExtensions
             //Power-of-two domain: the low bits are an unbiased uniform sample.
             return (int)(value & (ulong)(queryDomainSize - 1));
         }
-    }
+
+
+        /// <summary>
+        /// Absorbs the joint claim (source claim plus mask-claim total) under
+        /// the <see cref="WellKnownWhirTranscriptLabels.MaskBatchClaim"/>
+        /// label — before the batch's mask oracle root, so every batch
+        /// transcript is self-contained.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirMaskBatchClaim(ReadOnlySpan<byte> jointClaim, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.MaskBatchClaim),
+                jointClaim,
+                hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs a code-switch round's fresh mask oracle root — folded
+        /// randomness plus private out-of-domain pad — under the
+        /// <see cref="WellKnownWhirTranscriptLabels.CodeSwitchMaskRoot"/>
+        /// label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="root"/> or <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirCodeSwitchMaskRoot(MerkleRoot root, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentNullException.ThrowIfNull(root);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.CodeSwitchMaskRoot),
+                root.AsReadOnlySpan(),
+                hash);
+        }
+
+
+        /// <summary>
+        /// Squeezes a private out-of-domain sample of a code-switch round as
+        /// a canonical scalar under the
+        /// <see cref="WellKnownWhirTranscriptLabels.PrivateOutOfDomainPoint"/>
+        /// label.
+        /// </summary>
+        /// <returns>The sample; the caller owns its disposal.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public Scalar SqueezeWhirPrivateOutOfDomainPoint(
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash,
+            ScalarReduceDelegate reduce,
+            CurveParameterSet curve,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            return transcript.SqueezeScalar(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.PrivateOutOfDomainPoint),
+                squeeze,
+                hash,
+                reduce,
+                curve,
+                pool);
+        }
+
+
+        /// <summary>
+        /// Absorbs the zero-evader-padded reply to a private out-of-domain
+        /// sample under the
+        /// <see cref="WellKnownWhirTranscriptLabels.PrivateOutOfDomainReply"/>
+        /// label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirPrivateOutOfDomainReply(ReadOnlySpan<byte> reply, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.PrivateOutOfDomainReply),
+                reply,
+                hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs the masked base case's fresh main-oracle commitment under
+        /// the <see cref="WellKnownWhirTranscriptLabels.BaseCaseFreshRoot"/>
+        /// label (eprint 2026/391 Construction 7.2, move 1a).
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="root"/> or <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirBaseCaseFreshRoot(MerkleRoot root, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentNullException.ThrowIfNull(root);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BaseCaseFreshRoot),
+                root.AsReadOnlySpan(),
+                hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs one fresh blind commitment for a carried mask group of
+        /// the masked base case under the
+        /// <see cref="WellKnownWhirTranscriptLabels.BaseCaseMaskRoot"/> label
+        /// (eprint 2026/391 Construction 7.2, move 1b).
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="root"/> or <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirBaseCaseMaskRoot(MerkleRoot root, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentNullException.ThrowIfNull(root);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BaseCaseMaskRoot),
+                root.AsReadOnlySpan(),
+                hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs the masked base-case claim μ_g under the
+        /// <see cref="WellKnownWhirTranscriptLabels.BaseCaseClaim"/> label —
+        /// fixed before the blinding challenge is squeezed, so the claim
+        /// cannot depend on it.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirBaseCaseClaim(ReadOnlySpan<byte> maskedClaim, FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            transcript.AbsorbBytes(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BaseCaseClaim),
+                maskedClaim,
+                hash);
+        }
+
+
+        /// <summary>
+        /// Squeezes the base case's blinding challenge <c>γ</c> as a
+        /// canonical scalar under the
+        /// <see cref="WellKnownWhirTranscriptLabels.BaseCaseCombinationChallenge"/>
+        /// label.
+        /// </summary>
+        /// <returns>The challenge; the caller owns its disposal.</returns>
+        /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
+        public Scalar SqueezeWhirBaseCaseCombinationChallenge(
+            FiatShamirSqueezeDelegate squeeze,
+            FiatShamirHashDelegate hash,
+            ScalarReduceDelegate reduce,
+            CurveParameterSet curve,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            return transcript.SqueezeScalar(
+                new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BaseCaseCombinationChallenge),
+                squeeze,
+                hash,
+                reduce,
+                curve,
+                pool);
+        }
+
+
+        /// <summary>
+        /// Absorbs the blinded source reveals — the message then the
+        /// encoding randomness — as one operation under the
+        /// <see cref="WellKnownWhirTranscriptLabels.BaseCaseReveal"/> label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirBaseCaseReveal(
+            ReadOnlySpan<byte> blindedMessage,
+            ReadOnlySpan<byte> blindedRandomness,
+            FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            var label = new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BaseCaseReveal);
+            transcript.AbsorbBytes(label, blindedMessage, hash);
+            transcript.AbsorbBytes(label, blindedRandomness, hash);
+        }
+
+
+        /// <summary>
+        /// Absorbs the blinded mask reveals for a group member — the
+        /// message then the encoding randomness — as one operation under the
+        /// <see cref="WellKnownWhirTranscriptLabels.BaseCaseMaskReveal"/>
+        /// label.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">When <paramref name="hash"/> is <see langword="null"/>.</exception>
+        public void AbsorbWhirBaseCaseMaskReveal(
+            ReadOnlySpan<byte> blindedMessage,
+            ReadOnlySpan<byte> blindedRandomness,
+            FiatShamirHashDelegate hash)
+        {
+            ArgumentNullException.ThrowIfNull(transcript);
+
+            var label = new FiatShamirOperationLabel(WellKnownWhirTranscriptLabels.BaseCaseMaskReveal);
+            transcript.AbsorbBytes(label, blindedMessage, hash);
+            transcript.AbsorbBytes(label, blindedRandomness, hash);
+        }    }
 }

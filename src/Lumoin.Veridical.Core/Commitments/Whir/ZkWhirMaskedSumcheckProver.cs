@@ -28,9 +28,20 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// The wire stays in the compressed <c>c_1</c>-elided convention: the masked
 /// polynomial's linear coefficient is dropped and the verifier reconstructs
 /// it from the running chain <c>h_j(0) + h_j(1) = h_(j-1)(γ_(j-1))</c>
-/// (round 1: <c>ε·μ + μ̃</c>). The prover therefore never materialises a
-/// linear coefficient — the plain rounds' pair-fold yields exactly the
-/// constant and quadratic terms, matching the non-hiding prover.
+/// (round 1: <c>ε·μ + μ̃</c>, with <c>μ</c> the joint claim). The prover
+/// therefore never materialises a linear coefficient — the plain rounds'
+/// pair-fold yields exactly the constant and quadratic terms, matching the
+/// non-hiding prover.
+/// </para>
+/// <para>
+/// The committed-sumcheck composition (eprint 2026/391 Definition 5.8) pairs
+/// the source claim <c>⟨f, w⟩</c> with the carried mask-oracle claims
+/// <c>⟨ξ_i, u_i⟩</c>: their total is the batch's auxiliary constant, the
+/// bound scalar is the joint claim (source plus auxiliary), and the constant
+/// rides the affine chain as <c>ε·aux·2^(-j)</c> on each wire's constant
+/// slot, so the final residual gains <c>ε·aux·2^(-k)</c> and downstream
+/// reductions rescale the carried mask covectors by exactly
+/// <c>ε·2^(-k)</c>.
 /// </para>
 /// <para>
 /// The masking layer leaves the fold structure untouched: the caller binds
@@ -46,14 +57,17 @@ public static class ZkWhirMaskedSumcheckProver
 
 
     /// <summary>
-    /// Runs one full masked fold batch: absorbs the mask oracle root and the
-    /// mask total, squeezes <c>ε</c>, then per round emits the masked wire
-    /// polynomial, squeezes the fold challenge and binds the tables.
+    /// Runs one full masked fold batch: binds the joint claim, absorbs the
+    /// mask oracle root and the mask total, squeezes <c>ε</c>, then per round
+    /// emits the masked wire polynomial, squeezes the fold challenge and
+    /// binds the tables.
     /// </summary>
     /// <param name="functionTable">The f-table over the current cube, <c>size</c> elements; bound in place round by round.</param>
     /// <param name="weightTable">The weight table over the current cube, <c>size</c> elements; bound in place round by round.</param>
     /// <param name="size">The table element count at batch start, at least <c>2^k</c> and a power of two.</param>
     /// <param name="masks">The batch's committed masks, <c>k</c> of them.</param>
+    /// <param name="sourceClaim">The batch's incoming source claim <c>⟨f, w⟩</c>, one element.</param>
+    /// <param name="auxClaim">The carried mask-claim total entering the batch as its auxiliary constant, one element; zero for the initial batch.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
@@ -61,6 +75,7 @@ public static class ZkWhirMaskedSumcheckProver
     /// <param name="add">Scalar-add backend.</param>
     /// <param name="subtract">Scalar-subtract backend.</param>
     /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="invert">Scalar-invert backend, for the auxiliary carry's <c>2^(-j)</c> factors.</param>
     /// <param name="pool">The pool the wire buffers rent from.</param>
     /// <param name="epsilon">Receives the combining challenge <c>ε</c>, one element.</param>
     /// <param name="challenges">Receives the fold challenges <c>γ_1..γ_k</c>, <c>k</c> elements.</param>
@@ -71,7 +86,9 @@ public static class ZkWhirMaskedSumcheckProver
         Span<byte> functionTable,
         Span<byte> weightTable,
         int size,
-        ZkWhirSumcheckMasks masks,
+        ZkWhirMaskGroup masks,
+        ReadOnlySpan<byte> sourceClaim,
+        ReadOnlySpan<byte> auxClaim,
         FiatShamirTranscript transcript,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
@@ -79,6 +96,7 @@ public static class ZkWhirMaskedSumcheckProver
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply,
+        ScalarInvertDelegate invert,
         BaseMemoryPool pool,
         Span<byte> epsilon,
         Span<byte> challenges)
@@ -91,11 +109,20 @@ public static class ZkWhirMaskedSumcheckProver
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(subtract);
         ArgumentNullException.ThrowIfNull(multiply);
+        ArgumentNullException.ThrowIfNull(invert);
         ArgumentNullException.ThrowIfNull(pool);
 
         int roundCount = masks.MaskCount;
         CurveParameterSet curve = masks.Curve;
         ValidateBatchShape(functionTable.Length, weightTable.Length, size, roundCount, epsilon.Length, challenges.Length);
+        ThrowIfNotOneElement(sourceClaim, nameof(sourceClaim));
+        ThrowIfNotOneElement(auxClaim, nameof(auxClaim));
+
+        //The joint claim binds first so every batch transcript is
+        //self-contained, mirroring the reference domain-separator order.
+        Span<byte> jointClaim = stackalloc byte[ScalarSize];
+        add(sourceClaim, auxClaim, jointClaim, curve);
+        transcript.AbsorbWhirMaskBatchClaim(jointClaim, hash);
 
         transcript.AbsorbWhirMaskOracleRoot(masks.Tree.Root, hash);
 
@@ -118,6 +145,14 @@ public static class ZkWhirMaskedSumcheckProver
         Span<byte> endpointSum = stackalloc byte[ScalarSize];
         Span<byte> term = stackalloc byte[ScalarSize];
         Span<byte> scale = stackalloc byte[ScalarSize];
+
+        //The auxiliary constant's carry aux·2^(-j), halved once per round so
+        //the chain telescopes to ε·aux·2^(-k) on the residual.
+        Span<byte> half = stackalloc byte[ScalarSize];
+        WriteCanonicalUInt(2, half);
+        invert(half, half, curve);
+        Span<byte> auxCarry = stackalloc byte[ScalarSize];
+        auxClaim.CopyTo(auxCarry);
         for(int mask = 0; mask < roundCount; mask++)
         {
             masks.WriteEndpointSum(mask, endpointSum, add);
@@ -174,6 +209,13 @@ public static class ZkWhirMaskedSumcheckProver
                     multiply(futureEndpointSum, scale, term, curve);
                     add(constantSlot, term, constantSlot, curve);
                 }
+
+                //Auxiliary constant carry: the wire's constant slot gains
+                //ε·aux·2^(-j), entering the affine chain like a plain
+                //constant term.
+                multiply(auxCarry, half, auxCarry, curve);
+                multiply(auxCarry, epsilon, term, curve);
+                add(constantSlot, term, constantSlot, curve);
 
                 //Plain contribution ε·plain_j: the pair-fold constant and
                 //quadratic terms of the f-table and weight-table product,
@@ -317,5 +359,17 @@ public static class ZkWhirMaskedSumcheckProver
     {
         destination.Clear();
         BinaryPrimitives.WriteUInt32BigEndian(destination[(ScalarSize - sizeof(uint))..], value);
+    }
+
+
+    /// <summary>
+    /// Rejects a span that is not exactly one field element wide.
+    /// </summary>
+    private static void ThrowIfNotOneElement(ReadOnlySpan<byte> span, string parameterName)
+    {
+        if(span.Length != ScalarSize)
+        {
+            throw new ArgumentException($"The value must be one {ScalarSize}-byte element; received {span.Length} bytes.", parameterName);
+        }
     }
 }
