@@ -2,14 +2,18 @@ name: Lumoin.Veridical slow proof gates
 
 # The multi-minute end-to-end proof gates ([TestCategory("Slow")]: full-width Ligero
 # proves, the GKR SHA-256 preimage capstones, the cross-field MAC pair, the real-mdoc
-# capstones) are excluded from the regular build's test step — the longest runs on
-# the order of an hour or two, hardware-dependent, so the whole category may not fit
-# one hosted job (the 6-hour job ceiling); narrow the filter below if it does not.
-# This workflow runs them on demand only (manual dispatch) to keep CI minutes in
-# check. Dispatch it before a release or after changes to the provers/verifiers.
+# capstones) are excluded from the regular build's test step to keep every-push CI
+# fast. The whole category completes in roughly half an hour on a hosted runner, so
+# it runs on a weekly schedule like the fuzz job, and stays manually dispatchable —
+# dispatch it before a release or after changes to the provers/verifiers whenever
+# the last scheduled result is stale.
 
 on:
   workflow_dispatch:
+  schedule:
+    # Weekly run of the Slow proof gates on the default branch. Staggered after
+    # the nightly build (02:00 UTC) and the Monday fuzz job (03:00 UTC).
+    - cron: "0 4 * * 1"   # 04:00 UTC every Monday.
 
 env:
   DOTNET_ENVIRONMENT: CI
@@ -67,8 +71,9 @@ jobs:
       timeout-minutes: 15
 
     # The Slow category only; the regular build already runs everything else on
-    # every push. Hosted runners have fewer cores than the dev machine these
-    # timings come from, hence the generous timeout.
+    # every push. The timeout is about triple the measured hosted-runner duration
+    # of the full category, so a wedged run fails long before it burns a weekly
+    # slot's worth of minutes.
     - name: Run the slow proof gates
       run: '${{ github.workspace }}/test/${{ env.VERIDICAL_TESTS }}/bin/${{ env.BUILD_CONFIGURATION }}/net10.0/${{ env.VERIDICAL_TESTS }} --filter "TestCategory=Slow"'
-      timeout-minutes: 350
+      timeout-minutes: 120
