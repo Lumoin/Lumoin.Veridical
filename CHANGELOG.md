@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-08-12
+
 ### Added
 
 - The WHIR polynomial commitment scheme (Arnon–Chiesa–Fenzi–Yogev, IACR ePrint
@@ -43,12 +45,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 
-- Dependency refresh: `ModelContextProtocol` 2.0.0 and `Blake3` 3.0.2; the
-  MSTest and Microsoft.Testing.Platform test infrastructure moves to
-  `MSTest.Sdk` 4.3.3, with the SDK managing the adapter, framework, extension,
-  and code-coverage versions; GitHub Actions pins moved to `actions/checkout`
-  v7.0.1, `actions/setup-dotnet` v6.0.0, and `step-security/harden-runner`
-  v2.20.0.
+- The supply-chain predicate request and artifact formats bump to `/3`: a claim
+  carries a required `kind` discriminator (`range` or `memberOf`), `direction`
+  and `bound` become optional and apply to `range` claims only, and requests and
+  artifacts in the earlier `/2` format are rejected.
+- `Lumoin.Veridical.Longfellow` and `Lumoin.Veridical.Json` are packed and
+  published alongside the other libraries.
+- Dependency refresh: `Lumoin.Base` 0.0.9, `ModelContextProtocol` 2.1.0,
+  `Blake3` 3.0.2, `CsCheck` 4.8.0, `System.CommandLine` 2.0.11,
+  `Microsoft.Extensions.Hosting` 10.0.11, `System.Formats.Cbor` 10.0.11, and
+  `Microsoft.Extensions.TimeProvider.Testing` 10.9.0; the .NET SDK pin moves to
+  10.0.400; the MSTest and Microsoft.Testing.Platform test infrastructure moves
+  to `MSTest.Sdk` 4.3.3, with the SDK managing the adapter, framework,
+  extension, and code-coverage versions; GitHub Actions pins moved to
+  `actions/checkout` v7.0.1, `actions/setup-dotnet` v6.0.0, and
+  `step-security/harden-runner` v2.20.1.
 
 ### Security
 
