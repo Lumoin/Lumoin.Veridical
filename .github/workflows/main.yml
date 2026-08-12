@@ -119,7 +119,7 @@ jobs:
     steps:
     - name: Harden Runner
       if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm' }}
-      uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920
+      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
       with:
         disable-sudo: true
         egress-policy: block
@@ -211,7 +211,7 @@ jobs:
     #
     # - name: Publish coverage summary
     #   if: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
-    #   uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0
+    #   uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88
     #   with:
     #     header: Report
     #     path: '${{ github.workspace }}/reports/coverage/Summary.md'
@@ -373,7 +373,7 @@ jobs:
       # apt-get + sudo. clang is NOT pre-present on the runner image, so apt fetches it
       # from the Ubuntu mirrors (azure.archive/ports.ubuntu.com, security.ubuntu.com) —
       # those are allow-listed in COMMON_ALLOWED_ENDPOINTS so the egress block permits them.
-      uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920
+      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
       with:
         egress-policy: block
         allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
@@ -478,7 +478,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
         with:
           disable-sudo: true
           egress-policy: block
@@ -518,7 +518,7 @@ jobs:
     environment: Release
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
         with:
           disable-sudo: true
           egress-policy: block

@@ -52,7 +52,7 @@ jobs:
         # audit log from the first run, then switch to block + an allowed-endpoints
         # list (mirror COMMON_ALLOWED_ENDPOINTS in main.yml, plus the SharpFuzz
         # source host raw.githubusercontent.com:443).
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
         with:
           egress-policy: audit
 

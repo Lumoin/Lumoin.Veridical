@@ -10,9 +10,9 @@
       },
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[10.0.10, )",
-        "resolved": "10.0.10",
-        "contentHash": "f5VCIE7AJpd5YvzNTeMGVzQIgyE9tX+AreTYwQF+REbu+DZo/2Ae+jNSwhPEYrVz6RRkd7y8ubXjk6Nn6Ka+Cg=="
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "IBf7lbovvjGWVWXZX5cJ/cO0WXbId0Zq4BuSeT94mGZuOAP66oMeH9PTBZ9Jpp3Jb6jtK0qm/NyUbPRo1gC/wQ=="
       },
       "Microsoft.Sbom.Targets": {
         "type": "Direct",
@@ -23,14 +23,14 @@
       "lumoin.veridical.core": {
         "type": "Project",
         "dependencies": {
-          "Lumoin.Base": "[0.0.8, )"
+          "Lumoin.Base": "[0.0.9, )"
         }
       },
       "Lumoin.Base": {
         "type": "CentralTransitive",
-        "requested": "[0.0.8, )",
-        "resolved": "0.0.8",
-        "contentHash": "rHyzMyF+vQDtgApld0QuTLHrpDSrSLPB10uCv+ijV2zr3wb3PQSkNFQGel9j8+PEK0pBEdDmeydd8vUGZ4Ukmw=="
+        "requested": "[0.0.9, )",
+        "resolved": "0.0.9",
+        "contentHash": "B0ItIYFv2+iDPC3eFXYzE/8662UYFE8yBTyYYZjkCgbsFCCZ4aKDLhB4sANXxTLwV0oIABhZStiuxr7ytVfScA=="
       }
     }
   }
