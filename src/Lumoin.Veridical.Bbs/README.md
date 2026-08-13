@@ -11,17 +11,13 @@ operations, hash-to-scalar / hash-to-curve, and the optimal-Ate
 pairing. The wire format follows the IETF draft byte-for-byte; the
 test project's Appendix A fixtures are the interoperability gate.
 
-The currently shipping surface:
+The shipping surface, for both the BLS12-381-SHA-256 and
+BLS12-381-SHAKE-256 ciphersuites:
 
 - `BbsCiphersuite.Bls12Curve381Sha256.Generate(...)` — KeyGen.
 - `secretKey.Sign(publicKey, header, messages, ...)` — Sign.
 - `publicKey.Verify(signature, header, messages, ...)` — Verify.
-
-Sub-batches still pending:
-
-- `BbsCiphersuite.Bls12Curve381Sha256.GenerateProof(...)` and
-  `publicKey.VerifyProof(...)` for selective-disclosure proofs.
-- The BLS12-381-SHAKE-256 ciphersuite.
-- A full sweep of the IETF Appendix A test vectors.
+- `signature.GenerateProof(...)` and `publicKey.VerifyProof(...)` —
+  selective-disclosure proofs.
 
 For codebase documentation see [BBS-PLUS.md](BBS-PLUS.md).

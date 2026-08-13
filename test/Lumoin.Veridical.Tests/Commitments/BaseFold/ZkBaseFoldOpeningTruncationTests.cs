@@ -215,5 +215,5 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.W27b.OpeningTruncation.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.OpeningTruncation.Test"u8;
 }

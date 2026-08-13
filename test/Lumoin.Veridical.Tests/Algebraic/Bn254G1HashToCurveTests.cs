@@ -16,9 +16,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <remarks>
 /// <para>
 /// RFC 9380 (final) does not register a BN254 suite, so there are no
-/// primary-source BN254 hash-to-curve vectors. Per the batch's test-vector
-/// policy the byte-faithful vectors here were produced by an independent
-/// CPython implementation of the same pipeline — <c>expand_message_xmd</c>
+/// primary-source BN254 hash-to-curve vectors. The byte-faithful vectors
+/// here were instead produced by an independent CPython implementation
+/// of the same pipeline — <c>expand_message_xmd</c>
 /// (§5.3.1), <c>hash_to_field</c> with <c>L = 48</c> (§5.2), the SvdW map
 /// (§6.6.1) with <c>Z = 1</c>, point addition, and the gnark compressed
 /// encoding — which shares no code with this library's

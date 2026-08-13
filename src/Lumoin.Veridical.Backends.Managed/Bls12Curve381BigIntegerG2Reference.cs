@@ -33,8 +33,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// Hash-to-curve to G2 is intentionally not implemented in this
-/// reference; it ships in a follow-up sub-batch alongside its own
-/// RFC 9380 §8.8.2 KAT vectors. BBS+ over BLS12-381 only uses G2 via
+/// reference. BBS+ over BLS12-381 only uses G2 via
 /// scalar multiplication of the canonical generator, so the BBS+
 /// path does not require hash-to-G2.
 /// </para>
@@ -435,8 +434,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     /// compressed form predates RFC 9380 and uses the lex rule. The
     /// existing G1 reference uses the analogous <c>2y &gt; p</c> rule
     /// for its parity flag, so this G2 convention matches the
-    /// codebase's overall encoding posture. The RFC 9380 sgn0 will
-    /// land separately in the hash-to-curve sub-batch.
+    /// codebase's overall encoding posture.
     /// </remarks>
     private static int Fp2YParityZcash(Fp2Value a)
     {

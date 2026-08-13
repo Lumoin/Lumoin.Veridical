@@ -6,7 +6,7 @@ using System.Linq;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR parameter-schedule derivation (4.2 phase A): the
+/// Tests for the WHIR parameter-schedule derivation: the
 /// per-round rate/proximity/query schedule of WHIR Construction 5.1 and the
 /// round-by-round soundness ledger of WHIR Theorem 5.2. The query schedules
 /// are pinned to hand-derived values from the paper's formulas so any drift

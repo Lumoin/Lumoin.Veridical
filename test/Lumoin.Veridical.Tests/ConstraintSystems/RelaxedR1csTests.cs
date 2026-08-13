@@ -209,7 +209,7 @@ internal sealed class RelaxedR1csTests
     /// requested row count and an arbitrary in-bounds byte pattern (the same
     /// canonical bytes a Hyrax commitment would carry). The buffer is not a
     /// valid Pedersen commitment to anything; the relaxed satisfaction check
-    /// does not read it, so this suffices for batch F's tests. The
+    /// does not read it, so this suffices for these tests. The
     /// <paramref name="columnCount"/> and <paramref name="variableCount"/> are
     /// not carried by the generic leaf type and are accepted only to keep the
     /// call sites self-documenting.

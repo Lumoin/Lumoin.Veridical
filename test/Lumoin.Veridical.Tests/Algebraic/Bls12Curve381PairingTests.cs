@@ -21,9 +21,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// one of these failing.
 /// </summary>
 /// <remarks>
-/// There is no external KAT here. The IETF BBS+ test vectors that
-/// arrive in batch H.5 are the external gate for the pairing
-/// implementation; until then bilinearity + non-degeneracy +
+/// There is no external KAT here. The IETF BBS+ test vectors are the
+/// external gate for the pairing implementation once wired in; until
+/// then bilinearity + non-degeneracy +
 /// Frobenius-identity are the strongest internal-consistency checks
 /// available without hand-transcribing a known-good <c>e(G1, G2)</c>
 /// hex from another implementation (a transcription gate is itself a

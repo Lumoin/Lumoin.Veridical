@@ -14,8 +14,8 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
 /// <summary>
-/// Gates the Ligero tableau build and its column Merkle commitment (LF.4b.2)
-/// over the small Mersenne-prime field. The structural properties checked are
+/// Gates the Ligero tableau build and its column Merkle commitment over the
+/// small Mersenne-prime field. The structural properties checked are
 /// the ones the protocol responses will rely on: the witness and quadratic
 /// operand values land in the systematic columns the layout assigns them, the
 /// IQUAD witness block is zero and the IDOT witness block sums to zero, the

@@ -15,8 +15,8 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for <see cref="WhirPolynomialCommitmentScheme"/> (4.2 phase B): the
-/// WHIR IOPP behind the scheme-agnostic
+/// Tests for <see cref="WhirPolynomialCommitmentScheme"/>: the WHIR IOPP
+/// behind the scheme-agnostic
 /// <see cref="PolynomialCommitmentProvider"/> surface. These drive
 /// commit → open → verify end to end through the broad
 /// <see cref="PolynomialCommitment"/> / <see cref="PolynomialOpening"/> leaf

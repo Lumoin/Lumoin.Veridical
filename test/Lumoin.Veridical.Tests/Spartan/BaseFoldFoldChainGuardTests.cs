@@ -17,7 +17,7 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
-/// Confirms the fold chain rejects a BaseFold provider up front (AB.5 Stage C).
+/// Confirms the fold chain rejects a BaseFold provider up front.
 /// Nova-style folding combines error and cross-term commitments homomorphically,
 /// which a hash-based BaseFold commitment cannot support, so
 /// <see cref="FoldChain.Start"/> throws a clear error rather than failing deep

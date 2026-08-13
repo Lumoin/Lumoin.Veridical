@@ -194,10 +194,10 @@ public static class HyraxPolynomialCommitmentScheme
                 pool);
         };
 
-        //The weighted-opening path (the statistical sumcheck mask's binding,
-        //SM.7b): the vector is committed as ONE Pedersen row and the inner
-        //product with a public weight vector is proven by the IPA directly —
-        //an arbitrary weight vector does not factor through the matrix split
+        //The weighted-opening path (the statistical sumcheck mask's binding):
+        //the vector is committed as ONE Pedersen row and the inner product
+        //with a public weight vector is proven by the IPA directly — an
+        //arbitrary weight vector does not factor through the matrix split
         //the evaluation opening uses.
         PolynomialCommitDelegate commitVector = (vector, pool) =>
         {

@@ -25,8 +25,8 @@ namespace Lumoin.Veridical.Tests.Bbs.IetfVectors.Pseudonym;
 /// <param name="ProverNym">
 /// Hex of the 32-byte canonical big-endian prover_nym scalar
 /// CommitWithNym samples fresh per commitment. The draft prints this
-/// field as the literal string "undefined" in every vector (a
-/// confirmed draft defect — see the inventory in W2.4-NYM-VECTORS.md).
+/// field as the literal string "undefined" in every vector — a defect
+/// in the published draft, not a per-vector placeholder that varies.
 /// The value transcribed here is suite-independent (shared by every
 /// vector in both suites, since prover_nym is not ciphersuite-bound)
 /// and was recovered from the draft co-author's tooling repository
@@ -41,8 +41,7 @@ namespace Lumoin.Veridical.Tests.Bbs.IetfVectors.Pseudonym;
 /// prover_nym + <see cref="ProverBlind"/> pair; (c) the recovered
 /// nym_secret paired with this draft's printed context_id reproduces
 /// both suites' printed pseudonym octets exactly (discrete-log
-/// uniqueness pins the value). See W2.4-NYM-VECTORS.md for the full
-/// three-way proof.
+/// uniqueness pins the value).
 /// </param>
 /// <param name="ProverBlind">Hex of the 32-byte canonical big-endian secret_prover_blind scalar CoreCommit produces.</param>
 /// <param name="STilde">Hex of the 32-byte canonical big-endian s~ trace scalar (mocked-random-scalars trace, first output after secret_prover_blind).</param>

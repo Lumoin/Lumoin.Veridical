@@ -4,7 +4,7 @@ Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bca
 Produced by commit_anchor.cc in this directory, run inside the longfellow-ref Docker image:
 
   docker run --rm \
-    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
+    -v "<repo>/<local-longfellow-clone>:/src" \
     -v "<repo>/test/Lumoin.Veridical.Tests/TestMaterial/Longfellow:/anchor" \
     longfellow-ref bash -c \
     "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/commit_anchor.cc -lcrypto -o /tmp/a && /tmp/a"

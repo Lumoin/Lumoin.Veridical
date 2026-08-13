@@ -30,8 +30,8 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// gate. Under the multilinear-mask adaptation the high-degree
 /// coefficients of each round message carry information about the
 /// underlying polynomial that varies with the witness — the
-/// documented leak structure from <c>SPARTAN2.md</c> §10.5 and
-/// the Spartan zero-knowledge design notes (§9), not a regression.
+/// documented leak structure from <c>SPARTAN2.md</c> §10.5, not a
+/// regression.
 /// </para>
 /// <para>
 /// With 50 samples per witness across 256 byte buckets the test is

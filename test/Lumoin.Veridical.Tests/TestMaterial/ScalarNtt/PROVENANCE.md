@@ -2,8 +2,8 @@
 
 The fixture in this directory is a data dump computed independently of the library: pure
 Python 3 integer arithmetic (`pow` and Horner evaluation), no third-party libraries and no
-code shared with the C# implementation. The generating harness lives in the untracked local
-`tempdocs/scalar-ntt-anchors/`; no harness code is committed here.
+code shared with the C# implementation. The generating harness lives outside this repository
+in a local, untracked directory; no harness code is committed here.
 
 ## Derivation
 
@@ -38,7 +38,7 @@ it.
 
 ## Regeneration
 
-`py tempdocs\scalar-ntt-anchors\scalar_ntt_anchor.py > test\Lumoin.Veridical.Tests\TestMaterial\ScalarNtt\scalar-ntt-anchor-output.txt`
+`py <local-anchor-harness>\scalar_ntt_anchor.py > test\Lumoin.Veridical.Tests\TestMaterial\ScalarNtt\scalar-ntt-anchor-output.txt`
 
 The harness asserts every mathematical property it relies on before emitting, so a wrong
 constant fails generation rather than producing a drifted fixture.

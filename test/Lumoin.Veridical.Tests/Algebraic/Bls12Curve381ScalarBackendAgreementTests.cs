@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the test pattern this batch introduces: a sweep over random
+/// This is the test pattern used throughout this test suite: a sweep over random
 /// inputs that compares the output of two backends against each other.
 /// The point of the pattern is not to verify a single backend in
 /// isolation — that is what the algebraic-invariant tests and the
@@ -31,7 +31,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// <para>
 /// Scalar arithmetic is cheap enough for sweeps to be practical here.
-/// The cost in this batch's BigInteger G1 reference made sweep-style
+/// The cost of the BigInteger G1 reference makes sweep-style
 /// testing of point arithmetic impractical, which is why the G1 test
 /// surface uses invariant-style fixed-input tests instead. Once a
 /// production-grade G1 backend lands, an analogous agreement test will

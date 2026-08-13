@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 /// prime swapped to BN254's <c>r</c>) requested under
 /// <see cref="CurveParameterSet.Bn254"/>, and proves/verifies the parsed
 /// instance with the BN254 base Spartan backends. Exercises the
-/// CircomR1csReader's BN254 prime dispatch (U.9) and the U.10 curve-broadened
+/// CircomR1csReader's BN254 prime dispatch and the curve-generic
 /// construction path end-to-end from a parsed fixture.
 /// </summary>
 [TestClass]

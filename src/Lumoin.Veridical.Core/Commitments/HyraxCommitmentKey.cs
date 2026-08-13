@@ -80,7 +80,7 @@ public sealed class HyraxCommitmentKey: SensitiveMemory
     /// by repeated hash-to-curve from the supplied seed.
     /// </summary>
     /// <param name="vectorLength">The number of Pedersen vector generators to derive. Must be positive.</param>
-    /// <param name="seed">The protocol-identifying seed string. Use <see cref="WellKnownHyraxDomainLabels.CanonicalSeedV1"/> for the batch-E reference.</param>
+    /// <param name="seed">The protocol-identifying seed string. Use <see cref="WellKnownHyraxDomainLabels.CanonicalSeedV1"/> for this library's canonical Hyrax v1 derivation.</param>
     /// <param name="curve">The curve. Currently only <see cref="CurveParameterSet.Bls12Curve381"/> is supported.</param>
     /// <param name="hashToCurve">The backend hash-to-curve implementation.</param>
     /// <param name="pool">The pool to rent the backing buffer from.</param>

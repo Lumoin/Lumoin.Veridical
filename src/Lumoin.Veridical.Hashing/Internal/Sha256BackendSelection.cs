@@ -9,7 +9,7 @@ namespace Lumoin.Veridical.Hashing.Internal;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This phase ships only the portable scalar backend. The hardware-SHA
+/// Only the portable scalar backend is wired in here. The hardware-SHA
 /// tiers (the SHA-NI intrinsics on x86, the SHA2 instructions on AArch64)
 /// implement the same <see cref="Sha256CompressionDelegate"/> and slot in
 /// above the portable fallback here when added; the seam is present so that

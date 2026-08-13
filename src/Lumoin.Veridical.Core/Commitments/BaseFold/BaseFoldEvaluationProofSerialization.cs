@@ -76,7 +76,7 @@ internal static class BaseFoldEvaluationProofSerialization
 
         cursor = WriteOpenings(buffer, cursor, proof.Openings, proof.QueryCount, d, hiding);
 
-        //The statistical-ZK mask side (design doc §2 v3): com(C*)'s root, σ,
+        //The statistical-ZK mask side: com(C*)'s root, σ,
         //σ_F, then the nested hiding weighted opening at the deterministic
         //mask-commitment shape.
         if(zeroKnowledge)

@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// AB.6 validation sweep for the BaseFold polynomial-commitment layer: the
+/// Validation sweep for the BaseFold polynomial-commitment layer: the
 /// properties the round-trip and tamper tests do not directly cover. Determinism
 /// (no non-determinism leaks into the transparent prover path), the full
 /// classical-security query count exercised once, a larger variable count, and a

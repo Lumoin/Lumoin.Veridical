@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// Add, subtract, and the batch forms are implemented here; multiplication and
-/// inversion are the shared Montgomery path (a separate sub-batch). Only the modulus
+/// inversion are the shared Montgomery path. Only the modulus
 /// constants differ from the BLS12-381 NEON backend.
 /// </para>
 /// </remarks>

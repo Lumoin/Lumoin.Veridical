@@ -12,7 +12,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold random foldable code (AB.1): the recursive encoding
+/// Tests for the BaseFold random foldable code: the recursive encoding
 /// and the FRI-style fold. Correctness is asserted against the construction's
 /// defining linearity property rather than hand-computed codewords: folding a
 /// codeword under a challenge must yield the encoding of the folded message

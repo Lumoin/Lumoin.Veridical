@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold IOPP (AB.3): the standalone interactive-oracle proof
+/// Tests for the BaseFold IOPP: the standalone interactive-oracle proof
 /// of proximity that a Merkle-committed codeword is close to a codeword of the
 /// random foldable code. Positive tests confirm a correctly-encoded codeword
 /// verifies; negative tests confirm a word far from the code is rejected (the

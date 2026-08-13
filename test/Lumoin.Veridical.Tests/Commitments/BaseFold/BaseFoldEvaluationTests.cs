@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold evaluation protocol (AB.4): the multilinear PCS
+/// Tests for the BaseFold evaluation protocol: the multilinear PCS
 /// open/verify that interleaves a sumcheck for <c>Σ_b f(b)·eq_z(b) = y</c> with
 /// the BaseFold IOPP. The round-trip tests confirm an honest opening verifies
 /// and that the prover's claimed value equals an independent MLE evaluation —

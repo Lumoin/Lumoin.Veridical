@@ -9,7 +9,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR smooth-coset encoder (4.2 phase A): natural-order
+/// Tests for the WHIR smooth-coset encoder: natural-order
 /// encoding must equal naive Horner evaluation at every domain point on both
 /// wired curves — pinning the transform's bit-reversal bookkeeping to the
 /// mathematical definition — and the coset-contiguous leaf layout must be the

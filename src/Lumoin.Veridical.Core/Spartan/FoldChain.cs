@@ -150,7 +150,7 @@ public sealed class FoldChain: IDisposable
         //structure — its Merkle-root commitments cannot be combined — so the
         //chain rejects it up front rather than fail deep inside the first fold.
         //BaseFold serves the direct (non-folded) Spartan prove/verify paths
-        //instead; see the folding and BaseFold design notes.
+        //instead.
         if(!provider.IsAdditivelyHomomorphic)
         {
             throw new ArgumentException(

@@ -20,8 +20,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// This gate exists because BBS+ generator derivation depends on byte-
 /// faithful agreement with the RFC 9380 §8.8.1 SSWU-RO + 11-isogeny +
 /// cofactor-clearing construction. Algebraic-invariant tests (on-curve,
-/// in-subgroup) are necessary but not sufficient — they did not catch
-/// the try-and-increment divergence the BBS+.1 batch uncovered, because
+/// in-subgroup) are necessary but not sufficient — they cannot catch a
+/// try-and-increment implementation masquerading as SSWU-RO, because
 /// try-and-increment also produces valid subgroup points. Byte equality
 /// against published vectors does catch that class of bug.
 /// </para>

@@ -8,7 +8,7 @@ namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
 /// Tests for the code-switch batching algebra of the hiding WHIR path
-/// (4.2 phase C2, eprint 2026/391 Construction 9.7): the zero-evader padded
+/// (eprint 2026/391 Construction 9.7): the zero-evader padded
 /// evaluation must equal plain Horner over the concatenated coefficient
 /// vector, the switch-mask covector must reproduce the mask side of the
 /// batched claim as a dot product — with the query layers stopping at the

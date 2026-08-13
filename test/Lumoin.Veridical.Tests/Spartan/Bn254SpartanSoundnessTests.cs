@@ -19,8 +19,9 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// rejected at prove time (base and masked provers), and a valid proof with a
 /// single flipped byte is rejected by the verifier. The BN254 counterparts of
 /// the BLS <see cref="SpartanFailureTests"/> / <see cref="MaskedSpartanSoundnessTests"/>
-/// legs, confirming the U.10 curve-broadened prove/verify path keeps the
-/// soundness contract over a second curve.
+/// legs, confirming that the prove/verify path is generic in the curve's
+/// scalar and group arithmetic: the soundness contract holds over BN254 just
+/// as it does over BLS12-381.
 /// </summary>
 [TestClass]
 internal sealed class Bn254SpartanSoundnessTests

@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
 /// End-to-end round-trip tests for the masked Spartan2 construction with
-/// BaseFold as its polynomial commitment scheme (AB.5 Stage B): the masked
+/// BaseFold as its polynomial commitment scheme: the masked
 /// prover assembles a <see cref="BaseFoldMaskedSpartanProof"/> over
 /// <c>x · y = 15</c> through <c>ProveBaseFoldSound</c>, and the masked verifier
 /// accepts it through <c>VerifyBaseFoldSound</c>. Tampering a mask-opening byte and a
@@ -30,7 +30,9 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// The masked construction's zero-knowledge guarantee assumes a hiding
 /// commitment; BaseFold's Merkle commitment is binding but not hiding, so this
 /// exercises structural correctness (a sound argument of knowledge), not the
-/// witness privacy the "masked" name implies. See the BaseFold design notes.
+/// witness privacy the "masked" name implies: witness hiding requires a
+/// hiding polynomial commitment scheme, and a Merkle-tree commitment is
+/// binding without being hiding.
 /// </remarks>
 [TestClass]
 internal sealed class BaseFoldMaskedSpartanRoundtripTests

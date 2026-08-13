@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
 /// Guards the runtime cross-curve safety model that replaced the
-/// per-curve leaf types' compile-time guarantee (Batch T). With the broad
+/// per-curve leaf types' compile-time guarantee. With the broad
 /// sealed leaf types, the curve a value belongs to travels in its tag
 /// (surfaced as <c>Curve</c>), and mixing curves in one operation is caught
 /// at runtime by the arithmetic extension entry points rather than by the
@@ -25,7 +25,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// and tag the curve without touching a backend, and the cross-curve mismatch
 /// checks fire <em>before</em> any delegate is invoked, so the operation
 /// delegates are never reached on the mismatch path. Full multi-curve protocol
-/// coverage arrives when BN254's backend lands (Batch U); this test locks in
+/// coverage arrives when BN254's backend lands; this test locks in
 /// the safety net the broad-type design depends on.
 /// </para>
 /// </remarks>

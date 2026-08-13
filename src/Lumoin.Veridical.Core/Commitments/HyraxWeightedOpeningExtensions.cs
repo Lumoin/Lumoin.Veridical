@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// Pedersen vector commitment and prove the inner product
 /// <c>v = ⟨vector, W⟩</c> against a <em>public</em> weight vector <c>W</c> —
 /// the Pedersen/IPA analogue of BaseFold's <c>ProveWeightedSum</c> /
-/// <c>VerifyWeightedSum</c> (SM.1). An evaluation opening factors its
+/// <c>VerifyWeightedSum</c>. An evaluation opening factors its
 /// <c>eq</c> weights through the matrix split <c>L ⊗ R</c>; an arbitrary
 /// public weight vector does not factor, so the weighted opening commits the
 /// whole vector as one row (the row combination is trivially the identity)
@@ -21,9 +21,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is how the statistical-mask construction binds its sumcheck-mask
-/// coefficients over the Hyrax path (the statistical-mask design notes,
-/// §2 v3): the committed vector is <c>C* = (mask coefficients ‖ filler)</c> and
+/// This is how the statistical sumcheck mask binds its coefficients over the
+/// Hyrax path: the committed vector is <c>C* = (mask coefficients ‖ filler)</c> and
 /// the weights are the mask basis's monomials at the bound challenges with
 /// field one on the filler block. The weight vector must be public and known
 /// to the verifier — the protocol neither commits nor transmits it, exactly

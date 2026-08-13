@@ -320,8 +320,7 @@ public static class BaseFoldEvaluationVerifier
 
     /// <summary>
     /// Verifies a statistically zero-knowledge BaseFold evaluation opening
-    /// (<see cref="BaseFoldEvaluationProver.ProveZeroKnowledge"/>, per the
-    /// statistical-mask design notes (§2, v3)): replays the masked
+    /// (<see cref="BaseFoldEvaluationProver.ProveZeroKnowledge"/>): replays the masked
     /// transcript, chains the blended claim, derives the mask evaluation from
     /// the terminal (<c>s(r) = (claim − f(r)·eq_z(r))·ρ⁻¹</c>), and checks the
     /// nested weighted opening of the mask's coefficient commitment against the
@@ -604,9 +603,9 @@ public static class BaseFoldEvaluationVerifier
     //W(r) for a general public multiplier: folds a working copy of W's dense
     //evaluation table on the high bit by each squeezed challenge in fold order
     //(level d down to 1) — exactly the collapse the prover's multiplier table
-    //undergoes — leaving W(r) in the first slot. O(2^d) multiplies; the weighted
-    //openings' consumers are small (the statistical-mask levels), so the product
-    //shortcut eq_z enjoys is not needed here.
+    //undergoes — leaving W(r) in the first slot. O(2^d) multiplies; the call
+    //sites that need a general multiplier rather than eq_z are few and small,
+    //so the product shortcut eq_z enjoys is not needed here.
     private static void ComputeMultiplierEvaluation(
         MultilinearExtension multiplier,
         Scalar[] challengesForLevel,

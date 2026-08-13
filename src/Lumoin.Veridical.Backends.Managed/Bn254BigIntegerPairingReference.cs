@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <summary>
 /// Reference implementation of the BN254 (alt_bn128) optimal-ate pairing
 /// <c>e : G1 × G2 → GT ⊂ Fp12*</c> using <see cref="BigInteger"/> arithmetic
-/// over the U.4 field tower. Ground truth for the pairing, the Fp12 Frobenius,
+/// over the Fp12 field tower. Ground truth for the pairing, the Fp12 Frobenius,
 /// and the cyclotomic-square delegate. Parallel in role to
 /// <see cref="Bls12Curve381BigIntegerPairingReference"/>; the differences are
 /// the ones BN254 forces (see <c>PAIRING.md</c>).
@@ -28,7 +28,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <para>
 /// <b>D-twist:</b> BN254 G2 is the D-twist (<c>b' = 3/(9+u)</c>). G2 points are
 /// untwisted into <c>E(Fp12)</c> via <c>ψ(x', y') = (w²·x', w³·y')</c> (derived
-/// in U.5 and validated against py_ecc) and the Miller loop runs the textbook
+/// and validated against py_ecc) and the Miller loop runs the textbook
 /// chord-and-tangent line evaluation entirely in Fp12. This deliberately
 /// avoids the sparse-line slot placement that the BLS12-381 reference uses:
 /// the slot map is the single most error-prone part of a twisted pairing, and
@@ -309,7 +309,7 @@ internal static class Bn254BigIntegerPairingReference
     private static Fp12 EmbedFp2(Fp2 z) => new(new Fp6(z, Bn254Fp2BigInt.Zero, Bn254Fp2BigInt.Zero), Fp6.Zero);
 
 
-    //G1 / G2 decode (gnark big-endian compressed, mirroring U.3/U.5).
+    //G1 / G2 decode (gnark big-endian compressed).
     private static (BigInteger X, BigInteger Y, bool IsInfinity) DecodeG1(ReadOnlySpan<byte> bytes)
     {
         if(bytes.Length != G1CompressedSize)

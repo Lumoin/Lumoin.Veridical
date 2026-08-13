@@ -2,8 +2,8 @@
 
 Every fixture in this directory is a data dump computed by the reference implementation
 `google/longfellow-zk` in its own build environment (the `longfellow-ref` Docker image over a local
-clone), outside this repository. The development harnesses that produce the dumps live in the
-untracked local `tempdocs/longfellow-anchors/`; no reference code is committed here.
+clone), outside this repository. The development harnesses that produce the dumps live outside this
+repository in a local, untracked directory; no reference code is committed here.
 
 ## Upstream pin
 
@@ -86,10 +86,10 @@ artifact named by the `5aebdaaa…` registry key at the commit above and checkin
 | `mdoc-circuit-hash-witness.gz` | C.10 | GF(2^128) hash-circuit witness column for mdoc_tests[0] with age_over_18 |
 | `fp256-rs-anchor-output.txt` | C.12 | Fp256 Reed-Solomon codewords + kRootX/kRootY ground truth |
 | `mdoc-zk-anchor-output.txt` | crown | Google's real reference mdoc ZkProof: version 7 envelope (359,924 bytes), 117-byte SessionTranscript, hash/sig public-input templates, over mdoc_tests[0] |
-| `mdoc-circuit-anchor-4attr-output.txt` | W2.5b | kZkSpecs[3] import ground truth: ZkSpec identity, both circuits' shapes and ids, `raw_rawsha` |
-| `mdoc-circuit-raw-4attr.gz` | W2.5b | The four-attribute circuit fixture: raw serialized dual-circuit stream (see the four-attribute chain above) |
-| `mdoc-circuit-hash-witness-4attr.gz` | W2.5b | GF(2^128) hash-circuit witness column for mdoc_tests[3] with the four org.iso.18013.5.1 attributes |
-| `mdoc-zk-anchor-4attr-output.txt` | W2.5b | The reference's real four-attribute mdoc ZkProof: kZkSpecs[3] envelope (364,804 bytes) over mdoc_tests[3] (family_name, birth_date, height, issue_date), templates + transcript + attribute list |
+| `mdoc-circuit-anchor-4attr-output.txt` | four-attr | kZkSpecs[3] import ground truth: ZkSpec identity, both circuits' shapes and ids, `raw_rawsha` |
+| `mdoc-circuit-raw-4attr.gz` | four-attr | The four-attribute circuit fixture: raw serialized dual-circuit stream (see the four-attribute chain above) |
+| `mdoc-circuit-hash-witness-4attr.gz` | four-attr | GF(2^128) hash-circuit witness column for mdoc_tests[3] with the four org.iso.18013.5.1 attributes |
+| `mdoc-zk-anchor-4attr-output.txt` | four-attr | The reference's real four-attribute mdoc ZkProof: kZkSpecs[3] envelope (364,804 bytes) over mdoc_tests[3] (family_name, birth_date, height, issue_date), templates + transcript + attribute list |
 
 The 26 mdoc credentials in `../Mdoc/mdoc-00..25.cbor` (+ `index.tsv`) are byte-exact exports of
 upstream `lib/circuits/mdoc/mdoc_examples.h` `mdoc_tests[]` at the same pinned commit.

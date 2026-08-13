@@ -15,7 +15,8 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 /// at build time. Separately, the witness builder sizes a dense <c>z[1..]</c> buffer from the
 /// declared <c>free_variable_id</c> and the referenced ids alone, so a hostile stream can declare
 /// a huge column space from a few bytes; the builder must reject a column count the source cannot
-/// justify rather than rent an unbounded buffer (the zkinterface-wtns fuzz OOM, W1-c).
+/// justify rather than rent an unbounded buffer, the failure mode a fuzzed witness stream can
+/// trigger from a few malformed bytes.
 /// </summary>
 [TestClass]
 internal sealed class ZkInterfaceBuilderBoundaryTests

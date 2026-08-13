@@ -22,8 +22,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The technique is RG.5's: every proof's <c>t̂</c> consistency check and its
-/// inner-product check collapse to single-multiexponentiation identities
+/// The technique collapses every proof's <c>t̂</c> consistency check and its
+/// inner-product check to single-multiexponentiation identities
 /// (the IPA fold replaced by the closed-form s-vector
 /// <c>s_i = ∏_j w_j^{±1}</c> over the <c>log₂(n·m)</c> round challenges), and
 /// the identities combine under two fresh random weights per proof. What the

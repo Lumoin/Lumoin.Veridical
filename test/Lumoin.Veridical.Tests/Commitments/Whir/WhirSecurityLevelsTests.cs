@@ -6,8 +6,8 @@ using System;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR entries of <see cref="WellKnownSecurityLevels"/>
-/// (4.2 phase B): the realised round-by-round figure of the full-λ shape and
+/// Tests for the WHIR entries of <see cref="WellKnownSecurityLevels"/>: the
+/// realised round-by-round figure of the full-λ shape and
 /// the loud clamp guard — a shape that cannot reach the target must throw up
 /// front rather than silently degrade.
 /// </summary>

@@ -25,7 +25,7 @@ Two related forms are supported:
 - **Relaxed R1CS** (`RelaxedR1csInstance`, `RelaxedR1csWitness`) has
   two extra terms: a scalar `u` and an error vector `E`. The
   satisfaction condition is `(A·z) ∘ (B·z) = u · (C·z) + E`. Folding
-  schemes (Nova, ProtoStar, future batches) use this form because it
+  schemes (Nova, ProtoStar, and others) use this form because it
   composes homomorphically.
 
 ## Variable layout convention
@@ -45,17 +45,18 @@ in-process front-end, alongside the file adapters. You declare public
 inputs and witness variables, add constraints as linear-combination
 expressions, and compile against input bindings to a `RawR1csInstance` /
 `RawR1csWitness` pair; a small predicate library (range checks, equality,
-ordering, set membership) composes on top. See
-the constraint-builder design notes for the model and worked
-examples.
+ordering, set membership) composes on top of those linear-combination
+expressions. See `R1csCircuitBuilder`'s API surface and its test suite
+for the model and worked examples.
 
 ## Adapters
 
 External R1CS sources (Circom `.r1cs` files, Noir's R1CS output,
 arkworks-serialized R1CS, hand-authored fixtures) are consumed via
 adapter projects that implement `R1csPipeReaderDelegate` and
-`R1csPipeWriterDelegate` (delegate definitions will land in a
-post-v1 batch). Adapters live outside this library — in separate
+`R1csPipeWriterDelegate` (the reader direction is implemented today;
+writer implementations are not yet wired). Adapters live outside this
+library — in separate
 `Lumoin.Veridical.Adapters.*` projects — and depend on this library's
 types. The conversion is a byte-layout projection plus a
 variable-layout remapping where the source's column convention

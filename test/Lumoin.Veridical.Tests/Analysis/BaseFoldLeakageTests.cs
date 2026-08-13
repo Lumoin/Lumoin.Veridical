@@ -97,7 +97,8 @@ internal sealed class BaseFoldLeakageTests
         //The ZK BaseFold provider salts the Merkle leaves with fresh entropy, so
         //the commitment is no longer a deterministic fingerprint of the witness;
         //the recoverability experiment that is StructurallyCertain for the plain
-        //provider must report NotDetected here. This is the ZK.1 leakage flip.
+        //provider must report NotDetected here. This is the hiding provider's
+        //leakage flip: recoverability moves from StructurallyCertain to NotDetected.
         using PolynomialCommitmentProvider provider = NewHidingProvider();
         BaseFoldLeakageHarness harness = NewHarness(provider);
 

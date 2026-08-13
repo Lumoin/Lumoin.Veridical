@@ -16,10 +16,10 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// First atom of the Longfellow-style ECDSA-verification gadget (LF.5): elliptic
+/// First atom of the Longfellow-style ECDSA-verification gadget: elliptic
 /// curve point addition expressed as hand-built Ligero linear + quadratic
 /// constraints over the P-256 <em>base</em> field <c>Fp256</c> (the field
-/// Longfellow's ECDSA circuit runs in), proven with the LF.4b
+/// Longfellow's ECDSA circuit runs in), proven with
 /// <see cref="LigeroProver"/> and verified with <see cref="LigeroVerifier"/>.
 /// </summary>
 /// <remarks>

@@ -243,9 +243,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
 
     /// <summary>
     /// Builds a hiding provider whose <em>evaluation opening</em> is additionally
-    /// query/base-oracle hiding via the dimension-lift construction (ZK.2b, design
-    /// fork resolved for dimension lifting; the BaseFold design notes,
-    /// <em>Zero-knowledge BaseFold</em>). The real
+    /// query/base-oracle hiding via the dimension-lift construction. The real
     /// <c>d</c>-variable witness <c>f</c> is committed as the <c>Y = 0</c> slice of
     /// a <c>(d + extraVariableCount)</c>-variable polynomial <c>f'</c> whose
     /// <c>Y != 0</c> evaluations are entropy mask, and every opening is evaluated at
@@ -267,7 +265,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// <para>
     /// This variant closes the query and base-oracle leakage channels. It does not
     /// by itself mask the sumcheck round polynomials (channel 2); that is the
-    /// CFS-2017 sumcheck mask added in a following sub-batch. The mask
+    /// CFS-2017 sumcheck mask <see cref="CreateFullZeroKnowledge"/> adds. The mask
     /// degrees-of-freedom are <c>(2^extraVariableCount − 1)·2^d</c> and must meet
     /// the bounded-independence budget for the provider's query count; the
     /// provider <em>enforces</em> this on every commit and open, throwing
@@ -275,7 +273,8 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// than silently delivering less hiding than <c>IsHiding</c> advertises. Use
     /// <see cref="GetMinimumExtraVariableCount"/> to size the lift and
     /// <see cref="MeetsHidingBudget"/> to check a chosen one. Hiding of the
-    /// codeword positions is additionally validated empirically in ZK.4.
+    /// codeword positions is additionally validated empirically by statistical
+    /// leakage analysis of many openings.
     /// </para>
     /// </remarks>
     /// <param name="seed">The seed binding the random foldable code; commit, open, and verify must share it.</param>
@@ -499,8 +498,8 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the provider the masked-Spartan-over-ZK-BaseFold integration (ZK.3)
-    /// wires its polynomial opening to; only here is masked-Spartan-over-BaseFold
+    /// This is the provider a masked-Spartan-over-ZK-BaseFold integration wires
+    /// its polynomial opening to; only here is masked-Spartan-over-BaseFold
     /// genuinely zero-knowledge rather than merely sound. The single entropy sampler
     /// <paramref name="scalarRandom"/> sources both the hiding salts and the mask
     /// multilinear; they are independent draws.
@@ -511,7 +510,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// exact size. As in <see cref="CreateZeroKnowledge"/> the bounded-independence
     /// hiding budget is enforced on every commit and open (size the lift with
     /// <see cref="GetMinimumExtraVariableCount"/>); it is additionally validated
-    /// empirically in ZK.4.
+    /// empirically by statistical leakage analysis of many openings.
     /// </para>
     /// </remarks>
     /// <inheritdoc cref="CreateZeroKnowledge"/>
@@ -703,13 +702,13 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             }
         };
 
-        //The weighted-opening path (the statistical sumcheck mask's binding,
-        //SM.7b): the vector is committed salted-and-lifted at its OWN minimum
-        //lift (recomputed from the vector's variable count — the provider's
-        //witness lift t is sized for a different shape), and the weighted
-        //opening is the SM.1 multiplier-generic protocol in hiding mode with
-        //the weights zero-extended over the lift block, so the claimed value
-        //stays the inner product over the caller's coordinates.
+        //The weighted-opening path (the statistical sumcheck mask's binding):
+        //the vector is committed salted-and-lifted at its OWN minimum lift
+        //(recomputed from the vector's variable count — the provider's witness
+        //lift t is sized for a different shape), and the weighted opening is
+        //the multiplier-generic evaluation protocol in hiding mode with the
+        //weights zero-extended over the lift block, so the claimed value stays
+        //the inner product over the caller's coordinates.
         PolynomialCommitDelegate commitVector = (vector, pool) =>
         {
             int vectorLift = GetMinimumExtraVariableCount(vector.VariableCount, curve, queryCount);
@@ -920,8 +919,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// polynomial) must cover every codeword position an opening can reveal. The
     /// reveal bound counts, per query, the two top-layer fold-pair entries plus one
     /// new sibling per lower layer (the folded partner is determined by the layer
-    /// above), and the cleartext base oracle sent in full — see the BaseFold
-    /// design notes.
+    /// above), and the cleartext base oracle sent in full.
     /// </summary>
     /// <param name="variableCount">The real witness's variable count <c>d</c>.</param>
     /// <param name="extraVariableCount">The lift <c>t</c> under consideration; must be positive.</param>
@@ -981,8 +979,8 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     }
 
 
-    //The upper bound on distinct codeword positions one opening reveals (the Q* of
-    //design doc §3.3): per query, the top layer's fold pair is two entries and each
+    //The upper bound on distinct codeword positions one opening reveals: per
+    //query, the top layer's fold pair is two entries and each
     //lower layer adds one new sibling (its other entry is the fold of the pair
     //above, so it carries no new information), giving liftedVariableCount + 1 per
     //query; the base oracle is sent in cleartext in full. Cross-query coincidences
@@ -997,8 +995,8 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
 
 
     //The budget guard the lift factories run on every commit and open: a provider
-    //advertising IsHiding must not silently deliver less hiding than the §3.3
-    //bounded-independence argument supports — refuse loudly instead.
+    //advertising IsHiding must not silently deliver less hiding than the
+    //bounded-independence argument above supports — refuse loudly instead.
     private static void ThrowIfHidingBudgetUnmet(int variableCount, int extraVariableCount, CurveParameterSet curve, int queryCount)
     {
         if(!MeetsHidingBudget(variableCount, extraVariableCount, curve, queryCount))

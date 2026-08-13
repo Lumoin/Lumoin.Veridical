@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
 /// End-to-end round-trip tests for Spartan with BaseFold as its polynomial
-/// commitment scheme (AB.5): the prover assembles a
+/// commitment scheme: the prover assembles a
 /// <see cref="BaseFoldSpartanProof"/> over the <c>x · y = 15</c> circuit through
 /// <c>ProveBaseFold</c>, and the verifier accepts it through
 /// <c>VerifyBaseFold</c>. Negative tests confirm that flipping a byte in the

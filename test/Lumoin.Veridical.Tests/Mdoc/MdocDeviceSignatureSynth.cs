@@ -7,13 +7,13 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Mdoc;
 
 /// <summary>
-/// The SYNTHESIZED device half of the mdoc SIG circuit (coordinator decision OQ1): a self-consistent
+/// The SYNTHESIZED device half of the mdoc SIG circuit: a self-consistent
 /// P-256/SHA-256 ECDSA verification tuple <c>(dpkx, dpky, e2, r2, s2)</c> standing in for the credential's
 /// real device-key signature. The SIG circuit only checks the internal consistency of each
 /// <c>VerifyWitness3</c> column (it does not bind the device key to any public value, see
-/// <c>tempdocs/longfellow-zk-reference/lib/circuits/mdoc/mdoc_zk.cc</c>), so the device tuple needs only to
+/// <c>lib/circuits/mdoc/mdoc_zk.cc</c>), so the device tuple needs only to
 /// be a genuine ECDSA verification: <c>e2</c> is the device/transcript message hash (the PUBLIC wire 3,
-/// OQ6 — distinct from the issuer MSO hash <c>e_</c>), <c>(dpkx, dpky)</c> is the device public key, and
+/// distinct from the issuer MSO hash <c>e_</c>), <c>(dpkx, dpky)</c> is the device public key, and
 /// <c>(r2, s2)</c> is a signature over <c>e2</c> under that key such that the recovered nonce point
 /// <c>R2 = (e2/s2)·G + (r2/s2)·Q2</c> has <c>R2.x mod n == r2</c>.
 /// </summary>

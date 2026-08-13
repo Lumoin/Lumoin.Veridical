@@ -13,7 +13,7 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Gkr;
 
 /// <summary>
-/// E2E.1 — the SHA-256 of a REAL ISO 18013-5 credential's COSE <c>Sig_structure</c> proven over
+/// The SHA-256 of a REAL ISO 18013-5 credential's COSE <c>Sig_structure</c> proven over
 /// <c>GF(2^128)</c> at full multi-block scale, with the private digest MAC-bound into an Fp256
 /// commitment. This is the deployed Longfellow shape on genuine bytes: the Sig_structure of
 /// <c>mdoc-00.cbor</c> (whose SHA-256 is the <c>e</c> the issuer's ES256 signature verifies

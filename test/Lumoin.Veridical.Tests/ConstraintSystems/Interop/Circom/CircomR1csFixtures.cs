@@ -40,8 +40,8 @@ internal static class CircomR1csFixtures
     /// <c>r = 0x30644e72…f0000001</c> instead of BLS12-381's. The circuit's
     /// coefficients are all <c>1</c>, so they are prime-independent and need no
     /// other change; the field byte size stays 32 (both scalar fields are 254
-    /// bits). Exercises the CircomR1csReader's BN254 prime dispatch (U.9) and
-    /// the U.10 curve-broadened construction path when requested with
+    /// bits). Exercises the CircomR1csReader's BN254 prime dispatch and
+    /// the curve-generic construction path when requested with
     /// <see cref="Lumoin.Veridical.Core.CurveParameterSet.Bn254"/>.
     /// </summary>
     public static byte[] Bn254Multiplier2Bytes => Convert.FromHexString(

@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
 /// The statistical-mask parameter policy
-/// (<see cref="WellKnownStatisticalMaskParameters"/>, design doc §2 v3): the
+/// (<see cref="WellKnownStatisticalMaskParameters"/>): the
 /// resolved shape must satisfy the filler ledger (enough all-ones-weighted
 /// entropy to launder the weighted opening's round reveals), carry the
 /// commitment's own minimum hiding lift, and be the smallest such shape — all
@@ -17,7 +17,7 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 internal sealed class StatisticalMaskParametersTests
 {
     //The ledger constants mirrored from the policy: the weighted opening
-    //reveals ≈ 2·rounds + 2 functionals, rank-slacked by 8 (design doc §3).
+    //reveals ≈ 2·rounds + 2 functionals, rank-slacked by 8.
     private const int RankSlack = 8;
 
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;

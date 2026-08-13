@@ -272,7 +272,7 @@ changes the semantics; a mismatch is a hard verification failure.
   proof with committed disclosure) has no published test vectors** (draft §10: fixtures are being regenerated)
   — it is gated by self-consistency roundtrips and tamper suites, and the draft-defect interpretation choices
   are marked as fixture-pending at their decision sites in code. Also fixture-pending, and the highest-risk
-  unpinned byte choice of the batch, is the **blind interface's `e`-scalar derivation**: `BlindSign` follows
+  of these unpinned byte choices, is the **blind interface's `e`-scalar derivation**: `BlindSign` follows
   the blind `-03` text and binds the domain into `e` (`serialize((SK, B, domain))`), while the pseudonym
   interface pins the domain-free `serialize((SK, B))` form that the nym `-03` vectors byte-anchor (see
   `BbsBlindAlgorithm.DeriveBlindSigningScalar`); if the regenerated blind fixtures pin the domain-free form,
@@ -319,8 +319,8 @@ Three standing caveats:
   (Algorithm 12's three-share chain against a direct Algorithm 16 under the composed key, with the composition
   computed in the opposite operation order so the two paths are independent).
 - **Re-diff tripwire.** A changed `Last-Modified`/version line on the rolling URL triggers a protocol re-diff
-  against the implemented surfaces before any claim of conformance to the new revision (the 2026-07-09 pass is
-  recorded in `tempdocs/W2.6-SECDSA-V2-DIFF.md`).
+  against the implemented surfaces before any claim of conformance to the new revision; the "verified" date on
+  the pinned revision above marks the most recent such diff.
 
 The paper frames "sole control" through the certification regime rather than new cryptography: CIR (EU)
 2024/2981 wallet certification, the Common Criteria protection profiles EN 419221-5 (the wallet-provider HSM)

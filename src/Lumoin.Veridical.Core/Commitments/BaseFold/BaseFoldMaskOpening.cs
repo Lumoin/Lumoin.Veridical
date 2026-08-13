@@ -5,9 +5,9 @@ using System.Diagnostics;
 namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 
 /// <summary>
-/// The statistical-ZK mask side of a <see cref="BaseFoldEvaluationProof"/>
-/// (the statistical-mask design notes, §2 v3): the sum-of-univariates
-/// sumcheck mask's coefficient vector, extended by laundering filler, is
+/// The statistical-ZK mask side of a <see cref="BaseFoldEvaluationProof"/>: the
+/// sum-of-univariates sumcheck mask's coefficient vector, extended by
+/// laundering filler, is
 /// committed (salted and lifted) as <see cref="CommitmentRoot"/>; the mask sum
 /// <c>σ</c> and the filler sum <c>σ_F</c> are precommitted alongside it before
 /// the blend challenge <c>ρ</c>; and the terminal mask evaluation is bound by

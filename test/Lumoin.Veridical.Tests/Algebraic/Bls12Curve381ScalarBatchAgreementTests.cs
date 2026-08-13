@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
 /// Property-based cross-implementation tests for the batched scalar-field
-/// delegates introduced in this batch. Sweeps random batches through the
+/// delegates. Sweeps random batches through the
 /// SIMD backend (real 4-wide lane-interleaved arithmetic for full
 /// quartets, single-element fallback for the tail) and the BigInteger
 /// reference (loop over the single-element delegate), asserting bit

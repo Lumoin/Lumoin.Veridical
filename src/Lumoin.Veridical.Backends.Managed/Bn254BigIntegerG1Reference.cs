@@ -61,7 +61,7 @@ internal static class Bn254BigIntegerG1Reference
     /// The BN254 base field prime
     /// <c>q = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47</c>
     /// — a 254-bit prime, the modulus of <c>Fp</c> over which the curve is
-    /// defined. Per the U.2 decision this is the single home of the BN254
+    /// defined. This is the single home of the BN254
     /// base-field prime; the Fp2 tower reference reads it from here, mirroring
     /// how the BLS12-381 references share
     /// <see cref="Bls12Curve381BigIntegerG1Reference.BaseFieldPrime"/>.

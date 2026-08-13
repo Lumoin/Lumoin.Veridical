@@ -187,5 +187,5 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.W27b.ZeroMaskRejection.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.ZeroMaskRejection.Test"u8;
 }

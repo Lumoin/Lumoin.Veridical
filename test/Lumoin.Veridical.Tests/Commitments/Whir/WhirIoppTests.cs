@@ -14,9 +14,9 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR IOPP prover and verifier (4.2 phase A): honest
-/// round-trips on both wired curves for the two phase-A statement shapes —
-/// an evaluation claim (<c>ŵ = Z·eq(z, ·)</c>) and plain proximity
+/// Tests for the WHIR IOPP prover and verifier: honest
+/// round-trips on both wired curves for the two statement shapes the IOPP
+/// supports — an evaluation claim (<c>ŵ = Z·eq(z, ·)</c>) and plain proximity
 /// (<c>ŵ = 0</c>, <c>σ = 0</c>) — a full-λ round-trip with the schedule's
 /// pinned query counts, and a tamper wall: a flipped commitment, oracle root,
 /// opening value or claimed target must each break verification. The real

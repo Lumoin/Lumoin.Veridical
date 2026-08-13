@@ -35,8 +35,7 @@ public static class WellKnownBaseFoldEvaluationParameters
     /// <summary>
     /// Label for absorbing the statistical mask's coefficient-commitment Merkle
     /// root <c>com(C*)</c> — the salted, lifted commitment to (mask coefficients
-    /// ‖ filler) — committed before the blend challenge is squeezed (per
-    /// the statistical-mask design notes, §2 v3).
+    /// ‖ filler) — committed before the blend challenge is squeezed.
     /// </summary>
     public const string MaskCommitmentRoot = "basefold.eval.mask.commitment.root";
 

@@ -19,7 +19,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
-/// ZK.3 — end-to-end round-trip tests for masked Spartan2 over the genuinely
+/// End-to-end round-trip tests for masked Spartan2 over the genuinely
 /// zero-knowledge BaseFold provider
 /// (<see cref="ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge"/>):
 /// the masked prover assembles a <see cref="ZkBaseFoldMaskedSpartanProof"/> over
@@ -32,7 +32,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// the full-ZK provider makes every opening hiding and simulatable, so this is
 /// the configuration in which masked-Spartan-over-BaseFold delivers the witness
 /// privacy the "masked" name implies. The hiding budget itself (the lift size vs
-/// the query count) is the statistical claim validated in ZK.4; these tests gate
+/// the query count) is a separately validated statistical claim; these tests gate
 /// correctness and binding. Real BLS12-381 arithmetic and production BLAKE3.
 /// </remarks>
 [TestClass]

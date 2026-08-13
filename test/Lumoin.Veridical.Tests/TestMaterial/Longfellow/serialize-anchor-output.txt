@@ -5,7 +5,7 @@ Produced by serialize_anchor.cc, run inside the longfellow-ref Docker image. The
 reference implementation in its own build environment via development tooling outside this repository:
 
   docker run --rm \
-    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
+    -v "<repo>/<local-longfellow-clone>:/src" \
     -v "<repo>/test/Lumoin.Veridical.Tests/TestMaterial/Longfellow:/anchor" \
     longfellow-ref bash -c \
     "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/serialize_anchor.cc /src/lib/util/log.cc -lcrypto -o /tmp/a && /tmp/a"

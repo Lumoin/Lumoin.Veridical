@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// <para>
 /// This is the empirically <em>measurable</em> form of the zero-knowledge claim
 /// for this stack. A literal real-versus-simulated test would compare a real proof
-/// against a simulator's output (design doc §5: sample salted roots as uniform
+/// against a simulator's output (sample salted roots as uniform
 /// digests, masked round polynomials subject to the running claim, queried values
 /// uniformly, then program the random oracle at the queried leaves). That
 /// simulator needs a <em>programmable</em> Fiat-Shamir oracle; the production

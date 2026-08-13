@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 /// Pins the <see cref="CircomR1csReader"/> contract that linear-combination terms
 /// may arrive in <em>any</em> wire order within a constraint — circom emits them
 /// in construction order, not ascending. This was a latent reader bug (it required
-/// strictly-ascending order) surfaced by Batch V.4's owned Poseidon fixture; these
+/// strictly-ascending order) surfaced by the committed Poseidon fixture; these
 /// tests pin the behaviour directly rather than relying on a fixture's term
 /// ordering happening to be non-trivial.
 /// </summary>

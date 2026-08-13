@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
 /// Pins the variable-order convention between Spartan's sumchecks and the
-/// statistical mask kernel (SM.7b): Spartan binds variables LOW-first (round
+/// statistical mask kernel: Spartan binds variables LOW-first (round
 /// <c>i</c> binds <c>x_{i+1}</c>, the low eval-table bit) while
 /// <see cref="MonomialBasisMask"/> binds HIGH-first (the BaseFold fold order),
 /// so the masked drivers relabel — Spartan round <c>i</c> blends at kernel

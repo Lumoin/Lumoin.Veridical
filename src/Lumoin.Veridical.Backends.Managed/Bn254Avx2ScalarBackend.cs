@@ -26,7 +26,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// Add, subtract, and the batch forms are implemented here; multiplication and
-/// inversion are the shared Montgomery path (a separate sub-batch). The carry/borrow
+/// inversion are the shared Montgomery path. The carry/borrow
 /// chains across limbs are serial, but the batch quartet advances four scalars
 /// through that chain at once, one per 64-bit lane.
 /// </para>

@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for <see cref="ZkBaseFoldPolynomialCommitmentScheme"/> (ZK.1): the
+/// Tests for <see cref="ZkBaseFoldPolynomialCommitmentScheme"/>: the
 /// hiding BaseFold scheme behind the scheme-agnostic
 /// <see cref="PolynomialCommitmentProvider"/> surface. These drive
 /// commit → open → verify end to end through the salted-Merkle leaf commitment,

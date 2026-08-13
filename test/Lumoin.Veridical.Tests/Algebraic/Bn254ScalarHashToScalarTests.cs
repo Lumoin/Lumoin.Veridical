@@ -23,7 +23,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <c>SHA256</c>). BN254 has no IETF BBS+ ciphersuite, so there are no
 /// primary-source vectors; the known-answer vectors here were produced by an
 /// independent CPython <c>expand_message_xmd</c> (the same one whose output was
-/// already shown to match the library's in the U.3b hash-to-curve vectors)
+/// already shown to match the library's in <see cref="Bn254G1HashToCurveTests"/>)
 /// followed by a big-integer reduction modulo <c>r</c>, and locked as internal
 /// regression vectors.
 /// </para>

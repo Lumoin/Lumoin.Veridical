@@ -843,7 +843,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
 
         if(!isCompressed)
         {
-            //Uncompressed encoding is not supported in batch B.
+            //Uncompressed encoding is not supported; this decoder handles the compressed form only.
             return false;
         }
 

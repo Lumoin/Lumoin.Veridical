@@ -131,6 +131,30 @@ jobs:
         fetch-depth: 0
         fetch-tags: true
 
+    # The repository is public: internal batch/wave/phase codenames and
+    # section codes, and references to the private tempdocs/ planning tree,
+    # must never enter a tracked file. Scans `git ls-files` (so gitignored
+    # trees like tempdocs/, obj/, and bin/ are never in scope) before any
+    # restore or build step, on the ubuntu-latest leg only, so a leaked
+    # identifier fails the build in seconds instead of after every leg has
+    # paid for a full restore and build.
+    - name: Guard against internal work identifiers
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: |
+        pattern='\b[Bb]atch[[:space:]]+[A-Z]{1,2}(\.[0-9]{1,2})?\b|[Dd]esign[[:space:]]+[Nn]otes|[Tt]empdocs|\bW[0-9]\.[0-9]+\b|\bW[0-9]-[A-Za-z]\b|\b[Ww]ave[0-9]+\b|\b[Pp]hase[[:space:]]+[A-Z]\b|\b(SM|ZK|AB|AA|LF|RG|AD)\.[0-9]{1,2}\b|\b[UWXG]\.[0-9]{1,2}\b'
+        # .gitignore has to name "tempdocs" to ignore it, and this step has to name
+        # the banned patterns to enforce and explain them — exempt only those two
+        # self-referential files, nothing else in the tree gets a pass.
+        # The trailing `|| true` is load-bearing: grep exits non-zero when it matches
+        # nothing, which is the passing case here, and the step runs under `bash -e`.
+        matches="$(git ls-files -z | xargs -0 grep -HInE "$pattern" -- | grep -v -E '^(\.gitignore|\.github/workflows/main\.yml):' || true)"
+        if [ -n "$matches" ]; then
+          printf '%s\n' "$matches"
+          echo "::error::Internal work identifier found in a tracked file (see the file:line reported above). This is a public repository: batch/wave/phase codenames, internal section codes, and tempdocs/ references must never ship in tracked source — XML doc comments are packed straight into the NuGet packages and read as public API surface. Rewrite the reference as a standing technical statement of what the code does and why, rather than deleting it."
+          exit 1
+        fi
+        echo "No internal work identifiers found in tracked files."
+
     - name: Set up .NET SDK
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
       with:

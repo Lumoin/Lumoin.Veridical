@@ -7,8 +7,8 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the zero-knowledge parameter extension (4.2 phases C1 and C3):
-/// the per-oracle randomness budgets must equal the query counts of the
+/// Tests for the zero-knowledge parameter extension: the per-oracle
+/// randomness budgets must equal the query counts of the
 /// rounds that consume each oracle, the mask spot-check count must carry the
 /// schedule's security target plus the mask-oracle union bits, the mask code
 /// shapes must follow the smallest-power-of-two domain rule, and every floor

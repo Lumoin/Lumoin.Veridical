@@ -23,8 +23,9 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <c>g1.PairWith(g2, …)</c> at a call site keeps the argument order in step
 /// with the mathematical convention <c>e(P, Q)</c>. Both operands must be on
 /// the same curve; the runtime check replaces the compile-time guarantee the
-/// per-curve leaf types used to give. The Fp12 target type is unified in a
-/// later sub-batch.
+/// per-curve leaf types used to give. The Fp12 target type is unified across
+/// curves rather than split per curve, consistent with the curve-broad
+/// design this library's extension blocks use elsewhere.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
@@ -57,8 +58,8 @@ public static class PairingExtensions
             }
 
             //Result size comes from the operands' curve, not a fixed BLS12-381
-            //constant — the same curve-broadening the Fp tower extensions needed
-            //in U.4 (the pairing target is an Fp12 element, sized per curve).
+            //constant — the same curve-broadening the Fp tower extensions apply
+            //elsewhere (the pairing target is an Fp12 element, sized per curve).
             int fp12Size = WellKnownCurves.GetFp12SizeBytes(p.Curve);
             IMemoryOwner<byte> owner = pool.Rent(fp12Size);
             pairing(

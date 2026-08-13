@@ -105,7 +105,7 @@ public sealed class PolynomialCommitmentProvider: IDisposable
 
     /// <summary>
     /// Commits a vector for a later weighted opening (the statistical sumcheck
-    /// mask's coefficient vector <c>C*</c>; design doc §2 v3). Distinct from
+    /// mask's coefficient vector <c>C*</c>). Distinct from
     /// <see cref="Commit"/> because the commitment shape differs where the
     /// evaluation commitment is structured: Hyrax commits the whole vector as
     /// one Pedersen row (an arbitrary weight vector does not factor through

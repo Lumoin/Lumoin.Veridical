@@ -17,8 +17,8 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for <see cref="WhirPolynomialCommitmentScheme.CreateZeroKnowledge"/>
-/// (4.2 phase C3): the HVZK-WHIR IOPP behind the scheme-agnostic
+/// Tests for <see cref="WhirPolynomialCommitmentScheme.CreateZeroKnowledge"/>:
+/// the HVZK-WHIR IOPP behind the scheme-agnostic
 /// <see cref="PolynomialCommitmentProvider"/> surface. These drive
 /// commit → open → verify end to end through the broad leaf types —
 /// exercising the hiding wire codec and the commit-then-open randomness seam

@@ -15,10 +15,10 @@ using System.Diagnostics.CodeAnalysis;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// AB.6 soundness validation for the BaseFold IOPP: the checks the honest
+/// Soundness validation for the BaseFold IOPP: the checks the honest
 /// round-trip and Merkle-tamper tests do not directly target.
 /// <list type="bullet">
-///   <item><description>A <em>malicious prover</em> that Merkle-commits an intermediate fold oracle which is NOT the honest fold. Its openings authenticate (valid Merkle paths against the committed root) and its transcript is self-consistent, so the only check that can catch it is the per-layer fold-consistency relation — this confirms that relation rejects, distinct from the Merkle-binding tampers AB.3 exercises.</description></item>
+///   <item><description>A <em>malicious prover</em> that Merkle-commits an intermediate fold oracle which is NOT the honest fold. Its openings authenticate (valid Merkle paths against the committed root) and its transcript is self-consistent, so the only check that can catch it is the per-layer fold-consistency relation — this confirms that relation rejects, distinct from the Merkle-binding tampers <see cref="BaseFoldIoppTests"/> exercises.</description></item>
 ///   <item><description>An informational rejection sweep: random words far from the code are rejected (the IOPP's base-code and fold-consistency checks).</description></item>
 /// </list>
 /// </summary>
@@ -95,8 +95,8 @@ internal sealed class BaseFoldIoppSoundnessTests
     {
         //Informational soundness sweep: words built from independent random
         //scalars are, with overwhelming probability, far from the code, so the
-        //IOPP rejects every one. (A single case is covered by AB.3; this confirms
-        //the behaviour across a sample.)
+        //IOPP rejects every one. (A single case is covered by the Merkle-binding
+        //tamper tests; this confirms the behaviour across a sample.)
         Gen.Int[2, 4]
             .SelectMany(layerCount =>
             {

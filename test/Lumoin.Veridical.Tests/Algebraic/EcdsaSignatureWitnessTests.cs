@@ -8,7 +8,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <summary>
 /// Region-by-region byte-oracle gates for <see cref="EcdsaSignatureWitness"/>: the
 /// C# port of <c>VerifyWitness3</c>
-/// (<c>tempdocs/longfellow-zk-reference/lib/circuits/ecdsa/verify_witness.h</c>).
+/// (<c>lib/circuits/ecdsa/verify_witness.h</c>).
 /// A real P-256/SHA-256 ECDSA triple is produced with the platform
 /// <see cref="ECDsa"/>, then every region the circuit's nonce-recovery assertion
 /// reads is checked against an independent oracle: the recovered <c>R.x</c> equals

@@ -14,8 +14,8 @@ namespace Lumoin.Veridical.Core.Spartan;
 
 /// <summary>
 /// Produces a <see cref="MaskedSpartanProof"/> for the masked Spartan2 ZK
-/// construction (the statistical sum-of-univariates masks of SM.7b, design v3
-/// of the statistical-mask design notes; lineage CFS 2017 / Libra 2019).
+/// construction (the statistical sum-of-univariates masks with a
+/// filler-laundered weighted-opening binding; lineage CFS 2017 / Libra 2019).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -137,7 +137,7 @@ public static class MaskedSpartanProverExtensions
         /// the witness and error openings are then hiding, simulatable full-ZK
         /// openings, the mask coefficient vectors are committed salted-and-lifted,
         /// and their weighted openings are filler-laundered — the statistical-ZK
-        /// flavor of design v3. It packs a <see cref="ZkBaseFoldMaskedSpartanProof"/>.
+        /// flavor of the construction. It packs a <see cref="ZkBaseFoldMaskedSpartanProof"/>.
         /// </summary>
         /// <param name="instance">The relaxed R1CS instance to prove satisfaction of.</param>
         /// <param name="witness">The relaxed R1CS witness (witness scalars plus the error vector).</param>
@@ -334,7 +334,7 @@ public static class MaskedSpartanProverExtensions
                     hash);
 
                 //Sample the two statistical sum-of-univariates masks, degree-matched
-                //to each sumcheck's round format (design v3): the outer cubic over
+                //to each sumcheck's round format: the outer cubic over
                 //log_2(rows) variables, the inner quadratic over log_2(columns).
                 StatisticalMaskParameters outerShape = resolveMaskShape(rowVariableCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
                 StatisticalMaskParameters innerShape = resolveMaskShape(columnVariableCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
@@ -912,7 +912,7 @@ public static class MaskedSpartanProverExtensions
 
     //The committed mask vector C* = (kernel coefficients ‖ random filler) over
     //2^ℓ₂ coordinates — every coordinate beyond the coefficients is laundering
-    //entropy (design v3; the policy leaves no zero-weight real coordinates).
+    //entropy, leaving no zero-weight real coordinates.
     [SuppressMessage("Reliability", "CA2000", Justification = "The rented buffer transfers ownership to the returned MLE.")]
     private static MultilinearExtension BuildMaskVector(
         MonomialBasisMask mask,

@@ -17,9 +17,9 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Analysis;
 
 /// <summary>
-/// The programmable-Fiat-Shamir-oracle simulator gates — the literal
-/// real-versus-simulated proof test the statistical-mask design notes §7 recorded
-/// as the open follow-on. <see cref="ZkBaseFoldOpeningSimulator"/> produces,
+/// The programmable-Fiat-Shamir-oracle simulator gates — a literal
+/// real-versus-simulated proof test for the statistical mask's hiding claim.
+/// <see cref="ZkBaseFoldOpeningSimulator"/> produces,
 /// from the public statement alone, a commitment and opening that a verifier
 /// holding the programmed oracle accepts; the structural gates assert the
 /// acceptance and that the programming is doing real work (the same output
@@ -143,13 +143,13 @@ internal sealed class ZkBaseFoldSimulatorTests
     [TestMethod]
     public void RealAndSimulatedOpeningsCompareInTwoSampleTests()
     {
-        //The literal real-versus-simulated comparison (design doc §5): mean
+        //The literal real-versus-simulated comparison: mean
         //proof byte per opening under Kolmogorov-Smirnov, and per-proof byte
         //histograms under the chi-squared statistic with the LABEL-PERMUTATION
-        //null — the analytic chi-squared p-value is invalid here (the batch SM
-        //finding: intra-proof byte dependence makes it reject even
-        //witness-independent labelings). Verdicts logged, not asserted, per
-        //the sibling hiding-validation doctrine.
+        //null — the analytic chi-squared p-value is invalid here, because
+        //intra-proof byte dependence makes it reject even witness-independent
+        //labelings. Verdicts logged, not asserted, per the sibling
+        //hiding-validation doctrine.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         Scalar[] point = BuildPoint(VariableCount, salt: 59, pool);
         try

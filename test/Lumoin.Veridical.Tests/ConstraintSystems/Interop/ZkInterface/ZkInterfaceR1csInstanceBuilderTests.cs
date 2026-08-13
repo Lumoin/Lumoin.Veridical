@@ -14,8 +14,9 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 /// <summary>
 /// Tests the matrix-assembly sink directly by driving its push API — the
 /// architecture's payoff: the assembler is exercised over a real curve
-/// without needing a hand-encoded FlatBuffers fixture (owned BLS/BN254
-/// <c>.zkif</c> files arrive in W.4 for the full pipe path). The circuit
+/// without needing a hand-encoded FlatBuffers fixture; the full pipe path
+/// over real BLS/BN254 <c>.zkif</c> files is covered by
+/// <see cref="ZkInterfaceFixtureTests"/>. The circuit
 /// is the padded multiplier2 (<c>a·b = c</c> plus a <c>1·1 = 1</c> row so
 /// the shape is a power of two): variables <c>z = (1, c, a, b)</c>,
 /// satisfied by <c>(1, 33, 3, 11)</c>. The satisfaction check is the

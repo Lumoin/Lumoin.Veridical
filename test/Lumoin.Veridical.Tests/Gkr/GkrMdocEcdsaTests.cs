@@ -17,14 +17,16 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Gkr;
 
 /// <summary>
-/// E2E.2 — the issuer's real ES256 signature verified in-circuit against the SAME committed digest
-/// bits that E2E.1 MAC-binds. The 256 message bits of the cross-field MAC region
-/// (<see cref="GkrCrossFieldMacSupport"/>) are real Fp256 wires 0..41471 of the ECDSA gadget's
-/// builder; the LF.5 ECDSA verifier consumes those exact wires as its <c>e·G</c> ladder scalar
-/// through <see cref="EcdsaVerificationGadgetExtensions.AssertVerifiesDigestBits"/>. So ONE Fp256
+/// The issuer's real ES256 signature verified in-circuit against the SAME committed digest
+/// bits that the digest-only binding (<see cref="GkrMdocDigestTests"/>) MAC-binds. The 256 message
+/// bits of the cross-field MAC region (<see cref="GkrCrossFieldMacSupport"/>) are real Fp256 wires
+/// 0..41471 of the ECDSA gadget's builder; the ECDSA verifier consumes those exact wires as its
+/// <c>e·G</c> ladder scalar through
+/// <see cref="EcdsaVerificationGadgetExtensions.AssertVerifiesDigestBits"/>. So ONE Fp256
 /// commitment proves both "these bits satisfy the cross-field MAC of the GF-side SHA-256" and "the
 /// issuer's ES256 signature verifies for e = these bits". The binding is by wire identity, not by
-/// glue constraints. The GF side is E2E.1 verbatim, shared through <see cref="GkrMdocSupport"/>.
+/// glue constraints. The GF side is the digest-only binding (<see cref="GkrMdocDigestTests"/>)
+/// verbatim, shared through <see cref="GkrMdocSupport"/>.
 /// </summary>
 [TestClass]
 internal sealed class GkrMdocEcdsaTests

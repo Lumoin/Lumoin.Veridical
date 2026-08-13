@@ -7,16 +7,16 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// Exercises the credential composition the Longfellow end-to-end proof (LF.5)
+/// Exercises the credential composition the Longfellow end-to-end mdoc proof
 /// stands on: an mdoc-shaped credential POCO, a swappable canonical-serializer
 /// delegate (here a deterministic dummy; ISO 18013-5 CBOR/COSE is the real one
 /// a consuming library supplies — the same POCO-plus-serialization-delegate
-/// split Verifiable uses), and the LF.3a ECDSA reference as the issuer's
+/// split Verifiable uses), and the P-256 ECDSA reference as the issuer's
 /// signing primitive. Mint signs the canonical bytes; verify recomputes them.
 /// </summary>
 /// <remarks>
 /// The credential model is deliberately test-side and minimal: the in-circuit
-/// proof (LF.5) pins exactly which fields and encoding the proof commits to,
+/// proof pins exactly which fields and encoding the proof commits to,
 /// and the public model graduates to the library then rather than being
 /// guessed at now. What is real here is the composition — POCO → canonical
 /// bytes (via the delegate seam) → SHA-256 → ECDSA-P-256 — and that a tamper

@@ -56,7 +56,7 @@ internal sealed class SpartanRoundtripTests
     [TestMethod]
     public void ProverAndVerifierAgreeOnSatisfyingWitnessMedium()
     {
-        //(m=2, n=8): the two-multiplication circuit from G.2.
+        //(m=2, n=8): the two-multiplication circuit.
         ExerciseRoundtrip(2, 8, BuildTwoMultiplyInstance, BuildTwoMultiplyWitness);
     }
 

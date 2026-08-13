@@ -18,8 +18,9 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// <para>
 /// The "compute" half of the round (running the round-polynomial
 /// computation against the prover's MLE state and absorbing the result
-/// into a transcript) lives with the prover driver in batch G.2. This
-/// G.1-shaped extension class only surfaces the data-shape accessors
+/// into a transcript) lives with the prover drivers
+/// (<see cref="OuterSumcheckProver"/>, <see cref="InnerSumcheckProver"/>).
+/// This extension class only surfaces the data-shape accessors
 /// that callers of any role — prover, verifier, inspector — need to
 /// pull a round's components into leaf-typed handles.
 /// </para>

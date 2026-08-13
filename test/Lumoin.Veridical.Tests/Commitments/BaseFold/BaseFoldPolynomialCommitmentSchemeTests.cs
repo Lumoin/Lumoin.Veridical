@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for <see cref="BaseFoldPolynomialCommitmentScheme"/> (AB.4): the
+/// Tests for <see cref="BaseFoldPolynomialCommitmentScheme"/>: the
 /// BaseFold scheme behind the scheme-agnostic
 /// <see cref="PolynomialCommitmentProvider"/> surface Spartan operates against.
 /// These drive commit → open → verify end to end through the broad

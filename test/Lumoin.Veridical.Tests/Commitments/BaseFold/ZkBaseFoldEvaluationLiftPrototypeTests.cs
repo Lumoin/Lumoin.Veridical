@@ -13,10 +13,9 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// ZK.2b route-A prototype (the dimension-lift design fork, recorded in
-/// the BaseFold design notes, <em>Zero-knowledge BaseFold</em>):
-/// de-risks the dimension-lifting realisation of the zero-knowledge BaseFold
-/// evaluation. The query/π₀ leakage is closed by committing the real
+/// The dimension-lift prototype for the zero-knowledge BaseFold evaluation:
+/// de-risks the dimension-lifting realisation ahead of the full construction.
+/// The query/π₀ leakage is closed by committing the real
 /// <c>d</c>-variable witness <c>f</c> as the <c>Y = 0</c> slice of a
 /// <c>(d + t)</c>-variable polynomial <c>f'</c> whose <c>Y ≠ 0</c> evaluations are
 /// pure mask randomness, and always evaluating at the protocol-fixed point
@@ -40,13 +39,14 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// knowledge soundness (paper Theorem 4) and the §3 distance bound apply unchanged.
 /// The mask randomness in the <c>Y ≠ 0</c> block spreads through the linear encoder
 /// to randomise the queried codeword positions; the bounded-independence hiding
-/// budget (mask DOF ≥ query count) is a separate, statistical claim validated in
-/// ZK.4, not here. This test is the correctness gate the full
+/// budget (mask DOF ≥ query count) is a separate, statistical claim validated
+/// empirically by <see cref="Lumoin.Veridical.Tests.Analysis.ZkBaseFoldHidingValidationTests"/>,
+/// not here. This test is the correctness gate the full
 /// <c>ProveZeroKnowledge</c> path will build on.
 /// </para>
 /// <para>
 /// The lift is driven end to end through the shipped hiding provider
-/// (<see cref="ZkBaseFoldPolynomialCommitmentScheme"/>, ZK.1), so it exercises the
+/// (<see cref="ZkBaseFoldPolynomialCommitmentScheme"/>), so it exercises the
 /// salted commitment and the masked codeword together. Real BLS12-381 arithmetic
 /// and production BLAKE3 throughout.
 /// </para>
@@ -155,7 +155,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     [DataRow(3, 4)]
     public void ProviderInternalLiftRecoversWitnessValueAndVerifies(int realVariableCount, int extraVariableCount)
     {
-        //The ZK.2b provider does the lift internally: the consumer commits and
+        //The zero-knowledge provider does the lift internally: the consumer commits and
         //opens an ordinary d-variable witness at a d-coordinate point, and the
         //(d + t)-variable masked codeword is entirely behind the surface.
         BaseMemoryPool pool = BaseMemoryPool.Shared;

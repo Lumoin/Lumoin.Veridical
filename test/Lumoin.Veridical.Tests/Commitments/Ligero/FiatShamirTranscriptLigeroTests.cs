@@ -10,7 +10,7 @@ using System;
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
 /// <summary>
-/// Gates the Ligero Fiat-Shamir transcript helpers (LF.4b.3): the
+/// Gates the Ligero Fiat-Shamir transcript helpers: the
 /// challenge-scalar vector squeeze and the distinct opened-column-index
 /// sampler. The properties checked are the ones soundness and prover/verifier
 /// agreement rest on: a prover and a verifier replaying the identical absorb

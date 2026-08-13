@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 
 /// <summary>
 /// The Fp256 mdoc SIGNATURE-circuit WITNESS FILLER: the C# port of the 3739-element dense input column that
-/// google/longfellow-zk's <c>fill_witness</c> (<c>tempdocs/longfellow-zk-reference/lib/circuits/mdoc/mdoc_zk.cc</c>,
+/// google/longfellow-zk's <c>fill_witness</c> (<c>lib/circuits/mdoc/mdoc_zk.cc</c>,
 /// the <c>fill_b</c> / <c>Fp256Base</c> side) plus <c>MdocSignatureWitness::fill_witness</c>
 /// (<c>lib/circuits/mdoc/mdoc_witness.h:603-613</c>) lay into the version-7 SIG circuit for a one-attribute
 /// mdoc proof. The column splits 900 public + 2839 private.
@@ -19,16 +19,16 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// <para>
 /// Every element is a canonical (non-Montgomery) base-field value emitted as 32 big-endian bytes — the
 /// established C# filler convention (the reference's <c>to_bytes_field</c> little-endian conversion is
-/// applied only at the Phase-6 public-input/coefficient boundary). The two ECDSA halves reuse
+/// applied only at the public-input/coefficient boundary). The two ECDSA halves reuse
 /// <see cref="EcdsaSignatureWitness"/> unchanged: the ISSUER half over the REAL credential's
-/// <c>(pkX, pkY, e_, r, s)</c> and the DEVICE half over the SYNTHESIZED <c>(dpkx, dpky, e2, r2, s2)</c>
-/// (coordinator decision OQ1).
+/// <c>(pkX, pkY, e_, r, s)</c> and the DEVICE half over the SYNTHESIZED <c>(dpkx, dpky, e2, r2, s2)</c>,
+/// which stands in for a live device credential so the column is self-consistent without one.
 /// </para>
 /// <para>
 /// The column region map (one-attribute, version 7; total 3739 elements):
 /// </para>
 /// <list type="bullet">
-///   <item><description><b>[0,4)</b> <c>one</c>, <c>pkX</c>, <c>pkY</c>, <c>e2</c> (fill_signature_inputs, mdoc_zk.cc:167-173). <c>e2</c> is the DEVICE/transcript hash (PUBLIC, OQ6).</description></item>
+///   <item><description><b>[0,4)</b> <c>one</c>, <c>pkX</c>, <c>pkY</c>, <c>e2</c> (fill_signature_inputs, mdoc_zk.cc:167-173). <c>e2</c> is the DEVICE/transcript hash (PUBLIC).</description></item>
 ///   <item><description><b>[4,772)</b> the six MACs, each a 128-bit GF(2^128) value expanded to 128 Fp256 one/zero wires (fill_gf2k, mac_reference.h:63).</description></item>
 ///   <item><description><b>[772,900)</b> the <c>av</c> key, 128 Fp256 one/zero wires. This is <c>npub_in = 900</c>.</description></item>
 ///   <item><description><b>[900,903)</b> the issuer hash <c>e_</c>, the device key <c>dpkx</c>, <c>dpky</c> (MdocSignatureWitness::fill_witness).</description></item>
@@ -40,7 +40,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// The reference fills the public macs/av with <c>Fs.zero()</c> at commit and overwrites them post-commit
 /// via <c>update_macs</c> (mdoc_zk.cc:247-249, 286-303). Here the two-phase commit/update is collapsed into
 /// a single deterministic fill of the COMMITTED values: with chosen-constant <c>ap</c> keys and a chosen
-/// <c>av</c> (OQ2), <c>mac[i] = (av + ap_i)·m_i</c> over GF(2^128) is computed and expanded, so the column
+/// <c>av</c>, <c>mac[i] = (av + ap_i)·m_i</c> over GF(2^128) is computed and expanded, so the column
 /// is directly provable. The <c>av</c> here is a fixed constant rather than the transcript-derived value.
 /// </para>
 /// </remarks>
@@ -61,8 +61,8 @@ internal sealed class MdocSignatureWitnessFiller
 
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
-    //The six per-element MAC keys ap and the verifier key av, chosen deterministic GF(2^128) constants
-    //(OQ2). The MAC relation mac=(av+ap)·m is satisfied by construction for any choice; these are pinned for
+    //The six per-element MAC keys ap and the verifier key av, chosen deterministic GF(2^128) constants.
+    //The MAC relation mac=(av+ap)·m is satisfied by construction for any choice; these are pinned for
     //reproducibility. Each is a fixed 16-byte little-endian polynomial (the gf2k of_bytes_field convention).
     private static byte[] AvKey { get; } = Gf2kFromHexLittleEndian("a3f10e5572c4901bd6883f2147ac55e0");
 
@@ -100,13 +100,13 @@ internal sealed class MdocSignatureWitnessFiller
     /// <summary>The element count the fill produced (must equal <see cref="ElementCount"/>).</summary>
     public int Count => column.Count;
 
-    /// <summary>The four OQ4 2-bit MAC plucker codes <c>encode(v)=of_scalar(2v)−of_scalar(3)</c>, exposed for the gate.</summary>
+    /// <summary>The four 2-bit MAC plucker codes <c>encode(v)=of_scalar(2v)−of_scalar(3)</c>, exposed for the gate.</summary>
     public byte[][] PluckerCodes => pluckerCodes;
 
-    /// <summary>The chosen <c>av</c> key (OQ2), exposed for the MAC-algebra gate.</summary>
+    /// <summary>The chosen <c>av</c> key, exposed for the MAC-algebra gate.</summary>
     public static byte[] Av => AvKey;
 
-    /// <summary>The six chosen <c>ap</c> keys (OQ2), exposed for the MAC-algebra gate.</summary>
+    /// <summary>The six chosen <c>ap</c> keys, exposed for the MAC-algebra gate.</summary>
     public static byte[][] Ap => ApKeys;
 
 
@@ -143,7 +143,7 @@ internal sealed class MdocSignatureWitnessFiller
         //per common value), expanded with av into the public prefix.
         byte[][] macs = ComputeMacs(macMessages);
 
-        //fill_signature_inputs (mdoc_zk.cc:169-172): one, pkX, pkY, e2 (e2 = the DEVICE hash, OQ6).
+        //fill_signature_inputs (mdoc_zk.cc:169-172): one, pkX, pkY, e2 (e2 = the DEVICE hash).
         Push(one);
         Push(Element(pkX));
         Push(Element(pkY));
@@ -180,7 +180,7 @@ internal sealed class MdocSignatureWitnessFiller
 
 
     /// <summary>
-    /// Builds the SIG-circuit column for the DUAL-FIELD DRIVER (C3): the issuer half over the REAL credential
+    /// Builds the SIG-circuit column for the DUAL-FIELD DRIVER: the issuer half over the REAL credential
     /// and the device half over the REAL extracted device tuple (<paramref name="device"/>), with the public
     /// mac/av region <c>[4, 900)</c> filled with ZEROS — the reference's commit-time state, which the driver
     /// overwrites post-commit via <c>update_macs</c> from the transcript-squeezed <c>a_v</c>
@@ -279,7 +279,7 @@ internal sealed class MdocSignatureWitnessFiller
 
 
     /// <summary>
-    /// The issuer MSO hash <c>e_</c> (PRIVATE wire 900, OQ6): <c>nat_from_hash(tagged_mso_bytes_)</c> =
+    /// The issuer MSO hash <c>e_</c> (PRIVATE wire 900): <c>nat_from_hash(tagged_mso_bytes_)</c> =
     /// SHA-256 of the COSE <c>Sig_structure</c> read big-endian (mdoc_witness.h:626, 391-398). The
     /// <c>tagged_mso_bytes_</c> is exactly <see cref="MdocDisclosure.SignedStructure"/>.
     /// </summary>
@@ -399,7 +399,7 @@ internal sealed class MdocSignatureWitnessFiller
     }
 
 
-    //The four OQ4 2-bit MAC plucker codes encode(v) = subf(of_scalar(2v), of_scalar(N-1)) with N=4
+    //The four 2-bit MAC plucker codes encode(v) = subf(of_scalar(2v), of_scalar(N-1)) with N=4
     //(bit_plucker_constants.h:29-31, kMACPluckerBits=2): of_scalar(2v) − of_scalar(3) over Fp256, genuine
     //modular subtraction (NOT the GF XOR of the SHA plucker, and N-1=3 NOT 15).
     private static byte[][] BuildPluckerCodes()

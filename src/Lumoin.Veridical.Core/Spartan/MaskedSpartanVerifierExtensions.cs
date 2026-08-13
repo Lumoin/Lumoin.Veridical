@@ -28,8 +28,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// from each sumcheck's final running claim, then checks ONE weighted
 /// opening of the mask's committed coefficient vector against
 /// <c>v = g(r) + σ_F</c> under the public weights it builds from the
-/// mask basis and its own challenges (design v3 of
-/// the statistical-mask design notes). This keeps the proof wire
+/// mask basis and its own challenges. This keeps the proof wire
 /// format compact and the verifier's side derivable from public data.
 /// </para>
 /// </remarks>

@@ -7,7 +7,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <summary>
 /// The C# port of <c>VerifyWitness3::compute_witness</c> +
 /// <c>VerifyWitness3::fill_witness</c>
-/// (<c>tempdocs/longfellow-zk-reference/lib/circuits/ecdsa/verify_witness.h</c>)
+/// (<c>lib/circuits/ecdsa/verify_witness.h</c>)
 /// for the P-256/SHA-256 ECDSA verification circuit: given one public signature
 /// triple <c>(pkX, pkY, e, r, s)</c> it lays out the 1034-element dense witness
 /// column the circuit's nonce-recovery assertion reads, in the exact

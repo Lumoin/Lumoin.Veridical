@@ -15,8 +15,8 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the HVZK-WHIR prover and verifier (4.2 phase C2,
-/// eprint 2026/391 Construction 9.7): honest hiding round-trips on both wired
+/// Tests for the HVZK-WHIR prover and verifier
+/// (eprint 2026/391 Construction 9.7): honest hiding round-trips on both wired
 /// curves and on the shapes that exercise every pipeline branch — the
 /// two-iteration reference, a non-constant final polynomial and the
 /// single-iteration base-case-only collapse — plus a tamper wall over the

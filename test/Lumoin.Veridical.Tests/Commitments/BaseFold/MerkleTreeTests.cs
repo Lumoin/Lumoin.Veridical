@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold Merkle commitment infrastructure (AB.2): a binary
+/// Tests for the BaseFold Merkle commitment infrastructure: a binary
 /// tree over codeword leaves, the root commitment, and per-leaf authentication
 /// paths. The hash is the real BLAKE3 from the hashing project wired as a
 /// two-to-one compression, so the tests exercise the production hash backend

@@ -4,10 +4,10 @@ namespace Lumoin.Veridical.Core.Spartan;
 
 /// <summary>
 /// Produces a <see cref="MaskedSpartanProof"/> with the statistically-masked
-/// Category A ZK construction (SM.7b): degree-matched sum-of-univariates
+/// Category A ZK construction: degree-matched sum-of-univariates
 /// kernel masks (Libra, Xie et al CRYPTO 2019 §4.1; lineage Chiesa, Forbes,
 /// Spooner 2017, IACR ePrint 2017/305) bound by filler-laundered weighted
-/// openings per design v3 of the statistical-mask design notes. The
+/// openings, so the opening reveals no more than the sum it certifies. The
 /// round messages and terminating evaluations are statistically masked;
 /// over the Hyrax (Pedersen/IPA) path the end-to-end flavor remains
 /// computational zero-knowledge in the random-oracle model rooted in the
@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// in the internal <c>MaskedSpartanAlgorithm</c> driver.
 /// </para>
 /// <para>
-/// See the Spartan zero-knowledge design notes (§3.4) and <c>SPARTAN2.md</c> §10 for
+/// See <c>SPARTAN2.md</c> §10 for
 /// the construction's protocol flow, transcript schedule extensions,
 /// byte layout, and the security claim. The statistical end-to-end
 /// flavor (in the ROM) is available by proving over the full-ZK

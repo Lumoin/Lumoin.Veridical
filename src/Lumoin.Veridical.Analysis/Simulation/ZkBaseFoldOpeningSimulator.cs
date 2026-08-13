@@ -10,9 +10,8 @@ namespace Lumoin.Veridical.Analysis.Simulation;
 
 /// <summary>
 /// The witness-free simulator of the full zero-knowledge BaseFold opening —
-/// the running counterpart of the statistical-mask design notes
-/// (Appendix A)'s simulator construction, and the artifact §7 recorded as
-/// the open follow-on. Given only the public statement (the evaluation point
+/// the running counterpart of the statistical-mask construction's
+/// zero-knowledge simulator argument. Given only the public statement (the evaluation point
 /// <c>z</c> and the claimed value <c>y</c>), it produces a commitment and
 /// an opening that verify against <c>(z, y)</c> under a programmed
 /// Fiat-Shamir oracle, without ever holding a witness that evaluates to
@@ -39,9 +38,9 @@ namespace Lumoin.Veridical.Analysis.Simulation;
 /// <para>
 /// Distributionally the output is a real proof of a uniformly random
 /// witness with σ shifted by a public function of <c>(y*, y, ρ)</c> —
-/// σ remains uniform, and by the Appendix A ledger lemma the joint message
-/// distribution matches real proofs of real witnesses up to the lemma's
-/// failure measure. The indistinguishability gates assert this empirically.
+/// σ remains uniform, and because the shift depends only on public values the
+/// joint message distribution matches real proofs of real witnesses up to the
+/// mask's own statistical-hiding slack. The indistinguishability gates assert this empirically.
 /// </para>
 /// </remarks>
 public static class ZkBaseFoldOpeningSimulator

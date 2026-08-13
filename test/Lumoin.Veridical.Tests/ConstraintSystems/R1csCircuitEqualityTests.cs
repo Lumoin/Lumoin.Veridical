@@ -9,8 +9,8 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 /// Structural-equality tests for <see cref="R1csCircuit"/>: two circuits
 /// assembled from equal operation and variable sequences must compare
 /// equal (and hash equally), and a single differing op must break
-/// equality. The builder lands in X.2; here the circuits are assembled
-/// directly to pin the equality contract the builder relies on.
+/// equality. Here the circuits are assembled directly, independent of the
+/// builder, to pin the equality contract the builder relies on.
 /// </summary>
 [TestClass]
 internal sealed class R1csCircuitEqualityTests

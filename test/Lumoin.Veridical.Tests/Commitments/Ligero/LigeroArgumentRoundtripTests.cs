@@ -16,7 +16,7 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
 /// <summary>
-/// End-to-end gate for the Ligero argument (LF.4b.4–LF.4b.6): a correctly generated proof
+/// End-to-end gate for the Ligero argument: a correctly generated proof
 /// over a satisfying witness verifies, and the verifier rejects a flipped
 /// quadratic constraint, a tampered linear target, a corrupted opened column and
 /// a mismatched public input. It runs first over the small Mersenne-prime field
@@ -337,7 +337,7 @@ internal sealed class LigeroArgumentRoundtripTests
             P256BigIntegerScalarReference.FieldOrder),
         //The P-256 BASE field Fp — the field Longfellow's ECDSA circuit runs in
         //(the sumcheck field equals the curve base field). Exercising the argument
-        //here proves the substrate for the native in-circuit ECDSA gadget (LF.5).
+        //here proves the substrate for the native in-circuit ECDSA gadget.
         "p-256 base" => new FieldBackend(
             P256BaseFieldReference.GetAdd(),
             P256BaseFieldReference.GetSubtract(),

@@ -18,10 +18,11 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 /// Standard R1CS is the special case <c>u = 1</c>, <c>E = 0</c>.
 /// Folding schemes (Nova, ProtoStar) produce relaxed instances by
 /// combining two satisfied relaxed instances into a new one whose
-/// <c>u</c> and <c>E</c> reflect the combination's error term. Batch F
-/// lands the data shape for those future folding-scheme batches to
-/// consume; the satisfaction check here verifies the relaxed identity
-/// against an explicit error vector held in
+/// <c>u</c> and <c>E</c> reflect the combination's error term. This
+/// type defines the data shape a folding-scheme accumulator consumes
+/// without prescribing which scheme produces it; the satisfaction
+/// check here verifies the relaxed identity against an explicit error
+/// vector held in
 /// <see cref="RelaxedR1csWitness"/>. Verification of the error
 /// commitment against that vector is a separate (commitment-scheme)
 /// operation, not part of the satisfaction check itself.

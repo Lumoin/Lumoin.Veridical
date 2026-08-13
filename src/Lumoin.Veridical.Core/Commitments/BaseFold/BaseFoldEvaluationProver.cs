@@ -161,8 +161,9 @@ public static class BaseFoldEvaluationProver
     /// Proves the evaluation as <see cref="ProveHiding"/> does, but additionally
     /// masks the interleaved sumcheck's round polynomials so the opening is a
     /// statistically zero-knowledge argument in the ROM (the Libra
-    /// sum-of-univariates mask, IACR ePrint 2019/317 §4.1, with the v3 binding of
-    /// the statistical-mask design notes). A fresh mask <c>s</c> with
+    /// sum-of-univariates mask, IACR ePrint 2019/317 §4.1, with its coefficient
+    /// vector bound to the commitment via a nested weighted opening rather than
+    /// sent in the clear). A fresh mask <c>s</c> with
     /// <c>2d + 1</c> random coefficients is sampled; its coefficient vector,
     /// extended by laundering filler, is committed salted-and-lifted under
     /// <paramref name="maskCommitmentCode"/>; <c>com(C*)</c>, <c>σ = Σ_b s(b)</c>,
@@ -230,9 +231,9 @@ public static class BaseFoldEvaluationProver
     /// <c>eq_z</c> multiplier generalised to an arbitrary multiplier table. An
     /// evaluation opening is the special case <c>W = eq_z</c> (byte-identical
     /// transcript and proof); a general <c>W</c> proves any public linear
-    /// functional of <c>f</c>'s hypercube evaluations, which is how the
-    /// statistical-mask construction binds its mask coefficients
-    /// (the statistical-mask design notes, levels 2 and 3).
+    /// functional of <c>f</c>'s hypercube evaluations, which is how
+    /// <see cref="ProveZeroKnowledge"/> binds its mask's coefficient vector to
+    /// a public weight vector instead of a single evaluation point.
     /// </summary>
     /// <remarks>
     /// The multiplier must be public and known to the verifier — the protocol
@@ -398,7 +399,7 @@ public static class BaseFoldEvaluationProver
         bool hiding = saltRandom is not null;
         var saltsByLayer = hiding ? new IMemoryOwner<byte>?[d + 1] : null;
 
-        //Statistical-ZK sumcheck mask (design doc §2 v3): a sum-of-univariates
+        //Statistical-ZK sumcheck mask: a sum-of-univariates
         //mask blended closed-form into the rounds; its coefficient vector plus
         //laundering filler is committed salted-and-lifted under
         //maskCommitmentCode, and the terminal evaluation is bound by a nested
@@ -473,7 +474,7 @@ public static class BaseFoldEvaluationProver
             //for an evaluation opening, v = Σ_b f(b)·W(b) for a weighted one.
             Scalar claimedValue = ComputeWeightedSum(fTable, eqTable, evaluationCount, add, multiply, curve, pool);
 
-            //Statistical-ZK mask setup (design doc §2 v3): sample the
+            //Statistical-ZK mask setup: sample the
             //sum-of-univariates mask, build C* = (coefficients ‖ random filler),
             //compute σ and σ_F, and commit C* salted-and-lifted under the
             //mask-commitment code. The lifted table and salts stay alive for the
@@ -652,7 +653,7 @@ public static class BaseFoldEvaluationProver
             IMemoryOwner<byte> finalOracle = pool.Rent(finalLength);
             finalOracleSpan.CopyTo(finalOracle.Memory.Span[..finalLength]);
 
-            //Terminal mask binding (design doc §2 v3): the nested hiding weighted
+            //Terminal mask binding: the nested hiding weighted
             //opening of C* against the public weights w⁺ = (basis weights at the
             //bound challenges ‖ 1s on the filler ‖ 0s on the lift block), proving
             //⟨C*, w⁺⟩ = s(r) + σ_F — the claim the verifier derives from the

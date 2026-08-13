@@ -6,10 +6,11 @@ using System;
 namespace Lumoin.Veridical.Tests.Commitments;
 
 /// <summary>
-/// Tests the scheme-agnostic polynomial-commitment surface introduced in
-/// AA.1: the broad leaf types carry the curve and scheme identity on
-/// their tag, and the provider bundle holds a scheme's operations. No
-/// consumer wiring yet — that is AA.2's Hyrax migration.
+/// Tests the scheme-agnostic polynomial-commitment surface: the broad leaf
+/// types carry the curve and scheme identity on their tag, and the provider
+/// bundle holds a scheme's operations. This class guards only the surface's
+/// own shape; per-scheme adapters, such as the Hyrax provider, wire real
+/// consumers against it and are validated separately.
 /// </summary>
 [TestClass]
 internal sealed class PolynomialCommitmentSurfaceTests

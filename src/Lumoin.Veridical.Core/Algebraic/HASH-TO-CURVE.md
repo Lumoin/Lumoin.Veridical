@@ -58,8 +58,8 @@ sufficient for spec conformance.
 
 ## § 3 Why both layers of test matter
 
-The BBS+ batch surfaced a concrete case where the two layers diverge.
-An earlier implementation used a **try-and-increment** mapping —
+BBS+ generator derivation surfaced a concrete case where the two layers
+diverge. An earlier implementation used a **try-and-increment** mapping —
 hash the message to a field element, lift to a curve point if
 possible, otherwise increment and retry. The output is always
 on-curve and (after cofactor clearing) inside the prime-order
@@ -82,9 +82,9 @@ layer manifests as a divergence in every signature byte downstream,
 and a wire-incompatible implementation that nonetheless looks correct
 to its own internal test surface.
 
-The lesson the batch made explicit: when adding a new RFC-bound
-primitive, both algebraic-invariant tests *and* byte-faithful tests
-against published vectors should land in the same commit. The
+The general lesson: when adding a new RFC-bound primitive, both
+algebraic-invariant tests *and* byte-faithful tests against published
+vectors should land in the same commit. The
 algebraic tests are cheap and run on random inputs, catching a wide
 class of arithmetic bugs. The byte-faithful tests are the gate
 against spec divergence — the only one that catches "right answer,

@@ -19,7 +19,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// real-credential SIG prove number). It imports the version-7 P-256 signature circuit from the same
 /// <c>mdoc-circuit-raw.gz</c> the crown gate parses (field id 1, 32-byte elements), fills the genuine
 /// 3739-element witness column with <see cref="MdocSignatureWitnessFiller"/> (the REAL credential's issuer
-/// signature plus the synthesized device half, coordinator decision OQ1), then runs OUR field-generic Fp256
+/// signature plus a synthesized device half standing in for a live device credential), then runs OUR field-generic Fp256
 /// <c>LongfellowZkProver.Prove</c>
 /// and confirms OUR <see cref="LongfellowZkVerifier.VerifyFromAbsorbedRoot"/> ACCEPTS it; a tamper dual (a
 /// flipped proof byte AND a flipped public input) rejects with the Ligero soundness cause.
@@ -32,10 +32,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// codec, the transcript baked at the 32-byte Fp256 width, the below-modulus random source, and the
 /// <c>RecvCommitment</c> + <c>VerifyFromAbsorbedRoot</c> verify — but over the genuine 21-layer signature
 /// circuit (<c>ninputs = 3739</c>, <c>npub_in = 900</c>, the <c>-s</c>/<c>bi_</c> negations and the
-/// assert-zero gates the GF(2)-conformant crown gate cannot fully stress per
-/// <c>[[gf2-conformance-hides-sign-errors]]</c>). The public inputs are the first 900 witness elements
-/// reframed little-endian (the filler already lays the macs/av into the public prefix from the chosen-constant
-/// keys, OQ2, so no <c>generate_mac_key</c> splice is needed — this is the self-consistent gate, not the
+/// assert-zero gates the GF(2)-conformant crown gate cannot fully stress: a missing negation is invisible
+/// over GF(2), where <c>-x = x</c>, but surfaces as a genuine sign error over Fp256). The public inputs are
+/// the first 900 witness elements reframed little-endian (the filler already lays the macs/av into the
+/// public prefix from the chosen-constant keys, so no <c>generate_mac_key</c> splice is needed — this is the self-consistent gate, not the
 /// byte-exact crown gate where the macs ride the envelope prefix).
 /// </para>
 /// <para>
@@ -410,7 +410,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
 
     //Builds the genuine 3739-element SIG witness column: the REAL credential's issuer signature (via
-    //MdocDisclosure over mdoc-00.cbor, age_over_18) and the synthesized device half (OQ1).
+    //MdocDisclosure over mdoc-00.cbor, age_over_18) and a synthesized device half standing in for a live device credential.
     private static byte[] BuildWitnessColumn()
     {
         MdocDisclosure issuer = MdocDisclosure.Extract(ReadFixture(CredentialRelativePath), "org.iso.18013.5.1", "age_over_18");

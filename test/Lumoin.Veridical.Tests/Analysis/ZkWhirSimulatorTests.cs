@@ -17,8 +17,8 @@ using System.Collections.Generic;
 namespace Lumoin.Veridical.Tests.Analysis;
 
 /// <summary>
-/// The programmable-Fiat-Shamir-oracle simulator gates for hiding WHIR (4.2
-/// phase C3), the ZK-BaseFold mold applied to HVZK-WHIR.
+/// The programmable-Fiat-Shamir-oracle simulator gates for hiding WHIR: the
+/// ZK-BaseFold mold applied to HVZK-WHIR.
 /// <see cref="ZkWhirOpeningSimulator"/> produces, from the public statement
 /// alone, a commitment and opening that a verifier holding the programmed
 /// oracle accepts; the structural gates assert the acceptance and that the

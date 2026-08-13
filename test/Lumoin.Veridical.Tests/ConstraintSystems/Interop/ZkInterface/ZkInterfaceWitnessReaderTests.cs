@@ -15,8 +15,8 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 /// format-label guard, the toy-field rejection on the vendored
 /// example.zkif, and the decoder swap seam. The instance+witness
 /// satisfaction happy path is in <see cref="ZkInterfaceWitnessBuilderTests"/>;
-/// end-to-end over a real curve through the pipe arrives with the owned
-/// fixtures in W.4.
+/// end-to-end over a real curve through the pipe is covered by
+/// <see cref="ZkInterfaceFixtureTests"/>.
 /// </summary>
 [TestClass]
 internal sealed class ZkInterfaceWitnessReaderTests

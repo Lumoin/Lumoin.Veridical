@@ -5,18 +5,17 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// (tag) level. The variant identifier is what distinguishes a base
 /// <see cref="SpartanProof"/> from a <see cref="MaskedSpartanProof"/>
 /// and from future ZK-construction sibling proof types per the
-/// taxonomy in the Spartan zero-knowledge design notes.
+/// taxonomy the entries below define.
 /// </summary>
 /// <param name="Identifier">A stable string identifying the variant; the same identifier appears in proof tag entries for runtime discrimination.</param>
 /// <remarks>
 /// <para>
 /// The variant entries cover the full Category A and Category B
-/// surface the design document anticipates. <see cref="Unmasked"/>
+/// surface this taxonomy anticipates. <see cref="Unmasked"/>
 /// and <see cref="MaskedStatistical"/> are the variants the codebase
 /// currently produces and verifies; the other two are reserved
 /// for future ZK constructions and exist so the type system carries
-/// the full taxonomy from the design doc rather than growing one
-/// entry at a time.
+/// the full taxonomy rather than growing one entry at a time.
 /// </para>
 /// </remarks>
 public readonly record struct SpartanProofVariant(string Identifier)
@@ -34,12 +33,11 @@ public readonly record struct SpartanProofVariant(string Identifier)
 
     /// <summary>
     /// The statistically-masked Category A construction implemented by
-    /// <c>MaskedSpartanProver</c> (SM.7b): degree-matched
+    /// <c>MaskedSpartanProver</c>: degree-matched
     /// sum-of-univariates kernel masks (Libra, Xie et al CRYPTO 2019
     /// §4.1; lineage Chiesa, Forbes, Spooner 2017, IACR ePrint
-    /// 2017/305) with the filler-laundered weighted-opening binding of
-    /// the statistical-mask design notes (v3). The round messages and
-    /// terminating evaluations are statistically masked; the
+    /// 2017/305) with a filler-laundered weighted-opening binding. The
+    /// round messages and terminating evaluations are statistically masked; the
     /// end-to-end ZK flavor follows the commitment scheme — DLOG-rooted
     /// computational over Pedersen/IPA, statistical in the ROM over
     /// the full-ZK BaseFold provider, sound-only over plain BaseFold.

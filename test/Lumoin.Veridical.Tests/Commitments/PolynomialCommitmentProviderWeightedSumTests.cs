@@ -14,7 +14,7 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Commitments;
 
 /// <summary>
-/// The provider-level weighted-opening path (SM.7b): every scheme that wires
+/// The provider-level weighted-opening path: every scheme that wires
 /// <see cref="PolynomialCommitmentProvider.CommitVector"/> /
 /// <see cref="PolynomialCommitmentProvider.OpenWeightedSum"/> /
 /// <see cref="PolynomialCommitmentProvider.VerifyWeightedSum"/> must round-trip

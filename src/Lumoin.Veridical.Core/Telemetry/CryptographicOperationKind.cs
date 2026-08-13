@@ -20,8 +20,8 @@ namespace Lumoin.Veridical.Core.Telemetry;
 /// system's bespoke operation, a project-specific tally, and so on.
 /// </para>
 /// <para>
-/// Codes are partitioned by surface so future batches can extend any
-/// category without renumbering: 1–9 are the scalar-field operations,
+/// Codes are partitioned by surface so any category can gain values
+/// without renumbering the others: 1–9 are the scalar-field operations,
 /// 10–19 the base-field operations (when introduced), 20–39 the G1 group
 /// operations, 40–59 G2 / GT, 60–79 polynomial and FFT operations, and
 /// codes above 1000 are reserved for application extensions.

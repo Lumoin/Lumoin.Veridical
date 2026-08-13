@@ -14,8 +14,8 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// ZK.2b.2 — the full zero-knowledge BaseFold evaluation (the CFS-2017 sumcheck
-/// mask on top of the ZK.2b.1 dimension lift), driven end to end through
+/// The full zero-knowledge BaseFold evaluation (the CFS-2017 sumcheck
+/// mask on top of the dimension lift), driven end to end through
 /// <see cref="ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge"/>.
 /// The lift closes the query and base-oracle channels; the sumcheck mask closes
 /// the round-polynomial channel, so the opening is genuinely simulatable.
@@ -27,8 +27,9 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// the binding of the mask side (a tampered <c>σ</c>, mask root, or mask base
 /// oracle, like a tampered witness byte, must be rejected). The
 /// bounded-independence hiding budget that makes the revealed positions
-/// witness-independent is the separate statistical claim of ZK.4, not asserted
-/// here. Real BLS12-381 arithmetic and production BLAKE3 throughout; the BaseFold
+/// witness-independent is the separate statistical claim validated empirically
+/// by <see cref="Lumoin.Veridical.Tests.Analysis.ZkBaseFoldHidingValidationTests"/>,
+/// not asserted here. Real BLS12-381 arithmetic and production BLAKE3 throughout; the BaseFold
 /// commitment test surface is uniformly BLS12-381.
 /// </para>
 /// </remarks>

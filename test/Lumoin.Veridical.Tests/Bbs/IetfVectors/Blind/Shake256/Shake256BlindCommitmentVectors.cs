@@ -39,8 +39,7 @@ internal static class Shake256BlindCommitmentVectors
     /// repo's fixture_data JSON, cross-checked byte-for-byte against
     /// the -02 text elsewhere); <see cref="BlindCommitmentVector.ProverBlind"/> and
     /// <see cref="BlindCommitmentVector.CommitmentWithProof"/> were never affected by the
-    /// misprint and match the -02 text directly. See
-    /// W2.4-BLIND-VECTORS.md defect (4) for the full analysis.
+    /// misprint and match the -02 text directly.
     /// </summary>
     public static BlindCommitmentVector Vector002 { get; } = new(
         Id: "shake256-blind-commitment-002",

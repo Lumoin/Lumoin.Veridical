@@ -17,8 +17,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <remarks>
 /// Both reference tests run over <c>Fp&lt;1&gt;("257")</c>, a tiny prime chosen only so the exhaustive
 /// <c>EltMuxer9</c> sweep (every plucker point up to <c>2·257</c>-ish) stays cheap; this port runs the
-/// same two tests over <see cref="Fp256Field"/> instead, since every other gate in this batch shares
-/// that field bundle and the muxer's construction and evaluation shape does not depend on the field's
+/// same two tests over <see cref="Fp256Field"/> instead, since every other Longfellow gate ported here
+/// shares that field bundle and the muxer's construction and evaluation shape does not depend on the field's
 /// size.
 /// </remarks>
 [TestClass]

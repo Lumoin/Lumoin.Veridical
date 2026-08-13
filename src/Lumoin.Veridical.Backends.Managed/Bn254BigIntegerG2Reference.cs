@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// the pairing: a D-twist maps the G2 line through <c>w⁻¹</c>, an M-twist
 /// through <c>w</c>. The G2 group arithmetic here is unaffected by that — it is
 /// ordinary elliptic-curve arithmetic over Fp2 with this curve's <c>b'</c> —
-/// but the line-evaluation step of the pairing (U.6/U.7) reads the twist
+/// but the line-evaluation step of <see cref="Bn254BigIntegerPairingReference"/> reads the twist
 /// convention precisely, so the pairing reference repeats this note.
 /// </para>
 /// <para>

@@ -9,7 +9,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR folding operator (4.2 phase A): the encode/fold
+/// Tests for the WHIR folding operator: the encode/fold
 /// commutation gate — butterfly-folding every encoded coset block must equal
 /// encoding the coefficient-folded polynomial on the squared domain, the
 /// content of WHIR Claim 4.15 — plus the partial-evaluation identity

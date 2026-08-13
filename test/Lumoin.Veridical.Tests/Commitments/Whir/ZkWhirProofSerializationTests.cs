@@ -14,7 +14,7 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the HVZK-WHIR proof wire codec (4.2 phase C3): a serialize →
+/// Tests for the HVZK-WHIR proof wire codec: a serialize →
 /// deserialize round-trip that still verifies, the exact parameter-derived
 /// length, the mask-total offset seam, and the reader funnel's rejections — a
 /// truncated buffer, a non-canonical mask total, private out-of-domain reply

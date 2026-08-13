@@ -13,12 +13,13 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Commitments;
 
 /// <summary>
-/// AA.2 byte-identity proof for the Hyrax adapter: routing commit / open /
+/// Byte-identity proof for the Hyrax adapter: routing commit / open /
 /// verify through the scheme-agnostic <see cref="PolynomialCommitmentProvider"/>
 /// produced by <see cref="HyraxPolynomialCommitmentScheme"/> yields exactly the
 /// same wire bytes as calling the Hyrax extension methods directly, and the
 /// provider's own commit → open → verify round-trip succeeds. This is the
-/// adapter-level guarantee that AA.2's consumer rewiring rests on.
+/// adapter-level guarantee that consumers migrating onto the scheme-agnostic
+/// provider surface can rely on.
 /// </summary>
 [TestClass]
 internal sealed class HyraxPolynomialCommitmentSchemeTests

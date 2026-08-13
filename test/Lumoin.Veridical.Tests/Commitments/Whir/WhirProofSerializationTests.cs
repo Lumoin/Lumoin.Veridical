@@ -12,7 +12,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR proof wire codec (4.2 phase B): a serialize →
+/// Tests for the WHIR proof wire codec: a serialize →
 /// deserialize round-trip that still verifies, the exact schedule-derived
 /// length, and the reader funnel's rejections — a truncated buffer, a
 /// non-canonical out-of-domain reply, final-polynomial element and opening

@@ -15,8 +15,8 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the masked sumcheck of the hiding WHIR path (4.2 phase C1,
-/// eprint 2026/391 Construction 6.3): the mask total must equal the
+/// Tests for the masked sumcheck of the hiding WHIR path
+/// (eprint 2026/391 Construction 6.3): the mask total must equal the
 /// brute-force cube sum, the prover and a replaying verifier must agree on
 /// the combining challenge, the fold challenges and the chained residual, and
 /// the residual must decompose as

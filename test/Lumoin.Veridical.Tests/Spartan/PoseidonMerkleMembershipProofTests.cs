@@ -61,9 +61,9 @@ internal sealed class PoseidonMerkleMembershipProofTests
     private const int TestQueryCount = 8;
     private const int ScalarSize = 32;
     private const int EntryCount = 3;
-    private const string TranscriptDomain = "veridical.wave3.poseidon.merkle.test.v1";
+    private const string TranscriptDomain = "veridical.poseidon.merkle.test.v1";
 
-    private static byte[] RandomSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.wave3.poseidon.merkle.rng.v1");
+    private static byte[] RandomSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.poseidon.merkle.rng.v1");
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 

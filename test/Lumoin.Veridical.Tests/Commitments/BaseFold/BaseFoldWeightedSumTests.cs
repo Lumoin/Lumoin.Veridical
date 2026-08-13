@@ -13,7 +13,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// SM.1 — the weighted-opening BaseFold primitive
+/// The weighted-opening BaseFold primitive
 /// (<see cref="BaseFoldEvaluationProver.ProveWeightedSum"/> /
 /// <see cref="BaseFoldEvaluationVerifier.VerifyWeightedSum"/>): the evaluation
 /// protocol with the <c>eq_z</c> multiplier generalised to an arbitrary public
@@ -21,8 +21,9 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// evaluation opening is the special case <c>W = eq_z</c>, pinned here by a
 /// byte-identity test so the generalisation provably did not move the existing
 /// wire format. This is the binding primitive the statistical-mask construction
-/// (the statistical-mask design notes, levels 2 and 3) opens its mask
-/// coefficients with. Real BLS12-381 arithmetic and production BLAKE3.
+/// opens its mask coefficients with, at both the quadratic degree BaseFold's
+/// <c>f·eq_z</c> sumcheck uses and the cubic degree the Spartan outer sumcheck
+/// uses. Real BLS12-381 arithmetic and production BLAKE3.
 /// </summary>
 [TestClass]
 internal sealed class BaseFoldWeightedSumTests

@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// <summary>
 /// Per-region self-consistent oracle gates for <see cref="MdocSignatureWitnessFiller"/>: the 3739-element
 /// Fp256 mdoc SIG-circuit witness column (the C# port of the <c>fill_b</c> side of
-/// <c>tempdocs/longfellow-zk-reference/lib/circuits/mdoc/mdoc_zk.cc</c> + <c>MdocSignatureWitness::fill_witness</c>).
+/// <c>lib/circuits/mdoc/mdoc_zk.cc</c> + <c>MdocSignatureWitness::fill_witness</c>).
 /// No Docker: every region is re-derived from an independent oracle and byte-compared, mirroring
 /// <see cref="EcdsaSignatureWitnessTests"/>'s nine gates and <c>MdocHashWitnessFillerTests</c>' region
 /// asserts. The load-bearing end-to-end checks are the two <c>WitnessedLadderRecoversR</c> (issuer + device,
@@ -20,8 +20,8 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// <remarks>
 /// The issuer half is the REAL credential (<c>mdoc-00.cbor</c>, <c>age_over_18</c>) via
 /// <see cref="MdocDisclosure"/>; the device half is the SYNTHESIZED tuple via
-/// <see cref="MdocDeviceSignatureSynth"/> (coordinator decision OQ1). The macs/av are the COMMITTED values
-/// from the chosen-constant keys (OQ2); gate 8 asserts the committed (prove-ready) variant rather than the
+/// <see cref="MdocDeviceSignatureSynth"/>. The macs/av are the COMMITTED values
+/// from the chosen-constant keys; gate 8 asserts the committed (prove-ready) variant rather than the
 /// reference's zero-at-commit fill.
 /// </remarks>
 [TestClass]
@@ -85,9 +85,10 @@ internal sealed class MdocSignatureWitnessFillerTests
         //The circuit precondition: e2 != 0 (mdoc_zk.cc:196-201).
         Assert.AreNotEqual(BigInteger.Zero, device.DeviceHash, "e2 must be non-zero (the circuit precondition).");
 
-        //OQ6 anti-swap: the device hash e2 (wire 3) must not equal the issuer MSO hash e_ (wire 900).
+        //Anti-swap: the device hash e2 (wire 3) must not equal the issuer MSO hash e_ (wire 900), so a
+        //filler bug cannot silently swap the two hashes into each other's slot.
         BigInteger issuerHash = MdocSignatureWitnessFiller.IssuerHash(issuer);
-        Assert.AreNotEqual(issuerHash, device.DeviceHash, "e2 (device) must not equal e_ (issuer): OQ6 anti-swap.");
+        Assert.AreNotEqual(issuerHash, device.DeviceHash, "e2 (device) must not equal e_ (issuer): anti-swap.");
         Assert.IsTrue(Element(column, CommonValuesStart).SequenceEqual(EcdsaNonceRecovery.Bytes(issuerHash)), "Wire 900 must be e_ (the issuer hash).");
     }
 
@@ -138,7 +139,8 @@ internal sealed class MdocSignatureWitnessFillerTests
         ];
 
         //The issuer-hash MAC message ties to the HASH-circuit common value (the cross-circuit tie). The
-        //device key halves are the SYNTH key here (not the credential's deviceKeyInfo), per OQ1.
+        //device key halves are the SYNTH key here (not the credential's deviceKeyInfo), since the device
+        //half stands in for a live device credential rather than being extracted from one.
         MdocParsedDocument parsed = MdocParsedDocument.Parse(Credential);
         MdocHashWitnessState hashState = MdocHashWitnessState.Compute(parsed, MdocRequestedAttribute.AgeOver18);
         Assert.IsTrue(expectedMessages[0].AsSpan().SequenceEqual(hashState.MacMessageE), "The issuer-hash MAC message must equal the hash circuit's MacMessageE (the common value).");
@@ -166,7 +168,7 @@ internal sealed class MdocSignatureWitnessFillerTests
 
         Assert.HasCount(4, codes, "There are four 2-bit plucker codes.");
 
-        //encode(v) = of_scalar(2v) − of_scalar(3) over Fp256: {p-3, p-1, 1, 3} (OQ4; N-1=3, NOT 15).
+        //encode(v) = of_scalar(2v) − of_scalar(3) over Fp256: {p-3, p-1, 1, 3} (N-1=3, NOT 15).
         Assert.IsTrue(codes[0].AsSpan().SequenceEqual(EcdsaNonceRecovery.Bytes(Prime - 3)), "encode(0) must be p-3.");
         Assert.IsTrue(codes[1].AsSpan().SequenceEqual(EcdsaNonceRecovery.Bytes(Prime - 1)), "encode(1) must be p-1.");
         Assert.IsTrue(codes[2].AsSpan().SequenceEqual(EcdsaNonceRecovery.Bytes(BigInteger.One)), "encode(2) must be 1.");

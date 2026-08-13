@@ -19,7 +19,7 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// same scalar serialized many times) and the per-query Merkle paths share
 /// upper-tree digests, so the analytic chi-squared — which assumes independent
 /// draws — rejects on pure structure for <em>any</em> labeling, including ones
-/// independent of the witness (verified during batch SM: index-parity and
+/// independent of the witness (confirmed empirically: index-parity and
 /// first-half-versus-last-half labelings rejected at p &lt; 1e-24). Comparing the
 /// observed statistic against the same statistic under random relabelings of the
 /// same proofs is valid under arbitrary intra-proof dependence: under the null
@@ -128,10 +128,10 @@ public static class BaseFoldByteStatisticsExperiment
     //under the given labeling. Only the statistic is used — its analytic p-value
     //is invalid under intra-proof byte dependence (see the type remarks).
     //
-    //The 256-bin pooling adds run vector-width (VectorizedAccumulation, the
-    //batch AC seam marker landed in batch PB); the byte-counting loop in Run
-    //stays scalar -- histogram counting scatters, and a per-lane sub-histogram
-    //split is not worth its complexity at these sample scales.
+    //The 256-bin pooling adds run vector-width through VectorizedAccumulation's SIMD
+    //seam; the byte-counting loop in Run stays scalar -- histogram counting scatters,
+    //and a per-lane sub-histogram split is not worth its complexity at these sample
+    //scales.
     private static double PooledStatistic(long[][] histograms, int[] labels, double significanceLevel)
     {
         long[] classZero = new long[ByteValueCount];

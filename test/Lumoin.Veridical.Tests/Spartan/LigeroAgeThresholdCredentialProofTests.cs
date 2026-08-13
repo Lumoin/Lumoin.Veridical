@@ -21,7 +21,8 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// <summary>
 /// End-to-end gate mimicking how a consumer (e.g. Verifiable) drives the stack:
 /// a dummy ISO-18013-5-shaped mdoc credential is ECDSA-signed by an issuer and
-/// its signature verified out of circuit (the LF.3 P-256 reference), then a
+/// its signature verified out of circuit against the P-256 reference
+/// implementation, then a
 /// caller-supplied value callback feeds the holder's private <c>age</c> into an
 /// <c>age ≥ threshold</c> circuit which is proven in zero knowledge through the
 /// new Ligero polynomial commitment (Spartan-over-Ligero) and verified.
@@ -38,8 +39,8 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// here, so the proof binds <c>age ≥ threshold</c> for a supplied age but does not
 /// yet cryptographically tie that in-circuit age to the signed credential.
 /// Verifying the ECDSA signature (and the credential hash) <em>inside</em> the
-/// circuit — the elliptic-curve-scalar-multiplication gadget — is the remaining
-/// Longfellow LF.5 work and is deliberately not attempted here.
+/// circuit requires an elliptic-curve-scalar-multiplication gadget that this
+/// proof does not include, so that binding is deliberately not attempted here.
 /// </para>
 /// </remarks>
 [TestClass]

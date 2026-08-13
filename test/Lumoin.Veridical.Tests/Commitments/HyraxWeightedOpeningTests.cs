@@ -17,7 +17,7 @@ namespace Lumoin.Veridical.Tests.Commitments;
 /// Round-trip and tamper tests for the Hyrax weighted opening: a single-row
 /// vector commitment proving <c>⟨vector, W⟩</c> against a public weight
 /// vector through the inner-product argument — the Pedersen/IPA analogue of
-/// BaseFold's weighted opening (SM.1), and the binding the statistical-mask
+/// BaseFold's weighted opening, and the binding the statistical-mask
 /// construction uses over the Hyrax path.
 /// </summary>
 [TestClass]

@@ -9,11 +9,10 @@ polynomial commitment scheme. Veridical uses Hyrax (from
 `Lumoin.Veridical.Core.Commitments`) as the commitment scheme; Hyrax
 is transparent (no trusted setup) and discrete-log-based.
 
-For the full protocol description, see SPARTAN2.md in this directory.
-For the zero-knowledge transformations layered on the base prover —
-round-message masking and fold-with-randomness — see the Spartan
-zero-knowledge design notes, and the folding design notes for the
-as-built Nova-style folding (`FoldChain`).
+For the full protocol description, see SPARTAN2.md in this directory,
+including §10 for the round-message masking layered on the base
+prover. `FoldChain`'s own documentation covers the as-built
+Nova-style folding.
 
 ## On wire-format interoperability
 

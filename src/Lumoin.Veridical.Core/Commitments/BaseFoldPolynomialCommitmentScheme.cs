@@ -204,10 +204,10 @@ public static class BaseFoldPolynomialCommitmentScheme
             }
         };
 
-        //The weighted-opening path (the statistical sumcheck mask's binding,
-        //SM.7b): the vector commit is the ordinary Merkle commit of the
-        //vector's MLE, and the weighted opening is the SM.1 multiplier-generic
-        //evaluation protocol.
+        //The weighted-opening path (the statistical sumcheck mask's binding):
+        //the vector commit is the ordinary Merkle commit of the vector's MLE,
+        //and the weighted opening is the multiplier-generic evaluation
+        //protocol.
         PolynomialOpenWeightedSumDelegate openWeightedSum = (commitment, blind, vector, weights, transcript, pool) =>
         {
             using FoldableCode code = DeriveCode(vector.VariableCount, pool);

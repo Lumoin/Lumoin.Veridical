@@ -22,8 +22,11 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 /// <para>
 /// Public-input convention (as the Circom reader): every variable but the
 /// constant one is treated as private witness from Veridical's perspective
-/// (<see cref="RawR1csInstance.PublicInputCount"/> = 0); the genuine
-/// instance/witness split is the open W.3 decision.
+/// (<see cref="RawR1csInstance.PublicInputCount"/> = 0); a genuine
+/// instance/witness split is deferred, since promoting instance variables
+/// to first-class public inputs would require the public columns to
+/// occupy positions <c>1..p</c> contiguously, which arbitrary ZkInterface
+/// ids do not guarantee.
 /// </para>
 /// </remarks>
 internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink

@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// <summary>
 /// The compiling backend, a faithful port of google/longfellow-zk's
 /// <c>CompilerBackend&lt;Field&gt;</c> (<c>compiler_backend.h</c>): every primitive forwards directly
-/// to the Phase-0 <see cref="LongfellowQuadCircuitBuilder"/>, so the emitted node graph — and
+/// to the <see cref="LongfellowQuadCircuitBuilder"/>, so the emitted node graph — and
 /// therefore the compiled circuit's structure and structural id — is exactly the builder's own.
 /// </summary>
 /// <remarks>

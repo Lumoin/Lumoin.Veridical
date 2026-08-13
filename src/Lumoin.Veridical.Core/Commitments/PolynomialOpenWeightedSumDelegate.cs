@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <see cref="PolynomialOpenDelegate"/>: where an evaluation opening binds a
 /// point, this binds an arbitrary public linear functional of the committed
 /// coordinates — the binding the statistical sumcheck mask uses for its
-/// coefficient vector (the statistical-mask design notes, §2 v3).
+/// coefficient vector.
 /// </summary>
 /// <remarks>
 /// The weight vector is public protocol shape — the verifier derives it from

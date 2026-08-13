@@ -16,9 +16,9 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// what bytes it absorbs). The composite-operand absorbs
 /// (<c>AbsorbMultilinearExtension</c>, <c>AbsorbPolynomial</c>) absorb
 /// the operand's canonical bytes regardless of curve and guard only that
-/// the operand's curve is wired (Bls12Curve381, Bn254); they were
-/// curve-broadened in place when BN254 was wired (Batch U) rather than
-/// duplicated into a parallel per-curve file.
+/// the operand's curve is wired (Bls12Curve381, Bn254); the block stays
+/// curve-broad rather than duplicated into a parallel per-curve file, so
+/// each additional curve extends the guard list in place.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]

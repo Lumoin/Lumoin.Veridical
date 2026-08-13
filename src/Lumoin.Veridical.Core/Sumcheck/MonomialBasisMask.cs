@@ -9,8 +9,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 
 /// <summary>
 /// The statistical-ZK sumcheck mask (Libra, IACR ePrint 2019/317 §4.1; lineage
-/// CFS, ePrint 2017/305; the statistical-mask design notes, §2 v2):
-/// uniformly random coefficients over an explicit public
+/// CFS, ePrint 2017/305): uniformly random coefficients over an explicit public
 /// <see cref="MonomialBasis"/> of per-variable degree at most two, blended into
 /// a degree-2 sumcheck as <c>h_k + ρ·s_k</c> so every revealed round
 /// coefficient — including the degree-two one a multilinear mask leaves bare —
@@ -28,7 +27,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 /// The terminal value <c>s(r) = Σ_e c_e·m_e(r)</c> is the inner product of the
 /// coefficient vector with the public weights <c>m_e(r)</c>
 /// (<see cref="BuildWeightVector"/>), which is how the construction binds it: a
-/// weighted opening of the committed coefficients (SM.1).
+/// weighted opening of the committed coefficients.
 /// </para>
 /// <para>
 /// The coefficients are secret mask randomness — revealing them retroactively
@@ -462,11 +461,13 @@ public sealed class MonomialBasisMask: SensitiveMemory
 
     //m_e(r) = Π_j r_j^{e_j} into result (one scalar wide).
     //
-    //Batch seam marker (perf batch): within one monomial the multiplies chain
-    //(data-dependent), but across monomials — BuildWeightVector's per-index
-    //calls and EvaluateAt's terms — they are independent, exactly the
-    //ScalarArithmeticBackend.BatchMultiply shape (the AD.7b lane-interleaved
-    //kernel); not pre-designed here per the substrate rule.
+    //Within one monomial the multiplies chain (data-dependent), but across
+    //monomials — BuildWeightVector's per-index calls and EvaluateAt's terms —
+    //they are independent, matching the shape ScalarArithmeticBackend.BatchMultiply
+    //targets. This routine stays scalar rather than taking a batch delegate
+    //parameter, leaving that composition to callers that already hold a
+    //backend, per the delegate-per-backend model this library follows
+    //elsewhere.
     private static void EvaluateMonomial(
         ReadOnlySpan<byte> exponents,
         ReadOnlySpan<Scalar> point,

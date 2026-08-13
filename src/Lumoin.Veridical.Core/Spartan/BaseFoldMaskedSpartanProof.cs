@@ -21,8 +21,9 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// when the commitments are hiding. BaseFold's commitment is a Merkle root over
 /// the codeword — binding but <em>not</em> hiding — so a masked Spartan proof
 /// over BaseFold is a sound argument of knowledge but does <em>not</em> achieve
-/// the witness privacy the "masked" name implies; full ZK needs a hiding
-/// BaseFold variant (a blinded codeword), which is out of scope. See the BaseFold design notes.
+/// the witness privacy the "masked" name implies; achieving full zero-knowledge
+/// requires a hiding BaseFold commitment (a blinded codeword), which this
+/// construction does not provide.
 /// </para>
 /// <para>
 /// Buffer layout, in order: witness root, outer-mask root, inner-mask root,

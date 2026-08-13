@@ -16,8 +16,8 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// sections, but its witness opening is a full zero-knowledge BaseFold opening
 /// (the dimension lift plus the CFS-2017 sumcheck mask) and its two mask
 /// openings are <em>hiding weighted openings</em> of the salted-and-lifted mask
-/// coefficient vectors (design v3 — the filler laundering replaces the old
-/// recursive full-ZK opening, shrinking the proof).
+/// coefficient vectors — the filler laundering replaces a recursive full-ZK
+/// opening, shrinking the proof.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -153,7 +153,7 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
         //deterministically (plain), and is recomputed by the verifier, so its
         //opening is the plain (unlifted, unmasked) size. The witness is full-ZK
         //size; the two masks are hiding weighted openings at their
-        //policy-resolved lifted shapes (design v3).
+        //policy-resolved lifted shapes.
         int errorOpeningSize = PlainOpeningSizeBytes(outerRoundCount, curve, queryCount, digestSizeBytes);
         int outerMaskOpeningSize = MaskOpeningSizeBytes(outerRoundCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree, curve, queryCount, digestSizeBytes);
         int innerMaskOpeningSize = MaskOpeningSizeBytes(innerRoundCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree, curve, queryCount, digestSizeBytes);

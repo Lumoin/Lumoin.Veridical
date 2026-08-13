@@ -12,8 +12,9 @@
     <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <!-- Benchmarks-only: head-to-head comparison vs. the xoofx
-         native BLAKE3 binding. Not referenced from src/ or
-         Lumoin.Veridical.Tests after batch O. -->
+         native BLAKE3 binding. Referenced only from the benchmarks
+         project; src/ and Lumoin.Veridical.Tests carry no dependency
+         on it. -->
     <PackageVersion Include="Blake3" Version="3.0.2" />
     <PackageVersion Include="CsCheck" Version="4.8.0" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />

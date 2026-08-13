@@ -13,8 +13,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// The bounded-independence hiding budget enforcement (design doc §3.3, the
-/// ZK-BF deferred follow-on): a lift provider advertising
+/// The bounded-independence hiding budget enforcement: a lift provider advertising
 /// <see cref="PolynomialCommitmentProvider.IsHiding"/> must refuse — loudly,
 /// never silently — a commit or open whose mask degrees of freedom
 /// <c>(2^t − 1)·2^d</c> cannot cover the codeword positions an opening reveals.
@@ -94,7 +93,7 @@ internal sealed class ZkBaseFoldHidingBudgetTests
     [TestMethod]
     public void MinimumLiftAtProductionQueryCountMatchesTheDesignDocEstimate()
     {
-        //Design doc §3.3: for Q ≈ 273 and small d, t ≈ 9–11 suffices. The exact
+        //For Q ≈ 273 and small d, t ≈ 9–11 suffices. The exact
         //fixed point under the reveal bound Q·(d + t + 1) + 8 at d = 2 is t = 10:
         //DOF = 1023·4 = 4092 ≥ 273·13 + 8 = 3557, while t = 9 gives 2044 < 3284.
         const int ProductionQueryCount = 273;

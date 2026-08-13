@@ -1,4 +1,4 @@
-# Fuzzing the hand-written decoders (W1-c)
+# Fuzzing the hand-written decoders
 
 The library parses several hostile-by-assumption binary formats with hand-written readers:
 the Circom `.r1cs` / `.wtns` readers, the ZkInterface FlatBuffers decoder and its R1CS /

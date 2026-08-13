@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <remarks>
 /// <para>
 /// Every term is computed conservatively within the Johnson-radius pricing
-/// convention documented in the security-bits design notes (the per-column proximity
+/// convention this ledger applies uniformly (the per-column proximity
 /// figure is the <c>η → 0</c> limit of the proximity-gap theorem's provable
 /// range; any concrete <c>η</c> shaves a fraction of a bit and adds a
 /// far-larger-exponent field-side error term). Field-size terms use the floor
@@ -26,7 +26,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// low-order field events are weighted deliberately loosely (see
 /// <see cref="LigeroFieldTermBits"/>) — those terms exist to show they never
 /// approach the query-term bottleneck for the shapes this library commits, not
-/// to be tight. Design note: the security-bits design notes.
+/// to be tight.
 /// </para>
 /// <para>
 /// The dominant practical hazard the ledger surfaces is the per-polynomial

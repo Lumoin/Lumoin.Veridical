@@ -21,11 +21,11 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// A guard rejects curves that are not yet wired (Bls12Curve381, Bn254).
 /// </para>
 /// <para>
-/// This replaced the original per-curve design (a planned parallel
-/// <c>MultilinearExtensionBn254ArithmeticExtensions</c>): when BN254 was
-/// wired (Batch U) the block was curve-broadened in place rather than
-/// duplicated, matching the delegate-per-backend composability model
-/// where the curve rides on the operand and delegate, not the call site.
+/// The block stays curve-broad rather than being split into a parallel
+/// per-curve type (a duplicate <c>MultilinearExtensionBn254ArithmeticExtensions</c>,
+/// for example): adding a curve extends the guard list in place, matching
+/// the delegate-per-backend composability model where the curve rides on
+/// the operand and delegate, not the call site.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]

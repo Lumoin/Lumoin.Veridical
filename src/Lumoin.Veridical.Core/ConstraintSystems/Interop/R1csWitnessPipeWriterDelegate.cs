@@ -6,8 +6,8 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop;
 
 /// <summary>
 /// Writes an R1CS witness to a pipe in the specified wire format.
-/// Declaration-only in this batch; the writer-side direction lands
-/// in future batches.
+/// Declared as forward-looking adapter surface alongside the reader
+/// delegates; no implementation is wired yet.
 /// </summary>
 /// <param name="pipe">The pipe accepting the encoded bytes.</param>
 /// <param name="witness">The witness to serialise.</param>

@@ -19,8 +19,9 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// over BN254 and the verifier accepts. The BN254 counterpart of
 /// <see cref="SpartanRoundtripTests"/>. Field arithmetic comes from the env-aware
 /// BN254 bundle (SIMD when supported, BigInteger otherwise — byte-identical); the
-/// rest is the BN254 reference. This is the U.10 test that exercises the construction
-/// code opened in U.9 with a real second curve.
+/// rest is the BN254 reference. The construction is curve-generic, so this
+/// exercises the same prove/verify path with a real second curve rather than
+/// only BLS12-381.
 /// </summary>
 [TestClass]
 internal sealed class Bn254SpartanRoundtripTests

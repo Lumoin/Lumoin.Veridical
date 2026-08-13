@@ -15,7 +15,7 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Analysis;
 
 /// <summary>
-/// ZK.4 — empirical validation that the full zero-knowledge BaseFold provider
+/// Empirical validation that the full zero-knowledge BaseFold provider
 /// (<see cref="ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge"/>)
 /// closes the <em>structural</em> leakage the plain provider exhibits. The
 /// guaranteed, discriminating evidence is the
@@ -28,15 +28,15 @@ namespace Lumoin.Veridical.Tests.Analysis;
 /// <remarks>
 /// <para>
 /// <b>Verdicts are logged, not asserted.</b> The
-/// sumcheck mask is the statistical mask
-/// (the statistical-mask design notes, v3): every round coefficient is
+/// sumcheck mask is the statistical mask: every round coefficient is
 /// blended with exact degrees-of-freedom coverage, the mask's terminal value is
 /// bound by a filler-laundered weighted opening, and the byte-distribution
-/// experiment assesses its statistic against a label-permutation null (the
-/// analytic chi-squared was shown during batch SM to reject witness-independent
-/// labelings on this proof structure — intra-proof byte duplication breaks its
-/// independence assumption, which had also confounded the pre-SM attribution of
-/// its Detected verdict to the multilinear mask's degree-two residual). The
+/// experiment assesses its statistic against a label-permutation null. The
+/// analytic chi-squared test is invalid here, because intra-proof byte
+/// duplication breaks the independence assumption the test relies on — that
+/// same duplication can otherwise make a Detected verdict look like it comes
+/// from the multilinear mask's degree-two residual, when it is really an
+/// artifact of the broken independence assumption, not genuine leakage. The
 /// statistical experiments are still asserted only to run to completion and
 /// produce a well-formed result — a Detected or NotDetected finding is an honest
 /// outcome at test-suite sample scales, not a pass/fail gate — with the verdicts
@@ -45,9 +45,9 @@ namespace Lumoin.Veridical.Tests.Analysis;
 /// </para>
 /// <para>
 /// A literal real-versus-simulated proof-byte test compares a real proof to a
-/// simulator's output (design doc §5). Since the FS batch this EXISTS: the
-/// transcript's squeeze delegate is the programmable seam (the production
-/// BLAKE3 hash needed no change), and <c>ZkBaseFoldSimulatorTests</c> runs the
+/// simulator's output. This is possible because the transcript's squeeze
+/// delegate is the programmable seam (the production BLAKE3 hash needed no
+/// change), and <c>ZkBaseFoldSimulatorTests</c> runs the
 /// witness-free <c>ZkBaseFoldOpeningSimulator</c> with its verifying and
 /// distribution gates. The witness-independence two-sample form here remains
 /// complementary evidence; <see cref="WitnessIndependenceTwoSampleTestHasPower"/>
@@ -108,9 +108,9 @@ internal sealed class ZkBaseFoldHidingValidationTests
     {
         //The statistical experiments are asserted to run and produce a well-formed
         //result, not to reach a particular verdict: at test-suite sample scales a
-        //borderline finding either way is a valid outcome, not a failure (the SM statistical
-        //mask makes NotDetected the expected outcome — observed at permutation
-        //p ≈ 0.24 when the fix landed). The findings are logged for the record.
+        //borderline finding either way is a valid outcome, not a failure (the
+        //statistical mask makes NotDetected the expected outcome, observed at
+        //permutation p ≈ 0.24). The findings are logged for the record.
         using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();
 
         BaseFoldLeakageExperimentResult byteStats =
@@ -154,11 +154,10 @@ internal sealed class ZkBaseFoldHidingValidationTests
         }
 
         //The at-scale companion of the run-to-completion case above: the same
-        //three experiments at the figure-grade sample count the leakage
-        //write-up quotes (the BaseFold-leakage design notes). Verdicts stay logged-not-
+        //three experiments at a figure-grade sample count. Verdicts stay logged-not-
         //asserted — sample-scale statistics must not be flaky CI gates — but a
-        //named, repeatable case replaces the one-off observation the doc's
-        //full-ZK figures previously rested on.
+        //named, repeatable case gives the full-zero-knowledge leakage figures a
+        //reproducible source instead of a one-off observation.
         const int ScaleSampleCount = 200;
 
         using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();

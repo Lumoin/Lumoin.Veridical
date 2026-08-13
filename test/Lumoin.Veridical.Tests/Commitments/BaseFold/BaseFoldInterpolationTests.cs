@@ -12,7 +12,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold evals→coefficients interpolation (AB.4): the
+/// Tests for the BaseFold evals→coefficients interpolation: the
 /// multilinear Möbius transform that turns a <see cref="MultilinearExtension"/>'s
 /// dense hypercube evaluations into the monomial coefficient vector
 /// <see cref="FoldableCodeExtensions.Encode"/> commits to. A hand-computed case

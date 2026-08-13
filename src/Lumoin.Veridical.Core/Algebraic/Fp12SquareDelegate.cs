@@ -16,8 +16,8 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// halves) can save Fp6 multiplications versus self-multiplication; the
 /// result must agree with <c>a · a</c> byte-for-byte. Cyclotomic
 /// squaring — the substantially cheaper variant valid only inside the
-/// cyclotomic subgroup — is a separate delegate introduced with the
-/// pairing batch.
+/// cyclotomic subgroup — is a separate delegate, scoped to pairing-specific
+/// code paths that alone can guarantee the operand lies in that subgroup.
 /// </remarks>
 public delegate void Fp12SquareDelegate(
     ReadOnlySpan<byte> a,

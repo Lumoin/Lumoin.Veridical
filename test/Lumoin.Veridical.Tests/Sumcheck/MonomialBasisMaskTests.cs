@@ -13,9 +13,9 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Sumcheck;
 
 /// <summary>
-/// SM.2b — the monomial-basis sumcheck mask (<see cref="MonomialBasisMask"/>
+/// The monomial-basis sumcheck mask (<see cref="MonomialBasisMask"/>
 /// over a <see cref="MonomialBasis"/>; Libra ePrint 2019/317 §4.1 generalised
-/// per the statistical-mask design notes (§2, v2): pins the generic
+/// to an arbitrary monomial basis) pins the generic
 /// closed-form <c>σ</c>, the per-round blend, and the terminal
 /// <c>s(r)</c>/weight pairing against a naive dense reference that evaluates
 /// the mask monomial by monomial and brute-forces the round partial sums. The

@@ -33,8 +33,8 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <para>
 /// Frobenius and cyclotomic squaring are not part of this tower reference —
 /// the BLS12-381 codebase implements them in its pairing reference, where the
-/// final exponentiation needs them, and the BN254 equivalents land there too
-/// (U.6/U.7).
+/// final exponentiation needs them, and the BN254 equivalents live in
+/// <see cref="Bn254BigIntegerPairingReference"/> alongside it.
 /// </para>
 /// </remarks>
 internal static class Bn254BigIntegerFp12Reference

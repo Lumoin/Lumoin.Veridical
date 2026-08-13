@@ -51,9 +51,10 @@ streams, and in-memory buffers uniformly. The
 `WellKnownR1csFormatLabel` parameter is the wire-format
 discriminator: a single delegate type can carry any concrete
 reader, and the reader implementation validates the label matches
-the format it parses. Writer-side delegates with parallel shape
-are declared in the same folder but no implementations are wired
-in this batch.
+the format it parses. Writer-side delegates with parallel shape are
+declared in the same folder to keep the adapter surface symmetric;
+no implementation backs them yet, so only the reader direction is
+wired for callers today.
 
 A reader does not auto-detect the wire format. The caller declares
 which format the pipe carries; the reader produces the deliverable
@@ -72,8 +73,7 @@ The iden3 binary specification for `.r1cs` files
 is the authoritative source. The file shape:
 
 - A 4-byte ASCII magic `r1cs`.
-- A 4-byte little-endian version (only version 1 is accepted in
-  this batch).
+- A 4-byte little-endian version (only version 1 is accepted).
 - A 4-byte little-endian section count.
 - Variable-order sections, each prefixed by a 4-byte type code and
   an 8-byte little-endian payload size.
@@ -139,8 +139,8 @@ first-class when `RawR1csInstance` grows a deferred-public-input mode
 (provide `PublicInputCount` separately from the public-input bytes,
 or expose a method that copies an existing instance's matrices into
 a new instance with different public-input values). Both are
-follow-up work; the byte-faithful prove-and-verify gate this batch
-delivers does not depend on either.
+follow-up work that does not change the adapter contract; the
+byte-faithful prove-and-verify gate does not depend on either.
 
 ## § 7 The Circom witness (`.wtns`) format
 
@@ -155,8 +155,7 @@ runtime emits the same bytes.
 File shape:
 
 - A 4-byte ASCII magic `wtns`.
-- A 4-byte little-endian version (only version 2 is accepted in
-  this batch).
+- A 4-byte little-endian version (only version 2 is accepted).
 - A 4-byte little-endian section count.
 - Variable-order sections, each prefixed by a 4-byte type code and
   an 8-byte little-endian payload size — the same framing as

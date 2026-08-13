@@ -17,15 +17,16 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Gkr;
 
 /// <summary>
-/// E2E.3 — the full mdoc disclosure chain, entirely on the GF(2^128) side: the disclosed
+/// The full mdoc disclosure chain, entirely on the GF(2^128) side: the disclosed
 /// <c>IssuerSignedItem</c> is hashed in-circuit as a SECOND SHA-256 preimage on the SAME
 /// commitment that carries the Sig_structure hash, the item's digest is glued to the signed
 /// Sig_structure bytes at the public <c>ItemDigestOffset</c> (this is how "the signed MSO holds
 /// SHA-256(item)" is proven), and the item's bytes at the public <c>AttributeOffset</c> are pinned
-/// to the public disclosure pattern (the <c>age_over_18</c> claim). Combined with E2E.2's MAC and
-/// ECDSA binding this closes the Longfellow statement: a holder proves the issuer signed a
-/// Sig_structure whose MSO commits to an item that discloses the named attribute, the item's
-/// non-disclosed bytes staying private behind the schedule virtual predecessors.
+/// to the public disclosure pattern (the <c>age_over_18</c> claim). Combined with the MAC and
+/// ECDSA binding proven in <see cref="GkrMdocEcdsaTests"/> this closes the Longfellow statement: a
+/// holder proves the issuer signed a Sig_structure whose MSO commits to an item that discloses the
+/// named attribute, the item's non-disclosed bytes staying private behind the schedule virtual
+/// predecessors.
 /// <para>
 /// TRADEOFF: the item-digest offset, the attribute offset and the disclosure pattern are PUBLIC by
 /// design. Cost calibration rejected a private-offset one-hot selection (~300k extra quadratics)
@@ -229,7 +230,7 @@ internal sealed class GkrMdocDisclosureTests
     public void TheFullMdocStatementProvesAndVerifiesOnOneCommitment()
     {
         //THE FULL MDOC CAPSTONE: one Fp256 commitment carries the MAC region and the ECDSA gadget
-        //(E2E.2, unchanged), one GF commitment carries the Sig_structure hash, the item hash and
+        //(the digest-plus-ECDSA binding, unchanged), one GF commitment carries the Sig_structure hash, the item hash and
         //the disclosure statement. The shared transcript binds both. Verify true, then a flipped
         //mac is rejected on both sides, then a verifier-side tampered attribute is rejected by
         //rebuilding the verifier's statement with one flipped pattern byte.
@@ -273,7 +274,7 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The full prover protocol, E2E.2's transcript order with the disclosure GF support: commit the
+    //The full prover protocol, the digest-plus-ECDSA binding's transcript order with the disclosure GF support: commit the
     //combined Fp system (MAC region + ECDSA gadget), commit GF (both roots absorbed), squeeze the
     //verifier key, compute the macs, prove all GF instances under the disclosure statement, then
     //prove the Fp linear statement over the Montgomery backend.
@@ -345,7 +346,7 @@ internal sealed class GkrMdocDisclosureTests
 
     //The full verifier protocol, mirroring the prover's transcript order exactly. The GF statement
     //and targets are passed so the tampered-attribute dual can move the verifier's pins without a
-    //re-prove. As in E2E.2 the verifier reuses the prover's builder for the gadget structure.
+    //re-prove. As in the digest-plus-ECDSA binding the verifier reuses the prover's builder for the gadget structure.
     private static bool VerifyCrossField(
         LigeroConstraintSystemBuilder builder, LigeroProof fpProof, GkrCommittedProof gfProof, ReadOnlySpan<byte> macs, ulong[] maskedQuotients,
         LigeroLinearConstraint[] statement, byte[] targets)
@@ -390,7 +391,7 @@ internal sealed class GkrMdocDisclosureTests
 
 
     //The combined Fp system's quadratics: the ECDSA gadget's own quadratics followed by the MAC
-    //product and bitness triples (E2E.2's structure verbatim).
+    //product and bitness triples (the digest-plus-ECDSA binding's structure verbatim).
     private static LigeroQuadraticConstraint[] CombinedQuadratics(LigeroConstraintSystemBuilder builder)
     {
         LigeroQuadraticConstraint[] gadget = builder.QuadraticConstraints();
@@ -404,7 +405,7 @@ internal sealed class GkrMdocDisclosureTests
 
 
     //The combined Fp linear statement: the builder's gadget constraints, then the MAC parity
-    //statement re-indexed past them (E2E.2's structure verbatim).
+    //statement re-indexed past them (the digest-plus-ECDSA binding's structure verbatim).
     private static (int LinearCount, LigeroLinearConstraint[] Constraints, byte[] Targets) CombinedLinear(
         LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> verifierKey, ReadOnlySpan<byte> macs, ulong[] maskedQuotients)
     {
@@ -431,8 +432,8 @@ internal sealed class GkrMdocDisclosureTests
 
 
     //Builds the combined Fp builder over the real credential's signature, the MAC region first
-    //then the ECDSA gadget consuming the committed digest bits as its e·G scalar — E2E.2's
-    //construction verbatim (the disclosure changes nothing on the Fp side).
+    //then the ECDSA gadget consuming the committed digest bits as its e·G scalar — the
+    //digest-plus-ECDSA binding's construction verbatim (the disclosure changes nothing on the Fp side).
     private static LigeroConstraintSystemBuilder BuildEcdsaBuilder(ReadOnlySpan<byte> fpWitness, ReadOnlySpan<byte> digest)
     {
         var builder = new LigeroConstraintSystemBuilder(
@@ -470,8 +471,8 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The 256 MAC message wires that hold the digest, most-significant digest bit first — E2E.2's
-    //mapping verbatim.
+    //The 256 MAC message wires that hold the digest, most-significant digest bit first — the
+    //digest-plus-ECDSA binding's mapping verbatim.
     private static int[] DigestBitWires()
     {
         int[] eBits = new int[DigestBits];

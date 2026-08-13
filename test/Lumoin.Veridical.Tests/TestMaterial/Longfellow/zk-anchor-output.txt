@@ -5,8 +5,8 @@ Produced by zk_anchor.cc, run inside the longfellow-ref Docker image. The dump i
 reference implementation in its own build environment via development tooling outside this repository:
 
   docker run --rm \
-    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
-    -v "<repo>/tempdocs/longfellow-anchors:/anchor" \
+    -v "<repo>/<local-longfellow-clone>:/src" \
+    -v "<repo>/<local-anchor-harness>:/anchor" \
     longfellow-ref bash -c \
     "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/zk_anchor.cc /src/lib/util/log.cc -lcrypto -o /tmp/a && /tmp/a"
 

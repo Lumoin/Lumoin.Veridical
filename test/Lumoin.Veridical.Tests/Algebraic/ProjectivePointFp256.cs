@@ -9,7 +9,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <em>complete</em> Renes–Costello–Batina addition and doubling formulas
 /// (<see href="https://eprint.iacr.org/2015/1060.pdf">eprint 2015/1060</see>),
 /// ported operation-for-operation from
-/// <c>tempdocs/longfellow-zk-reference/lib/ec/elliptic_curve.h</c>.
+/// <c>lib/ec/elliptic_curve.h</c>.
 /// </summary>
 /// <remarks>
 /// <para>

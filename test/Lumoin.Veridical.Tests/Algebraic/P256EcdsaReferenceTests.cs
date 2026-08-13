@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// independent oracle, in both directions: a signature .NET produces must
 /// verify here, and a signature produced here must verify in .NET. Round-trip
 /// and rejection cases pin the in-range checks and the tamper response. This
-/// is the cleartext spec the in-circuit proof (LF.5) is gated against.
+/// is the cleartext spec the in-circuit proof is gated against.
 /// </summary>
 [TestClass]
 internal sealed class P256EcdsaReferenceTests

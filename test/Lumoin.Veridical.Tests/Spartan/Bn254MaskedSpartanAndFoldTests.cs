@@ -17,10 +17,11 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// End-to-end BN254 coverage of the masked Spartan prover/verifier and the
 /// Category-B <see cref="FoldChain"/>. Mirrors the BLS12-381
 /// <see cref="MaskedSpartanRoundtripTests"/> and <see cref="FoldChainRoundtripTests"/>
-/// with the BN254 reference backends. These exercise the U.10 curve-broadening
-/// of <c>MaskedSpartanProof</c> and the fold path (<c>RelaxedR1csFold</c> /
+/// with the BN254 reference backends. These exercise <c>MaskedSpartanProof</c>
+/// and the fold path (<c>RelaxedR1csFold</c> /
 /// <c>RawR1csInstanceExtensions.Prepare</c>, including the curve-correct G1
-/// identity encoding) with a real second curve.
+/// identity encoding) with a real second curve, confirming both constructions
+/// are curve-generic rather than tied to BLS12-381.
 /// </summary>
 [TestClass]
 internal sealed class Bn254MaskedSpartanAndFoldTests

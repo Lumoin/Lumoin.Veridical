@@ -50,6 +50,11 @@ internal sealed class LongfellowLigeroSerializeTests
     private const string ProveDumpRelativePath = "TestMaterial/Longfellow/prove-anchor-output.txt";
     private const string SerializeDumpRelativePath = "TestMaterial/Longfellow/serialize-anchor-output.txt";
 
+    //Names the environment variable that points at the developer's untracked anchor directory. The
+    //reverse harness is a developer-machine step, so the location is configured per machine and the
+    //helper is inconclusive wherever the variable is unset.
+    private const string AnchorDirectoryVariable = "VERIDICAL_ANCHOR_DIRECTORY";
+
     private const int ScalarSize = Scalar.SizeBytes;
     private const int DigestSize = 32;
     private const int NonceSize = 32;
@@ -149,14 +154,14 @@ internal sealed class LongfellowLigeroSerializeTests
     [TestMethod]
     public void WritesOurProofBytesForTheReverseHarness()
     {
-        //A developer-machine helper: writes our prover's serialized Ligero bytes into the anchor folder
-        //(tempdocs/longfellow-anchors) so the reverse harness can feed them to the reference verifier. On
-        //a machine without the anchor folder (a non-developer checkout) there is nothing to feed, so the
+        //A developer-machine helper: writes our prover's serialized Ligero bytes into a local, untracked
+        //anchor folder so the reverse harness can feed them to the reference verifier. On a machine
+        //without the anchor folder (a non-developer checkout) there is nothing to feed, so the
         //helper is inconclusive rather than failing.
         string? anchorFolder = LocateAnchorFolder();
         if(anchorFolder is null)
         {
-            Assert.Inconclusive("The anchor folder (tempdocs/longfellow-anchors) is not present; the reverse harness is a developer-machine step.");
+            Assert.Inconclusive($"Set {AnchorDirectoryVariable} to an existing directory to run the reverse harness; it is a developer-machine step.");
 
             return;
         }
@@ -557,23 +562,20 @@ internal sealed class LongfellowLigeroSerializeTests
     }
 
 
-    //Locates tempdocs/longfellow-anchors by walking up from the test base directory. Returns null when
-    //the folder is not present (a non-developer checkout).
+    //Locates the local, untracked anchor directory the reverse harness reads, named by the
+    //AnchorDirectoryVariable environment variable. The directory holds reference material that is
+    //never committed, so its location is a property of the developer's machine rather than of the
+    //repository. Returns null when the variable is unset or names a directory that does not exist,
+    //which is the ordinary case for a non-developer checkout.
     private static string? LocateAnchorFolder()
     {
-        DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while(directory is not null)
+        string? configured = Environment.GetEnvironmentVariable(AnchorDirectoryVariable);
+        if(string.IsNullOrWhiteSpace(configured) || !Directory.Exists(configured))
         {
-            string candidate = Path.Combine(directory.FullName, "tempdocs", "longfellow-anchors");
-            if(Directory.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            directory = directory.Parent;
+            return null;
         }
 
-        return null;
+        return configured;
     }
 
 

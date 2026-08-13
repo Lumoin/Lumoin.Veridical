@@ -20,8 +20,9 @@ namespace Lumoin.Veridical.Tests.Gkr;
 /// masked-quotient publication (see <see cref="GkrCrossFieldMacSupport"/>). The fold-map parity
 /// simulation is gated directly against the carry-less backend before any proof trusts it. The
 /// reference's canonicity (vlt) check is deliberately absent: the bits ARE the message on both
-/// sides; canonicity matters only when recomposing bits into a unique field element, which is
-/// the separately-solved LF.5 problem.
+/// sides; canonicity matters only when recomposing bits into a unique field element, which the
+/// ECDSA verifier's <c>e·G</c> ladder scalar in the digest-plus-ECDSA binding
+/// (<see cref="GkrMdocEcdsaTests"/>) solves separately.
 /// </summary>
 [TestClass]
 internal sealed class GkrCrossFieldMacTests

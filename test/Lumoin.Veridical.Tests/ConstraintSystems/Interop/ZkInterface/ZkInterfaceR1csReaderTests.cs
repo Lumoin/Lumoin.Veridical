@@ -17,7 +17,7 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 /// field with no <c>field_maximum</c>, so a wired-curve read of it is
 /// rejected at field reconciliation; the matrix-assembly happy path is
 /// covered directly in <see cref="ZkInterfaceR1csInstanceBuilderTests"/>
-/// (and end-to-end over a real curve by the owned fixtures in W.4).
+/// (and end-to-end over a real curve by <see cref="ZkInterfaceFixtureTests"/>).
 /// </summary>
 [TestClass]
 internal sealed class ZkInterfaceR1csReaderTests

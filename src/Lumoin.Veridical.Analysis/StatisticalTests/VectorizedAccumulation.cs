@@ -6,8 +6,8 @@ namespace Lumoin.Veridical.Analysis.StatisticalTests;
 /// <summary>
 /// Vector-width accumulation for the statistical experiments' histogram
 /// pooling: the 256-bin <see cref="long"/> adds are textbook lane-parallel
-/// shapes (the recorded SIMD seam from batch AC), and integer addition is
-/// exact, so the vectorized pooling is result-identical to the scalar loop.
+/// shapes, and integer addition is exact, so the vectorized pooling is
+/// result-identical to the scalar loop.
 /// </summary>
 internal static class VectorizedAccumulation
 {

@@ -22,12 +22,12 @@ the revealed messages and learns that the prover knows a signature
 over both the revealed and the hidden ones — but learns nothing
 about the hidden messages or the underlying signature.
 
-This sub-batch ships the proof half (GenerateProof / VerifyProof)
-alongside KeyGen, Sign, and Verify from the prior sub-batch. The
-proof byte length is variable: `272 + 32 · U` bytes where `U` is
-the number of undisclosed messages, ranging from 272 bytes when
-every message is disclosed up to 272 plus 32 bytes per hidden
-message otherwise.
+The library exposes the full BBS+ operation set — KeyGen, Sign,
+and Verify for signatures, plus GenerateProof and VerifyProof for
+selective-disclosure proofs. The proof byte length is variable:
+`272 + 32 · U` bytes where `U` is the number of undisclosed
+messages, ranging from 272 bytes when every message is disclosed
+up to 272 plus 32 bytes per hidden message otherwise.
 
 ## § 2 Operations
 
@@ -270,19 +270,17 @@ proof generation (`ProofInit`'s `5 + U` scalar draws) consume the
 sequence in the same fixed order on the test side and any order
 on the production side.
 
-## § 7 Closed
+## § 7 Current scope
 
-`Lumoin.Veridical.Bbs` ships at the closing commit of sub-batch
-BBS+.3 with both ciphersuites byte-faithful against the canonical
-upstream fixtures, the full per-primitive auxiliary coverage in
-place, and the architectural friction items from BBS+.2 (pool-
-renting and the symmetric verify catch) resolved. The library is
-ready for consumption by higher-level credential or proof systems.
+`Lumoin.Veridical.Bbs` ships both ciphersuites byte-faithful
+against the canonical upstream fixtures, with the full
+per-primitive auxiliary coverage in place; proof material is
+pool-rented, and `Verify` and `VerifyProof` share the same
+decode-error catch pattern (see the decode-error contract above).
+The library is ready for consumption by higher-level credential or
+proof systems.
 
-Future BBS+ work is independent of this shipped surface:
-additional ciphersuites, performance work (multi-pairing,
-compressed G_T, accelerated G_1/G_2 backends, the batched-MSM
-delegate refactor), the managed BLAKE3 backend if a third
-ciphersuite needs it, and the `MockedRandomScalars` terminology
-review the reviewer has flagged for a later batch each belong to
-their own sub-batches.
+Additional ciphersuites, performance work (multi-pairing,
+compressed G_T, accelerated G_1/G_2 backends, a batched-MSM
+delegate), and a managed BLAKE3 backend (if a third ciphersuite
+needs it) are independent of this shipped surface.

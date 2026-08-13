@@ -118,9 +118,9 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
         //Real proofs of the satisfying witness versus witness-free simulated
         //proofs: mean proof byte under Kolmogorov-Smirnov, per-proof byte
         //histograms under the label-permutation null (the analytic chi-squared
-        //p-value is invalid under intra-proof byte dependence — the SM.6
-        //finding). Verdicts logged, not asserted, per the established
-        //doctrine.
+        //p-value is invalid here, because intra-proof byte dependence breaks
+        //its independence assumption). Verdicts logged, not asserted, per
+        //the established doctrine.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         using RawR1csInstance instance = BuildInstance();
 

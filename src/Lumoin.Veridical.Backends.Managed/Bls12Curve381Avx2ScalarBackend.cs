@@ -28,8 +28,8 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// delegate signature. The agreement is verified by
 /// <c>Bls12Curve381ScalarBackendAgreementTests</c> which sweeps random
 /// inputs through both implementations and asserts byte equality of the
-/// output, which is the property-based testing pattern this batch is
-/// introducing.
+/// output — the property-based testing pattern used to gate every
+/// independently-implemented backend against its reference.
 /// </para>
 /// <para>
 /// Internal representation is 4 × <see cref="ulong"/> limbs in

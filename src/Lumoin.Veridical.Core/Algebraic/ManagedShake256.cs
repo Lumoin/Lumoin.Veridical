@@ -24,9 +24,9 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <para>
 /// This is a scalar reference implementation: correctness-first, no SIMD.
 /// It is selected only as the fallback when the OS XOF is unavailable (see
-/// <see cref="Rfc9380ExpandMessage.ExpandMessageXofShake256"/>); a future
-/// batch can add accelerated backends behind the same call site, exactly as
-/// the BLAKE3 backends are selected. Byte-identity with the OS XOF is gated
+/// <see cref="Rfc9380ExpandMessage.ExpandMessageXofShake256"/>); the same
+/// call site accommodates accelerated backends without a signature change,
+/// exactly as the BLAKE3 backends are selected. Byte-identity with the OS XOF is gated
 /// by an agreement test on hosts where both exist, and by the published
 /// IETF BBS SHAKE-256 vectors on hosts where only this path runs.
 /// </para>

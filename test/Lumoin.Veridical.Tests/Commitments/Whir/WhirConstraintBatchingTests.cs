@@ -12,8 +12,8 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR multi-claim batching layer (4.2 phase B, WHIR
-/// Construction 5.5): honest batched round-trips on both wired curves,
+/// Tests for the WHIR multi-claim batching layer (WHIR Construction 5.5):
+/// honest batched round-trips on both wired curves,
 /// mixed per-claim constraint shapes including a constraint-free claim, the
 /// single-claim degenerate batch, the Theorem 5.6 ledger-row pins, and the
 /// rejection wall — a tampered claim target, a shifted claim boundary over

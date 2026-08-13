@@ -289,7 +289,7 @@ public static class CircomR1csReader
         //nWires and nConstraints are attacker-controlled uint32 fields that index Int32-based
         //buffers during construction. A header declaring either above Int32.MaxValue must be
         //rejected here as malformed rather than surface later as an OverflowException from the
-        //checked (int) casts in ParseConstraintsAndBuild (a fuzz finding, W1-c).
+        //checked (int) casts in ParseConstraintsAndBuild.
         if(nWires > int.MaxValue)
         {
             throw new ArgumentException($"R1CS header declares nWires = {nWires}, exceeding the maximum supported wire count ({int.MaxValue}).");
@@ -403,9 +403,10 @@ public static class CircomR1csReader
 
         try
         {
-            //Public-input bytes are empty in this batch — see remarks
-            //on the type. PublicInputCount = 0; the entire z[1..] is
-            //handled as private witness from Veridical's perspective.
+            //Public-input bytes are empty under the PublicInputCount = 0
+            //convention described in the type's remarks; the entire
+            //z[1..] is handled as private witness from Veridical's
+            //perspective.
             return RawR1csInstance.Create(a, b, c, ReadOnlySpan<byte>.Empty, pool);
         }
         catch

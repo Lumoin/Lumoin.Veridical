@@ -37,11 +37,11 @@ namespace Lumoin.Veridical.Tests.Bbs.IetfVectors.Pseudonym;
 /// value transcribed here is <c>ProverNym + SignerNymEntropy mod r</c>
 /// (suite-independent, shared by every vector in both suites) and was
 /// cross-checked to reproduce both suites' printed pseudonym octets
-/// exactly; see <see cref="NymCommitVector.ProverNym"/> and
-/// W2.4-NYM-VECTORS.md for the full three-way recovery proof.
+/// exactly; see <see cref="NymCommitVector.ProverNym"/> for the full
+/// three-way recovery proof.
 /// </param>
 /// <param name="TraceB">Hex of the 48-byte canonical compressed G1 trace point B that B_calculate computes. The draft prints this field with a stray trailing non-hex character 's' in §12.1.4.1 (SHA-256 suite) — a confirmed draft typo (every other B-bearing field in the same vector family is clean hex); the value recorded here is the clean 48-byte hex with the stray 's' stripped.</param>
-/// <param name="TraceDomain">Hex of the 32-byte canonical big-endian trace scalar domain, computed before B per this draft's semantics (settles blind-defect D5 byte-for-byte).</param>
+/// <param name="TraceDomain">Hex of the 32-byte canonical big-endian trace scalar domain, computed before B per this draft's semantics, pinning the byte encoding for an ordering the draft's prose alone leaves ambiguous.</param>
 /// <param name="Signature">Hex of the 80-byte blind-with-nym signature octets FinalizeBlindSignWithNym produces.</param>
 internal sealed record NymSignatureVector(
     string Id,
