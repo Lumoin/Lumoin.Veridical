@@ -294,7 +294,8 @@ public static class BaseFoldPolynomialCommitmentScheme
             //mask shape is reused because the sound-only path makes no hiding
             //claim — the filler is inert structure shared with the hiding paths.
             extraVariableCount: null, commitVector: commit, openWeightedSum, verifyWeightedSum,
-            resolveStatisticalMaskShape: static (d, degree) => WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree));
+            resolveStatisticalMaskShape: static (d, degree) => WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree),
+            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes));
     }
 
 

@@ -309,7 +309,7 @@ internal static class PredicateProofOperations
         using var rowExtenders = new ScalarNttLigeroRowExtenders(scalar.Add, scalar.Subtract, scalar.Multiply, scalar.Invert, Curve, pool, scalar.BatchMultiply);
         using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider(scalar, request.QueryCount, request.InverseRate, request.DigestBytes, rowExtenders.Create)));
         using FiatShamirTranscript transcript = FreshTranscript(request.TranscriptDomain, pool);
-        using LigeroSpartanProof proof = prover.ProveLigero(
+        using CommitmentSpartanProof proof = prover.ProveCommitted(
             instance, witness, transcript,
             Hash, Squeeze, scalar.Reduce, scalar.Add, scalar.Subtract, scalar.Multiply, scalar.Invert, scalar.Random,
             g1.Add, g1.ScalarMultiply, g1.MultiScalarMultiply, mleEvaluate, mleFold, pool);
@@ -504,11 +504,23 @@ internal static class PredicateProofOperations
         ThrowIfBelowSoundnessTarget(instance, artifact.InverseRate, artifact.QueryCount);
 
         using ScalarArithmeticBackend scalar = Bls12Curve381ManagedScalarBackend.Create();
-        using LigeroSpartanProof proof = LigeroSpartanProof.FromBytes(proofBytes, outerRoundCount, innerRoundCount, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes, Curve, pool);
-        using var verifier = new SpartanVerifier(new SpartanVerifyingKey(BuildProvider(scalar, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes)));
+        PolynomialCommitmentProvider pcs = BuildProvider(scalar, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes);
+        using var verifier = new SpartanVerifier(new SpartanVerifyingKey(pcs));
+
+        //The wire bytes are pure payload, so the section lengths must come from
+        //outside them, and the provider about to check the proof is the one source
+        //that cannot disagree with the check: one column-commitment root for the
+        //witness commitment, and one opening per variable count, from the same
+        //parameters the verification runs under. Taking them from the header instead
+        //would let a proof be split at boundaries its verifier never agreed to,
+        //misreading every section before a single check ran.
+        PolynomialOpeningSizeDelegate openingSize = pcs.EvaluationProofSizeBytes!;
+        using CommitmentSpartanProof proof = CommitmentSpartanProof.FromBytes(
+            proofBytes, pcs.Scheme, outerRoundCount, innerRoundCount,
+            artifact.DigestBytes, openingSize(outerRoundCount), openingSize(innerRoundCount), Curve, pool);
         using FiatShamirTranscript transcript = FreshTranscript(artifact.TranscriptDomain, pool);
 
-        return verifier.VerifyLigero(proof, instance, transcript, scalar.Add, scalar.Multiply, scalar.Subtract, scalar.Reduce, Hash, Squeeze, pool);
+        return verifier.VerifyCommitted(proof, instance, transcript, scalar.Add, scalar.Multiply, scalar.Subtract, scalar.Reduce, Hash, Squeeze, pool);
     }
 
 

@@ -195,7 +195,7 @@ public sealed class SpartanProof: SensitiveMemory
     /// Reconstructs a proof from its canonical wire bytes given the dimensions
     /// (recovered by the verifier from the instance shape and the commitment
     /// key). Copies the bytes into a fresh pool-rented buffer — the sibling of
-    /// <see cref="BaseFoldSpartanProof.FromBytes"/> for the Hyrax-shaped proof,
+    /// <see cref="CommitmentSpartanProof.FromBytes"/> for the Hyrax-shaped proof,
     /// and the entry point for proofs that arrive over a wire or from storage.
     /// </summary>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
@@ -325,7 +325,7 @@ public sealed class SpartanProof: SensitiveMemory
     /// <summary>
     /// Returns a zero-copy window over the scheme-independent middle block
     /// (outer rounds, the three claims, <c>E(r_x)</c>, inner rounds,
-    /// <c>eval_W</c>), shared with <see cref="BaseFoldSpartanProof"/> and
+    /// <c>eval_W</c>), shared with <see cref="CommitmentSpartanProof"/> and
     /// consumed by the sumcheck verifier drivers. The window reads from this
     /// proof's buffer, so this proof must outlive the returned part.
     /// </summary>

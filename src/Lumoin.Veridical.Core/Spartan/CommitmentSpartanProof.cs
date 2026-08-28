@@ -37,10 +37,9 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// provider it is about to verify against.
 /// </para>
 /// <para>
-/// The layout carries no length prefixes, exactly as the per-scheme proofs it
-/// generalises do not: both endpoints know the round counts from the instance
-/// dimensions and the section lengths from the provider, so the wire bytes are
-/// pure payload.
+/// The layout carries no length prefixes: both endpoints know the round counts
+/// from the instance dimensions and the section lengths from the provider, so the
+/// wire bytes are pure payload.
 /// </para>
 /// </remarks>
 public sealed class CommitmentSpartanProof: SensitiveMemory

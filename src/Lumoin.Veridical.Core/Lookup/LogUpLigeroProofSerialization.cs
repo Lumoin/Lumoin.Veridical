@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Core.Lookup;
 
 /// <summary>
 /// The wire format of a <see cref="LogUpProof"/> whose polynomial-commitment
-/// scheme is Ligero: the LogUp sibling of <see cref="Spartan.LigeroSpartanProof"/>'s
+/// scheme is Ligero: the LogUp sibling of <see cref="Spartan.CommitmentSpartanProof"/>'s
 /// layout doctrine. Every section size is a pure function of the argument
 /// dimensions — the variable count, the witness-column count, the opened-column
 /// query count, the inverse code rate and the Merkle digest size — all known to

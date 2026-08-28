@@ -177,7 +177,8 @@ public static class LigeroPolynomialCommitmentScheme
             digestSizeBytes: digestSizeBytes,
             isAdditivelyHomomorphic: false,
             isHiding: false,
-            inverseRate: inverseRate);
+            inverseRate: inverseRate,
+            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes, inverseRate));
     }
 
 

@@ -111,7 +111,7 @@ internal sealed class PoseidonMerkleMembershipProofTests
 
         using FiatShamirTranscript proverTranscript = FreshTranscript();
         ScalarRandomDelegate random = new DeterministicScalarRandom(RandomSeed).AsDelegate();
-        using LigeroSpartanProof proof = prover.ProveLigero(
+        using CommitmentSpartanProof proof = prover.ProveCommitted(
             instance, witness, proverTranscript,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
@@ -124,7 +124,7 @@ internal sealed class PoseidonMerkleMembershipProofTests
         using RawR1csWitness spareWitness = verifierCompiled.Witness;
         using FiatShamirTranscript verifierTranscript = FreshTranscript();
 
-        bool verified = verifier.VerifyLigero(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
+        bool verified = verifier.VerifyCommitted(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
         Assert.IsFalse(verified, "a tampered Merkle-membership proof must be rejected");
     }
 
@@ -140,7 +140,7 @@ internal sealed class PoseidonMerkleMembershipProofTests
         using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider()));
         using FiatShamirTranscript proverTranscript = FreshTranscript();
         ScalarRandomDelegate random = new DeterministicScalarRandom(RandomSeed).AsDelegate();
-        using LigeroSpartanProof proof = prover.ProveLigero(
+        using CommitmentSpartanProof proof = prover.ProveCommitted(
             instance, witness, proverTranscript,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
@@ -151,7 +151,7 @@ internal sealed class PoseidonMerkleMembershipProofTests
         using RawR1csWitness spareWitness = verifierCompiled.Witness;
         using FiatShamirTranscript verifierTranscript = FreshTranscript();
 
-        return verifier.VerifyLigero(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
+        return verifier.VerifyCommitted(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
     }
 
 

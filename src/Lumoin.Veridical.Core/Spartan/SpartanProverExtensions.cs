@@ -1,6 +1,5 @@
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments;
-using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.ConstraintSystems;
 using Lumoin.Veridical.Core.Memory;
 using System;
@@ -105,116 +104,20 @@ public static class SpartanProverExtensions
 
 
         /// <summary>
-        /// Produces a BaseFold-backed Spartan2 proof that <paramref name="witness"/>
-        /// satisfies the relaxed R1CS <paramref name="instance"/>. Identical flow
-        /// to <see cref="Prove(SpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/>
-        /// up to the final assembly, which packs a BaseFold-shaped
-        /// <see cref="BaseFoldSpartanProof"/>. The proving key's provider must be a
-        /// BaseFold provider (carrying its query count and digest size).
-        /// </summary>
-        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="InvalidOperationException">When the provider does not carry the BaseFold query count and digest size.</exception>
-        /// <exception cref="R1csNotSatisfiedException">When the witness does not satisfy the relaxed R1CS instance.</exception>
-        public BaseFoldSpartanProof ProveBaseFold(
-            RelaxedR1csInstance instance,
-            RelaxedR1csWitness witness,
-            PolynomialCommitmentBlind errorOpeningWitness,
-            FiatShamirTranscript transcript,
-            FiatShamirHashDelegate hash,
-            FiatShamirSqueezeDelegate squeeze,
-            ScalarReduceDelegate scalarReduce,
-            ScalarAddDelegate scalarAdd,
-            ScalarSubtractDelegate scalarSubtract,
-            ScalarMultiplyDelegate scalarMultiply,
-            ScalarInvertDelegate scalarInvert,
-            ScalarRandomDelegate scalarRandom,
-            G1AddDelegate g1Add,
-            G1ScalarMultiplyDelegate g1ScalarMultiply,
-            G1MultiScalarMultiplyDelegate g1Msm,
-            MleEvaluateDelegate mleEvaluate,
-            MleFoldDelegate mleFold,
-            BaseMemoryPool pool,
-            ScalarArithmeticBackend? batch = null)
-        {
-            return prover.ProveRelaxedCore(
-                instance, witness, errorOpeningWitness, transcript, hash, squeeze,
-                scalarReduce, scalarAdd, scalarSubtract, scalarMultiply, scalarInvert,
-                scalarRandom, g1Add, g1ScalarMultiply, g1Msm, mleEvaluate, mleFold, pool, batch,
-                static (pcs, witnessCommitment, outer, inner, evalW, errorProof, witnessProof, p) =>
-                {
-                    (int queryCount, int digestSize) = RequireBaseFoldMetadata(pcs);
-                    return BaseFoldSpartanProof.Build(
-                        witnessCommitment, outer.Rounds, outer.TerminatingAz, outer.TerminatingBz,
-                        outer.TerminatingCz, outer.TerminatingE, inner.Rounds, evalW, errorProof, witnessProof,
-                        queryCount, digestSize, p);
-                });
-        }
-
-
-        /// <summary>
-        /// Produces a Ligero-backed Spartan2 proof that <paramref name="witness"/>
-        /// satisfies the relaxed R1CS <paramref name="instance"/>. Identical flow to
-        /// <see cref="ProveBaseFold(SpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/> up to the final assembly, which packs a
-        /// Ligero-shaped <see cref="LigeroSpartanProof"/>. The proving key's provider
-        /// must be a Ligero provider (carrying its query count and digest size). The
-        /// group backends are unused by the hash-based Ligero scheme but are accepted
-        /// for signature parity with the other prover entry points.
-        /// </summary>
-        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="InvalidOperationException">When the provider does not carry the query count and digest size.</exception>
-        /// <exception cref="R1csNotSatisfiedException">When the witness does not satisfy the relaxed R1CS instance.</exception>
-        public LigeroSpartanProof ProveLigero(
-            RelaxedR1csInstance instance,
-            RelaxedR1csWitness witness,
-            PolynomialCommitmentBlind errorOpeningWitness,
-            FiatShamirTranscript transcript,
-            FiatShamirHashDelegate hash,
-            FiatShamirSqueezeDelegate squeeze,
-            ScalarReduceDelegate scalarReduce,
-            ScalarAddDelegate scalarAdd,
-            ScalarSubtractDelegate scalarSubtract,
-            ScalarMultiplyDelegate scalarMultiply,
-            ScalarInvertDelegate scalarInvert,
-            ScalarRandomDelegate scalarRandom,
-            G1AddDelegate g1Add,
-            G1ScalarMultiplyDelegate g1ScalarMultiply,
-            G1MultiScalarMultiplyDelegate g1Msm,
-            MleEvaluateDelegate mleEvaluate,
-            MleFoldDelegate mleFold,
-            BaseMemoryPool pool,
-            ScalarArithmeticBackend? batch = null)
-        {
-            return prover.ProveRelaxedCore(
-                instance, witness, errorOpeningWitness, transcript, hash, squeeze,
-                scalarReduce, scalarAdd, scalarSubtract, scalarMultiply, scalarInvert,
-                scalarRandom, g1Add, g1ScalarMultiply, g1Msm, mleEvaluate, mleFold, pool, batch,
-                static (pcs, witnessCommitment, outer, inner, evalW, errorProof, witnessProof, p) =>
-                {
-                    (int queryCount, int digestSize) = RequireBaseFoldMetadata(pcs);
-                    int inverseRate = pcs.InverseRate ?? WellKnownLigeroParameters.DefaultInverseRate;
-                    return LigeroSpartanProof.Build(
-                        witnessCommitment, outer.Rounds, outer.TerminatingAz, outer.TerminatingBz,
-                        outer.TerminatingCz, outer.TerminatingE, inner.Rounds, evalW, errorProof, witnessProof,
-                        queryCount, inverseRate, digestSize, p);
-                });
-        }
-
-
-        /// <summary>
         /// Produces a Spartan2 proof under whatever commitment scheme the proving
         /// key's provider implements, packed into a
-        /// <see cref="CommitmentSpartanProof"/>. Identical flow to the per-scheme
-        /// entry points up to the final assembly, which records each section's
-        /// length instead of the scheme figures those lengths were derived from.
+        /// <see cref="CommitmentSpartanProof"/>. The flow is the scheme-neutral
+        /// Spartan one throughout; only the final assembly is scheme-aware, and it
+        /// records each section's length rather than the scheme figures those
+        /// lengths were derived from.
         /// </summary>
         /// <remarks>
         /// This asks the provider for nothing beyond the operations every provider
-        /// has. The per-scheme entry points read a query repetition count and a
-        /// digest size off the provider to size their openings, which restricts
-        /// them to schemes those two figures describe; WHIR is sized by neither,
-        /// since its query count varies per round. Here the assembled sections
-        /// carry their own lengths, so any provider works and the proof cannot
-        /// disagree with the one that produced it.
+        /// has. Sizing an opening from a query repetition count and a digest size
+        /// restricts a proof to the schemes those two figures describe, and WHIR is
+        /// sized by neither — its query count varies per round. Because the
+        /// assembled sections carry their own lengths, any provider works and the
+        /// proof cannot disagree with the one that produced it.
         /// </remarks>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         /// <exception cref="R1csNotSatisfiedException">When the witness does not satisfy the relaxed R1CS instance.</exception>
@@ -652,149 +555,6 @@ public static class SpartanProverExtensions
                 errorOpeningWitness?.Dispose();
             }
         }
-
-
-        /// <summary>
-        /// Convenience overload that proves a <em>raw</em> R1CS instance under a
-        /// BaseFold provider: prepares the raw instance/witness into their
-        /// relaxed equivalents (<c>u = 1</c>, zero error vector, identity error
-        /// commitment) and forwards to <see cref="ProveBaseFold(SpartanProver, RelaxedR1csInstance, RelaxedR1csWitness, PolynomialCommitmentBlind, FiatShamirTranscript, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, ScalarReduceDelegate, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarRandomDelegate, G1AddDelegate, G1ScalarMultiplyDelegate, G1MultiScalarMultiplyDelegate, MleEvaluateDelegate, MleFoldDelegate, BaseMemoryPool, ScalarArithmeticBackend)"/>.
-        /// </summary>
-        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; the proof transfers to the caller.")]
-        public BaseFoldSpartanProof ProveBaseFold(
-            RawR1csInstance instance,
-            RawR1csWitness witness,
-            FiatShamirTranscript transcript,
-            FiatShamirHashDelegate hash,
-            FiatShamirSqueezeDelegate squeeze,
-            ScalarReduceDelegate scalarReduce,
-            ScalarAddDelegate scalarAdd,
-            ScalarSubtractDelegate scalarSubtract,
-            ScalarMultiplyDelegate scalarMultiply,
-            ScalarInvertDelegate scalarInvert,
-            ScalarRandomDelegate scalarRandom,
-            G1AddDelegate g1Add,
-            G1ScalarMultiplyDelegate g1ScalarMultiply,
-            G1MultiScalarMultiplyDelegate g1Msm,
-            MleEvaluateDelegate mleEvaluate,
-            MleFoldDelegate mleFold,
-            BaseMemoryPool pool,
-            ScalarArithmeticBackend? batch = null)
-        {
-            ArgumentNullException.ThrowIfNull(prover);
-            ArgumentNullException.ThrowIfNull(instance);
-            ArgumentNullException.ThrowIfNull(witness);
-            ArgumentNullException.ThrowIfNull(pool);
-
-            PolynomialCommitmentProvider pcs = prover.ProvingKey.Pcs;
-
-            //BaseFold commits the zero error vector through the provider (a
-            //deterministic Merkle root), not the pairing-group identity.
-            RelaxedR1csInstance relaxedInstance = instance.Prepare(pcs, pool);
-            RelaxedR1csWitness? relaxedWitness = null;
-            PolynomialCommitmentBlind? errorOpeningWitness = null;
-            try
-            {
-                relaxedWitness = witness.Prepare(instance.A.RowCount, pool);
-
-                //BaseFold is not hiding: its Open re-derives the codeword from the
-                //polynomial and ignores the blind, so a zero placeholder the length
-                //of the error commitment suffices.
-                errorOpeningWitness = PolynomialCommitmentBlind.CreateZero(
-                    relaxedInstance.ErrorCommitment.AsReadOnlySpan().Length, instance.Curve, pcs.Scheme, pool);
-
-                return prover.ProveBaseFold(
-                    relaxedInstance, relaxedWitness, errorOpeningWitness, transcript,
-                    hash, squeeze, scalarReduce, scalarAdd, scalarSubtract, scalarMultiply,
-                    scalarInvert, scalarRandom, g1Add, g1ScalarMultiply, g1Msm,
-                    mleEvaluate, mleFold, pool, batch);
-            }
-            finally
-            {
-                relaxedInstance.Dispose();
-                relaxedWitness?.Dispose();
-                errorOpeningWitness?.Dispose();
-            }
-        }
-
-
-        /// <summary>
-        /// Convenience overload that proves a <em>raw</em> R1CS instance under a
-        /// Ligero provider: prepares the raw instance/witness into their relaxed
-        /// equivalents (<c>u = 1</c>, zero error vector, deterministic error
-        /// commitment) and forwards to the relaxed <c>ProveLigero</c>.
-        /// </summary>
-        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; the proof transfers to the caller.")]
-        public LigeroSpartanProof ProveLigero(
-            RawR1csInstance instance,
-            RawR1csWitness witness,
-            FiatShamirTranscript transcript,
-            FiatShamirHashDelegate hash,
-            FiatShamirSqueezeDelegate squeeze,
-            ScalarReduceDelegate scalarReduce,
-            ScalarAddDelegate scalarAdd,
-            ScalarSubtractDelegate scalarSubtract,
-            ScalarMultiplyDelegate scalarMultiply,
-            ScalarInvertDelegate scalarInvert,
-            ScalarRandomDelegate scalarRandom,
-            G1AddDelegate g1Add,
-            G1ScalarMultiplyDelegate g1ScalarMultiply,
-            G1MultiScalarMultiplyDelegate g1Msm,
-            MleEvaluateDelegate mleEvaluate,
-            MleFoldDelegate mleFold,
-            BaseMemoryPool pool,
-            ScalarArithmeticBackend? batch = null)
-        {
-            ArgumentNullException.ThrowIfNull(prover);
-            ArgumentNullException.ThrowIfNull(instance);
-            ArgumentNullException.ThrowIfNull(witness);
-            ArgumentNullException.ThrowIfNull(pool);
-
-            PolynomialCommitmentProvider pcs = prover.ProvingKey.Pcs;
-
-            RelaxedR1csInstance relaxedInstance = instance.Prepare(pcs, pool);
-            RelaxedR1csWitness? relaxedWitness = null;
-            PolynomialCommitmentBlind? errorOpeningWitness = null;
-            try
-            {
-                relaxedWitness = witness.Prepare(instance.A.RowCount, pool);
-
-                //Ligero is not hiding: its Open re-derives the codeword from the
-                //polynomial and ignores the blind, so a zero placeholder the length
-                //of the error commitment suffices.
-                errorOpeningWitness = PolynomialCommitmentBlind.CreateZero(
-                    relaxedInstance.ErrorCommitment.AsReadOnlySpan().Length, instance.Curve, pcs.Scheme, pool);
-
-                return prover.ProveLigero(
-                    relaxedInstance, relaxedWitness, errorOpeningWitness, transcript,
-                    hash, squeeze, scalarReduce, scalarAdd, scalarSubtract, scalarMultiply,
-                    scalarInvert, scalarRandom, g1Add, g1ScalarMultiply, g1Msm,
-                    mleEvaluate, mleFold, pool, batch);
-            }
-            finally
-            {
-                relaxedInstance.Dispose();
-                relaxedWitness?.Dispose();
-                errorOpeningWitness?.Dispose();
-            }
-        }
-    }
-
-
-    //Reads the query count and digest size the provider was built with, throwing
-    //a clear error if the provider is not a hash-tree scheme that carries them
-    //(BaseFold or Ligero).
-    private static (int QueryCount, int DigestSize) RequireBaseFoldMetadata(PolynomialCommitmentProvider pcs)
-    {
-        if(pcs.QueryCount is not int queryCount || pcs.DigestSizeBytes is not int digestSize)
-        {
-            throw new InvalidOperationException(
-                $"A hash-tree-backed Spartan proof requires a provider carrying a query count and digest size; the provider's scheme is {pcs.Scheme}.");
-        }
-
-        return (queryCount, digestSize);
     }
 
 

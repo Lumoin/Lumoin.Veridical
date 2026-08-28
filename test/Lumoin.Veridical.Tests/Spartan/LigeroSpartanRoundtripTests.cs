@@ -19,11 +19,12 @@ namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
 /// End-to-end round-trip tests for Spartan with Ligero as its polynomial
-/// commitment scheme: the prover assembles a <see cref="LigeroSpartanProof"/>
-/// over the <c>x · y = 15</c> circuit through <c>ProveLigero</c>, and the
-/// verifier accepts it through <c>VerifyLigero</c> — confirming Ligero drops into
-/// Spartan behind the <see cref="PolynomialCommitmentProvider"/> seam exactly as
-/// Hyrax and BaseFold do. Negative tests confirm that flipping a byte in the
+/// commitment scheme: the prover assembles a <see cref="CommitmentSpartanProof"/>
+/// over the <c>x · y = 15</c> circuit through <c>ProveCommitted</c>, and the
+/// verifier accepts it through <c>VerifyCommitted</c> — confirming Ligero drops
+/// into Spartan behind the <see cref="PolynomialCommitmentProvider"/> seam, through
+/// the entry points every scheme whose openings are opaque byte sections shares.
+/// Negative tests confirm that flipping a byte in the
 /// witness-opening section or the shared sumcheck middle is rejected. Real
 /// BLS12-381 arithmetic and production BLAKE3 throughout; the proof is a
 /// transparent, hash-based argument (no pairing-group commitments).
@@ -59,7 +60,7 @@ internal sealed class LigeroSpartanRoundtripTests
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
-        using LigeroSpartanProof proof = Prove(pool);
+        using CommitmentSpartanProof proof = Prove(pool);
 
         bool verified = Verify(proof, pool);
         Assert.IsTrue(verified, "An honest Ligero-backed Spartan proof must verify.");
@@ -71,7 +72,7 @@ internal sealed class LigeroSpartanRoundtripTests
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
-        using LigeroSpartanProof proof = Prove(pool);
+        using CommitmentSpartanProof proof = Prove(pool);
 
         //The witness opening is the final section; flip its last byte.
         MemoryMarshal.AsMemory(proof.AsReadOnlyMemory()).Span[^1] ^= 0x01;
@@ -86,7 +87,7 @@ internal sealed class LigeroSpartanRoundtripTests
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
-        using LigeroSpartanProof proof = Prove(pool);
+        using CommitmentSpartanProof proof = Prove(pool);
 
         //The sumcheck middle starts right after the witness commitment (the
         //digest-wide column-commitment root): flip the first byte of the first
@@ -99,7 +100,7 @@ internal sealed class LigeroSpartanRoundtripTests
 
 
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the proving key and prover transfers through using declarations; the returned proof transfers to the caller.")]
-    private static LigeroSpartanProof Prove(BaseMemoryPool pool)
+    private static CommitmentSpartanProof Prove(BaseMemoryPool pool)
     {
         using RawR1csInstance instance = BuildInstance();
         using RawR1csWitness witness = BuildWitness();
@@ -110,7 +111,7 @@ internal sealed class LigeroSpartanRoundtripTests
 
         ScalarRandomDelegate random = new DeterministicScalarRandom(RandomSeed).AsDelegate();
 
-        return prover.ProveLigero(
+        return prover.ProveCommitted(
             instance, witness, transcript,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
@@ -118,14 +119,14 @@ internal sealed class LigeroSpartanRoundtripTests
 
 
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the verifying key and verifier transfers through using declarations.")]
-    private static bool Verify(LigeroSpartanProof proof, BaseMemoryPool pool)
+    private static bool Verify(CommitmentSpartanProof proof, BaseMemoryPool pool)
     {
         var verifyingKey = new SpartanVerifyingKey(BuildProvider());
         using var verifier = new SpartanVerifier(verifyingKey);
         using RawR1csInstance instance = BuildInstance();
         using FiatShamirTranscript transcript = FreshTranscript();
 
-        return verifier.VerifyLigero(
+        return verifier.VerifyCommitted(
             proof, instance, transcript,
             Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
     }

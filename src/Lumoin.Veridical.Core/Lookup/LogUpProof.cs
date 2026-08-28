@@ -27,7 +27,7 @@ namespace Lumoin.Veridical.Core.Lookup;
 /// <see cref="FromParts"/> is the deserialization funnel that enforces
 /// canonical scalar encodings on the sumcheck and evaluation bytes. A
 /// fixed-layout single-buffer carrier per commitment scheme (the
-/// <c>LigeroSpartanProof</c> precedent) is deliberately deferred until a
+/// <c>CommitmentSpartanProof</c> precedent) is deliberately deferred until a
 /// consumer surface needs wire bytes.
 /// </para>
 /// </remarks>

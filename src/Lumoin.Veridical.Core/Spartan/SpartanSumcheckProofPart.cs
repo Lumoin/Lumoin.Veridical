@@ -25,7 +25,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// The part does not own a buffer. It holds a reference to the owning proof's
 /// <see cref="SensitiveMemory"/> and the byte offset where the middle begins,
 /// slicing on demand — so both <see cref="SpartanProof"/> and
-/// <see cref="BaseFoldSpartanProof"/> expose the identical block from their own
+/// <see cref="CommitmentSpartanProof"/> expose the identical block from their own
 /// buffers without a copy. <see cref="Write"/> packs the block for a proof's
 /// assembly; the accessors read it back during verification, decoupling the
 /// sumcheck verifier drivers from any concrete proof type.
@@ -137,7 +137,7 @@ internal sealed class SpartanSumcheckProofPart
     /// Packs the scheme-independent middle block into <paramref name="destination"/>
     /// (exactly <see cref="GetSectionSizeBytes"/>(<paramref name="outerRounds"/>.Count,
     /// <paramref name="innerRounds"/>.Count) bytes) in the canonical order. Both
-    /// <see cref="SpartanProof"/> and <see cref="BaseFoldSpartanProof"/> route
+    /// <see cref="SpartanProof"/> and <see cref="CommitmentSpartanProof"/> route
     /// their middle through this so the block is byte-identical across schemes.
     /// </summary>
     /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
