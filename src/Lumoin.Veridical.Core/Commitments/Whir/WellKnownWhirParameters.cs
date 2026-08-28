@@ -45,6 +45,32 @@ public static class WellKnownWhirParameters
     public const WhirSoundnessRegime ClassicalSecurityRegime = WhirSoundnessRegime.UniqueDecoding;
 
     /// <summary>
+    /// The soundness target of the proven-Johnson profile: 100 bits, chosen
+    /// above the 96-bit level that large-scale existing hashing infrastructure
+    /// approaches, and below the 128-bit default whose query repetitions a
+    /// bandwidth-constrained verifier pays for on every proof. Use it with
+    /// <see cref="ProvenJohnsonSecurityRegime"/> — the pair is the profile, and
+    /// this target under <see cref="WhirSoundnessRegime.UniqueDecoding"/> is a
+    /// different and more expensive parameter set that merely shares a number.
+    /// An opt-in profile: the wired default stays at
+    /// <see cref="ClassicalSecurityLevelBits"/>, and a provider built at this
+    /// target produces differently-sized proof bytes, so the two are distinct
+    /// parameter sets, never interchangeable on one artifact.
+    /// </summary>
+    public const int ProvenJohnsonSecurityLevelBits = 100;
+
+    /// <summary>
+    /// The soundness regime of the proven-Johnson profile. The Johnson radius
+    /// is theorem-backed — the correlated-agreement statement of BCHKS25
+    /// Theorem 1.5 (Ben-Sasson, Carmon, Haböck, Kopparty, Saraf, "On Proximity
+    /// Gaps for Reed-Solomon Codes", IACR ePrint 2025/2055) — so the profile
+    /// buys its shorter proof without resting on the capacity conjecture that
+    /// <see cref="WhirParameterSchedule.Create"/> refuses. Use it with
+    /// <see cref="ProvenJohnsonSecurityLevelBits"/>.
+    /// </summary>
+    public const WhirSoundnessRegime ProvenJohnsonSecurityRegime = WhirSoundnessRegime.ListDecodingJohnson;
+
+    /// <summary>
     /// The domain-separation label every WHIR IOPP Fiat-Shamir transcript
     /// carries; binds challenges to this protocol so they cannot collide with
     /// another protocol's transcript even on a matching absorb sequence.
