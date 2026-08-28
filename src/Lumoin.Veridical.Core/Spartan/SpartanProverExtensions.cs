@@ -200,6 +200,131 @@ public static class SpartanProverExtensions
         }
 
 
+        /// <summary>
+        /// Produces a Spartan2 proof under whatever commitment scheme the proving
+        /// key's provider implements, packed into a
+        /// <see cref="CommitmentSpartanProof"/>. Identical flow to the per-scheme
+        /// entry points up to the final assembly, which records each section's
+        /// length instead of the scheme figures those lengths were derived from.
+        /// </summary>
+        /// <remarks>
+        /// This asks the provider for nothing beyond the operations every provider
+        /// has. The per-scheme entry points read a query repetition count and a
+        /// digest size off the provider to size their openings, which restricts
+        /// them to schemes those two figures describe; WHIR is sized by neither,
+        /// since its query count varies per round. Here the assembled sections
+        /// carry their own lengths, so any provider works and the proof cannot
+        /// disagree with the one that produced it.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
+        /// <exception cref="R1csNotSatisfiedException">When the witness does not satisfy the relaxed R1CS instance.</exception>
+        public CommitmentSpartanProof ProveCommitted(
+            RelaxedR1csInstance instance,
+            RelaxedR1csWitness witness,
+            PolynomialCommitmentBlind errorOpeningWitness,
+            FiatShamirTranscript transcript,
+            FiatShamirHashDelegate hash,
+            FiatShamirSqueezeDelegate squeeze,
+            ScalarReduceDelegate scalarReduce,
+            ScalarAddDelegate scalarAdd,
+            ScalarSubtractDelegate scalarSubtract,
+            ScalarMultiplyDelegate scalarMultiply,
+            ScalarInvertDelegate scalarInvert,
+            ScalarRandomDelegate scalarRandom,
+            G1AddDelegate g1Add,
+            G1ScalarMultiplyDelegate g1ScalarMultiply,
+            G1MultiScalarMultiplyDelegate g1Msm,
+            MleEvaluateDelegate mleEvaluate,
+            MleFoldDelegate mleFold,
+            BaseMemoryPool pool,
+            ScalarArithmeticBackend? batch = null)
+        {
+            return prover.ProveRelaxedCore(
+                instance, witness, errorOpeningWitness, transcript, hash, squeeze,
+                scalarReduce, scalarAdd, scalarSubtract, scalarMultiply, scalarInvert,
+                scalarRandom, g1Add, g1ScalarMultiply, g1Msm, mleEvaluate, mleFold, pool, batch,
+                static (pcs, witnessCommitment, outer, inner, evalW, errorProof, witnessProof, p) =>
+                    CommitmentSpartanProof.Build(
+                        witnessCommitment, outer.Rounds, outer.TerminatingAz, outer.TerminatingBz,
+                        outer.TerminatingCz, outer.TerminatingE, inner.Rounds, evalW, errorProof, witnessProof,
+                        pcs.Scheme, p));
+        }
+
+        /// <summary>
+        /// Convenience overload that proves a <em>raw</em> R1CS instance under
+        /// whatever scheme the proving key's provider implements: prepares the
+        /// raw instance and witness into their relaxed equivalents
+        /// (<c>u = 1</c>, zero error vector, deterministic error commitment) and
+        /// forwards to the relaxed <c>ProveCommitted</c>.
+        /// </summary>
+        /// <remarks>
+        /// The error opening witness is a zero placeholder, which is sound only
+        /// where the provider's opening ignores the blind. A hiding provider's
+        /// does not: handing it a zero blind would produce an opening that
+        /// verifies while revealing what the blind exists to conceal. This
+        /// refuses a hiding provider rather than silently degrading it, so a
+        /// hiding scheme must go through the relaxed entry point with a blind
+        /// the caller sampled.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">When the provider is hiding.</exception>
+        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance, witness, and error opening witness are disposed in the finally block once the proof has copied every byte it needs; the proof transfers to the caller.")]
+        public CommitmentSpartanProof ProveCommitted(
+            RawR1csInstance instance,
+            RawR1csWitness witness,
+            FiatShamirTranscript transcript,
+            FiatShamirHashDelegate hash,
+            FiatShamirSqueezeDelegate squeeze,
+            ScalarReduceDelegate scalarReduce,
+            ScalarAddDelegate scalarAdd,
+            ScalarSubtractDelegate scalarSubtract,
+            ScalarMultiplyDelegate scalarMultiply,
+            ScalarInvertDelegate scalarInvert,
+            ScalarRandomDelegate scalarRandom,
+            G1AddDelegate g1Add,
+            G1ScalarMultiplyDelegate g1ScalarMultiply,
+            G1MultiScalarMultiplyDelegate g1Msm,
+            MleEvaluateDelegate mleEvaluate,
+            MleFoldDelegate mleFold,
+            BaseMemoryPool pool,
+            ScalarArithmeticBackend? batch = null)
+        {
+            ArgumentNullException.ThrowIfNull(prover);
+            ArgumentNullException.ThrowIfNull(instance);
+            ArgumentNullException.ThrowIfNull(witness);
+            ArgumentNullException.ThrowIfNull(pool);
+
+            PolynomialCommitmentProvider pcs = prover.ProvingKey.Pcs;
+            if(pcs.IsHiding)
+            {
+                throw new InvalidOperationException(
+                    $"The {pcs.Scheme} provider is hiding, so the zero error-opening blind this overload supplies would defeat its hiding. Prepare the relaxed instance and pass a sampled blind instead.");
+            }
+
+            RelaxedR1csInstance relaxedInstance = instance.Prepare(pcs, pool);
+            RelaxedR1csWitness? relaxedWitness = null;
+            PolynomialCommitmentBlind? errorOpeningWitness = null;
+            try
+            {
+                relaxedWitness = witness.Prepare(instance.A.RowCount, pool);
+                errorOpeningWitness = PolynomialCommitmentBlind.CreateZero(
+                    relaxedInstance.ErrorCommitment.AsReadOnlySpan().Length, instance.Curve, pcs.Scheme, pool);
+
+                return prover.ProveCommitted(
+                    relaxedInstance, relaxedWitness, errorOpeningWitness, transcript,
+                    hash, squeeze, scalarReduce, scalarAdd, scalarSubtract, scalarMultiply,
+                    scalarInvert, scalarRandom, g1Add, g1ScalarMultiply, g1Msm,
+                    mleEvaluate, mleFold, pool, batch);
+            }
+            finally
+            {
+                relaxedInstance.Dispose();
+                relaxedWitness?.Dispose();
+                errorOpeningWitness?.Dispose();
+            }
+        }
+
+
         //The scheme-neutral relaxed Spartan orchestration. The body is identical
         //across commitment schemes — it commits, runs both sumchecks, and opens —
         //differing only in the final assembly, supplied as the scheme-shaped

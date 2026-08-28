@@ -467,6 +467,151 @@ public static class SpartanVerifierExtensions
                 relaxedInstance.Dispose();
             }
         }
+
+        /// <summary>
+        /// Verifies a <see cref="CommitmentSpartanProof"/> against a relaxed R1CS
+        /// instance, under whatever commitment scheme the verifying key's provider
+        /// implements. The proof records the scheme it was produced under and this
+        /// refuses a mismatch, so a proof cannot be checked against a scheme other
+        /// than the one that made it.
+        /// </summary>
+        /// <param name="proof">The proof to verify.</param>
+        /// <param name="instance">The relaxed R1CS instance the proof is about.</param>
+        /// <param name="transcript">The live Fiat-Shamir transcript the verification replays.</param>
+        /// <param name="scalarAdd">Scalar addition backend.</param>
+        /// <param name="scalarMultiply">Scalar multiplication backend.</param>
+        /// <param name="scalarSubtract">Scalar subtraction backend.</param>
+        /// <param name="scalarReduce">Scalar reduction backend.</param>
+        /// <param name="hash">Fiat-Shamir absorb backend.</param>
+        /// <param name="squeeze">Fiat-Shamir squeeze backend.</param>
+        /// <param name="pool">The pool for scratch allocations.</param>
+        /// <returns><see langword="true"/> iff the proof verifies.</returns>
+        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">When the proof's curve, scheme or dimensions do not match.</exception>
+        public bool VerifyCommitted(
+            CommitmentSpartanProof proof,
+            RelaxedR1csInstance instance,
+            FiatShamirTranscript transcript,
+            ScalarAddDelegate scalarAdd,
+            ScalarMultiplyDelegate scalarMultiply,
+            ScalarSubtractDelegate scalarSubtract,
+            ScalarReduceDelegate scalarReduce,
+            FiatShamirHashDelegate hash,
+            FiatShamirSqueezeDelegate squeeze,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(verifier);
+            ArgumentNullException.ThrowIfNull(proof);
+            ArgumentNullException.ThrowIfNull(instance);
+            ArgumentNullException.ThrowIfNull(transcript);
+            ArgumentNullException.ThrowIfNull(scalarAdd);
+            ArgumentNullException.ThrowIfNull(scalarMultiply);
+            ArgumentNullException.ThrowIfNull(scalarSubtract);
+            ArgumentNullException.ThrowIfNull(scalarReduce);
+            ArgumentNullException.ThrowIfNull(hash);
+            ArgumentNullException.ThrowIfNull(squeeze);
+            ArgumentNullException.ThrowIfNull(pool);
+
+            CurveParameterSet curve = instance.Curve;
+            if(proof.Curve.Code != curve.Code)
+            {
+                throw new ArgumentException($"Proof curve {proof.Curve} does not match verifier curve {curve}.");
+            }
+
+            PolynomialCommitmentProvider pcs = verifier.VerifyingKey.Pcs;
+            if(proof.Scheme != pcs.Scheme)
+            {
+                throw new ArgumentException($"Proof scheme {proof.Scheme} does not match the verifying key's provider scheme {pcs.Scheme}.");
+            }
+
+            int rows = instance.A.RowCount;
+            int columns = instance.A.ColumnCount;
+            if(!BitOperations.IsPow2(rows) || !BitOperations.IsPow2(columns))
+            {
+                throw new ArgumentException(
+                    $"Spartan requires power-of-two R1CS dimensions; instance has rows = {rows}, columns = {columns}.");
+            }
+
+            int rowVariableCount = BitOperations.Log2((uint)rows);
+            int columnVariableCount = BitOperations.Log2((uint)columns);
+
+            if(proof.OuterRoundCount != rowVariableCount)
+            {
+                throw new ArgumentException(
+                    $"Proof outer-round count {proof.OuterRoundCount} does not match instance row variable count {rowVariableCount}.");
+            }
+
+            if(proof.InnerRoundCount != columnVariableCount)
+            {
+                throw new ArgumentException(
+                    $"Proof inner-round count {proof.InnerRoundCount} does not match instance column variable count {columnVariableCount}.");
+            }
+
+            CryptographicOperationCounters.Increment(CryptographicOperationKind.SpartanVerifierVerify, curve);
+
+            try
+            {
+                return VerifyCore(
+                    proof.GetSumcheckPart(),
+                    proof.GetWitnessCommitmentBytes(),
+                    proof.GetErrorOpeningProofBytes(),
+                    proof.GetWitnessOpeningProofBytes(),
+                    instance, transcript, scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool, rowVariableCount, columnVariableCount, pcs);
+            }
+            catch(Exception ex) when (ex is InvalidOperationException or ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Convenience overload that verifies a
+        /// <see cref="CommitmentSpartanProof"/> against a <em>raw</em> R1CS
+        /// instance: prepares the raw instance into its relaxed equivalent and
+        /// forwards to the relaxed overload.
+        /// </summary>
+        /// <param name="proof">The proof to verify.</param>
+        /// <param name="instance">The raw R1CS instance the proof is about.</param>
+        /// <param name="transcript">The live Fiat-Shamir transcript the verification replays.</param>
+        /// <param name="scalarAdd">Scalar addition backend.</param>
+        /// <param name="scalarMultiply">Scalar multiplication backend.</param>
+        /// <param name="scalarSubtract">Scalar subtraction backend.</param>
+        /// <param name="scalarReduce">Scalar reduction backend.</param>
+        /// <param name="hash">Fiat-Shamir absorb backend.</param>
+        /// <param name="squeeze">Fiat-Shamir squeeze backend.</param>
+        /// <param name="pool">The pool for scratch allocations.</param>
+        /// <returns><see langword="true"/> iff the proof verifies.</returns>
+        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
+        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance is disposed in the finally block once the relaxed overload returns.")]
+        public bool VerifyCommitted(
+            CommitmentSpartanProof proof,
+            RawR1csInstance instance,
+            FiatShamirTranscript transcript,
+            ScalarAddDelegate scalarAdd,
+            ScalarMultiplyDelegate scalarMultiply,
+            ScalarSubtractDelegate scalarSubtract,
+            ScalarReduceDelegate scalarReduce,
+            FiatShamirHashDelegate hash,
+            FiatShamirSqueezeDelegate squeeze,
+            BaseMemoryPool pool)
+        {
+            ArgumentNullException.ThrowIfNull(verifier);
+            ArgumentNullException.ThrowIfNull(proof);
+            ArgumentNullException.ThrowIfNull(instance);
+            ArgumentNullException.ThrowIfNull(pool);
+
+            RelaxedR1csInstance relaxedInstance = instance.Prepare(verifier.VerifyingKey.Pcs, pool);
+            try
+            {
+                return verifier.VerifyCommitted(
+                    proof, relaxedInstance, transcript,
+                    scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool);
+            }
+            finally
+            {
+                relaxedInstance.Dispose();
+            }
+        }
     }
 
 
