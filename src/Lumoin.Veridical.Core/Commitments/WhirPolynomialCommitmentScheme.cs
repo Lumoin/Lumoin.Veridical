@@ -238,7 +238,8 @@ public static class WhirPolynomialCommitmentScheme
             ownedResource: null,
             //WHIR's query counts vary per round and per polynomial size, so no
             //single repetition count describes the scheme; consumers size
-            //openings via WhirProofSerialization.ComputeLength instead.
+            //openings through EvaluationProofSizeBytes below, which answers
+            //from the schedule the provider was built with.
             queryCount: null, digestSizeBytes: digestSizeBytes,
             //The commitment is a Merkle root over the codeword — binding but
             //not additively homomorphic, so it cannot back Nova-style folding;
@@ -251,7 +252,8 @@ public static class WhirPolynomialCommitmentScheme
             //provider rather than discovering the gap mid-proof.
             commitVector: null, openWeightedSum: null, verifyWeightedSum: null,
             resolveStatisticalMaskShape: null,
-            inverseRate: 1 << initialRateLog2);
+            inverseRate: 1 << initialRateLog2,
+            evaluationProofSizeBytes: variableCount => WhirProofSerialization.ComputeLength(DeriveSchedule(variableCount), digestSizeBytes));
     }
 
 
@@ -479,7 +481,8 @@ public static class WhirPolynomialCommitmentScheme
             extraVariableCount: null,
             commitVector: null, openWeightedSum: null, verifyWeightedSum: null,
             resolveStatisticalMaskShape: null,
-            inverseRate: 1 << initialRateLog2);
+            inverseRate: 1 << initialRateLog2,
+            evaluationProofSizeBytes: variableCount => ZkWhirProofSerialization.ComputeLength(DeriveParameters(variableCount), digestSizeBytes));
     }
 
 

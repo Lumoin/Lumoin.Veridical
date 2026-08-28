@@ -290,6 +290,50 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
 
 
     /// <summary>
+    /// The provider answers the opening-length question from the schedule it
+    /// was built with, and answers it identically to the public sizing
+    /// function. A consumer laying out a fixed-format proof reads the seam
+    /// rather than reassembling the arithmetic, so the two must not drift.
+    /// </summary>
+    [TestMethod]
+    [DataRow(8)]
+    [DataRow(9)]
+    [DataRow(12)]
+    public void ProviderSizingSeamAgreesWithThePublicSizingFunction(int variableCount)
+    {
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        PolynomialOpeningSizeDelegate? seam = provider.EvaluationProofSizeBytes;
+        Assert.IsNotNull(seam, "A WHIR provider must expose the opening-length seam; its query counts vary per round, so no repetition count can stand in for it.");
+
+        int expected = WhirPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
+            variableCount,
+            Curve,
+            FastInitialRateLog2,
+            securityLevelBits: FastSecurityLevelBits);
+
+        Assert.AreEqual(expected, seam(variableCount), "The provider's opening length must match the public sizing function at the same figures.");
+    }
+
+
+    /// <summary>
+    /// The scheme-specific sizing figures the other providers carry cannot
+    /// describe WHIR, so a consumer that reads them instead of the seam gets
+    /// nothing to work with. Stating it here keeps a future change from
+    /// quietly populating <see cref="PolynomialCommitmentProvider.QueryCount"/>
+    /// with one round's count and making the omission look like an oversight.
+    /// </summary>
+    [TestMethod]
+    public void ProviderCarriesNoSingleQueryCount()
+    {
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        Assert.IsNull(provider.QueryCount, "WHIR's query count varies per round; no single value describes the scheme.");
+        Assert.IsNotNull(provider.EvaluationProofSizeBytes, "The seam is what replaces it.");
+    }
+
+
+    /// <summary>
     /// The WHIR provider at the fast figures.
     /// </summary>
     private static PolynomialCommitmentProvider NewProvider()
