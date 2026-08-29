@@ -258,6 +258,92 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    //The commit and open below are fully determined by these two salts: the
+    //evaluation table and the point are written from them by fixed integer
+    //arithmetic, and a non-hiding commit draws no randomness at any step. That
+    //determinism is what makes a content pin meaningful here, and it is why a
+    //hiding scheme can only be pinned by length.
+    private const int PinnedVariableCount = 3;
+    private const int PinnedMleSalt = 1;
+    private const int PinnedPointSalt = 5;
+
+    //A digest of the serialized bytes rather than the bytes themselves: an
+    //opening runs to kilobytes, and a digest reports one flipped byte exactly
+    //as loudly at a fraction of the size.
+    private const string PinnedCommitmentDigest = "FBA77D62198058E0D5CA8A6F0EAE31CC40C6A9DDFDCD368A27F3CA74FFE39554";
+    private const string PinnedOpeningDigest = "E381E5BD8B06F256958D0C214C1148B89DA923F26EE78DB1402166E2B0E20096";
+
+
+    /// <summary>
+    /// Pins the exact bytes an honest commit and open produce at the wired
+    /// digest size, so a change to the serialized form is a decision rather
+    /// than a side effect. The commitment and the opening are published
+    /// artifacts: they travel inside packaged proof files and across the
+    /// command-line surface, so a reader on the far side of a version boundary
+    /// parses whatever this test lets through.
+    /// </summary>
+    /// <remarks>
+    /// Widths are the reason this pin earns its place. A hash-tree commitment
+    /// is one Merkle node wide and its authentication paths are priced by the
+    /// configured digest size; those two figures agree under the wired pairing
+    /// of a 32-byte hash with a 32-byte scalar, so a change that redefined
+    /// either in terms of the other would leave every shipped byte where it is
+    /// and stay invisible to a round-trip test, which proves only that the
+    /// writer and the reader still agree with each other. Updating a constant
+    /// here is correct only once the format change it reports has been shown
+    /// to be intended.
+    /// </remarks>
+    [TestMethod]
+    public void CommitmentAndOpeningBytesAreUnchangedAtTheWiredDigestSize()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        using MultilinearExtension mle = BuildRandomMle(PinnedVariableCount, PinnedMleSalt, pool);
+        Scalar[] point = BuildPoint(PinnedVariableCount, PinnedPointSalt, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    Assert.AreEqual(
+                        PinnedCommitmentDigest,
+                        PinnedDigestOf(commitment.AsReadOnlySpan()),
+                        "The serialized commitment bytes changed; the wire format moved.");
+
+                    Assert.AreEqual(
+                        PinnedOpeningDigest,
+                        PinnedDigestOf(opening.AsReadOnlySpan()),
+                        "The serialized opening bytes changed; the wire format moved.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    //Hashes a serialized artifact down to the constant the pin above carries.
+    private static string PinnedDigestOf(ReadOnlySpan<byte> serialized)
+    {
+        Span<byte> digest = stackalloc byte[WellKnownMerkleHashParameters.DefaultDigestSizeBytes];
+        Blake3.Hash(serialized, digest);
+
+        return Convert.ToHexString(digest);
+    }
+
+
     private static PolynomialCommitmentProvider NewProvider()
     {
         return NewProvider(DigestSizeBytes);
