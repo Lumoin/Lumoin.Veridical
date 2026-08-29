@@ -507,17 +507,20 @@ internal static class PredicateProofOperations
         PolynomialCommitmentProvider pcs = BuildProvider(scalar, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes);
         using var verifier = new SpartanVerifier(new SpartanVerifyingKey(pcs));
 
-        //The wire bytes are pure payload, so the section lengths must come from
+        //The wire bytes are pure payload, so all three section lengths must come from
         //outside them, and the provider about to check the proof is the one source
-        //that cannot disagree with the check: one column-commitment root for the
-        //witness commitment, and one opening per variable count, from the same
-        //parameters the verification runs under. Taking them from the header instead
-        //would let a proof be split at boundaries its verifier never agreed to,
-        //misreading every section before a single check ran.
+        //that cannot disagree with the check: it states the commitment's length and
+        //one opening's length per variable count, from the same parameters the
+        //verification runs under. Taking any of them from the header instead would
+        //let a proof be split at boundaries its verifier never agreed to, misreading
+        //every section before a single check ran. The witness is committed over the
+        //column variables, so the commitment is sized at the inner-round count, as
+        //its own opening is.
         PolynomialOpeningSizeDelegate openingSize = pcs.EvaluationProofSizeBytes!;
+        PolynomialCommitmentSizeDelegate commitmentSize = pcs.CommitmentSizeBytes!;
         using CommitmentSpartanProof proof = CommitmentSpartanProof.FromBytes(
             proofBytes, pcs.Scheme, outerRoundCount, innerRoundCount,
-            artifact.DigestBytes, openingSize(outerRoundCount), openingSize(innerRoundCount), Curve, pool);
+            commitmentSize(innerRoundCount), openingSize(outerRoundCount), openingSize(innerRoundCount), Curve, pool);
         using FiatShamirTranscript transcript = FreshTranscript(artifact.TranscriptDomain, pool);
 
         return verifier.VerifyCommitted(proof, instance, transcript, scalar.Add, scalar.Multiply, scalar.Subtract, scalar.Reduce, Hash, Squeeze, pool);

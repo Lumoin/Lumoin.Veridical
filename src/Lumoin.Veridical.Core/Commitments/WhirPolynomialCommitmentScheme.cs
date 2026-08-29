@@ -253,7 +253,11 @@ public static class WhirPolynomialCommitmentScheme
             commitVector: null, openWeightedSum: null, verifyWeightedSum: null,
             resolveStatisticalMaskShape: null,
             inverseRate: 1 << initialRateLog2,
-            evaluationProofSizeBytes: variableCount => WhirProofSerialization.ComputeLength(DeriveSchedule(variableCount), digestSizeBytes));
+            evaluationProofSizeBytes: variableCount => WhirProofSerialization.ComputeLength(DeriveSchedule(variableCount), digestSizeBytes),
+            //One Merkle root, one node wide. The digest buffer the tree is built over
+            //holds one scalar per block and the tree takes its node width from that
+            //buffer, so the root follows the scalar size, not digestSizeBytes.
+            commitmentSizeBytes: _ => ScalarSize);
     }
 
 
@@ -482,7 +486,11 @@ public static class WhirPolynomialCommitmentScheme
             commitVector: null, openWeightedSum: null, verifyWeightedSum: null,
             resolveStatisticalMaskShape: null,
             inverseRate: 1 << initialRateLog2,
-            evaluationProofSizeBytes: variableCount => ZkWhirProofSerialization.ComputeLength(DeriveParameters(variableCount), digestSizeBytes));
+            evaluationProofSizeBytes: variableCount => ZkWhirProofSerialization.ComputeLength(DeriveParameters(variableCount), digestSizeBytes),
+            //Randomizing the codeword changes what the root commits to, not how wide
+            //it is: still one Merkle node, still scalar-width from the buffer the
+            //tree is built over.
+            commitmentSizeBytes: _ => ScalarSize);
     }
 
 

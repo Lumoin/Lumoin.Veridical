@@ -1,0 +1,279 @@
+using Lumoin.Veridical.Backends.Managed;
+using Lumoin.Veridical.Core;
+using Lumoin.Veridical.Core.Algebraic;
+using Lumoin.Veridical.Core.Commitments;
+using Lumoin.Veridical.Core.Commitments.BaseFold;
+using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Hashing;
+using Lumoin.Veridical.Tests.Algebraic;
+using Lumoin.Veridical.Tests.TestInfrastructure;
+using System;
+using System.Buffers;
+using System.Text;
+
+namespace Lumoin.Veridical.Tests.Commitments;
+
+/// <summary>
+/// Gates <see cref="PolynomialCommitmentProvider.CommitmentSizeBytes"/> against
+/// the only thing that can settle it: the bytes <see cref="PolynomialCommitmentProvider.Commit"/>
+/// actually produces. A consumer laying out a fixed-format proof splits the wire
+/// bytes at the offsets this seam reports, so a seam that disagrees with the
+/// commitment by one byte misreads every section after it before a single
+/// cryptographic check runs — a failure that surfaces as a rejected proof with no
+/// indication of where the mismatch is.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Stating the length is not enough; it has to be stated for the right reason. A
+/// hash-tree commitment is one Merkle node wide, and the node width comes from the
+/// buffer the tree is built over, which every scheme here rents at one scalar per
+/// element. The digest size each scheme is configured with sizes its authentication
+/// paths instead. Those two figures coincide under the wired BLAKE3-and-BLS12-381
+/// pairing without either being defined as the other, so a seam derived from the
+/// digest size would pass every test here today and be wrong for a scheme wired to
+/// a hash whose output is not the scalar width. These tests compare against the
+/// commitment, never against either figure.
+/// </para>
+/// <para>
+/// Hyrax is the one scheme whose commitment length is not constant, so it carries
+/// the case that a constant would satisfy vacuously.
+/// </para>
+/// </remarks>
+[TestClass]
+internal sealed class PolynomialCommitmentSizeSeamTests
+{
+    /// <summary>The byte size of one field element.</summary>
+    private const int ScalarSize = 32;
+
+    /// <summary>The Merkle digest size every hash-tree scheme here is wired with.</summary>
+    private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>A query count large enough to exercise a real opening without slowing the gate.</summary>
+    private const int QueryCount = 8;
+
+    /// <summary>WHIR's initial inverse-rate exponent: rate 1/4.</summary>
+    private const int WhirInitialRateLog2 = 2;
+
+    /// <summary>WHIR's per-round target, the largest whole level the wired shapes place on distinct query cosets.</summary>
+    private const int WhirSecurityLevelBits = 24;
+
+    /// <summary>The smallest variable count the hash-tree schemes here commit at.</summary>
+    private const int SmallVariableCount = 8;
+
+    /// <summary>A larger variable count, so a length that varies with it is seen to vary.</summary>
+    private const int LargeVariableCount = 9;
+
+    /// <summary>The deterministic fill's salt.</summary>
+    private const int FillSalt = 4242;
+
+    private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    private static ScalarRandomDelegate ScalarRandom { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+    private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+    private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
+
+    /// <summary>The code seed the BaseFold flavors derive their encoder from.</summary>
+    private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.test.commitment-size-seam.code.v1");
+
+    /// <summary>The curve every artifact is tagged with.</summary>
+    private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+
+
+    /// <summary>
+    /// Every hash-tree factory states a commitment length, and it is the length of
+    /// the commitment that factory's own commit path produces.
+    /// </summary>
+    /// <param name="schemeName">The factory to exercise.</param>
+    /// <param name="variableCount">The variable count to commit at.</param>
+    [TestMethod]
+    [DataRow("ligero", SmallVariableCount)]
+    [DataRow("ligero", LargeVariableCount)]
+    [DataRow("basefold", SmallVariableCount)]
+    [DataRow("basefold", LargeVariableCount)]
+    [DataRow("zkbasefold", SmallVariableCount)]
+    [DataRow("zkbasefold", LargeVariableCount)]
+    [DataRow("whir", SmallVariableCount)]
+    [DataRow("whir", LargeVariableCount)]
+    public void SeamMatchesTheCommitmentTheHashTreeSchemeProduces(string schemeName, int variableCount)
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        using PolynomialCommitmentProvider provider = NewHashTreeProvider(schemeName);
+        using MultilinearExtension mle = BuildMle(variableCount, pool);
+
+        PolynomialCommitmentSizeDelegate? seam = provider.CommitmentSizeBytes;
+        Assert.IsNotNull(seam, $"The {schemeName} provider must state its commitment length; a consumer cannot size the section otherwise.");
+
+        var (commitment, blind) = provider.Commit(mle, pool);
+        using(commitment)
+        using(blind)
+        {
+            Assert.AreEqual(
+                commitment.AsReadOnlySpan().Length,
+                seam(variableCount),
+                $"The {schemeName} seam must report the length the scheme's own commit path produces at {variableCount} variables.");
+        }
+    }
+
+
+    /// <summary>
+    /// The Hyrax seam matches its commit path too, at two variable counts whose
+    /// matrix splits differ, so a constant cannot satisfy this vacuously.
+    /// </summary>
+    /// <param name="variableCount">The variable count to commit at.</param>
+    [TestMethod]
+    [DataRow(4)]
+    [DataRow(5)]
+    [DataRow(6)]
+    public void SeamMatchesTheCommitmentHyraxProduces(int variableCount)
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        var dimensions = HyraxCommitmentDimensions.ForVariableCount(variableCount);
+        using HyraxCommitmentKey key = HyraxCommitmentKey.Derive(
+            dimensions.ColumnCount, WellKnownHyraxDomainLabels.CanonicalSeedV1, Curve, HashToCurve, pool);
+
+        using PolynomialCommitmentProvider provider = HyraxPolynomialCommitmentScheme.Create(
+            key, Curve, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, ScalarRandom,
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup);
+
+        using MultilinearExtension mle = BuildMle(variableCount, pool);
+
+        PolynomialCommitmentSizeDelegate? seam = provider.CommitmentSizeBytes;
+        Assert.IsNotNull(seam, "The Hyrax provider must state its commitment length.");
+
+        var (commitment, blind) = provider.Commit(mle, pool);
+        using(commitment)
+        using(blind)
+        {
+            Assert.AreEqual(
+                commitment.AsReadOnlySpan().Length,
+                seam(variableCount),
+                $"The Hyrax seam must report the length its own commit path produces at {variableCount} variables.");
+        }
+    }
+
+
+    /// <summary>
+    /// The Hyrax commitment grows with the variable count, so the seam is
+    /// reporting a function rather than a constant that happens to fit.
+    /// </summary>
+    [TestMethod]
+    public void HyraxSeamVariesWithTheVariableCount()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        //Two counts whose row halves differ: 2^2 rows against 2^3.
+        const int NarrowVariableCount = 4;
+        const int WideVariableCount = 6;
+
+        var dimensions = HyraxCommitmentDimensions.ForVariableCount(WideVariableCount);
+        using HyraxCommitmentKey key = HyraxCommitmentKey.Derive(
+            dimensions.ColumnCount, WellKnownHyraxDomainLabels.CanonicalSeedV1, Curve, HashToCurve, pool);
+
+        using PolynomialCommitmentProvider provider = HyraxPolynomialCommitmentScheme.Create(
+            key, Curve, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, ScalarRandom,
+            G1Add, G1ScalarMul, G1Msm, G1IsOnCurve, G1IsInPrimeOrderSubgroup);
+
+        PolynomialCommitmentSizeDelegate seam = provider.CommitmentSizeBytes!;
+
+        Assert.IsLessThan(
+            seam(WideVariableCount),
+            seam(NarrowVariableCount),
+            "A Pedersen row commitment carries one point per row, so more variables must mean a longer commitment.");
+    }
+
+
+    /// <summary>
+    /// A hash-tree commitment is one Merkle node, so its length does not move with
+    /// the variable count — the property that lets a consumer size the section
+    /// before it knows the instance shape.
+    /// </summary>
+    /// <param name="schemeName">The factory to exercise.</param>
+    [TestMethod]
+    [DataRow("ligero")]
+    [DataRow("basefold")]
+    [DataRow("zkbasefold")]
+    [DataRow("whir")]
+    public void HashTreeSeamIsConstantInTheVariableCount(string schemeName)
+    {
+        using PolynomialCommitmentProvider provider = NewHashTreeProvider(schemeName);
+        PolynomialCommitmentSizeDelegate seam = provider.CommitmentSizeBytes!;
+
+        Assert.AreEqual(
+            seam(SmallVariableCount),
+            seam(LargeVariableCount),
+            $"The {schemeName} commitment is one Merkle root at every size, so its length cannot depend on the variable count.");
+    }
+
+
+    /// <summary>
+    /// Builds one of the hash-tree providers by name.
+    /// </summary>
+    /// <param name="schemeName">The factory to build.</param>
+    /// <returns>The provider; the caller owns its disposal.</returns>
+    private static PolynomialCommitmentProvider NewHashTreeProvider(string schemeName)
+    {
+        return schemeName switch
+        {
+            "ligero" => LigeroPolynomialCommitmentScheme.Create(
+                Curve, QueryCount, Add, Subtract, Multiply, Invert, Reduce, Hash, Squeeze, Hash, Merkle,
+                WellKnownHashAlgorithms.Blake3),
+            "basefold" => BaseFoldPolynomialCommitmentScheme.Create(
+                CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
+                HashToScalar, DigestSizeBytes),
+            "zkbasefold" => ZkBaseFoldPolynomialCommitmentScheme.Create(
+                CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
+                ScalarRandom, HashToScalar, DigestSizeBytes),
+            "whir" => WhirPolynomialCommitmentScheme.Create(
+                Curve, WhirInitialRateLog2, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
+                securityLevelBits: WhirSecurityLevelBits),
+            _ => throw new ArgumentOutOfRangeException(nameof(schemeName), schemeName, "Unknown scheme name.")
+        };
+    }
+
+
+    /// <summary>
+    /// A deterministic dense MLE over the boolean cube.
+    /// </summary>
+    /// <param name="variableCount">The polynomial's variable count.</param>
+    /// <param name="pool">The pool to rent from.</param>
+    /// <returns>The extension; the caller owns its disposal.</returns>
+    private static MultilinearExtension BuildMle(int variableCount, BaseMemoryPool pool)
+    {
+        int evaluationCount = 1 << variableCount;
+        using IMemoryOwner<byte> owner = pool.Rent(evaluationCount * ScalarSize);
+        Span<byte> evaluations = owner.Memory.Span[..(evaluationCount * ScalarSize)];
+        DeterministicScalarFill.FillCanonical(evaluations, FillSalt, Reduce, Curve);
+
+        return MultilinearExtension.FromEvaluations(evaluations, variableCount, Curve, pool);
+    }
+
+
+    /// <summary>
+    /// The two-to-one Merkle compression over BLAKE3.
+    /// </summary>
+    /// <param name="left">The left child.</param>
+    /// <param name="right">The right child.</param>
+    /// <param name="output">Receives the compressed node.</param>
+    private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
+    {
+        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        left.CopyTo(combined[..left.Length]);
+        right.CopyTo(combined.Slice(left.Length, right.Length));
+        Blake3.Hash(combined[..(left.Length + right.Length)], output);
+    }
+}

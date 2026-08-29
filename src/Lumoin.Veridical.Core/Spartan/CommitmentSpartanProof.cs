@@ -32,9 +32,12 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// by anything else cannot be expressed at all, and means a caller can pair a
 /// proof with figures that disagree with the provider that produced it. Three
 /// lengths cannot disagree with anything: <see cref="Build"/> reads each one from
-/// the section it is given, and a verifier recovers them from
-/// <see cref="PolynomialCommitmentProvider.EvaluationProofSizeBytes"/> on the
-/// provider it is about to verify against.
+/// the section it is given, and a verifier recovers all three from the provider it
+/// is about to verify against —
+/// <see cref="PolynomialCommitmentProvider.CommitmentSizeBytes"/> for the
+/// commitment and <see cref="PolynomialCommitmentProvider.EvaluationProofSizeBytes"/>
+/// for the two openings — so it supplies no figure of its own and needs to know
+/// which scheme it holds only well enough to have built that provider.
 /// </para>
 /// <para>
 /// The layout carries no length prefixes: both endpoints know the round counts
@@ -186,9 +189,9 @@ public sealed class CommitmentSpartanProof: SensitiveMemory
     /// <param name="scheme">The commitment scheme the sections were produced under.</param>
     /// <param name="outerRoundCount">The outer-sumcheck round count.</param>
     /// <param name="innerRoundCount">The inner-sumcheck round count.</param>
-    /// <param name="witnessCommitmentSizeBytes">The witness-commitment section's length.</param>
-    /// <param name="errorOpeningSizeBytes">The error-opening section's length.</param>
-    /// <param name="witnessOpeningSizeBytes">The witness-opening section's length.</param>
+    /// <param name="witnessCommitmentSizeBytes">The witness-commitment section's length, from <see cref="PolynomialCommitmentProvider.CommitmentSizeBytes"/> at the column-variable count.</param>
+    /// <param name="errorOpeningSizeBytes">The error-opening section's length, from <see cref="PolynomialCommitmentProvider.EvaluationProofSizeBytes"/> at the row-variable count.</param>
+    /// <param name="witnessOpeningSizeBytes">The witness-opening section's length, from <see cref="PolynomialCommitmentProvider.EvaluationProofSizeBytes"/> at the column-variable count.</param>
     /// <param name="curve">The curve identifying the scalar field.</param>
     /// <param name="pool">The pool to rent the backing buffer from.</param>
     /// <returns>A proof wrapping a pool-rented copy of <paramref name="bytes"/>.</returns>

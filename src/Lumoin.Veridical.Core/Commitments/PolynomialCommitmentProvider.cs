@@ -83,6 +83,18 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     public PolynomialOpeningSizeDelegate? EvaluationProofSizeBytes { get; }
 
     /// <summary>
+    /// Returns the serialized length of the commitment <see cref="Commit"/>
+    /// produces for a polynomial in a given variable count. The companion to
+    /// <see cref="EvaluationProofSizeBytes"/>, and the property that completes the
+    /// sizing seam: with both, a consumer laying out a fixed-format proof recovers
+    /// every section length from the provider alone and supplies none of its own,
+    /// so no length it holds can disagree with the scheme that produced the
+    /// section. <see langword="null"/> when the scheme cannot answer the question
+    /// ahead of time.
+    /// </summary>
+    public PolynomialCommitmentSizeDelegate? CommitmentSizeBytes { get; }
+
+    /// <summary>
     /// Whether the scheme's commitment is additively homomorphic — whether two
     /// commitments (and a blind) can be combined into a commitment to the linear
     /// combination of the committed vectors. Pedersen-family schemes (Hyrax) are;
@@ -185,6 +197,7 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     /// <param name="resolveStatisticalMaskShape">The scheme's statistical-mask shape resolution; <see langword="null"/> when the scheme has no weighted-opening path.</param>
     /// <param name="inverseRate">The inverse code rate the scheme encodes under, when a consumer needs it to size variable-length artifacts (Ligero); <see langword="null"/> when not applicable.</param>
     /// <param name="evaluationProofSizeBytes">Returns an evaluation opening's serialized length for a given variable count, when the scheme can answer that from its own parameters; <see langword="null"/> when it cannot.</param>
+    /// <param name="commitmentSizeBytes">Returns a commitment's serialized length for a given variable count, when the scheme can answer that from its own parameters; <see langword="null"/> when it cannot.</param>
     /// <exception cref="ArgumentNullException">When any operation delegate is null.</exception>
     public PolynomialCommitmentProvider(
         CommitmentScheme scheme,
@@ -203,7 +216,8 @@ public sealed class PolynomialCommitmentProvider: IDisposable
         PolynomialVerifyWeightedSumDelegate? verifyWeightedSum = null,
         StatisticalMaskShapeDelegate? resolveStatisticalMaskShape = null,
         int? inverseRate = null,
-        PolynomialOpeningSizeDelegate? evaluationProofSizeBytes = null)
+        PolynomialOpeningSizeDelegate? evaluationProofSizeBytes = null,
+        PolynomialCommitmentSizeDelegate? commitmentSizeBytes = null)
     {
         ArgumentNullException.ThrowIfNull(commit);
         ArgumentNullException.ThrowIfNull(open);
@@ -219,6 +233,7 @@ public sealed class PolynomialCommitmentProvider: IDisposable
         DigestSizeBytes = digestSizeBytes;
         InverseRate = inverseRate;
         EvaluationProofSizeBytes = evaluationProofSizeBytes;
+        CommitmentSizeBytes = commitmentSizeBytes;
         IsAdditivelyHomomorphic = isAdditivelyHomomorphic;
         IsHiding = isHiding;
         ExtraVariableCount = extraVariableCount;

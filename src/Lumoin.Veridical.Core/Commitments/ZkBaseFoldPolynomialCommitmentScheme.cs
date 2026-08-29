@@ -237,7 +237,11 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             //Salted leaves are still hash-based — binding but not additively
             //homomorphic, so this cannot back Nova-style folding — yet the secret
             //salts make the commitment hiding, which the non-hiding sibling is not.
-            isAdditivelyHomomorphic: false, isHiding: true);
+            isAdditivelyHomomorphic: false, isHiding: true,
+            //Salting changes what a leaf commits to, not how wide it is: the salted
+            //tree keeps the scalar-width nodes of the buffer it is built over, so the
+            //root is one scalar wide as in the non-hiding sibling.
+            commitmentSizeBytes: _ => ScalarSize);
     }
 
 
@@ -479,7 +483,10 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
         return new PolynomialCommitmentProvider(
             CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
             ownedResource: null, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
-            isAdditivelyHomomorphic: false, isHiding: true, extraVariableCount: t);
+            isAdditivelyHomomorphic: false, isHiding: true, extraVariableCount: t,
+            //The lift raises the leaf count, never the node width, so the root stays
+            //one scalar wide.
+            commitmentSizeBytes: _ => ScalarSize);
     }
 
 
@@ -836,7 +843,10 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             commitVector, openWeightedSum, verifyWeightedSum,
             //The lifted-and-filled BaseFold mask-shape ledger at this provider's
             //query count.
-            resolveStatisticalMaskShape: (d, degree) => WellKnownStatisticalMaskParameters.CreateClassicalSecurity(d, curve, queryCount, degree));
+            resolveStatisticalMaskShape: (d, degree) => WellKnownStatisticalMaskParameters.CreateClassicalSecurity(d, curve, queryCount, degree),
+            //The witness is committed exactly as in the lifted sibling, so the root
+            //is one scalar wide there too.
+            commitmentSizeBytes: _ => ScalarSize);
     }
 
 

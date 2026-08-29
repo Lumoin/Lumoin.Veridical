@@ -313,6 +313,11 @@ public static class HyraxPolynomialCommitmentScheme
             extraVariableCount: null, commitVector, openWeightedSum, verifyWeightedSum,
             //The Pedersen/IPA mask-shape ledger: no lift, filler covering the
             //IPA's cleartext functional reveals.
-            resolveStatisticalMaskShape: static (d, degree) => BaseFold.WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree));
+            resolveStatisticalMaskShape: static (d, degree) => BaseFold.WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree),
+            //The one scheme whose commitment length is not constant: the matrix split
+            //puts one compressed point on each of the 2^⌈n/2⌉ rows, so the variable
+            //count fixes the length and nothing about the committed values does.
+            commitmentSizeBytes: variableCount => HyraxCommitment.GetBufferSizeBytes(
+                HyraxCommitmentDimensions.ForVariableCount(variableCount).RowCount, curve));
     }
 }

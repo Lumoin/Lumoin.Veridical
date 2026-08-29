@@ -295,7 +295,11 @@ public static class BaseFoldPolynomialCommitmentScheme
             //claim — the filler is inert structure shared with the hiding paths.
             extraVariableCount: null, commitVector: commit, openWeightedSum, verifyWeightedSum,
             resolveStatisticalMaskShape: static (d, degree) => WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree),
-            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes));
+            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes),
+            //One Merkle root, one node wide. The codeword buffer the tree is built
+            //over holds one scalar per element and the tree takes its node width
+            //from that buffer, so the root follows the scalar size, not digestSizeBytes.
+            commitmentSizeBytes: _ => ScalarSize);
     }
 
 

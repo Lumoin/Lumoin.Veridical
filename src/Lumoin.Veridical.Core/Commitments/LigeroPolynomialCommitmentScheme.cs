@@ -178,7 +178,13 @@ public static class LigeroPolynomialCommitmentScheme
             isAdditivelyHomomorphic: false,
             isHiding: false,
             inverseRate: inverseRate,
-            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes, inverseRate));
+            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes, inverseRate),
+            //The commitment is the column tree's root, which is one Merkle node wide.
+            //A node here is a scalar-width slot: the leaf buffer is rented at one
+            //scalar per column hash and the tree takes its node width from that
+            //buffer, so the root's width follows the scalar size rather than
+            //digestSizeBytes, which sizes the authentication paths instead.
+            commitmentSizeBytes: _ => ScalarSize);
     }
 
 
