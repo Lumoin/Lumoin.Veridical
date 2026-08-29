@@ -308,6 +308,42 @@ internal sealed class BaseFoldValidationTests
     }
 
 
+    //Two layers, so the priced opening carries fold roots and paths - the
+    //fields a digest width actually sizes.
+    private const int CapVariableCount = 3;
+
+
+    /// <summary>
+    /// Bounds the digest width the opening codec will price. The query phase
+    /// recomputes a leaf into a stack buffer reserved at
+    /// <see cref="WellKnownMerkleHashParameters.MaximumDigestSizeBytes"/>, so a
+    /// length computed for a wider digest describes an opening that could never
+    /// be checked. The codec states the bound its sibling codecs state, and
+    /// refuses rather than returning a number nothing can use.
+    /// </summary>
+    [TestMethod]
+    public void OpeningLengthRefusesADigestAboveTheVerifierCap()
+    {
+        FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(CapVariableCount, Curve);
+
+        int atCap = BaseFoldEvaluationProofSerialization.ComputeLength(
+            parameters,
+            FastQueryCount,
+            WellKnownMerkleHashParameters.MaximumDigestSizeBytes,
+            BaseFoldOpeningMode.Plain);
+
+        Assert.IsGreaterThan(0, atCap, "The widest digest the verifier reserves for must stay a priceable configuration.");
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => BaseFoldEvaluationProofSerialization.ComputeLength(
+                parameters,
+                FastQueryCount,
+                WellKnownMerkleHashParameters.MaximumDigestSizeBytes + 1,
+                BaseFoldOpeningMode.Plain),
+            "A digest above the cap must be refused rather than priced into a length nothing can check.");
+    }
+
+
     private static PolynomialCommitmentProvider NewProvider(int queryCount)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(

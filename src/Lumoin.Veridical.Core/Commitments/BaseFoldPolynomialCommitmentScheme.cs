@@ -67,7 +67,7 @@ public static class BaseFoldPolynomialCommitmentScheme
     /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <returns>A provider whose commit / open / verify route to the BaseFold evaluation protocol.</returns>
     /// <exception cref="ArgumentNullException">When any reference argument is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive, or <paramref name="digestSizeBytes"/> exceeds <see cref="WellKnownMerkleHashParameters.MaximumDigestSizeBytes"/>.</exception>
     public static PolynomialCommitmentProvider Create(
         ReadOnlySpan<byte> seed,
         CurveParameterSet curve,
@@ -95,6 +95,7 @@ public static class BaseFoldPolynomialCommitmentScheme
         ArgumentNullException.ThrowIfNull(hashToScalar);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
         //Copy the seed: the closures outlive the caller's span.
         byte[] seedCopy = seed.ToArray();
@@ -329,6 +330,7 @@ public static class BaseFoldPolynomialCommitmentScheme
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(variableCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
         FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
         return BaseFoldEvaluationProofSerialization.ComputeLength(parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Plain);

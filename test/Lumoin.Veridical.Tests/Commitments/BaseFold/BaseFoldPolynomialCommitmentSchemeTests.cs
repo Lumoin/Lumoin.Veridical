@@ -344,6 +344,33 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    //One byte past the widest digest the path verifier reserves stack space
+    //for, which is where a configuration stops being serviceable at all.
+    private const int TooWideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes + 1;
+
+
+    /// <summary>
+    /// Bounds the configured digest width where the provider is wired. The
+    /// authentication-path verifier recomputes a node into a stack buffer
+    /// reserved at <see cref="WellKnownMerkleHashParameters.MaximumDigestSizeBytes"/>,
+    /// so a wider digest has nowhere to land, and the failure would otherwise
+    /// surface as a slice fault raised from inside a verification, far from the
+    /// wiring that caused it. Refusing it at construction names the mistake
+    /// where it was made, and leaves the widest supported digest legal.
+    /// </summary>
+    [TestMethod]
+    public void CreateRefusesADigestWiderThanTheVerifierReservesFor()
+    {
+        using PolynomialCommitmentProvider atCap = NewProvider(WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
+
+        Assert.IsNotNull(atCap, "The widest digest the verifier reserves for must stay a legal configuration.");
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => NewProvider(TooWideDigestSizeBytes),
+            "A digest wider than the verifier's reserved stack space must be refused where the provider is wired.");
+    }
+
+
     private static PolynomialCommitmentProvider NewProvider()
     {
         return NewProvider(DigestSizeBytes);

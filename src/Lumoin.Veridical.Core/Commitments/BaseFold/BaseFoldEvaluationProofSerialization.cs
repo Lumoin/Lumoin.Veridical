@@ -372,6 +372,8 @@ internal static class BaseFoldEvaluationProofSerialization
 
     internal static int ComputeLength(FoldableCodeParameters parameters, int queryCount, int digestSize, BaseFoldOpeningMode mode)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSize, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
+
         int d = parameters.LayerCount;
         int baseUnit = parameters.InverseRate * parameters.BaseDimension;
         bool hiding = mode is BaseFoldOpeningMode.Hiding or BaseFoldOpeningMode.ZeroKnowledge;

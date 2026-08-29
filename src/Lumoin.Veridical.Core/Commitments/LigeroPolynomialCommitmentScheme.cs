@@ -69,7 +69,7 @@ public static class LigeroPolynomialCommitmentScheme
     /// <param name="rowExtenderFactory">Optional per-shape row-extension source the commit and open paths consult in place of the barycentric encode; <see langword="null"/> (the default) keeps today's barycentric path.</param>
     /// <returns>The provider; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a backend or the hash-algorithm name is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive, or <paramref name="inverseRate"/> is below 2.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive, <paramref name="digestSizeBytes"/> exceeds <see cref="WellKnownMerkleHashParameters.MaximumDigestSizeBytes"/>, or <paramref name="inverseRate"/> is below 2.</exception>
     public static PolynomialCommitmentProvider Create(
         CurveParameterSet curve,
         int queryCount,
@@ -99,6 +99,7 @@ public static class LigeroPolynomialCommitmentScheme
         ArgumentNullException.ThrowIfNull(hashAlgorithm);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
         ArgumentOutOfRangeException.ThrowIfLessThan(inverseRate, 2);
 
         PolynomialCommitDelegate commit = (polynomial, pool) =>
