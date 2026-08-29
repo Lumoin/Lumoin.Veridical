@@ -9,6 +9,20 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </summary>
 /// <remarks>
 /// <para>
+/// This describes what <see cref="PolynomialCommitmentProvider.Open"/> emits, not
+/// what any other opening on the provider emits. Where a scheme also proves an
+/// inner product against a public weight vector through
+/// <see cref="PolynomialCommitmentProvider.OpenWeightedSum"/>, that argument is a
+/// separate production this does not describe: a dimension-lifting hiding scheme
+/// lifts the weight vector by the lift that vector's own variable count calls for
+/// rather than by the lift it commits witnesses at, and the weighted argument
+/// carries no sumcheck mask where the evaluation opening does, so at one variable
+/// count the two lengths differ in both the layer count and the serialized form.
+/// A consumer laying out a weighted opening sizes it from that path's own shape —
+/// the vector's committed layer count under the scheme's mask ledger — never from
+/// this.
+/// </para>
+/// <para>
 /// This exists so a consumer can size a scheme's openings without knowing which
 /// scheme it is. The alternative — reading a bag of scheme-specific figures off
 /// the provider and reassembling the arithmetic at the call site — forces every

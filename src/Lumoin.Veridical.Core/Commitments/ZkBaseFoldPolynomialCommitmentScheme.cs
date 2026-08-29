@@ -238,6 +238,10 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             //homomorphic, so this cannot back Nova-style folding — yet the secret
             //salts make the commitment hiding, which the non-hiding sibling is not.
             isAdditivelyHomomorphic: false, isHiding: true,
+            //Salting widens the opening rather than the commitment: each fold-pair
+            //step carries the two leaf salts alongside the authentication path, which
+            //is exactly the difference the hiding opening mode accounts for.
+            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes),
             //Salting changes what a leaf commits to, not how wide it is: the salted
             //tree keeps the scalar-width nodes of the buffer it is built over, so the
             //root is one scalar wide as in the non-hiding sibling.
@@ -484,6 +488,10 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
             ownedResource: null, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
             isAdditivelyHomomorphic: false, isHiding: true, extraVariableCount: t,
+            //The caller asks about the polynomial it hands in, so the lift is this
+            //provider's to add: a d-variable witness is committed and opened at
+            //d + t layers, and the opening's length follows the lifted count.
+            evaluationProofSizeBytes: variableCount => GetZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
             //The lift raises the leaf count, never the node width, so the root stays
             //one scalar wide.
             commitmentSizeBytes: _ => ScalarSize);
@@ -844,6 +852,12 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             //The lifted-and-filled BaseFold mask-shape ledger at this provider's
             //query count.
             resolveStatisticalMaskShape: (d, degree) => WellKnownStatisticalMaskParameters.CreateClassicalSecurity(d, curve, queryCount, degree),
+            //The opening carries the lifted witness proof and the CFS-2017 mask side
+            //in one buffer, so its length is the zero-knowledge mode's at the lifted
+            //count, not the lifted sibling's. This is what the evaluation open emits:
+            //a weighted opening runs in hiding mode at the vector's own minimum lift,
+            //so its length is the mask ledger's rather than this one.
+            evaluationProofSizeBytes: variableCount => GetFullZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
             //The witness is committed exactly as in the lifted sibling, so the root
             //is one scalar wide there too.
             commitmentSizeBytes: _ => ScalarSize);
