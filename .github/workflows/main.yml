@@ -138,10 +138,17 @@ jobs:
     # restore or build step, on the x64 Linux leg only, so a leaked
     # identifier fails the build in seconds instead of after every leg has
     # paid for a full restore and build.
+    #
+    # A letter-pair code is matched whether or not it separates its digits
+    # with a dot, and with an optional trailing revision suffix, because the
+    # separator and the suffix are cosmetic: the same unit of work is written
+    # several ways, and a pattern anchored on one spelling passes a tracked
+    # file that spells it another. Transcript domain labels and byte-array
+    # seeds are in scope exactly like prose, since a label is still a name.
     - name: Guard against internal work identifiers
       if: ${{ matrix.os == 'ubuntu-24.04' }}
       run: |
-        pattern='\b[Bb]atch[[:space:]]+[A-Z]{1,2}(\.[0-9]{1,2})?\b|[Dd]esign[[:space:]]+[Nn]otes|[Tt]empdocs|\bW[0-9]\.[0-9]+\b|\bW[0-9]-[A-Za-z]\b|\b[Ww]ave[0-9]+\b|\b[Pp]hase[[:space:]]+[A-Z]\b|\b(SM|ZK|AB|AA|LF|RG|AD)\.[0-9]{1,2}\b|\b[UWXG]\.[0-9]{1,2}\b'
+        pattern='\b[Bb]atch[[:space:]]+[A-Z]{1,2}(\.[0-9]{1,2})?\b|[Dd]esign[[:space:]]+[Nn]otes|[Tt]empdocs|\bW[0-9]\.[0-9]+[a-z]?\b|\bW[0-9]-[A-Za-z]\b|\b[Ww]ave[0-9]+\b|\b[Pp]hase[[:space:]]+[A-Z]\b|\b(SM|ZK|AB|AA|LF|RG|AD|PN|PB|WS|AC|MS|FS|BF)\.?[0-9]{1,2}[a-z]?[0-9]?\b|\b[UWXG]\.[0-9]{1,2}[a-z]?\b'
         # .gitignore has to name "tempdocs" to ignore it, and this step has to name
         # the banned patterns to enforce and explain them — exempt only those two
         # self-referential files, nothing else in the tree gets a pass.

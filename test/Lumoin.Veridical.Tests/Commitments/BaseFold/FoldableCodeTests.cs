@@ -191,5 +191,5 @@ internal sealed class FoldableCodeTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB1.FoldableCode.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.FoldableCode.Test"u8;
 }

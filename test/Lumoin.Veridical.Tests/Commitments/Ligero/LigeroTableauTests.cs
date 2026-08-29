@@ -46,7 +46,7 @@ internal sealed class LigeroTableauTests
 
     //A fixed seed makes the prover randomness reproducible so two builds yield
     //byte-identical commitments.
-    private static byte[] RandomnessSeed { get; } = [0x4C, 0x46, 0x34, 0x62]; //"LF4b"
+    private static byte[] RandomnessSeed { get; } = "Lumoin.Veridical.Ligero.Tableau.Randomness"u8.ToArray();
 
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 

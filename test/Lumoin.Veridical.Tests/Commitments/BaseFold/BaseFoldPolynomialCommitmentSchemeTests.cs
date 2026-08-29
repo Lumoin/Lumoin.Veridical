@@ -371,5 +371,5 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB4.Provider.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.Provider.Test"u8;
 }

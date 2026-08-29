@@ -320,5 +320,5 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.ZK2b.LiftPrototype.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.LiftPrototype.Test"u8;
 }

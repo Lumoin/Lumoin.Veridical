@@ -380,5 +380,5 @@ internal sealed class BaseFoldValidationTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB6.Validation"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.Validation"u8;
 }

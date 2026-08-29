@@ -302,5 +302,5 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB6.Soundness"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.Iopp.Soundness"u8;
 }

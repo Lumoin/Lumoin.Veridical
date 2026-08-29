@@ -533,5 +533,5 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.ZK2b2.FullZeroKnowledge.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.FullZeroKnowledge.Test"u8;
 }

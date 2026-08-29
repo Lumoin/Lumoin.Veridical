@@ -410,5 +410,5 @@ internal sealed class BaseFoldIoppTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB3.Iopp.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.Iopp.Test"u8;
 }

@@ -231,5 +231,5 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.Provider.WeightedSum.SM7b.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.Provider.WeightedSum.Test"u8;
 }

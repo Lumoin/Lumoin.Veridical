@@ -60,7 +60,7 @@ internal sealed class LigeroArgumentRoundtripTests
     private const int OpenedColumns = 8;
     private const int Block = 16;
 
-    private static byte[] TranscriptSeed { get; } = [0x4C, 0x46, 0x34, 0x62, 0x36]; //"LF4b6"
+    private static byte[] TranscriptSeed { get; } = "Lumoin.Veridical.Ligero.ArgumentRoundtrip.Test"u8.ToArray();
     private static byte[] RandomnessSeed { get; } = [0x72, 0x61, 0x6E, 0x64];        //"rand"
 
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;

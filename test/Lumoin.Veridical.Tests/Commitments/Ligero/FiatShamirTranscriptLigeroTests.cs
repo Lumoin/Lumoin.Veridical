@@ -31,7 +31,7 @@ internal sealed class FiatShamirTranscriptLigeroTests
     private static ScalarReduceDelegate Reduce { get; } = SmallPrimeFieldScalars.GetReduce();
 
     //A fixed public-input seed; the transcript binds every challenge to it.
-    private static byte[] Seed { get; } = [0x4C, 0x46, 0x34, 0x62, 0x33]; //"LF4b3"
+    private static byte[] Seed { get; } = "Lumoin.Veridical.Ligero.Transcript.Test"u8.ToArray();
 
 
     [TestMethod]

@@ -404,5 +404,5 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.ZK1.Provider.Test"u8;
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.Provider.Test"u8;
 }
