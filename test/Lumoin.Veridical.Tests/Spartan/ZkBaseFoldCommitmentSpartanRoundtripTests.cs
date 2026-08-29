@@ -8,6 +8,7 @@ using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Core.Spartan;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Algebraic;
+using Lumoin.Veridical.Tests.ConstraintSystems;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
@@ -179,6 +180,54 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
         //the boundary is the length the proof carries rather than a width this
         //test assumes: flip the first byte of the first outer round.
         AssertTamperingIsRejected(proof => proof.WitnessCommitmentSizeBytes);
+    }
+
+
+    /// <summary>
+    /// Preparing a relaxed instance from a raw one reconstructs the error
+    /// commitment by recommitting the zero vector, which only reproduces the
+    /// other side's commitment where the scheme commits deterministically. The
+    /// refusal lives there rather than at each entry point because that is where
+    /// the assumption is spent.
+    /// </summary>
+    [TestMethod]
+    public void PreparingFromARawInstanceRefusesAHidingProvider()
+    {
+        using PolynomialCommitmentProvider provider = BuildFullZeroKnowledgeProvider();
+        using RawR1csInstance raw = R1csTestCircuits.BuildMultiplyCircuit();
+
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => raw.Prepare(provider, BaseMemoryPool.Shared),
+            "A hiding provider draws fresh randomness per commit, so the commitment reconstructed here is one no other party made.");
+    }
+
+
+    /// <summary>
+    /// The raw-instance verify overload reconstructs the error commitment rather
+    /// than receiving it, so it refuses a hiding provider outright. Returning the
+    /// mismatch as an ordinary rejection would make an honest proof and a forgery
+    /// indistinguishable to the caller.
+    /// </summary>
+    [TestMethod]
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider transfers to the verifying key, which the verifier disposes; every other intermediate is disposed through using declarations.")]
+    public void VerifyingAgainstARawInstanceRefusesAHidingProvider()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        using IMemoryOwner<byte> publishedOwner = RentPublishedErrorCommitment(BuildFullZeroKnowledgeProvider, pool, out int commitmentLength);
+        Span<byte> publishedErrorCommitment = publishedOwner.Memory.Span[..commitmentLength];
+
+        using CommitmentSpartanProof proof = Prove(BuildFullZeroKnowledgeProvider, publishedErrorCommitment, pool);
+
+        PolynomialCommitmentProvider provider = BuildFullZeroKnowledgeProvider();
+        var verifyingKey = new SpartanVerifyingKey(provider);
+        using var verifier = new SpartanVerifier(verifyingKey);
+        using RawR1csInstance raw = R1csTestCircuits.BuildMultiplyCircuit();
+        using FiatShamirTranscript transcript = FreshTranscript(pool);
+
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => verifier.VerifyCommitted(proof, raw, transcript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool),
+            "An honest proof under a hiding provider must not come back as an ordinary rejection.");
     }
 
 

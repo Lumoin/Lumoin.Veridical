@@ -130,6 +130,45 @@ internal sealed class PolynomialCommitmentSizeSeamTests
 
 
     /// <summary>
+    /// The opening seam's domain has to be the prover's domain. A zero-layer code
+    /// has nothing to fold, so the prover refuses it and no opening exists at that
+    /// variable count; a length returned for one would be consumed as a section
+    /// boundary before any check ran, which is the misreading the seam exists to
+    /// prevent.
+    /// </summary>
+    [TestMethod]
+    public void OpeningSeamRefusesAVariableCountNoOpeningExistsAt()
+    {
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => BaseFoldPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(0, Curve, QueryCount, DigestSizeBytes),
+            "BaseFold cannot open a zero-layer code, so its opening seam must not state a length for one.");
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => ZkBaseFoldPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(0, Curve, QueryCount, DigestSizeBytes),
+            "The salted flavour opens at the committed variable count, so it must refuse a zero-layer code too.");
+    }
+
+
+    /// <summary>
+    /// The refusal is about the code the prover sees, not the witness the caller
+    /// hands in: a lift makes a zero-variable witness provable, so the lifting
+    /// helper keeps answering for one.
+    /// </summary>
+    [TestMethod]
+    public void OpeningSeamStillAnswersForAZeroVariableWitnessTheLiftMakesProvable()
+    {
+        int lift = ZkBaseFoldPolynomialCommitmentScheme.GetMinimumExtraVariableCount(0, Curve, QueryCount);
+        int lifted = ZkBaseFoldPolynomialCommitmentScheme.GetZeroKnowledgeEvaluationProofSizeBytes(
+            0, lift, Curve, QueryCount, DigestSizeBytes);
+
+        Assert.IsGreaterThan(
+            0,
+            lifted,
+            "A zero-variable witness is committed at the lifted layer count, so an opening exists and the seam must state its length.");
+    }
+
+
+    /// <summary>
     /// The Hyrax seam matches its commit path too, at two variable counts whose
     /// matrix splits differ, so a constant cannot satisfy this vacuously.
     /// </summary>

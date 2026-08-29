@@ -330,7 +330,20 @@ public static class SpartanVerifierExtensions
         /// <param name="squeeze">Fiat-Shamir squeeze backend.</param>
         /// <param name="pool">The pool for scratch allocations.</param>
         /// <returns><see langword="true"/> iff the proof verifies.</returns>
+        /// <remarks>
+        /// This reconstructs the relaxed instance by recommitting the zero error
+        /// vector, which reproduces the prover's error commitment only where the
+        /// provider's commitment is a deterministic function of the polynomial. A
+        /// hiding provider draws a fresh blind on every commit, so the commitment
+        /// reconstructed here is one no prover ever produced and every honest
+        /// proof would fail. It refuses a hiding provider rather than returning
+        /// that as a plain <see langword="false"/>, which is indistinguishable
+        /// from a forgery. A hiding scheme verifies against a relaxed instance
+        /// built from the error commitment the prover published, through the
+        /// relaxed overload, mirroring how it proved.
+        /// </remarks>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">When the verifying key's provider is hiding.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance is disposed in the finally block once the relaxed overload returns.")]
         public bool VerifyCommitted(
             CommitmentSpartanProof proof,
@@ -349,7 +362,18 @@ public static class SpartanVerifierExtensions
             ArgumentNullException.ThrowIfNull(instance);
             ArgumentNullException.ThrowIfNull(pool);
 
-            RelaxedR1csInstance relaxedInstance = instance.Prepare(verifier.VerifyingKey.Pcs, pool);
+            //Stated here as well as inside Prepare, and stated before the
+            //reconstruction rather than after it, because the remedy differs by
+            //side: a prover samples the blind, a verifier receives the commitment.
+            //Naming the caller's own way out is worth the repetition.
+            PolynomialCommitmentProvider pcs = verifier.VerifyingKey.Pcs;
+            if(pcs.IsHiding)
+            {
+                throw new InvalidOperationException(
+                    $"The {pcs.Scheme} provider is hiding, so recommitting the zero error vector here would draw a fresh blind and reconstruct a commitment the prover never made. Build the relaxed instance from the error commitment the prover published and verify against that instead.");
+            }
+
+            RelaxedR1csInstance relaxedInstance = instance.Prepare(pcs, pool);
             try
             {
                 return verifier.VerifyCommitted(

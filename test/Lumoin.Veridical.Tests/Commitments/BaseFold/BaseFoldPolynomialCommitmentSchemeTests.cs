@@ -41,6 +41,15 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int TestQueryCount = 12;
 
+    //Twice the node width the scalar-wide leaf buffer gives the tree, and the
+    //widest digest the Merkle surface admits, so the disagreement is the largest
+    //one that is otherwise a legal configuration.
+    private const int MismatchedDigestSizeBytes = 2 * WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    //Two layers, so the opening carries a fold root and authentication paths -
+    //the fields the digest size prices and the tree does not.
+    private const int MismatchedDigestVariableCount = 2;
+
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
@@ -209,7 +218,53 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>
+    /// A Merkle tree takes its node width from the buffer it is built over and
+    /// never sees the configured digest size, while the opening's length
+    /// arithmetic prices every root and authentication path at that digest size.
+    /// The two are separate figures that coincide only under the wired hash, so
+    /// where they disagree the opening must be refused: the buffer would be
+    /// written short, every field after the first root would land where the
+    /// reader does not look, and the length check on the way back in would still
+    /// pass because it prices the sections the same wrong way.
+    /// </summary>
+    [TestMethod]
+    public void OpeningRefusesADigestWidthTheTreeDoesNotCarry()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider(MismatchedDigestSizeBytes);
+
+        using MultilinearExtension mle = BuildRandomMle(MismatchedDigestVariableCount, 1, pool);
+        Scalar[] point = BuildPoint(MismatchedDigestVariableCount, 5, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+
+                Assert.ThrowsExactly<ArgumentException>(
+                    () => provider.Open(commitment, blind, mle, point, openTx, pool),
+                    "An opening whose Merkle nodes are not the configured digest width must be refused, not serialized into a buffer it cannot fill.");
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
     private static PolynomialCommitmentProvider NewProvider()
+    {
+        return NewProvider(DigestSizeBytes);
+    }
+
+
+    private static PolynomialCommitmentProvider NewProvider(int digestSizeBytes)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
             Seed,
@@ -223,7 +278,8 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
             Subtract,
             Multiply,
             Invert,
-            HashToScalar);
+            HashToScalar,
+            digestSizeBytes);
     }
 
 

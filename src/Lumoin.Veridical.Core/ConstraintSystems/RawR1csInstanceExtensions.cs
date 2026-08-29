@@ -207,24 +207,44 @@ public static class RawR1csInstanceExtensions
         /// Merkle root for BaseFold), not a pairing-group identity.
         /// </summary>
         /// <remarks>
-        /// Use this overload only when <paramref name="pcs"/>'s commitment is a
+        /// This works only where <paramref name="pcs"/>'s commitment is a
         /// deterministic function of the polynomial (no per-commitment blinding),
         /// so the prover and verifier independently reproduce the identical
-        /// error commitment. For a hiding scheme (Hyrax) use the delegate-free
-        /// <see cref="Prepare(RawR1csInstance, BaseMemoryPool)"/>,
-        /// whose zero-error commitment is the deterministic group identity.
+        /// error commitment, and it refuses a provider for which that does not
+        /// hold. A hiding provider draws fresh randomness on every commit, so the
+        /// commitment produced here would be one the other side never made and
+        /// the transcript would diverge at the first absorb; the blind that could
+        /// open it is discarded on the next line besides. A hiding scheme instead
+        /// carries its error commitment as public relaxed-instance data, the way
+        /// a folded instance already carries a non-zero one, and enters through
+        /// the relaxed prove and verify overloads. For a hiding scheme whose
+        /// zero-error commitment is the deterministic group identity (Hyrax) the
+        /// delegate-free <see cref="Prepare(RawR1csInstance, BaseMemoryPool)"/>
+        /// applies, because it consults no provider at all.
         /// </remarks>
         /// <param name="pcs">The transparent commitment provider used to commit the zero error vector.</param>
         /// <param name="pool">Pool for the relaxed instance's allocations.</param>
         /// <returns>The prepared relaxed instance with <c>u = 1</c> and a scheme-shaped zero-error commitment.</returns>
         /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">When the R1CS row count is not a power of two.</exception>
+        /// <exception cref="InvalidOperationException">When <paramref name="pcs"/> is hiding.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "The committed error commitment transfers ownership to CreateRelaxedFromRaw, which transfers it to RelaxedR1csInstance.Create (disposed through its Dispose chain) or disposes it on the failure path.")]
         public RelaxedR1csInstance Prepare(PolynomialCommitmentProvider pcs, BaseMemoryPool pool)
         {
             ArgumentNullException.ThrowIfNull(instance);
             ArgumentNullException.ThrowIfNull(pcs);
             ArgumentNullException.ThrowIfNull(pool);
+
+            //The whole method rests on both sides reaching the same commitment
+            //from the same zero vector, which a hiding provider cannot do. The
+            //check belongs here rather than at each entry point because this is
+            //where the assumption is spent: every caller that reaches it has
+            //already committed to reconstructing, not receiving, the commitment.
+            if(pcs.IsHiding)
+            {
+                throw new InvalidOperationException(
+                    $"The {pcs.Scheme} provider is hiding, so committing the zero error vector here draws fresh randomness and yields a commitment the other side never made. Carry the error commitment as public relaxed-instance data and use the relaxed prove and verify overloads instead.");
+            }
 
             int m = instance.A.RowCount;
             if(!BitOperations.IsPow2(m))
@@ -235,8 +255,8 @@ public static class RawR1csInstanceExtensions
 
             int variableCount = BitOperations.Log2((uint)m);
 
-            //Commit the zero error vector through the provider. For a transparent
-            //hash-based scheme this is deterministic, so prover and verifier reach
+            //Commit the zero error vector through the provider. The guard above
+            //establishes that this is deterministic, so prover and verifier reach
             //the identical commitment. The placeholder blind is discarded — the
             //raw instance has no hiding randomness.
             using MultilinearExtension zeroError = MultilinearExtension.Zero(variableCount, instance.Curve, pool);

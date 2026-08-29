@@ -1055,7 +1055,13 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is non-positive or negative.</exception>
     public static int GetEvaluationProofSizeBytes(int variableCount, CurveParameterSet curve, int queryCount, int digestSizeBytes)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(variableCount);
+        //A zero-layer code has nothing to fold, so the prover refuses it and no
+        //such opening exists to be measured. The domain of a length seam has to
+        //match the domain of the thing it measures: a consumer splits wire bytes
+        //at these boundaries before any check runs, so a length returned for an
+        //unproducible opening is read as a section boundary rather than raised
+        //where the mistake was made.
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(variableCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
 

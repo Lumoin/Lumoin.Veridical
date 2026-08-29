@@ -95,6 +95,22 @@ internal static class BaseFoldEvaluationProofSerialization
             }
         }
 
+        //The writer must fill exactly the budget the length arithmetic set. Each
+        //field is written at the width the proof carries it in, while the budget
+        //prices Merkle material at digestSize, and those are separate figures: a
+        //tree takes its node width from the buffer it is built over and never
+        //sees digestSize. Where they disagree the buffer is written short, every
+        //field after the first root lands at an offset the reader does not look
+        //at, and the length guard in FromBytes still passes because both sides
+        //price it the same wrong way — so the mismatch has to be caught here or
+        //it is not caught at all.
+        if(cursor != totalLength)
+        {
+            throw new ArgumentException(
+                $"A {mode} BaseFold opening budgeted {totalLength} bytes at digest size {digestSize} but serialized {cursor}. The Merkle node width the proof carries and the configured digest size must agree.",
+                nameof(proof));
+        }
+
         return (owner, totalLength);
     }
 
