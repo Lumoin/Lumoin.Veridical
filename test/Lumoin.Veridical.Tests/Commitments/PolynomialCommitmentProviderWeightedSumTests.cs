@@ -43,7 +43,6 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
 
     private const int ScalarSize = 32;
-    private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int TestQueryCount = 12;
 
     //The masked-sumcheck shape the masks are resolved for: a small outer cubic.
@@ -53,6 +52,13 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
     //The full-ZK provider's witness lift at the test query count; the vector
     //commit recomputes its own lift, so this only parameterizes the provider.
     private const int WitnessLiftVariableCount = 4;
+
+    /// <summary>
+    /// The widest digest the Merkle surface admits — twice the scalar width,
+    /// so the weighted path's trees run the leaf commitment for real instead
+    /// of the verbatim scalar-wide shape.
+    /// </summary>
+    private const int WideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
 
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
@@ -73,6 +79,24 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
             MakeFixedRandom(seed: 1111), HashToScalar, WitnessLiftVariableCount);
+
+        RunWeightedRoundtrip(provider);
+    }
+
+
+    /// <summary>
+    /// The weighted path carries the digest width too: the vector commit, the
+    /// nested trees behind the weighted opening and the verification all run
+    /// at the widest admissible node width, so the capability holds on the
+    /// seam masked Spartan consumes, not only on the plain evaluation path.
+    /// </summary>
+    [TestMethod]
+    public void ZkBaseFoldWeightedOpeningRoundtripsAtAWideDigest()
+    {
+        using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
+            MakeFixedRandom(seed: 1111), HashToScalar, WitnessLiftVariableCount,
+            digestSizeBytes: WideDigestSizeBytes);
 
         RunWeightedRoundtrip(provider);
     }
@@ -224,7 +248,10 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
 
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        //Buffered for the widest node the Merkle surface admits and sliced to
+        //the actual input widths, so the same compression serves the default
+        //and the wide-digest providers; BLAKE3 writes exactly output.Length.
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

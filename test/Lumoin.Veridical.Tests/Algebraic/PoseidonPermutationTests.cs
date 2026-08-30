@@ -174,6 +174,37 @@ internal sealed class PoseidonPermutationTests
     }
 
 
+    /// <summary>
+    /// The Poseidon compression admits exactly one node width — its digest is
+    /// one canonical field element — so a set commitment stated at any other
+    /// width is refused loudly at the first leaf hash instead of committing a
+    /// tree the compression cannot honestly fill.
+    /// </summary>
+    [TestMethod]
+    public void PoseidonSetCommitmentRefusesAForeignNodeWidth()
+    {
+        //One entry suffices: the refusal fires inside the first leaf hash,
+        //before any tree is built.
+        const int EntryCount = 1;
+        const int ForeignDigestSizeBytes = 2 * ScalarSize;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
+            inputCount: 2, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+        MerkleHashDelegate poseidonHash = PoseidonPermutation.GetMerkleHash(parameters, Bn254Add, Bn254Multiply);
+
+        //Entries shaped for the stated width, all zero: the width figure
+        //itself is what the commitment trips on, not the entry content.
+        using System.Buffers.IMemoryOwner<byte> entriesOwner = pool.Rent(EntryCount * 2 * ForeignDigestSizeBytes);
+        Memory<byte> entries = entriesOwner.Memory[..(EntryCount * 2 * ForeignDigestSizeBytes)];
+        entries.Span.Clear();
+
+        Assert.ThrowsExactly<ArgumentException>(
+            () => MerkleSetCommitment.Commit(entries.Span, EntryCount, ForeignDigestSizeBytes, poseidonHash, BaseMemoryPool.Shared).Dispose(),
+            "A node width the Poseidon compression cannot produce must be refused, not committed.");
+    }
+
+
     [TestMethod]
     public void ExternallyConstructedParametersDriveTheSamePermutation()
     {

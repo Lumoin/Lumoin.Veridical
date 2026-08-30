@@ -106,6 +106,8 @@ internal sealed class PolynomialCommitmentSizeSeamTests
     [DataRow("zkbasefold", LargeVariableCount)]
     [DataRow("whir", SmallVariableCount)]
     [DataRow("whir", LargeVariableCount)]
+    [DataRow("zkwhir", SmallVariableCount)]
+    [DataRow("zkwhir", LargeVariableCount)]
     public void SeamMatchesTheCommitmentTheHashTreeSchemeProduces(string schemeName, int variableCount)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
@@ -246,6 +248,7 @@ internal sealed class PolynomialCommitmentSizeSeamTests
     [DataRow("basefold")]
     [DataRow("zkbasefold")]
     [DataRow("whir")]
+    [DataRow("zkwhir")]
     public void HashTreeSeamIsConstantInTheVariableCount(string schemeName)
     {
         using PolynomialCommitmentProvider provider = NewHashTreeProvider(schemeName);
@@ -279,6 +282,9 @@ internal sealed class PolynomialCommitmentSizeSeamTests
             "whir" => WhirPolynomialCommitmentScheme.Create(
                 Curve, WhirInitialRateLog2, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
                 securityLevelBits: WhirSecurityLevelBits),
+            "zkwhir" => WhirPolynomialCommitmentScheme.CreateZeroKnowledge(
+                Curve, WhirInitialRateLog2, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
+                ScalarRandom, securityLevelBits: WhirSecurityLevelBits),
             _ => throw new ArgumentOutOfRangeException(nameof(schemeName), schemeName, "Unknown scheme name.")
         };
     }
