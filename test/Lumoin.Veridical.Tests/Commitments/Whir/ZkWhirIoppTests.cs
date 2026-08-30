@@ -97,6 +97,9 @@ internal sealed class ZkWhirIoppTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
     /// <summary>The deterministic mask-sampling seed, distinct per test class.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("zk-whir-iopp-tests");
 
@@ -167,7 +170,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, coefficients, [], [], target, proverTranscript,
-            Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
+            TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)
         using(commitment)
@@ -242,7 +245,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            statement.Target, proverTranscript, Merkle, Hash, Squeeze,
+            statement.Target, proverTranscript, TreeParameters, Hash, Squeeze,
             Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)
@@ -289,7 +292,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript transcript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            wrongTarget, transcript, Merkle, Hash, Squeeze,
+            wrongTarget, transcript, TreeParameters, Hash, Squeeze,
             Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
 
@@ -393,7 +396,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            statement.Target, proverTranscript, Merkle, Hash, Squeeze,
+            statement.Target, proverTranscript, TreeParameters, Hash, Squeeze,
             backend.Reduce, backend.Add, backend.Subtract, backend.Multiply, backend.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)
@@ -421,7 +424,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            statement.Target, proverTranscript, Merkle, Hash, Squeeze,
+            statement.Target, proverTranscript, TreeParameters, Hash, Squeeze,
             Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)

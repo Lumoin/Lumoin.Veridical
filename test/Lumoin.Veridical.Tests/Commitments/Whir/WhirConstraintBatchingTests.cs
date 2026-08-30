@@ -71,6 +71,9 @@ internal sealed class WhirConstraintBatchingTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
 
     [TestMethod]
     public void HonestThreeClaimBatchRoundTripsOnBls12Curve381()
@@ -163,7 +166,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -226,7 +229,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -324,7 +327,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             tamperedTargets,
             transcript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -360,7 +363,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -543,7 +546,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             backend.Reduce,

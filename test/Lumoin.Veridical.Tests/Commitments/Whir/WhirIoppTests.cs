@@ -86,6 +86,9 @@ internal sealed class WhirIoppTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
 
     [TestMethod]
     public void HonestEvaluationClaimRoundTripsOnBls12Curve381()
@@ -136,7 +139,7 @@ internal sealed class WhirIoppTests
 
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (WhirIoppProof proof, MerkleRoot commitment) = WhirIoppProver.Prove(
-            schedule, coefficients, [], [], target, proverTranscript, Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
+            schedule, coefficients, [], [], target, proverTranscript, TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
         using(proof)
         using(commitment)
         using(FiatShamirTranscript verifierTranscript = NewTranscript())
@@ -272,7 +275,7 @@ internal sealed class WhirIoppTests
 
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (WhirIoppProof proof, MerkleRoot commitment) = WhirIoppProver.Prove(
-            schedule, coefficients, scales, points, target, proverTranscript, Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
+            schedule, coefficients, scales, points, target, proverTranscript, TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
         using(proof)
         using(commitment)
         using(FiatShamirTranscript verifierTranscript = NewTranscript())
@@ -313,7 +316,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -397,7 +400,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -471,7 +474,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             wrongTarget,
             transcript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -572,7 +575,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             backend.Reduce,
@@ -627,7 +630,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,

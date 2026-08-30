@@ -111,6 +111,8 @@ public static class WhirPolynomialCommitmentScheme
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
+        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
+
         WhirParameterSchedule DeriveSchedule(int variableCount)
         {
             return WhirParameterSchedule.Create(curve, variableCount, initialRateLog2, foldingParameter, securityLevelBits, regime);
@@ -125,7 +127,7 @@ public static class WhirPolynomialCommitmentScheme
             Span<byte> coefficients = coefficientsOwner.Memory.Span[..messageBytes];
             polynomial.InterpolateToCoefficients(coefficients, subtract);
 
-            using MerkleRoot root = WhirIoppProver.ComputeInputCommitment(schedule, coefficients, merkleHash, add, subtract, multiply, pool);
+            using MerkleRoot root = WhirIoppProver.ComputeInputCommitment(schedule, coefficients, merkleParameters, add, subtract, multiply, pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 root.AsReadOnlySpan(), curve, CommitmentScheme.Whir, pool);
@@ -162,7 +164,7 @@ public static class WhirPolynomialCommitmentScheme
                 point,
                 target,
                 transcript,
-                merkleHash,
+                merkleParameters,
                 hash,
                 squeeze,
                 reduce,
@@ -187,13 +189,12 @@ public static class WhirPolynomialCommitmentScheme
 
         PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
         {
-            //Commit produces one Merkle root, and the tree's node width
-            //follows the scalar-wide coset leaf digests it is built over, so a
-            //commitment of any other width was never made by this scheme.
+            //Commit produces one Merkle root at the configured node width, so
+            //a commitment of any other width was never made by this provider.
             //Refusing it before any parsing keeps the verification surface
             //exception-safe: a wide enough root would otherwise throw past the
             //authentication path's digest cap instead of rejecting.
-            if(commitment.AsReadOnlySpan().Length != ScalarSize)
+            if(commitment.AsReadOnlySpan().Length != digestSizeBytes)
             {
                 return false;
             }
@@ -265,10 +266,10 @@ public static class WhirPolynomialCommitmentScheme
             resolveStatisticalMaskShape: null,
             inverseRate: 1 << initialRateLog2,
             evaluationProofSizeBytes: variableCount => WhirProofSerialization.ComputeLength(DeriveSchedule(variableCount), digestSizeBytes),
-            //One Merkle root, one node wide. The digest buffer the tree is built over
-            //holds one scalar per block and the tree takes its node width from that
-            //buffer, so the root follows the scalar size, not digestSizeBytes.
-            commitmentSizeBytes: _ => ScalarSize);
+            //One Merkle root, one node wide: the coset fold produces node-wide
+            //leaf digests, so the root is exactly digestSizeBytes wide — the
+            //same figure the opening's Merkle material is priced with.
+            commitmentSizeBytes: _ => digestSizeBytes);
     }
 
 
@@ -347,6 +348,8 @@ public static class WhirPolynomialCommitmentScheme
         ArgumentOutOfRangeException.ThrowIfLessThan(maskMessageLength, WhirZkParameters.MinimumMaskMessageLength);
         ArgumentOutOfRangeException.ThrowIfLessThan(maskRateLog2, 1);
 
+        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
+
         WhirZkParameters DeriveParameters(int variableCount)
         {
             return WhirZkParameters.Create(
@@ -369,7 +372,7 @@ public static class WhirPolynomialCommitmentScheme
             ZkWhirIoppProver.FillWithScalars(randomness, maskRandom, curve);
 
             using MerkleRoot root = ZkWhirIoppProver.ComputeInputCommitment(
-                parameters, coefficients, randomness, merkleHash, add, subtract, multiply, pool);
+                parameters, coefficients, randomness, merkleParameters, add, subtract, multiply, pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 root.AsReadOnlySpan(), curve, CommitmentScheme.Whir, pool);
@@ -411,7 +414,7 @@ public static class WhirPolynomialCommitmentScheme
                 point,
                 target,
                 transcript,
-                merkleHash,
+                merkleParameters,
                 hash,
                 squeeze,
                 reduce,
@@ -438,13 +441,13 @@ public static class WhirPolynomialCommitmentScheme
 
         PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
         {
-            //The randomized codeword still leaf-commits through the scalar-wide
-            //coset fold, so a hiding commitment is one scalar-wide Merkle root
-            //and any other width was never made by this scheme. Refusing it
-            //before any parsing keeps the verification surface exception-safe:
-            //a wide enough root would otherwise throw past the authentication
-            //path's digest cap instead of rejecting.
-            if(commitment.AsReadOnlySpan().Length != ScalarSize)
+            //The randomized codeword leaf-commits at the configured node
+            //width, so a hiding commitment of any other width was never made
+            //by this provider. Refusing it before any parsing keeps the
+            //verification surface exception-safe: a wide enough root would
+            //otherwise throw past the authentication path's digest cap
+            //instead of rejecting.
+            if(commitment.AsReadOnlySpan().Length != digestSizeBytes)
             {
                 return false;
             }
@@ -509,10 +512,10 @@ public static class WhirPolynomialCommitmentScheme
             resolveStatisticalMaskShape: null,
             inverseRate: 1 << initialRateLog2,
             evaluationProofSizeBytes: variableCount => ZkWhirProofSerialization.ComputeLength(DeriveParameters(variableCount), digestSizeBytes),
-            //Randomizing the codeword changes what the root commits to, not how wide
-            //it is: still one Merkle node, still scalar-width from the buffer the
-            //tree is built over.
-            commitmentSizeBytes: _ => ScalarSize);
+            //Randomizing the codeword changes what the root commits to, not
+            //how wide it is: still one Merkle node, exactly digestSizeBytes
+            //wide like the non-hiding sibling's.
+            commitmentSizeBytes: _ => digestSizeBytes);
     }
 
 

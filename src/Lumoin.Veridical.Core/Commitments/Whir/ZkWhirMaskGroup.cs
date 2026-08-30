@@ -136,7 +136,7 @@ public sealed class ZkWhirMaskGroup: IDisposable
     /// <param name="shape">The mask code shape, from <see cref="WhirZkParameters.SumcheckMaskShape"/>.</param>
     /// <param name="maskCount">The mask count <c>k</c>, the fold batch's round count; at least 1.</param>
     /// <param name="encoder">The coset encoder routing the mask encodes.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="maskRandom">The entropy-sourced sampler for the mask coefficients and encoding randomness.</param>
     /// <param name="curve">The curve whose scalar field the masks live in.</param>
     /// <param name="pool">The pool every buffer rents from.</param>
@@ -147,13 +147,13 @@ public sealed class ZkWhirMaskGroup: IDisposable
         WhirMaskCodeShape shape,
         int maskCount,
         WhirCosetEncoder encoder,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         ScalarRandomDelegate maskRandom,
         CurveParameterSet curve,
         BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(encoder);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(maskRandom);
         ArgumentNullException.ThrowIfNull(pool);
         ValidateGroupShape(maskCount, curve);
@@ -171,7 +171,7 @@ public sealed class ZkWhirMaskGroup: IDisposable
             throw;
         }
 
-        return CreateCore(shape, maskCount, coefficientsOwner, encoder, merkleHash, maskRandom, curve, pool);
+        return CreateCore(shape, maskCount, coefficientsOwner, encoder, merkleParameters, maskRandom, curve, pool);
     }
 
 
@@ -186,7 +186,7 @@ public sealed class ZkWhirMaskGroup: IDisposable
     /// <param name="maskCount">The member count; at least 1.</param>
     /// <param name="messages">The member messages, <c>maskCount · MessageLength</c> concatenated elements; copied into pooled storage.</param>
     /// <param name="encoder">The coset encoder routing the mask encodes.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="maskRandom">The entropy-sourced sampler for the encoding randomness.</param>
     /// <param name="curve">The curve whose scalar field the masks live in.</param>
     /// <param name="pool">The pool every buffer rents from.</param>
@@ -199,13 +199,13 @@ public sealed class ZkWhirMaskGroup: IDisposable
         int maskCount,
         ReadOnlySpan<byte> messages,
         WhirCosetEncoder encoder,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         ScalarRandomDelegate maskRandom,
         CurveParameterSet curve,
         BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(encoder);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(maskRandom);
         ArgumentNullException.ThrowIfNull(pool);
         ValidateGroupShape(maskCount, curve);
@@ -230,7 +230,7 @@ public sealed class ZkWhirMaskGroup: IDisposable
             throw;
         }
 
-        return CreateCore(shape, maskCount, coefficientsOwner, encoder, merkleHash, maskRandom, curve, pool);
+        return CreateCore(shape, maskCount, coefficientsOwner, encoder, merkleParameters, maskRandom, curve, pool);
     }
 
 
@@ -255,7 +255,7 @@ public sealed class ZkWhirMaskGroup: IDisposable
         int maskCount,
         IMemoryOwner<byte> coefficientsOwner,
         WhirCosetEncoder encoder,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         ScalarRandomDelegate maskRandom,
         CurveParameterSet curve,
         BaseMemoryPool pool)
@@ -298,10 +298,11 @@ public sealed class ZkWhirMaskGroup: IDisposable
                 }
             }
 
-            using IMemoryOwner<byte> digestsOwner = pool.Rent(shape.DomainSize * ScalarSize);
-            Span<byte> digests = digestsOwner.Memory.Span[..(shape.DomainSize * ScalarSize)];
-            WhirCosetLeaf.ComputeLeafDigests(leaves, shape.DomainSize, paddedRowWidth, merkleHash, digests, pool);
-            tree = MerkleTree.Build(digests, shape.DomainSize, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+            int nodeSize = merkleParameters.NodeSizeBytes;
+            using IMemoryOwner<byte> digestsOwner = pool.Rent(shape.DomainSize * nodeSize);
+            Span<byte> digests = digestsOwner.Memory.Span[..(shape.DomainSize * nodeSize)];
+            WhirCosetLeaf.ComputeLeafDigests(leaves, shape.DomainSize, paddedRowWidth, merkleParameters, digests, pool);
+            tree = MerkleTree.Build(digests, shape.DomainSize, merkleParameters, pool);
 
             return new ZkWhirMaskGroup(shape, maskCount, paddedRowWidth, curve, coefficientsOwner, encodingRandomnessOwner, leavesOwner, tree);
         }

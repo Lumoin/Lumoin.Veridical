@@ -77,6 +77,9 @@ internal sealed class ZkWhirMaskedSumcheckTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
     /// <summary>The deterministic mask-sampling seed, distinct per test class.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("zk-whir-masked-sumcheck-tests");
 
@@ -298,7 +301,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
 
         Assert.Throws<ArgumentOutOfRangeException>(
             () => ZkWhirMaskGroup.Create(
-                shape, maskCount: 0, encoder, Merkle, new DeterministicScalarRandom(MaskSeed).AsDelegate(), backend.Curve, pool));
+                shape, maskCount: 0, encoder, TreeParameters, new DeterministicScalarRandom(MaskSeed).AsDelegate(), backend.Curve, pool));
     }
 
 
@@ -336,7 +339,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
         WhirMaskCodeShape shape = WhirMaskCodeShape.Derive(WhirZkParameters.DefaultMaskMessageLength, TestMaskQueryCount, TestMaskRateLog2);
 
         return ZkWhirMaskGroup.Create(
-            shape, MaskCount, encoder, Merkle, new DeterministicScalarRandom(MaskSeed).AsDelegate(), Bls.Curve, pool);
+            shape, MaskCount, encoder, TreeParameters, new DeterministicScalarRandom(MaskSeed).AsDelegate(), Bls.Curve, pool);
     }
 
 

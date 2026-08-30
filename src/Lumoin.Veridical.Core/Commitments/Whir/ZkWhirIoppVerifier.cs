@@ -169,7 +169,10 @@ public static class ZkWhirIoppVerifier
             }
 
             Span<byte> blockScratch = RentTracked(maxRowWidth * ScalarSize, pool, disposables);
-            Span<byte> digestScratch = RentTracked(Math.Max(1, maxRowWidth / 2) * ScalarSize, pool, disposables);
+            //Sized for the widest node the Merkle surface admits, because the
+            //leaf recomputation folds at the width each authenticated root
+            //carries rather than a width fixed here.
+            Span<byte> digestScratch = RentTracked(Math.Max(1, maxRowWidth / 2) * WellKnownMerkleHashParameters.MaximumDigestSizeBytes, pool, disposables);
             encoder.DeriveDomainRoot(foldingParameter, strideRoot);
 
             int currentVariableCount = variableCount;

@@ -62,6 +62,9 @@ internal sealed class WhirProofSerializationTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
 
     [TestMethod]
     public void SerializedProofRoundTripsAndVerifies()
@@ -276,7 +279,7 @@ internal sealed class WhirProofSerializationTests
 
                 using FiatShamirTranscript proverTranscript = NewTranscript();
                 (WhirIoppProof proof, MerkleRoot commitment) = WhirIoppProver.Prove(
-                    schedule, coefficients, scale, point, target, proverTranscript, Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
+                    schedule, coefficients, scale, point, target, proverTranscript, TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
 
                 return new ProofRun(owner, messageBytes, pointBytes, proof, commitment);
             }

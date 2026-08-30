@@ -66,6 +66,9 @@ internal sealed class ZkWhirProofSerializationTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
     /// <summary>The deterministic mask-sampling seed, distinct per test class.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("zk-whir-proof-serialization-tests");
 
@@ -385,7 +388,7 @@ internal sealed class ZkWhirProofSerializationTests
                     point,
                     target,
                     proverTranscript,
-                    Merkle,
+                    TreeParameters,
                     Hash,
                     Squeeze,
                     Bls.Reduce,
