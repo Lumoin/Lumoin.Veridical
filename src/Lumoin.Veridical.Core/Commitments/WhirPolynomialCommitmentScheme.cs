@@ -187,6 +187,17 @@ public static class WhirPolynomialCommitmentScheme
 
         PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
         {
+            //Commit produces one Merkle root, and the tree's node width
+            //follows the scalar-wide coset leaf digests it is built over, so a
+            //commitment of any other width was never made by this scheme.
+            //Refusing it before any parsing keeps the verification surface
+            //exception-safe: a wide enough root would otherwise throw past the
+            //authentication path's digest cap instead of rejecting.
+            if(commitment.AsReadOnlySpan().Length != ScalarSize)
+            {
+                return false;
+            }
+
             int variableCount = evaluationPoint.Length;
             WhirParameterSchedule schedule = DeriveSchedule(variableCount);
 
@@ -427,6 +438,17 @@ public static class WhirPolynomialCommitmentScheme
 
         PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
         {
+            //The randomized codeword still leaf-commits through the scalar-wide
+            //coset fold, so a hiding commitment is one scalar-wide Merkle root
+            //and any other width was never made by this scheme. Refusing it
+            //before any parsing keeps the verification surface exception-safe:
+            //a wide enough root would otherwise throw past the authentication
+            //path's digest cap instead of rejecting.
+            if(commitment.AsReadOnlySpan().Length != ScalarSize)
+            {
+                return false;
+            }
+
             int variableCount = evaluationPoint.Length;
             WhirZkParameters parameters = DeriveParameters(variableCount);
 

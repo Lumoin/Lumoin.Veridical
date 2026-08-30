@@ -515,7 +515,9 @@ public static class WhirIoppVerifier
 
     /// <summary>
     /// Recomputes the coset leaf digest from the revealed values and
-    /// authenticates it at the block index against the oracle's root.
+    /// authenticates it at the block index against the oracle's root. A root
+    /// whose width is not the one the coset fold produces is a non-match, not
+    /// a fault.
     /// </summary>
     internal static bool AuthenticateOpening(
         WhirQueryOpening opening,
@@ -524,6 +526,17 @@ public static class WhirIoppVerifier
         MerkleHashDelegate merkleHash,
         Span<byte> digestScratch)
     {
+        //The coset fold recomputes the leaf from scalar-wide revealed values,
+        //so the digest it can produce is exactly one scalar wide. A root of
+        //any other width was not built over these leaves, and a wide enough
+        //one would throw past the authentication path's digest cap, so the
+        //mismatch is answered here as a non-match: the verification surface
+        //stays exception-safe against malformed inputs.
+        if(root.AsReadOnlySpan().Length != ScalarSize)
+        {
+            return false;
+        }
+
         Span<byte> digest = stackalloc byte[ScalarSize];
         WhirCosetLeaf.ComputeLeafDigest(opening.BlockValues.Span, merkleHash, digest, digestScratch);
 

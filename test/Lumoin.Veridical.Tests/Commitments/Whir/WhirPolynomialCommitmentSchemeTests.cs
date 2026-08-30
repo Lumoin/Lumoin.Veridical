@@ -70,6 +70,20 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     /// <summary>The curve every artifact is tagged with.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
+    /// <summary>
+    /// Twice the node width the scalar-wide coset leaf digests give the tree,
+    /// and the widest digest the Merkle surface admits, so the disagreement is
+    /// the largest one that is otherwise a legal configuration.
+    /// </summary>
+    private const int MismatchedDigestSizeBytes = 2 * WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>
+    /// One byte past the widest digest the Merkle surface admits: the smallest
+    /// width whose authentication walk would throw rather than mismatch, so a
+    /// rejection proves the funnel refused it before the walk.
+    /// </summary>
+    private const int OverCapCommitmentWidthBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes + 1;
+
 
     [TestMethod]
     [DataRow(8)]
@@ -278,6 +292,97 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>
+    /// A Merkle tree takes its node width from the coset leaf digests it is
+    /// built over and never sees the configured digest size, while the
+    /// opening's wire layout prices every root and authentication path at that
+    /// digest size. The two are separate figures that coincide only under the
+    /// wired hash, so where they disagree the opening must be refused rather
+    /// than serialized into a layout its material cannot fill.
+    /// </summary>
+    [TestMethod]
+    public void OpeningRefusesADigestWidthTheTreeDoesNotCarry()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 8;
+        using PolynomialCommitmentProvider provider = NewProvider(MismatchedDigestSizeBytes);
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 12, pool);
+        Scalar[] point = BuildPoint(VariableCount, 13, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+
+                Assert.ThrowsExactly<ArgumentException>(
+                    () => provider.Open(commitment, blind, mle, point, openTx, pool),
+                    "An opening whose Merkle nodes are not the configured digest width must be refused, not serialized into a layout it cannot fill.");
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>
+    /// A commitment is one Merkle root whose width follows the scalar-wide
+    /// coset leaf digests, so a commitment of any other width was never made
+    /// by this scheme and verification must reject it as a non-match. Past the
+    /// Merkle surface's widest admissible digest the authentication walk would
+    /// throw instead, so the refusal must land before the walk: malformed wire
+    /// input is a rejection, not a fault.
+    /// </summary>
+    [TestMethod]
+    public void VerificationRejectsACommitmentWidthTheSchemeNeverProduces()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 8;
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 14, pool);
+        Scalar[] point = BuildPoint(VariableCount, 15, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    using PolynomialCommitment atCap = CommitmentOfWidth(MismatchedDigestSizeBytes, pool);
+                    using FiatShamirTranscript atCapTx = NewTranscript();
+                    Assert.IsFalse(
+                        provider.VerifyEvaluation(atCap, point, claimedValue, opening, atCapTx, pool),
+                        "A commitment at the Merkle surface's widest admissible digest is still not one this scheme produces and must be rejected.");
+
+                    using PolynomialCommitment overCap = CommitmentOfWidth(OverCapCommitmentWidthBytes, pool);
+                    using FiatShamirTranscript overCapTx = NewTranscript();
+                    Assert.IsFalse(
+                        provider.VerifyEvaluation(overCap, point, claimedValue, opening, overCapTx, pool),
+                        "A commitment wider than the Merkle surface admits must be rejected as malformed wire input, not thrown on.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
     [TestMethod]
     public void ProviderRefusesWeightedOpening()
     {
@@ -424,6 +529,15 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
 
     private static PolynomialCommitmentProvider NewProvider()
     {
+        return NewProvider(WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// The WHIR provider at the fast figures and an explicit digest size.
+    /// </summary>
+    private static PolynomialCommitmentProvider NewProvider(int digestSizeBytes)
+    {
         return WhirPolynomialCommitmentScheme.Create(
             Curve,
             FastInitialRateLog2,
@@ -435,7 +549,20 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
             Subtract,
             Multiply,
             Invert,
-            securityLevelBits: FastSecurityLevelBits);
+            securityLevelBits: FastSecurityLevelBits,
+            digestSizeBytes: digestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// A syntactically valid commitment of an arbitrary width; the content is
+    /// immaterial because the width alone must already reject it.
+    /// </summary>
+    private static PolynomialCommitment CommitmentOfWidth(int widthBytes, BaseMemoryPool pool)
+    {
+        Span<byte> bytes = stackalloc byte[widthBytes];
+
+        return PolynomialCommitment.FromBytes(bytes, Curve, CommitmentScheme.Whir, pool);
     }
 
 
