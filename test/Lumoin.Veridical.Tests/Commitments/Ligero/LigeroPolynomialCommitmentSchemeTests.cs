@@ -32,6 +32,13 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int TestQueryCount = 12;
 
+    /// <summary>
+    /// The widest digest the Merkle surface admits — twice the scalar width,
+    /// so the column hash genuinely writes node-wide leaves instead of
+    /// scalar-wide ones.
+    /// </summary>
+    private const int WideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
+
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bn254;
 
     private static ScalarAddDelegate Add { get; } = Bn254BigIntegerScalarReference.GetAdd();
@@ -312,6 +319,60 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>
+    /// The digest width is a real capability, not a label: at a node width
+    /// other than the scalar width the column hash writes node-wide leaves,
+    /// the commitment root carries the configured width, the opening fills
+    /// exactly the budget the length arithmetic prices, and verification
+    /// recomputes the column hash at that width.
+    /// </summary>
+    [TestMethod]
+    public void CommitOpenVerifyRoundTripsAtAWideDigest()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 3;
+        using PolynomialCommitmentProvider provider = NewProvider(TestQueryCount, WellKnownLigeroParameters.DefaultInverseRate, WideDigestSizeBytes);
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 12, pool);
+        Scalar[] point = BuildPoint(VariableCount, 13, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                Assert.HasCount(WideDigestSizeBytes, commitment.AsReadOnlySpan(), "The commitment is one Merkle root at the configured node width.");
+
+                PolynomialCommitmentSizeDelegate? commitmentSeam = provider.CommitmentSizeBytes;
+                Assert.IsNotNull(commitmentSeam, "A hash-tree provider must state its commitment width.");
+                Assert.AreEqual(WideDigestSizeBytes, commitmentSeam(VariableCount), "The commitment seam must state the width Commit produces.");
+
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    int expectedOpeningBytes = LigeroPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
+                        VariableCount, Curve, TestQueryCount, WideDigestSizeBytes, WellKnownLigeroParameters.DefaultInverseRate);
+                    Assert.HasCount(expectedOpeningBytes, opening.AsReadOnlySpan(), "The opening must fill exactly the wide-digest budget.");
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    Assert.IsTrue(
+                        provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
+                        "An honest commit→open→verify must round-trip at the wide digest.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
     [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
@@ -481,6 +542,15 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
 
     private static PolynomialCommitmentProvider NewProvider(int queryCount, int inverseRate)
     {
+        return NewProvider(queryCount, inverseRate, DigestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// The Ligero provider at the given figures and an explicit digest size.
+    /// </summary>
+    private static PolynomialCommitmentProvider NewProvider(int queryCount, int inverseRate, int digestSizeBytes)
+    {
         return LigeroPolynomialCommitmentScheme.Create(
             Curve,
             queryCount,
@@ -494,6 +564,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
             Hash,
             Merkle,
             WellKnownHashAlgorithms.Blake3,
+            digestSizeBytes: digestSizeBytes,
             inverseRate: inverseRate);
     }
 
@@ -591,7 +662,10 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
 
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        //Buffered for the widest node the Merkle surface admits and sliced to
+        //the actual input widths, so the same compression serves the default
+        //and the wide-digest providers; BLAKE3 writes exactly output.Length.
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);
