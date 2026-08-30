@@ -353,7 +353,7 @@ internal sealed class BaseFoldIoppTests
 
     private static void BuildCommitmentBytes(ReadOnlySpan<byte> codeword, int codewordElements, Span<byte> rootBytes)
     {
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, new MerkleCommitmentParameters(Merkle, ScalarSize), BaseMemoryPool.Shared);
         tree.Root.AsReadOnlySpan().CopyTo(rootBytes);
     }
 

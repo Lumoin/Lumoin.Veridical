@@ -147,7 +147,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltOwner.Memory.Span[..saltBytes];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, merkleHash, pool);
+            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -381,7 +381,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, merkleHash, pool);
+            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -607,7 +607,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, merkleHash, pool);
+            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -759,7 +759,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, merkleHash, pool);
+            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);

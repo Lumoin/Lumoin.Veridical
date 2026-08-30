@@ -149,8 +149,45 @@ internal sealed class MerkleSetCommitmentTests
     }
 
 
-    //Entries with ascending keys derived from the index and values from a salt;
-    //deterministic so equal-set comparisons are exact.
+    /// <summary>
+    /// The digest width is bounded by the widest node the Merkle surface can
+    /// verify: at the cap a set commits and its tree carries that width; one
+    /// byte past the cap the commitment is refused before any entry is read.
+    /// Verification sizes its stack buffers against the cap, so a tree the
+    /// surface could never authenticate must not be buildable.
+    /// </summary>
+    [TestMethod]
+    public void CommitBoundsTheDigestWidthAtTheMerkleSurfaceCap()
+    {
+        //Two entries: the smallest set whose tree compresses at least once.
+        const int EntryCount = 2;
+        const int AtCapDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
+        const int PastCapDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes + 1;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        using IMemoryOwner<byte> atCapOwner = pool.Rent(EntryCount * 2 * AtCapDigestSizeBytes);
+        Span<byte> atCapEntries = atCapOwner.Memory.Span[..(EntryCount * 2 * AtCapDigestSizeBytes)];
+        FillAscendingKeys(atCapEntries, EntryCount, AtCapDigestSizeBytes);
+
+        using(MerkleTree tree = MerkleSetCommitment.Commit(atCapEntries, EntryCount, AtCapDigestSizeBytes, HashTwoToOneAtCap, pool))
+        {
+            Assert.AreEqual(AtCapDigestSizeBytes, tree.NodeSizeBytes, "An at-cap digest width must commit and carry that width.");
+        }
+
+        using IMemoryOwner<byte> pastCapOwner = pool.Rent(EntryCount * 2 * PastCapDigestSizeBytes);
+        Memory<byte> pastCapEntries = pastCapOwner.Memory[..(EntryCount * 2 * PastCapDigestSizeBytes)];
+        FillAscendingKeys(pastCapEntries.Span, EntryCount, PastCapDigestSizeBytes);
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => MerkleSetCommitment.Commit(pastCapEntries.Span, EntryCount, PastCapDigestSizeBytes, HashTwoToOneAtCap, BaseMemoryPool.Shared).Dispose(),
+            "A digest width past the Merkle surface's cap must be refused.");
+    }
+
+
+    /// <summary>
+    /// Entries with ascending keys derived from the index and values from a
+    /// salt; deterministic so equal-set comparisons are exact.
+    /// </summary>
     private static void FillEntries(Span<byte> entries, int entryCount, int valueSalt)
     {
         Span<byte> material = stackalloc byte[8];
@@ -172,9 +209,43 @@ internal sealed class MerkleSetCommitmentTests
     }
 
 
+    /// <summary>
+    /// The wired two-to-one compression: BLAKE3 over the concatenated
+    /// children at the default 32-byte pairing.
+    /// </summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        left.CopyTo(combined[..left.Length]);
+        right.CopyTo(combined.Slice(left.Length, right.Length));
+        Blake3.Hash(combined[..(left.Length + right.Length)], output);
+    }
+
+
+    /// <summary>
+    /// Zeroed entries carrying an index-prefixed key each: strictly ascending
+    /// keys at any digest width, which is all the shape checks require.
+    /// </summary>
+    private static void FillAscendingKeys(Span<byte> entries, int entryCount, int digestSizeBytes)
+    {
+        entries.Clear();
+        for(int i = 0; i < entryCount; i++)
+        {
+            Span<byte> key = entries.Slice(i * 2 * digestSizeBytes, digestSizeBytes);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(key[..4], i + 1);
+        }
+    }
+
+
+    /// <summary>
+    /// The at-cap two-to-one compression: BLAKE3 buffered for the widest node
+    /// the Merkle surface admits and sliced to the actual input widths,
+    /// because the class's default compression is sized for the wired
+    /// 32-byte pairing.
+    /// </summary>
+    private static void HashTwoToOneAtCap(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
+    {
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

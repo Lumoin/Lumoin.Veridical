@@ -301,7 +301,7 @@ public sealed class ZkWhirMaskGroup: IDisposable
             using IMemoryOwner<byte> digestsOwner = pool.Rent(shape.DomainSize * ScalarSize);
             Span<byte> digests = digestsOwner.Memory.Span[..(shape.DomainSize * ScalarSize)];
             WhirCosetLeaf.ComputeLeafDigests(leaves, shape.DomainSize, paddedRowWidth, merkleHash, digests, pool);
-            tree = MerkleTree.Build(digests, shape.DomainSize, merkleHash, pool);
+            tree = MerkleTree.Build(digests, shape.DomainSize, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
 
             return new ZkWhirMaskGroup(shape, maskCount, paddedRowWidth, curve, coefficientsOwner, encodingRandomnessOwner, leavesOwner, tree);
         }

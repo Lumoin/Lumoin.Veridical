@@ -216,7 +216,7 @@ public static class BaseFoldIoppProver
         BaseMemoryPool pool,
         List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, merkleHash, pool);
+        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
         disposables.Add(tree);
 
         return tree;

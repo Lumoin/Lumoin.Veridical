@@ -266,7 +266,7 @@ internal sealed class BaseFoldEvaluationTests
         Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
         code.Encode(coeffs, codeword, Add, Subtract, Multiply, pool);
 
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, new MerkleCommitmentParameters(Merkle, ScalarSize), pool);
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
 

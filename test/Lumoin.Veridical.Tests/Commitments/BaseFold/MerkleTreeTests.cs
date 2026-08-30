@@ -33,6 +33,9 @@ internal sealed class MerkleTreeTests
 
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Blake3TwoToOne, DigestSizeBytes);
+
 
     [TestMethod]
     [DataRow(1)]
@@ -46,7 +49,7 @@ internal sealed class MerkleTreeTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(leafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, leafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, leafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, leafCount, TreeParameters, BaseMemoryPool.Shared);
 
         for(int leafIndex = 0; leafIndex < leafCount; leafIndex++)
         {
@@ -67,7 +70,7 @@ internal sealed class MerkleTreeTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(0, BaseMemoryPool.Shared);
 
         //16 leaves is a depth-4 tree, so the path carries four sibling digests.
@@ -84,7 +87,7 @@ internal sealed class MerkleTreeTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(3, BaseMemoryPool.Shared);
 
         Span<byte> tamperedLeaf = stackalloc byte[DigestSizeBytes];
@@ -105,7 +108,7 @@ internal sealed class MerkleTreeTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(3, BaseMemoryPool.Shared);
 
         //Flip one bit in the first stored sibling digest.
@@ -126,7 +129,7 @@ internal sealed class MerkleTreeTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(3, BaseMemoryPool.Shared);
 
         Span<byte> tamperedRoot = stackalloc byte[DigestSizeBytes];
@@ -149,7 +152,7 @@ internal sealed class MerkleTreeTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
 
         //A path built for leaf 2 presented as if it authenticated leaf 5 folds
         //the leaf along the wrong directions and reaches a different root.
@@ -173,7 +176,7 @@ internal sealed class MerkleTreeTests
             })
             .Sample((leafCount, leafBytes) =>
             {
-                using MerkleTree tree = MerkleTree.Build(leafBytes, leafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+                using MerkleTree tree = MerkleTree.Build(leafBytes, leafCount, TreeParameters, BaseMemoryPool.Shared);
                 for(int leafIndex = 0; leafIndex < leafCount; leafIndex++)
                 {
                     using MerkleAuthenticationPath path = tree.BuildPath(leafIndex, BaseMemoryPool.Shared);
@@ -206,7 +209,7 @@ internal sealed class MerkleTreeTests
             })
             .Sample((leafCount, leafBytes, leafIndex) =>
             {
-                using MerkleTree tree = MerkleTree.Build(leafBytes, leafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+                using MerkleTree tree = MerkleTree.Build(leafBytes, leafCount, TreeParameters, BaseMemoryPool.Shared);
                 using MerkleAuthenticationPath path = tree.BuildPath(leafIndex, BaseMemoryPool.Shared);
 
                 //Flip the first bit of the first sibling; authentication must fail.
@@ -230,7 +233,7 @@ internal sealed class MerkleTreeTests
         //bytes out so the assertion's delegate is span-free.
         byte[] captured = leaves.ToArray();
         Assert.ThrowsExactly<ArgumentException>(
-            () => MerkleTree.Build(captured, 3, Blake3TwoToOne, BaseMemoryPool.Shared).Dispose());
+            () => MerkleTree.Build(captured, 3, TreeParameters, BaseMemoryPool.Shared).Dispose());
     }
 
 

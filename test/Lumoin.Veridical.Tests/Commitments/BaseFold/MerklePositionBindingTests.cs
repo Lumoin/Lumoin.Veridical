@@ -33,6 +33,9 @@ internal sealed class MerklePositionBindingTests
 
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Blake3TwoToOne, DigestSizeBytes);
+
 
     [TestMethod]
     public void IndexWithBitsBeyondThePathLengthIsRejected()
@@ -50,7 +53,7 @@ internal sealed class MerklePositionBindingTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(OpenedIndex, BaseMemoryPool.Shared);
         ReadOnlySpan<byte> openedLeaf = leaves.Slice(OpenedIndex * DigestSizeBytes, DigestSizeBytes);
 
@@ -70,7 +73,7 @@ internal sealed class MerklePositionBindingTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(OpenedIndex, BaseMemoryPool.Shared);
         ReadOnlySpan<byte> openedLeaf = leaves.Slice(OpenedIndex * DigestSizeBytes, DigestSizeBytes);
 
@@ -97,8 +100,8 @@ internal sealed class MerklePositionBindingTests
         Span<byte> largeLeaves = largeOwner.Memory.Span[..(LargeLeafCount * DigestSizeBytes)];
         FillDistinctLeaves(largeLeaves, LargeLeafCount);
 
-        using MerkleTree smallTree = MerkleTree.Build(smallLeaves, SmallLeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
-        using MerkleTree largeTree = MerkleTree.Build(largeLeaves, LargeLeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree smallTree = MerkleTree.Build(smallLeaves, SmallLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        using MerkleTree largeTree = MerkleTree.Build(largeLeaves, LargeLeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath shortPath = smallTree.BuildPath(OpenedIndex, BaseMemoryPool.Shared);
         ReadOnlySpan<byte> openedLeaf = smallLeaves.Slice(OpenedIndex * DigestSizeBytes, DigestSizeBytes);
 
@@ -122,7 +125,7 @@ internal sealed class MerklePositionBindingTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
 
         //The digest of an internal node — the compression of leaves 0 and 1.
         //There is no leaf/internal domain separation, so this value is a

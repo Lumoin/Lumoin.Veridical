@@ -122,7 +122,7 @@ public static class BaseFoldPolynomialCommitmentScheme
             Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
             code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
 
-            using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, merkleHash, pool);
+            using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);

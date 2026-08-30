@@ -39,6 +39,9 @@ internal sealed class BaseFoldWeightedSumTests
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
@@ -334,7 +337,7 @@ internal sealed class BaseFoldWeightedSumTests
         Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
         code.Encode(coeffs, codeword, Add, Subtract, Multiply, pool);
 
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, TreeParameters, pool);
 
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
@@ -354,7 +357,7 @@ internal sealed class BaseFoldWeightedSumTests
         Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
         code.Encode(coeffs, codeword, Add, Subtract, Multiply, pool);
 
-        using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, TreeParameters, pool);
 
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }

@@ -35,6 +35,9 @@ internal sealed class BaseFoldIoppSoundnessTests
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int TestQueryCount = 16;
@@ -252,7 +255,7 @@ internal sealed class BaseFoldIoppSoundnessTests
     [SuppressMessage("Reliability", "CA2000", Justification = "The tree is tracked in the disposables list and released in the finally block.")]
     private static MerkleTree BuildTree(IMemoryOwner<byte> codeword, int leafCount, BaseMemoryPool pool, List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, Merkle, pool);
+        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, TreeParameters, pool);
         disposables.Add(tree);
 
         return tree;
@@ -262,7 +265,7 @@ internal sealed class BaseFoldIoppSoundnessTests
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the returned root transfers to the caller's using declaration.")]
     private static MerkleRoot BuildCommitment(ReadOnlySpan<byte> codeword, int codewordElements, BaseMemoryPool pool)
     {
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, TreeParameters, pool);
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
 

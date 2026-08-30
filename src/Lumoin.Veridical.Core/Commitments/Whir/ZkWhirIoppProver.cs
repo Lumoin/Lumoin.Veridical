@@ -915,7 +915,7 @@ public static class ZkWhirIoppProver
         Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * ScalarSize)];
         WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleHash, digests, pool);
 
-        using MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleHash, pool);
+        using MerkleTree tree = MerkleTree.Build(digests, blockCount, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
 
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
@@ -1025,7 +1025,7 @@ public static class ZkWhirIoppProver
         Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * ScalarSize)];
         WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleHash, digests, pool);
 
-        MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleHash, pool);
+        MerkleTree tree = MerkleTree.Build(digests, blockCount, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
         disposables.Add(tree);
         trees[oracleIndex] = tree;
     }

@@ -375,7 +375,7 @@ public sealed class LigeroTableau: IDisposable
             columnHash(column, leaves.Slice(j * ScalarSize, ScalarSize), hashAlgorithm);
         }
 
-        return MerkleTree.Build(leaves, paddedLeafCount, merkleHash, pool);
+        return MerkleTree.Build(leaves, paddedLeafCount, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
     }
 
 
