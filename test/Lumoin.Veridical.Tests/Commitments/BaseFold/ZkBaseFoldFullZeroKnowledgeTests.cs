@@ -52,7 +52,69 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int TestQueryCount = 12;
 
+    /// <summary>
+    /// The widest digest the Merkle surface admits — twice the scalar width,
+    /// so the scheme's leaf commitment genuinely runs on every layer,
+    /// including the sumcheck mask's own commitment tree and its nested
+    /// weighted opening.
+    /// </summary>
+    private const int WideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
+
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+
+
+    /// <summary>
+    /// The digest width is a real capability for the full zero-knowledge
+    /// flavour too: the lifted salted witness tree, every fold-layer tree,
+    /// the sumcheck mask's own commitment tree and its nested weighted
+    /// opening all carry the configured node width, the opening fills
+    /// exactly the wide-digest budget, and the masked verification chain
+    /// closes.
+    /// </summary>
+    [TestMethod]
+    public void FullZeroKnowledgeRoundTripsAtAWideDigest()
+    {
+        //The minimal budget-meeting lift for a one-variable witness at
+        //TestQueryCount = 12, matching the corresponding round-trip row.
+        const int RealVariableCount = 1;
+        const int ExtraVariableCount = 6;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount, WideDigestSizeBytes);
+
+        using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 27, pool);
+        Scalar[] point = BuildPoint(RealVariableCount, salt: 29, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(witness, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                Assert.HasCount(WideDigestSizeBytes, commitment.AsReadOnlySpan(), "The lifted hiding commitment is one Merkle root at the configured node width.");
+
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, witness, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    int expectedSize = ZkBaseFoldPolynomialCommitmentScheme.GetFullZeroKnowledgeEvaluationProofSizeBytes(
+                        RealVariableCount, ExtraVariableCount, Curve, TestQueryCount, WideDigestSizeBytes);
+                    Assert.HasCount(expectedSize, opening.AsReadOnlySpan(), "The full-ZK opening must fill exactly the wide-digest budget.");
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    Assert.IsTrue(
+                        provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
+                        "An honest full-ZK commit→open→verify must round-trip at the wide digest.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
 
 
     //Each (d, t) row is the minimal budget-meeting lift for its witness size at
@@ -450,8 +512,19 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
 
     private static PolynomialCommitmentProvider NewProvider(int extraVariableCount)
     {
+        return NewProvider(extraVariableCount, DigestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// The full zero-knowledge provider at the test figures and an explicit
+    /// digest size.
+    /// </summary>
+    private static PolynomialCommitmentProvider NewProvider(int extraVariableCount, int digestSizeBytes)
+    {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
-            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount);
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount,
+            digestSizeBytes: digestSizeBytes);
     }
 
 
@@ -526,7 +599,10 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
 
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        //Buffered for the widest node the Merkle surface admits and sliced to
+        //the actual input widths, so the same compression serves the default
+        //and the wide-digest providers; BLAKE3 writes exactly output.Length.
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

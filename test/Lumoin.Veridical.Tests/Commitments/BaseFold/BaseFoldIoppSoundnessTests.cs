@@ -71,7 +71,7 @@ internal sealed class BaseFoldIoppSoundnessTests
         //below is attributable to the injected inconsistency, not the harness.
         using(FiatShamirTranscript honestProverTx = NewTranscript())
         using(BaseFoldIoppProof honestProof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, honestProverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool))
+            code, codeword, TestQueryCount, honestProverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool))
         using(FiatShamirTranscript honestVerifierTx = NewTranscript())
         {
             Assert.IsTrue(
@@ -123,7 +123,7 @@ internal sealed class BaseFoldIoppSoundnessTests
                 using MerkleRoot commitment = BuildCommitment(word, codewordElements, pool);
                 using FiatShamirTranscript proverTx = NewTranscript();
                 using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-                    code, word, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                    code, word, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
                 using FiatShamirTranscript verifierTx = NewTranscript();
                 //A random word is far from the code: rejection is the expected,

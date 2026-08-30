@@ -3,10 +3,11 @@ using System;
 namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 
 /// <summary>
-/// Compresses two equal-length inputs into a single digest. This is the
+/// Compresses two inputs into a single node-wide digest. This is the
 /// two-to-one compression the binary Merkle tree applies at every internal
 /// node: an internal node's digest is the hash of its two children's bytes
-/// concatenated left-then-right.
+/// concatenated left-then-right. A scheme's leaf commitment reuses the same
+/// compression to bring a committed value to node width.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,14 +30,19 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// values themselves.
 /// </para>
 /// <para>
-/// <paramref name="left"/> and <paramref name="right"/> have the same length
-/// (the node digest size); <paramref name="output"/> is exactly the digest
-/// size. The implementation must not retain the spans beyond the call.
+/// For internal compression <paramref name="left"/> and
+/// <paramref name="right"/> are both one node wide. A leaf commitment calls
+/// the same compression with a value-wide <paramref name="left"/> and a
+/// salt-wide or empty <paramref name="right"/>. Only
+/// <paramref name="output"/> is defined to be the node width, and a wired
+/// implementation must honour <c>output.Length</c> rather than assume its
+/// own natural digest size. The implementation must not retain the spans
+/// beyond the call.
 /// </para>
 /// </remarks>
-/// <param name="left">The left child's bytes.</param>
-/// <param name="right">The right child's bytes.</param>
-/// <param name="output">The destination for the parent digest; exactly the digest size in length.</param>
+/// <param name="left">The left input: a node for internal compression, the committed value for a leaf commitment.</param>
+/// <param name="right">The right input: a node for internal compression, the salt — possibly empty — for a leaf commitment.</param>
+/// <param name="output">The destination for the produced node; exactly the node width in length.</param>
 public delegate void MerkleHashDelegate(
     ReadOnlySpan<byte> left,
     ReadOnlySpan<byte> right,

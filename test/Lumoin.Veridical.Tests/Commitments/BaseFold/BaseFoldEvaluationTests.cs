@@ -40,6 +40,9 @@ internal sealed class BaseFoldEvaluationTests
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
@@ -70,7 +73,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)
@@ -118,7 +121,7 @@ internal sealed class BaseFoldEvaluationTests
                 {
                     using FiatShamirTranscript proverTx = NewTranscript();
                     (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                        code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                        code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
                     using(proof)
                     using(claimedValue)
@@ -152,7 +155,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)
@@ -190,7 +193,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)
@@ -228,7 +231,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)

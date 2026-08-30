@@ -95,15 +95,15 @@ internal static class BaseFoldEvaluationProofSerialization
             }
         }
 
-        //The writer must fill exactly the budget the length arithmetic set. Each
-        //field is written at the width the proof carries it in, while the budget
-        //prices Merkle material at digestSize, and those are separate figures: a
-        //tree takes its node width from the buffer it is built over and never
-        //sees digestSize. Where they disagree the buffer is written short, every
-        //field after the first root lands at an offset the reader does not look
-        //at, and the length guard in FromBytes still passes because both sides
-        //price it the same wrong way — so the mismatch has to be caught here or
-        //it is not caught at all.
+        //The writer must fill exactly the budget the length arithmetic set. The
+        //budget prices Merkle material at digestSize while each field is written
+        //at the width the proof actually carries, so a proof whose trees hold
+        //any other node width comes up short or long here. The scheme factories
+        //thread one width into both the trees and this codec, which makes the
+        //disagreement unreachable through them — this guard is the serializer's
+        //own invariant, because the length guard in FromBytes prices the
+        //sections the same way and cannot see the difference: the mismatch is
+        //caught at the point of serialization or it is not caught at all.
         if(cursor != totalLength)
         {
             throw new ArgumentException(

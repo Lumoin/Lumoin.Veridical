@@ -115,6 +115,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
 
         //Copy the seed: the closures outlive the caller's span.
         byte[] seedCopy = seed.ToArray();
+        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
 
         FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
         {
@@ -147,7 +148,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltOwner.Memory.Span[..saltBytes];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -167,7 +168,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
                 evaluationPoint,
                 queryCount,
                 transcript,
-                merkleHash,
+                merkleParameters,
                 hash,
                 squeeze,
                 reduce,
@@ -243,10 +244,11 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             //step carries the two leaf salts alongside the authentication path, which
             //is exactly the difference the hiding opening mode accounts for.
             evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes),
-            //Salting changes what a leaf commits to, not how wide it is: the salted
-            //tree keeps the scalar-width nodes of the buffer it is built over, so the
-            //root is one scalar wide as in the non-hiding sibling.
-            commitmentSizeBytes: _ => ScalarSize);
+            //Salting changes what a leaf commits to, not how wide it is: the
+            //salted leaf is the compression's output and carries the configured
+            //node width, so the root is exactly digestSizeBytes wide as in the
+            //non-hiding sibling.
+            commitmentSizeBytes: _ => digestSizeBytes);
     }
 
 
@@ -339,6 +341,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
 
         byte[] seedCopy = seed.ToArray();
         int t = extraVariableCount;
+        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
 
         FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
         {
@@ -381,7 +384,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -426,7 +429,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             try
             {
                 (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveHiding(
-                    code, lifted, liftedPoint, queryCount, transcript, merkleHash, hash, squeeze,
+                    code, lifted, liftedPoint, queryCount, transcript, merkleParameters, hash, squeeze,
                     reduce, add, subtract, multiply, invert, topSalts, scalarRandom, pool, batch);
 
                 using(proof)
@@ -494,9 +497,9 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             //provider's to add: a d-variable witness is committed and opened at
             //d + t layers, and the opening's length follows the lifted count.
             evaluationProofSizeBytes: variableCount => GetZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
-            //The lift raises the leaf count, never the node width, so the root stays
-            //one scalar wide.
-            commitmentSizeBytes: _ => ScalarSize);
+            //The lift raises the leaf count, never the node width, so the root
+            //stays exactly digestSizeBytes wide.
+            commitmentSizeBytes: _ => digestSizeBytes);
     }
 
 
@@ -566,6 +569,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
 
         byte[] seedCopy = seed.ToArray();
         int t = extraVariableCount;
+        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
 
         FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
         {
@@ -607,7 +611,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -657,7 +661,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
                 //sources the sumcheck mask, the filler, and the mask commitment's
                 //lift block (independent draws).
                 (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveZeroKnowledge(
-                    code, lifted, liftedPoint, queryCount, transcript, merkleHash, hash, squeeze,
+                    code, lifted, liftedPoint, queryCount, transcript, merkleParameters, hash, squeeze,
                     reduce, add, subtract, multiply, invert, topSalts, scalarRandom, scalarRandom, maskCommitmentCode, pool, batch);
 
                 using(proof)
@@ -759,7 +763,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
             GenerateScalars(salts, codewordElements, scalarRandom, curve);
 
-            using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -803,7 +807,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             using MultilinearExtension liftedWeights = BuildLiftedWeights(weights, liftedVariableCount, curve, pool);
 
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSumHiding(
-                code, lifted, liftedWeights, queryCount, transcript, merkleHash, hash, squeeze,
+                code, lifted, liftedWeights, queryCount, transcript, merkleParameters, hash, squeeze,
                 reduce, add, subtract, multiply, invert, topSalts, scalarRandom, pool, batch);
 
             using(proof)
@@ -861,9 +865,9 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
             //a weighted opening runs in hiding mode at the vector's own minimum lift,
             //so its length is the mask ledger's rather than this one.
             evaluationProofSizeBytes: variableCount => GetFullZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
-            //The witness is committed exactly as in the lifted sibling, so the root
-            //is one scalar wide there too.
-            commitmentSizeBytes: _ => ScalarSize);
+            //The witness is committed exactly as in the lifted sibling, so the
+            //root is exactly digestSizeBytes wide there too.
+            commitmentSizeBytes: _ => digestSizeBytes);
     }
 
 

@@ -43,6 +43,19 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     private const int RoundPolynomialBytes = 2 * ScalarSize;
     private const int TestQueryCount = 12;
 
+    /// <summary>
+    /// The widest digest the Merkle surface admits — twice the scalar width,
+    /// so the scheme's leaf commitment genuinely runs on every layer instead
+    /// of taking the verbatim scalar-wide path.
+    /// </summary>
+    private const int WideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
+
+    /// <summary>
+    /// Two layers, so the opening carries a fold root and authentication
+    /// paths — the sections a wide digest prices wider.
+    /// </summary>
+    private const int WideDigestVariableCount = 2;
+
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
@@ -85,6 +98,55 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
                     bool verified = provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool);
 
                     Assert.IsTrue(verified, $"An honest hiding commit→open→verify must round-trip for n = {variableCount}.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>
+    /// The digest width is a real capability for the hiding flavour too: the
+    /// salted leaves are committed to the configured node width, the
+    /// randomized commitment root carries it, the opening fills exactly the
+    /// wide-digest budget, and verification recomputes the salted leaf at the
+    /// root's width.
+    /// </summary>
+    [TestMethod]
+    public void CommitOpenVerifyRoundTripsAtAWideDigest()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider(WideDigestSizeBytes);
+
+        using MultilinearExtension mle = BuildRandomMle(WideDigestVariableCount, 1, pool);
+        Scalar[] point = BuildPoint(WideDigestVariableCount, 5, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                Assert.HasCount(WideDigestSizeBytes, commitment.AsReadOnlySpan(), "The hiding commitment is one Merkle root at the configured node width.");
+
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    int expectedOpeningBytes = ZkBaseFoldPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
+                        WideDigestVariableCount, Curve, TestQueryCount, WideDigestSizeBytes);
+                    Assert.HasCount(expectedOpeningBytes, opening.AsReadOnlySpan(), "The hiding opening must fill exactly the wide-digest budget.");
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    Assert.IsTrue(
+                        provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
+                        "An honest hiding commit→open→verify must round-trip at the wide digest.");
                 }
             }
         }
@@ -336,6 +398,15 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
 
     private static PolynomialCommitmentProvider NewProvider()
     {
+        return NewProvider(DigestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// The hiding provider at the test figures and an explicit digest size.
+    /// </summary>
+    private static PolynomialCommitmentProvider NewProvider(int digestSizeBytes)
+    {
         return ZkBaseFoldPolynomialCommitmentScheme.Create(
             Seed,
             Curve,
@@ -349,7 +420,8 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
             Multiply,
             Invert,
             Random,
-            HashToScalar);
+            HashToScalar,
+            digestSizeBytes: digestSizeBytes);
     }
 
 
@@ -434,7 +506,10 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
 
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        //Buffered for the widest node the Merkle surface admits and sliced to
+        //the actual input widths, so the same compression serves the default
+        //and the wide-digest providers; BLAKE3 writes exactly output.Length.
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

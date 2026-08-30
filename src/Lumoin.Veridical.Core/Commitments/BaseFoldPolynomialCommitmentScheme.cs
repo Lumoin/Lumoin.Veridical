@@ -99,6 +99,7 @@ public static class BaseFoldPolynomialCommitmentScheme
 
         //Copy the seed: the closures outlive the caller's span.
         byte[] seedCopy = seed.ToArray();
+        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
 
         FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
         {
@@ -122,7 +123,7 @@ public static class BaseFoldPolynomialCommitmentScheme
             Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
             code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
 
-            using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+            using MerkleTree tree = BaseFoldCodewordTree.Build(codeword, codewordElements, merkleParameters, pool);
 
             PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
                 tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
@@ -142,7 +143,7 @@ public static class BaseFoldPolynomialCommitmentScheme
                 evaluationPoint,
                 queryCount,
                 transcript,
-                merkleHash,
+                merkleParameters,
                 hash,
                 squeeze,
                 reduce,
@@ -219,7 +220,7 @@ public static class BaseFoldPolynomialCommitmentScheme
                 weights,
                 queryCount,
                 transcript,
-                merkleHash,
+                merkleParameters,
                 hash,
                 squeeze,
                 reduce,
@@ -297,10 +298,11 @@ public static class BaseFoldPolynomialCommitmentScheme
             extraVariableCount: null, commitVector: commit, openWeightedSum, verifyWeightedSum,
             resolveStatisticalMaskShape: static (d, degree) => WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree),
             evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes),
-            //One Merkle root, one node wide. The codeword buffer the tree is built
-            //over holds one scalar per element and the tree takes its node width
-            //from that buffer, so the root follows the scalar size, not digestSizeBytes.
-            commitmentSizeBytes: _ => ScalarSize);
+            //One Merkle root, one node wide: the scheme's leaf commitment brings
+            //the codeword to the configured node width, so the root is exactly
+            //digestSizeBytes wide — the same figure the opening's Merkle
+            //material is priced with.
+            commitmentSizeBytes: _ => digestSizeBytes);
     }
 
 

@@ -141,6 +141,13 @@ public static class BaseFoldIoppVerifier
             //k0 = 1 repetition code that means all n_0 entries are equal.
             return BaseFoldQueryPhase.FinalOracleIsValidBaseCodeword(proof.FinalOracle, baseUnit);
         }
+        catch(ArgumentException)
+        {
+            //A structurally malformed proof (for example a query domain that
+            //is not a power of two) is a rejection, not a fault — the
+            //exception safety this type's remarks promise.
+            return false;
+        }
         finally
         {
             foreach(Scalar challenge in challengesForLevel)

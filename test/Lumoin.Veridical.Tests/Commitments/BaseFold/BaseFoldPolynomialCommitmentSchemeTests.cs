@@ -41,14 +41,18 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
     private const int TestQueryCount = 12;
 
-    //Twice the node width the scalar-wide leaf buffer gives the tree, and the
-    //widest digest the Merkle surface admits, so the disagreement is the largest
-    //one that is otherwise a legal configuration.
-    private const int MismatchedDigestSizeBytes = 2 * WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+    /// <summary>
+    /// The widest digest the Merkle surface admits — twice the scalar width,
+    /// so the scheme's leaf commitment genuinely runs on every layer instead
+    /// of taking the verbatim scalar-wide path.
+    /// </summary>
+    private const int WideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
 
-    //Two layers, so the opening carries a fold root and authentication paths -
-    //the fields the digest size prices and the tree does not.
-    private const int MismatchedDigestVariableCount = 2;
+    /// <summary>
+    /// Two layers, so the opening carries a fold root and authentication
+    /// paths — the sections a wide digest prices wider.
+    /// </summary>
+    private const int WideDigestVariableCount = 2;
 
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
@@ -219,23 +223,22 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
 
 
     /// <summary>
-    /// A Merkle tree takes its node width from the buffer it is built over and
-    /// never sees the configured digest size, while the opening's length
-    /// arithmetic prices every root and authentication path at that digest size.
-    /// The two are separate figures that coincide only under the wired hash, so
-    /// where they disagree the opening must be refused: the buffer would be
-    /// written short, every field after the first root would land where the
-    /// reader does not look, and the length check on the way back in would still
-    /// pass because it prices the sections the same wrong way.
+    /// The digest width is a real capability, not a label: at a node width
+    /// other than the scalar width the scheme leaf-commits every codeword
+    /// value, the commitment root and every fold root carry the configured
+    /// width, the opening fills exactly the budget the length arithmetic
+    /// prices, and verification recomputes the same leaf commitment. Both of
+    /// the provider's sizing seams must state the widths the artifacts
+    /// actually have.
     /// </summary>
     [TestMethod]
-    public void OpeningRefusesADigestWidthTheTreeDoesNotCarry()
+    public void CommitOpenVerifyRoundTripsAtAWideDigest()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider(MismatchedDigestSizeBytes);
+        using PolynomialCommitmentProvider provider = NewProvider(WideDigestSizeBytes);
 
-        using MultilinearExtension mle = BuildRandomMle(MismatchedDigestVariableCount, 1, pool);
-        Scalar[] point = BuildPoint(MismatchedDigestVariableCount, 5, pool);
+        using MultilinearExtension mle = BuildRandomMle(WideDigestVariableCount, 1, pool);
+        Scalar[] point = BuildPoint(WideDigestVariableCount, 5, pool);
 
         try
         {
@@ -244,11 +247,27 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
             using(commitment)
             using(blind)
             {
-                using FiatShamirTranscript openTx = NewTranscript();
+                Assert.HasCount(WideDigestSizeBytes, commitment.AsReadOnlySpan(), "The commitment is one Merkle root at the configured node width.");
 
-                Assert.ThrowsExactly<ArgumentException>(
-                    () => provider.Open(commitment, blind, mle, point, openTx, pool),
-                    "An opening whose Merkle nodes are not the configured digest width must be refused, not serialized into a buffer it cannot fill.");
+                PolynomialCommitmentSizeDelegate? commitmentSeam = provider.CommitmentSizeBytes;
+                Assert.IsNotNull(commitmentSeam, "A hash-tree provider must state its commitment width.");
+                Assert.AreEqual(WideDigestSizeBytes, commitmentSeam(WideDigestVariableCount), "The commitment seam must state the width Commit produces.");
+
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    int expectedOpeningBytes = BaseFoldPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
+                        WideDigestVariableCount, Curve, TestQueryCount, WideDigestSizeBytes);
+                    Assert.HasCount(expectedOpeningBytes, opening.AsReadOnlySpan(), "The opening must fill exactly the wide-digest budget.");
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    Assert.IsTrue(
+                        provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
+                        "An honest commit→open→verify must round-trip at the wide digest.");
+                }
             }
         }
         finally
@@ -477,7 +496,10 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
 
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        //Buffered for the widest node the Merkle surface admits and sliced to
+        //the actual input widths, so the same compression serves the default
+        //and the wide-digest providers; BLAKE3 writes exactly output.Length.
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

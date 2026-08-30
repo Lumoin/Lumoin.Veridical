@@ -67,7 +67,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The live Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
     /// <param name="reduce">The scalar-reduce backend for deriving challenges.</param>
@@ -87,7 +87,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -98,7 +98,7 @@ public static class BaseFoldEvaluationProver
         BaseMemoryPool pool,
         ScalarArithmeticBackend? batch = null)
     {
-        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, batch: batch);
     }
 
 
@@ -118,7 +118,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The Fiat-Shamir hash.</param>
     /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
     /// <param name="reduce">Backend scalar reduction.</param>
@@ -126,7 +126,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="subtract">Backend scalar subtraction.</param>
     /// <param name="multiply">Backend scalar multiplication.</param>
     /// <param name="invert">Backend scalar inversion.</param>
-    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one digest-wide salt per codeword position, in position order.</param>
+    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one scalar-wide salt per codeword position, in position order.</param>
     /// <param name="saltRandom">The entropy-sourced sampler for the lower fold layers' salts.</param>
     /// <param name="pool">The pool to rent working and proof buffers from.</param>
     /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
@@ -138,7 +138,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -153,7 +153,7 @@ public static class BaseFoldEvaluationProver
     {
         ArgumentNullException.ThrowIfNull(saltRandom);
 
-        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, batch: batch);
     }
 
 
@@ -179,7 +179,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The Fiat-Shamir hash.</param>
     /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
     /// <param name="reduce">Backend scalar reduction.</param>
@@ -187,7 +187,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="subtract">Backend scalar subtraction.</param>
     /// <param name="multiply">Backend scalar multiplication.</param>
     /// <param name="invert">Backend scalar inversion.</param>
-    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one digest-wide salt per codeword position, in position order.</param>
+    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one scalar-wide salt per codeword position, in position order.</param>
     /// <param name="saltRandom">The entropy-sourced sampler for the lower fold layers' salts.</param>
     /// <param name="maskRandom">The entropy-sourced sampler for the mask coefficients, the filler, and the commitment's lift block.</param>
     /// <param name="maskCommitmentCode">The foldable code the mask's coefficient commitment lives under: derived from the same seed as <paramref name="code"/> at the lifted layer count of <see cref="WellKnownStatisticalMaskParameters.CreateClassicalSecurity"/> for this protocol's shape.</param>
@@ -201,7 +201,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -220,7 +220,7 @@ public static class BaseFoldEvaluationProver
         ArgumentNullException.ThrowIfNull(maskRandom);
         ArgumentNullException.ThrowIfNull(maskCommitmentCode);
 
-        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom, pool, multiplier: null, maskCommitmentCode, batch);
+        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom, pool, multiplier: null, maskCommitmentCode, batch);
     }
 
 
@@ -247,7 +247,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="multiplier">The public multiplier multilinear <c>W</c>; its variable count must equal the code's layer count.</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The Fiat-Shamir hash.</param>
     /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
     /// <param name="reduce">Backend scalar reduction.</param>
@@ -265,7 +265,7 @@ public static class BaseFoldEvaluationProver
         MultilinearExtension multiplier,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -278,7 +278,7 @@ public static class BaseFoldEvaluationProver
     {
         ArgumentNullException.ThrowIfNull(multiplier);
 
-        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, multiplier, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, multiplier, batch: batch);
     }
 
 
@@ -296,7 +296,7 @@ public static class BaseFoldEvaluationProver
         MultilinearExtension multiplier,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -312,7 +312,7 @@ public static class BaseFoldEvaluationProver
         ArgumentNullException.ThrowIfNull(multiplier);
         ArgumentNullException.ThrowIfNull(saltRandom);
 
-        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, multiplier, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, multiplier, batch: batch);
     }
 
 
@@ -323,7 +323,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -342,7 +342,7 @@ public static class BaseFoldEvaluationProver
         ArgumentNullException.ThrowIfNull(code);
         ArgumentNullException.ThrowIfNull(polynomial);
         ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(squeeze);
         ArgumentNullException.ThrowIfNull(reduce);
@@ -393,7 +393,7 @@ public static class BaseFoldEvaluationProver
         var disposables = new List<IDisposable>();
 
         //Per-layer leaf salts for the hiding (ZK) commitment: saltsByLayer[ℓ]
-        //holds one digest-wide salt per π_ℓ position (π_0 is cleartext, so it is
+        //holds one scalar-wide salt per π_ℓ position (π_0 is cleartext, so it is
         //unused). The top layer reuses the salts that fixed the commitment at
         //commit time; the lower fold layers are salted with fresh randomness.
         bool hiding = saltRandom is not null;
@@ -441,11 +441,11 @@ public static class BaseFoldEvaluationProver
                 }
 
                 saltsByLayer![d] = CopySalts(topLayerSalts, pool, disposables);
-                trees[d] = BuildSaltedTree(codewords[d]!, saltsByLayer[d]!.Memory.Span[..(topLength * ScalarSize)], topLength, merkleHash, pool, disposables);
+                trees[d] = BuildSaltedTree(codewords[d]!, saltsByLayer[d]!.Memory.Span[..(topLength * ScalarSize)], topLength, merkleParameters, pool, disposables);
             }
             else
             {
-                trees[d] = BuildTree(codewords[d]!, topLength, merkleHash, pool, disposables);
+                trees[d] = BuildTree(codewords[d]!, topLength, merkleParameters, pool, disposables);
             }
 
             //Dense evaluation tables f and the multiplier over the hypercube: the
@@ -550,7 +550,7 @@ public static class BaseFoldEvaluationProver
 
                 IMemoryOwner<byte> maskSaltsOwner = GenerateLayerSalts(maskCodewordLength, saltRandom!, curve, pool, disposables);
                 maskTopSalts = maskSaltsOwner.Memory.Span[..(maskCodewordLength * ScalarSize)];
-                maskTree = BuildSaltedTree(maskCodewordOwner, maskTopSalts, maskCodewordLength, merkleHash, pool, disposables);
+                maskTree = BuildSaltedTree(maskCodewordOwner, maskTopSalts, maskCodewordLength, merkleParameters, pool, disposables);
             }
 
             //Commit phase. Absorb the public commitment (root of π_d). For a ZK
@@ -618,11 +618,11 @@ public static class BaseFoldEvaluationProver
                     if(hiding)
                     {
                         saltsByLayer![level - 1] = GenerateLayerSalts(lowerLength, saltRandom!, curve, pool, disposables);
-                        trees[level - 1] = BuildSaltedTree(codewords[level - 1]!, saltsByLayer[level - 1]!.Memory.Span[..(lowerLength * ScalarSize)], lowerLength, merkleHash, pool, disposables);
+                        trees[level - 1] = BuildSaltedTree(codewords[level - 1]!, saltsByLayer[level - 1]!.Memory.Span[..(lowerLength * ScalarSize)], lowerLength, merkleParameters, pool, disposables);
                     }
                     else
                     {
-                        trees[level - 1] = BuildTree(codewords[level - 1]!, lowerLength, merkleHash, pool, disposables);
+                        trees[level - 1] = BuildTree(codewords[level - 1]!, lowerLength, merkleParameters, pool, disposables);
                     }
 
                     transcript.AbsorbBaseFoldFoldRoot(trees[level - 1]!.Root, hash);
@@ -682,7 +682,7 @@ public static class BaseFoldEvaluationProver
 
                 (BaseFoldEvaluationProof weightedOpening, Scalar weightedClaim) = ProveCore(
                     maskCommitmentCode!, maskLiftedMle!, evaluationPoint: default, queryCount, transcript,
-                    merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert,
+                    merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert,
                     maskTopSalts, saltRandom, maskRandom: null, pool, weightsMle, batch: batch);
                 disposables.Add(weightedClaim);
 
@@ -1028,33 +1028,40 @@ public static class BaseFoldEvaluationProver
     }
 
 
+    /// <summary>
+    /// Builds one fold-layer tree over the plain codeword through the scheme's
+    /// leaf commitment and registers it for the uniform disposal pass.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tree is tracked in the disposables list and released in the prover's finally block.")]
     private static MerkleTree BuildTree(
         IMemoryOwner<byte> codeword,
         int leafCount,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         BaseMemoryPool pool,
         List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+        MerkleTree tree = BaseFoldCodewordTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, merkleParameters, pool);
         disposables.Add(tree);
 
         return tree;
     }
 
 
-    //Builds the layer tree over salted leaves hash(value ‖ salt) for the hiding
-    //commitment; the salts span carries one digest-wide salt per leaf.
+    /// <summary>
+    /// Builds one fold-layer tree over salted leaves <c>hash(value ‖ salt)</c>
+    /// for the hiding commitment and registers it for the uniform disposal
+    /// pass; the salts span carries one scalar-wide salt per leaf.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tree is tracked in the disposables list and released in the prover's finally block.")]
     private static MerkleTree BuildSaltedTree(
         IMemoryOwner<byte> codeword,
         ReadOnlySpan<byte> salts,
         int leafCount,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         BaseMemoryPool pool,
         List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.BuildSalted(codeword.Memory.Span[..(leafCount * ScalarSize)], salts, leafCount, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
+        MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword.Memory.Span[..(leafCount * ScalarSize)], salts, leafCount, merkleParameters, pool);
         disposables.Add(tree);
 
         return tree;
@@ -1076,10 +1083,12 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //Draws one fresh digest-wide salt per leaf for a lower fold layer. A scalar's
-    //canonical bytes carry ample min-entropy for the ROM hiding argument and are
-    //exactly digest-wide for the wired curves, so the scalar sampler doubles as
-    //the salt source (its returned tag is irrelevant for raw salt bytes).
+    /// <summary>
+    /// Draws one fresh scalar-wide salt per leaf for a lower fold layer. A
+    /// scalar's canonical bytes carry ample min-entropy for the ROM hiding
+    /// argument, so the scalar sampler doubles as the salt source (its
+    /// returned tag is irrelevant for raw salt bytes).
+    /// </summary>
     private static IMemoryOwner<byte> GenerateLayerSalts(
         int leafCount,
         ScalarRandomDelegate saltRandom,

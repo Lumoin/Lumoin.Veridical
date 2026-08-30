@@ -35,6 +35,9 @@ internal sealed class BaseFoldIoppTests
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
     private const int ScalarSize = 32;
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
@@ -110,7 +113,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Build the true commitment, then flip a bit so it no longer matches.
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
@@ -141,7 +144,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Flip a bit in the first fold root (root of π_{d-1}).
         MemoryMarshal.AsMemory(proof.FoldRoots[0].AsReadOnlyMemory()).Span[0] ^= 0x01;
@@ -173,7 +176,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Flip a bit in the first query's top-layer first-path sibling.
         MemoryMarshal.AsMemory(proof.Openings[0][0].FirstPath.AsReadOnlyMemory()).Span[0] ^= 0x01;
@@ -205,7 +208,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
         BuildCommitmentBytes(codeword, codewordElements, rootBytes);
@@ -339,7 +342,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, queryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, queryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
         BuildCommitmentBytes(codeword, codewordElements, rootBytes);

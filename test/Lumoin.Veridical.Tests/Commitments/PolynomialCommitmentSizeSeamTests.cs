@@ -25,14 +25,15 @@ namespace Lumoin.Veridical.Tests.Commitments;
 /// <remarks>
 /// <para>
 /// Stating the length is not enough; it has to be stated for the right reason. A
-/// hash-tree commitment is one Merkle node wide, and the node width comes from the
-/// buffer the tree is built over, which every scheme here rents at one scalar per
-/// element. The digest size each scheme is configured with sizes its authentication
-/// paths instead. Those two figures coincide under the wired BLAKE3-and-BLS12-381
-/// pairing without either being defined as the other, so a seam derived from the
-/// digest size would pass every test here today and be wrong for a scheme wired to
-/// a hash whose output is not the scalar width. These tests compare against the
-/// commitment, never against either figure.
+/// hash-tree commitment is one Merkle node wide. For the BaseFold family the node
+/// width is the configured digest size — the scheme's leaf commitment brings the
+/// scalar-wide codeword to that width — while the WHIR and Ligero trees are built
+/// over scalar-wide leaf digests, so their roots follow the scalar width and merely
+/// coincide with the digest size under the wired BLAKE3-and-BLS12-381 pairing.
+/// A seam derived from the wrong figure would pass every test here at that pairing
+/// and be wrong the moment the widths diverge, which is why these tests compare
+/// against the commitment the scheme actually produced, never against either
+/// figure.
 /// </para>
 /// <para>
 /// Hyrax is the one scheme whose commitment length is not constant, so it carries

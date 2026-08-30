@@ -68,7 +68,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
@@ -107,12 +107,12 @@ internal sealed class BaseFoldWeightedSumTests
         {
             using FiatShamirTranscript evaluationTx = NewTranscript();
             (BaseFoldEvaluationProof evaluationProof, Scalar evaluationValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, evaluationTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, evaluationTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using MultilinearExtension eqMultiplier = SumcheckRoundComputation.BuildEqEvaluations(point, Subtract, Multiply, Curve, pool);
             using FiatShamirTranscript weightedTx = NewTranscript();
             (BaseFoldEvaluationProof weightedProof, Scalar weightedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-                code, mle, eqMultiplier, TestQueryCount, weightedTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, eqMultiplier, TestQueryCount, weightedTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(evaluationProof)
             using(evaluationValue)
@@ -178,7 +178,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSumHiding(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, salts, Random, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, salts, Random, pool);
 
         using(proof)
         using(claimedValue)
@@ -210,7 +210,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
@@ -242,7 +242,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
@@ -270,7 +270,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
