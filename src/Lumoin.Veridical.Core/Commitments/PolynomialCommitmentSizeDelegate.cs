@@ -20,13 +20,13 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// per row.
 /// </para>
 /// <para>
-/// Without this a consumer must supply the length itself, which means knowing the
-/// scheme. The figure it would reach for is not reliably the right one: a
-/// hash-tree scheme's commitment is one Merkle root whose width is the tree's
-/// node width, and a scheme's configured digest size is a separate figure that
-/// governs its authentication paths. The two coincide under the wired hash and
-/// curve without either being defined as the other, so a consumer reading the
-/// digest size gets the right answer for a reason that does not hold in general.
+/// Without this a consumer must supply the length itself, which means knowing
+/// both the scheme and how that provider was configured. The families answer
+/// differently: a hash-tree commitment is one Merkle root, whose width is the
+/// node width the scheme leaf-commits to and therefore the digest size the
+/// provider was built with, while a Pedersen-family evaluation commitment is a
+/// row of compressed points the variable count fixes. A consumer that reaches
+/// for either figure directly is right only for the family it guessed.
 /// </para>
 /// <para>
 /// The length must be a pure function of the variable count and the parameters
