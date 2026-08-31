@@ -34,8 +34,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// SAME <c>ap</c> and the SAME common values (the issuer hash <c>e_</c> and the real device key
 /// <c>dpkx</c>/<c>dpky</c>); the cross-filler common-match pre-check asserts the two fillers agree before the
 /// prove. The device-auth hash <c>e2</c> is the crown-gate fixture's <c>sig_template[3]</c> reversed from
-/// little-endian to canonical big-endian (the spike's <c>ne2</c>; the byte-exact transcript-hash CBOR walk is
-/// the reference's, captured in that fixture).
+/// little-endian to canonical big-endian — the reference's own <c>ne2</c>, which
+/// <see cref="MdocDeviceAuthentication"/> reproduces from the session transcript.
 /// </para>
 /// <para>
 /// The driver commits both circuits, absorbs both roots, squeezes the shared <c>a_v</c>, computes the six
@@ -166,8 +166,8 @@ internal sealed class LongfellowMdocProveDriverTests
         AssertReversedEquals(state.MacMessageDpkx, common.AsSpan(ScalarSize, ScalarSize), "common dpkx must match across fillers.");
         AssertReversedEquals(state.MacMessageDpky, common.AsSpan(2 * ScalarSize, ScalarSize), "common dpky must match across fillers.");
 
-        //The extracted device tuple must be a genuine nonce point (the spike's independent oracle), otherwise
-        //the device VerifyWitness3 column would not close.
+        //The extracted device tuple must be a genuine nonce point (RecoveredNoncePointMatches is the independent
+        //oracle), otherwise the device VerifyWitness3 column would not close.
         Assert.IsTrue(device.RecoveredNoncePointMatches(), "The real device tuple must recover R2.x mod n == r2.");
     }
 
@@ -551,8 +551,11 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //e2 (ne2): the crown-gate fixture's sig_template[3] reversed from little-endian to canonical big-endian
-    //(the spike's recipe). The byte-exact transcript-hash CBOR walk is the reference's, captured in the fixture.
+    /// <summary>
+    /// <c>e2</c> (<c>ne2</c>): the crown-gate fixture's <c>sig_template[3]</c> reversed from little-endian to
+    /// canonical big-endian — the reference's own value, which <see cref="MdocDeviceAuthentication"/> reproduces
+    /// from the session transcript.
+    /// </summary>
     private static BigInteger DeviceHash()
     {
         byte[] sigTemplate = Convert.FromHexString(Fixture["sig_template"]);

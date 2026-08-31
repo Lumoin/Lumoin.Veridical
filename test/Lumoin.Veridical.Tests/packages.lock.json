@@ -18,6 +18,19 @@
           "Microsoft.TestPlatform.ObjectModel": "17.11.1"
         }
       },
+      "Lumoin.Veritas.Cbor": {
+        "type": "Direct",
+        "requested": "[0.0.1, )",
+        "resolved": "0.0.1",
+        "contentHash": "8GsdA6sh/k3TJ/4EMz4xoMi8iJ/RXtEOgn6hHk4lz5ddqy4WLdmrexPIC7hBXyUOQZr3wf8IPTcJyD1wWbOqaQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Cid": "0.0.1",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
       "Microsoft.CodeAnalysis.BannedApiAnalyzers": {
         "type": "Direct",
         "requested": "[5.6.0, )",
@@ -170,12 +183,6 @@
           "MSTest.Analyzers": "4.3.3"
         }
       },
-      "System.Formats.Cbor": {
-        "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "i6cQMkCkGavqCPqjoQIkxVgtbTG59FkWsJppVOQ4QoJ//MNoe/m/3M/BN1SxEmLHGxySM8LiUl5/ppKgOyTWBA=="
-      },
       "DotLiquid": {
         "type": "Transitive",
         "resolved": "2.2.692",
@@ -190,6 +197,27 @@
           "Microsoft.TestPlatform.ObjectModel": "17.11.1",
           "NuGet.Frameworks": "6.12.1",
           "System.ComponentModel.Annotations": "5.0.0"
+        }
+      },
+      "Lumoin.Veritas.Cid": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "C2GHcW6XUevcayjLLTO2tk/HG0mgRXA2e43111/gr7ewTxM1W35ExIiFyUMMrqKNROpsHRT9h3dks/PWtjHqcw==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
+      "Lumoin.Veritas.Core": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "xgxmAtomuQa5jPmJtKYEtvTGh39mMoksX2uN23U2JbqMmuGUdK1uVQY/PsisXt50iZ/cZs4CTouIgMNOO4EBLQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
         }
       },
       "Microsoft.ApplicationInsights": {
@@ -561,6 +589,11 @@
         "resolved": "10.0.11",
         "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "OzKDcIRkeNJeC8qAsbn8yJXnfTLP1dtkWILe+T56Gf/z+IkAASi7sMqLqJQat08j5z/mRN5xVtoAwbkMNMoBUQ=="
+      },
       "System.Security.Permissions": {
         "type": "Transitive",
         "resolved": "8.0.0",
@@ -568,6 +601,11 @@
         "dependencies": {
           "System.Windows.Extensions": "8.0.0"
         }
+      },
+      "System.Threading.RateLimiting": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "7+n9cNFpC7VIJzBwSyxs6DHNGLP330dJVeeOSdIJt4TiwwazyEvvRuhWLORT41mRxQVGKhiFIZ+In4JKFWS9Ig=="
       },
       "System.Windows.Extensions": {
         "type": "Transitive",

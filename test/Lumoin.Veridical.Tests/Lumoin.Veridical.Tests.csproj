@@ -15,17 +15,18 @@
     <IsTestApplication>true</IsTestApplication>
     <MSTestAnalysisMode>Recommended</MSTestAnalysisMode>
     <!--
-      The tests mimic an application consuming real credentials, so they use the real
-      serialization libraries (System.Formats.Cbor to parse mdoc DeviceResponses). The
-      library itself stays serialization-free and is fed parsed bytes/offsets (or a parse
-      delegate) by its caller, so only this test project opts out of the serialization ban.
+      The tests mimic an application consuming real credentials and artifacts, so they read
+      their JSON fixtures (Wycheproof vectors, predicate-proof envelopes) with System.Text.Json.
+      The library itself stays serialization-free and is fed parsed bytes/offsets (or a parse
+      delegate) by its caller, so this test project opts out of the serialization ban. Its mdoc
+      CBOR goes through Lumoin.Veritas.Cbor, which the ban does not name.
       -->
     <EnableSerializationBan>false</EnableSerializationBan>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CsCheck" />
-    <PackageReference Include="System.Formats.Cbor" />
+    <PackageReference Include="Lumoin.Veritas.Cbor" />
     <PackageReference Include="LiquidTestReports.Markdown" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="ModelContextProtocol" />

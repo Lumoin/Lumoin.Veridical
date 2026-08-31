@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// A byte-offset-tracking CBOR walker over a raw ISO 18013-5 DeviceResponse, a faithful port of the
 /// offset semantics of google/longfellow-zk's <c>CborDoc</c> (<c>lib/cbor/host_decoder.h</c>) that the
 /// reference witness filler (<c>ParsedMdoc</c> in <c>lib/circuits/mdoc/mdoc_witness.h</c>) relies on.
-/// Where <see cref="System.Formats.Cbor.CborReader"/> hides absolute offsets, this walker keeps the exact
+/// Where <see cref="Lumoin.Veritas.Cbor.CborReader"/> hides absolute offsets, this walker keeps the exact
 /// header byte position, content position and content length of every item, because the GF(2^128)
 /// hash-circuit witness column is built from those raw byte indices (the cbor-index region and the
 /// attribute shift/salted-hash witnesses are positions into the document).

@@ -29,10 +29,9 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// by <see cref="Verify"/> through .NET's own <see cref="ECDsa.VerifyData(byte[], byte[], HashAlgorithmName)"/>.
 /// </para>
 /// <para>
-/// The fixed device message stands in for the full <c>compute_transcript_hash</c> CBOR construction
-/// (mdoc_witness.h:437-490); the only circuit precondition on <c>e2</c> is <c>e2 != 0</c>
-/// (mdoc_zk.cc:196-201), trivially satisfied by a SHA-256 digest. Byte-exact transcript fidelity is the
-/// deferred Docker reverse-gate concern.
+/// The fixed device message stands in for the ISO/IEC 18013-5 device-authentication construction that
+/// <see cref="MdocDeviceAuthentication"/> builds for a real credential; the only circuit precondition on
+/// <c>e2</c> is <c>e2 != 0</c> (mdoc_zk.cc:196-201), trivially satisfied by a SHA-256 digest.
 /// </para>
 /// </remarks>
 internal sealed class MdocDeviceSignatureSynth

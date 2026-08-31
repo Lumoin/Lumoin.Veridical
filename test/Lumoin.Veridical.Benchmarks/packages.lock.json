@@ -74,6 +74,27 @@
           "System.ComponentModel.Annotations": "5.0.0"
         }
       },
+      "Lumoin.Veritas.Cid": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "C2GHcW6XUevcayjLLTO2tk/HG0mgRXA2e43111/gr7ewTxM1W35ExIiFyUMMrqKNROpsHRT9h3dks/PWtjHqcw==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
+      "Lumoin.Veritas.Core": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "xgxmAtomuQa5jPmJtKYEtvTGh39mMoksX2uN23U2JbqMmuGUdK1uVQY/PsisXt50iZ/cZs4CTouIgMNOO4EBLQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
       "Microsoft.ApplicationInsights": {
         "type": "Transitive",
         "resolved": "2.23.0",
@@ -610,6 +631,11 @@
         "resolved": "10.0.11",
         "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "OzKDcIRkeNJeC8qAsbn8yJXnfTLP1dtkWILe+T56Gf/z+IkAASi7sMqLqJQat08j5z/mRN5xVtoAwbkMNMoBUQ=="
+      },
       "System.Management": {
         "type": "Transitive",
         "resolved": "9.0.5",
@@ -630,6 +656,11 @@
         "dependencies": {
           "System.Windows.Extensions": "8.0.0"
         }
+      },
+      "System.Threading.RateLimiting": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "7+n9cNFpC7VIJzBwSyxs6DHNGLP330dJVeeOSdIJt4TiwwazyEvvRuhWLORT41mRxQVGKhiFIZ+In4JKFWS9Ig=="
       },
       "System.Windows.Extensions": {
         "type": "Transitive",
@@ -709,6 +740,7 @@
           "Lumoin.Veridical.Json": "[0.0.0, )",
           "Lumoin.Veridical.Longfellow": "[0.0.0, )",
           "Lumoin.Veridical.Secdsa": "[0.0.0, )",
+          "Lumoin.Veritas.Cbor": "[0.0.1, )",
           "MSTest.TestAdapter": "[4.3.3, )",
           "MSTest.TestFramework": "[4.3.3, )",
           "Microsoft.Extensions.TimeProvider.Testing": "[10.9.0, )",
@@ -722,8 +754,7 @@
           "Microsoft.Testing.Extensions.HtmlReport": "[2.3.3, )",
           "Microsoft.Testing.Extensions.Retry": "[2.3.3, )",
           "Microsoft.Testing.Extensions.TrxReport": "[2.3.3, )",
-          "ModelContextProtocol": "[2.1.0, )",
-          "System.Formats.Cbor": "[10.0.11, )"
+          "ModelContextProtocol": "[2.1.0, )"
         }
       },
       "CsCheck": {
@@ -747,6 +778,19 @@
         "requested": "[0.0.9, )",
         "resolved": "0.0.9",
         "contentHash": "B0ItIYFv2+iDPC3eFXYzE/8662UYFE8yBTyYYZjkCgbsFCCZ4aKDLhB4sANXxTLwV0oIABhZStiuxr7ytVfScA=="
+      },
+      "Lumoin.Veritas.Cbor": {
+        "type": "CentralTransitive",
+        "requested": "[0.0.1, )",
+        "resolved": "0.0.1",
+        "contentHash": "8GsdA6sh/k3TJ/4EMz4xoMi8iJ/RXtEOgn6hHk4lz5ddqy4WLdmrexPIC7hBXyUOQZr3wf8IPTcJyD1wWbOqaQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Cid": "0.0.1",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
       },
       "Microsoft.Extensions.Hosting": {
         "type": "CentralTransitive",
@@ -800,12 +844,6 @@
         "requested": "[2.0.11, )",
         "resolved": "2.0.11",
         "contentHash": "Pmg3/T0M37ZS3ovwPHtfBNTCdqNpnxo+tnZMg8JDHVR0qD8KwcPUKlheEiZysb1En8IyH7yDoa9QDq97Ny/vhQ=="
-      },
-      "System.Formats.Cbor": {
-        "type": "CentralTransitive",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "i6cQMkCkGavqCPqjoQIkxVgtbTG59FkWsJppVOQ4QoJ//MNoe/m/3M/BN1SxEmLHGxySM8LiUl5/ppKgOyTWBA=="
       }
     }
   }

@@ -13,14 +13,14 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The dual-field mdoc driver (conformance step C.12 stage 3) — google/longfellow-zk's
-/// <c>run_mdoc_verifier</c> (<c>lib/circuits/mdoc/mdoc_zk.cc:560-695</c>). These gate the mechanics the
-/// driver owns: the cross-field transcript order (both commitment roots absorbed BEFORE the shared MAC key
-/// <c>a_v</c> is squeezed, so flipping the roots changes <c>a_v</c>), the mac-wire index constants, the
-/// mac/av public-input splice layout (the GF side keeps each mac a single 16-byte element; the Fp256 side
-/// expands it to 128 least-significant-first bit wires), and the <c>e2</c> transcript-hash construction. The
-/// end-to-end accept of a real Fp256 signature envelope lands with the Docker dump harness (step 4); these
-/// are unit-level.
+/// The dual-field mdoc driver — google/longfellow-zk's <c>run_mdoc_verifier</c>
+/// (<c>lib/circuits/mdoc/mdoc_zk.cc:560-695</c>). These gate the mechanics the driver owns: the cross-field
+/// transcript order (both commitment roots absorbed BEFORE the shared MAC key <c>a_v</c> is squeezed, so
+/// flipping the roots changes <c>a_v</c>), the mac-wire index constants, and the mac/av public-input splice
+/// layout (the GF side keeps each mac a single 16-byte element; the Fp256 side expands it to 128
+/// least-significant-first bit wires). The <c>e2</c> transcript-hash construction is pinned beside its port in
+/// <see cref="Mdoc.MdocDeviceAuthenticationTests"/>. The end-to-end accept of a real Fp256 signature envelope
+/// is exercised by the Docker dump harness; these are unit-level.
 /// </summary>
 [TestClass]
 internal sealed class LongfellowMdocVerifierTests
@@ -258,52 +258,6 @@ internal sealed class LongfellowMdocVerifierTests
 
 
     [TestMethod]
-    public void TheTranscriptHashConstructionMatchesTheReferenceCose1Encoding()
-    {
-        //e2 = to_montgomery(compute_transcript_hash(tr, docType)); its standard-form value is
-        //SHA-256(COSE1(DeviceAuthenticationBytes)) read big-endian, reduced mod p (mdoc_witness.h:391-484).
-        //Construct the COSE1 bytes deterministically and pin the resulting reduced hash.
-        byte[] sessionTranscript = Encoding.ASCII.GetBytes("session-transcript-bytes");
-        byte[] docType = Encoding.ASCII.GetBytes("org.iso.18013.5.1.mDL");
-
-        byte[] cose1 = BuildCose1(sessionTranscript, docType);
-        byte[] digest = SHA256.HashData(cose1);
-        BigInteger e2Standard = new BigInteger(digest, isUnsigned: true, isBigEndian: true) % Prime;
-
-        //Recomputing the same construction must be stable (the recipe is deterministic), and the reduced
-        //value is a valid base-field element below the modulus.
-        byte[] cose1Again = BuildCose1(sessionTranscript, docType);
-        Assert.IsTrue(cose1.AsSpan().SequenceEqual(cose1Again), "The COSE1 DeviceAuthenticationBytes construction must be deterministic.");
-        Assert.IsLessThan(Prime, e2Standard, "e2 (standard form) is a base-field element below the modulus.");
-
-        //The construction must be sensitive to the session transcript (a different transcript moves e2).
-        byte[] other = BuildCose1(Encoding.ASCII.GetBytes("a-different-transcript"), docType);
-        BigInteger otherE2 = new BigInteger(SHA256.HashData(other), isUnsigned: true, isBigEndian: true) % Prime;
-        Assert.AreNotEqual(e2Standard, otherE2, "e2 must depend on the session transcript bytes.");
-    }
-
-
-    [TestMethod]
-    public void TheCose1LengthEncodingIsByteCorrectAtTheBoundaries()
-    {
-        //TOB-LIBZK-5 found an off-by-one in the reference's COSE1 length serialization (length 256
-        //encoded as 0 via `> 256`; text length 255 emitted nothing); the fixed reference and this port
-        //use `>= 256` / correct 24..255 handling. Pin the CBOR major-type-2 (byte string, base 0x40)
-        //and major-type-3 (text string, base 0x60) length-prefix encodings at the boundaries the bug
-        //touched: the 24 short/long-form cutover and the one-byte/two-byte length-field cutover at 256.
-        AssertBytesLen(23, [0x57]);
-        AssertBytesLen(24, [0x58, 0x18]);
-        AssertBytesLen(255, [0x58, 0xFF]);
-        AssertBytesLen(256, [0x59, 0x01, 0x00]);
-        AssertBytesLen(65535, [0x59, 0xFF, 0xFF]);
-
-        AssertTextLen(23, [0x77]);
-        AssertTextLen(24, [0x78, 0x18]);
-        AssertTextLen(255, [0x78, 0xFF]);
-    }
-
-
-    [TestMethod]
     public void AShortEnvelopeYieldsMalformedEnvelopeWithoutThrowing()
     {
         //Parse safety: an envelope shorter than the 96-byte mac region must return MalformedEnvelope, never
@@ -458,98 +412,6 @@ internal sealed class LongfellowMdocVerifierTests
         _ = version;
 
         return 4;
-    }
-
-
-    //The COSE1 DeviceAuthenticationBytes encoding of compute_transcript_hash (mdoc_witness.h:440-483).
-    private static byte[] BuildCose1(byte[] sessionTranscript, byte[] docType)
-    {
-        ReadOnlySpan<byte> deviceAuthentication =
-        [
-            0x84, 0x74, (byte)'D', (byte)'e', (byte)'v', (byte)'i', (byte)'c', (byte)'e', (byte)'A', (byte)'u', (byte)'t',
-            (byte)'h', (byte)'e', (byte)'n', (byte)'t', (byte)'i', (byte)'c', (byte)'a', (byte)'t', (byte)'i', (byte)'o', (byte)'n',
-        ];
-
-        ReadOnlySpan<byte> deviceNameSpacesBytes = [0xD8, 0x18, 0x41, 0xA0];
-
-        var docTypeBytes = new List<byte>();
-        AppendTextLen(docTypeBytes, docType.Length);
-        docTypeBytes.AddRange(docType);
-
-        var da = new List<byte>();
-        da.AddRange(deviceAuthentication.ToArray());
-        da.AddRange(sessionTranscript);
-        da.AddRange(docTypeBytes);
-        da.AddRange(deviceNameSpacesBytes.ToArray());
-
-        var cose1 = new List<byte>(new byte[]
-        {
-            0x84, 0x6A, 0x53, 0x69, 0x67, 0x6E, 0x61, 0x74, 0x75, 0x72, 0x65, 0x31, 0x43, 0xA1, 0x01, 0x26, 0x40,
-        });
-
-        int l1 = da.Count;
-        int l2 = l1 + (l1 < 256 ? 4 : 5);
-        AppendBytesLen(cose1, l2);
-        cose1.Add(0xD8);
-        cose1.Add(0x18);
-        AppendBytesLen(cose1, l1);
-        cose1.AddRange(da);
-
-        return cose1.ToArray();
-    }
-
-
-    private static void AppendBytesLen(List<byte> buf, int len)
-    {
-        if(len < 24)
-        {
-            buf.Add((byte)(0x40 + len));
-        }
-        else if(len < 256)
-        {
-            buf.Add(0x58);
-            buf.Add((byte)(len & 0xFF));
-        }
-        else
-        {
-            buf.Add(0x59);
-            buf.Add((byte)((len >> 8) & 0xFF));
-            buf.Add((byte)(len & 0xFF));
-        }
-    }
-
-
-    private static void AppendTextLen(List<byte> buf, int len)
-    {
-        if(len < 24)
-        {
-            buf.Add((byte)(0x60 + len));
-        }
-        else
-        {
-            buf.Add(0x78);
-            buf.Add((byte)len);
-        }
-    }
-
-
-    //Runs AppendBytesLen into a fresh buffer and asserts the produced CBOR major-type-2 prefix is
-    //byte-exact.
-    private static void AssertBytesLen(int len, byte[] expected)
-    {
-        var buf = new List<byte>();
-        AppendBytesLen(buf, len);
-        Assert.IsTrue(buf.ToArray().AsSpan().SequenceEqual(expected), $"AppendBytesLen({len}) must match the CBOR major-type-2 encoding.");
-    }
-
-
-    //Runs AppendTextLen into a fresh buffer and asserts the produced CBOR major-type-3 prefix is
-    //byte-exact.
-    private static void AssertTextLen(int len, byte[] expected)
-    {
-        var buf = new List<byte>();
-        AppendTextLen(buf, len);
-        Assert.IsTrue(buf.ToArray().AsSpan().SequenceEqual(expected), $"AppendTextLen({len}) must match the CBOR major-type-3 encoding.");
     }
 
 
