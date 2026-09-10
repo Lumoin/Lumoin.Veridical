@@ -144,10 +144,6 @@ internal static class PolynomialBigIntegerReference
     }
 
 
-    private static void ValidatePolynomialBuffer(Span<byte> buffer, int degree, string paramName, int elementSize) =>
-        ValidatePolynomialBuffer((ReadOnlySpan<byte>)buffer, degree, paramName, elementSize);
-
-
     private static void ValidateSlot(ReadOnlySpan<byte> slot, int elementSize, string paramName)
     {
         if(slot.Length != elementSize)
@@ -157,10 +153,6 @@ internal static class PolynomialBigIntegerReference
                 paramName);
         }
     }
-
-
-    private static void ValidateSlot(Span<byte> slot, int elementSize, string paramName) =>
-        ValidateSlot((ReadOnlySpan<byte>)slot, elementSize, paramName);
 
 
     private static void WriteCanonical(BigInteger value, Span<byte> destination)

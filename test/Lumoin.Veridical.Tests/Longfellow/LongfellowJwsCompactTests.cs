@@ -43,7 +43,7 @@ internal sealed class LongfellowJwsCompactTests
 
             ReadOnlySpan<byte> issuer = token.AsSpan()[issuerRange];
             int firstDot = vector.Token.IndexOf('.', StringComparison.Ordinal);
-            int secondDot = vector.Token.IndexOf('.', firstDot + 1);
+            int secondDot = vector.Token.IndexOf('.', firstDot + 1, StringComparison.Ordinal);
 
             Assert.IsTrue(LongfellowJwsCompact.TryParse(issuer, out LongfellowJwsCompactSegments segments), "The issuer JWS must parse.");
             Assert.AreEqual(0, segments.HeaderIndex, "The header starts the JWS.");

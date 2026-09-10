@@ -465,7 +465,7 @@ internal static class TwoVectorInnerProductArgument
     /// <summary>Folds a scalar vector with <c>v' = leftFactor · v_L + rightFactor · v_R</c>, written into the left half in place.</summary>
     private static void FoldScalarVector(
         Span<byte> left,
-        Span<byte> right,
+        ReadOnlySpan<byte> right,
         ReadOnlySpan<byte> leftFactor,
         ReadOnlySpan<byte> rightFactor,
         int sliceCount,
@@ -494,7 +494,7 @@ internal static class TwoVectorInnerProductArgument
     /// <summary>Folds a generator vector with <c>P' = leftFactor · P_L + rightFactor · P_R</c>, written into the left half in place.</summary>
     private static void FoldGeneratorVector(
         Span<byte> left,
-        Span<byte> right,
+        ReadOnlySpan<byte> right,
         ReadOnlySpan<byte> leftFactor,
         ReadOnlySpan<byte> rightFactor,
         int sliceCount,

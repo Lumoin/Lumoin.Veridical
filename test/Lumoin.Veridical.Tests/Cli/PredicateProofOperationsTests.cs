@@ -487,7 +487,7 @@ internal sealed class PredicateProofOperationsTests
         PredicateProofArtifact artifact = VeridicalPredicateProofJson.DeserializeArtifact(Prove(request));
 
         Assert.AreNotEqual(string.Empty, artifact.Proof, "A range-only bundle carries a Spartan proof.");
-        Assert.HasCount(0, artifact.LookupProofs);
+        Assert.IsEmpty(artifact.LookupProofs);
 
         VerificationResult result = Verify(VeridicalPredicateProofJson.Serialize(artifact));
         Assert.AreEqual(VerificationStatus.Valid, result.Status, result.Message);

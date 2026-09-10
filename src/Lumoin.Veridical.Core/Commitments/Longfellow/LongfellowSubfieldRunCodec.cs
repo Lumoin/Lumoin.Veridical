@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow;
@@ -488,6 +489,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
+        [SuppressMessage("Performance", "CA1517", Justification = "The swap below writes through both indexers via tuple deconstruction; the analyzer does not recognize that as a write and misidentifies the parameters as read-only.")]
         private static void SwapRows(Span<ulong> rows, Span<uint> combination, int a, int b)
         {
             if(a == b)
