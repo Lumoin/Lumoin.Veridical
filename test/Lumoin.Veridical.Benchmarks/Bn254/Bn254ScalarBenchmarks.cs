@@ -11,12 +11,15 @@ namespace Lumoin.Veridical.Benchmarks.Bn254;
 
 /// <summary>
 /// Per-call timing of the BN254 scalar-field primitives on the BigInteger
-/// reference backend — the only BN254 scalar backend in the codebase. This is a
-/// correctness-first <em>baseline marker</em>: BN254 has no SIMD backend yet
-/// (unlike BLS12-381's experimental AVX-512/NEON scalar backends in the test
-/// project), so there is nothing to compare against here. The rows record where
-/// BN254 field arithmetic stands before any acceleration work, so a future SIMD
-/// effort has a reference point and a regression gate.
+/// reference backend. This class measures the reference backend alone; the
+/// SIMD comparison for BN254 lives in
+/// <see cref="Lumoin.Veridical.Benchmarks.Scalar.ScalarMultiplyInvertBenchmarks"/>,
+/// which times <see cref="Bn254SimdScalarBackend"/>, the dispatch facade over
+/// the per-ISA AVX-512, AVX2, NEON and WebAssembly backends in
+/// <c>Lumoin.Veridical.Backends.Managed</c>, for multiply and invert against
+/// this same reference. The rows here are that comparison's fixed point: the
+/// reference-backend timing every BN254 SIMD row in this namespace is read
+/// against.
 /// </summary>
 /// <remarks>
 /// Operation counters are disabled in <see cref="Setup"/> so the timing reflects
