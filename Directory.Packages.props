@@ -10,7 +10,7 @@
     <PackageVersion Include="Lumoin.Base" Version="0.0.12" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
-    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.16.0-preview.1" />
     <!-- Benchmarks-only: head-to-head comparison vs. the xoofx
          native BLAKE3 binding. Referenced only from the benchmarks
          project; src/ and Lumoin.Veridical.Tests carry no dependency
