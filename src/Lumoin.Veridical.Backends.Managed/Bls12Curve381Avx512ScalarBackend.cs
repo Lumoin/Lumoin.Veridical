@@ -44,9 +44,11 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// Multiply, negate, and invert are implemented (the serial CIOS
 /// Montgomery multiply / Fermat ladder shared via
 /// <see cref="Bls12Curve381MontgomeryArithmetic"/>); the AVX-512 lane width
-/// accelerates the batched add/subtract, not a single serial multiply. A
-/// future IFMA52 (<c>System.Runtime.Intrinsics.X86.Avx512Vbmi</c>) path is
-/// where the bigger AVX-512 multiply win for ZKP workloads would come from.
+/// accelerates the batched add/subtract, not a single serial multiply. The
+/// larger AVX-512 multiply win for ZKP workloads lies in the IFMA52
+/// instructions (<c>vpmadd52luq</c>/<c>vpmadd52huq</c>, 52-bit limb
+/// products with a fused accumulate), which .NET exposes no intrinsic for;
+/// the multiply therefore stays on the shared serial path.
 /// </para>
 /// </remarks>
 internal static class Bls12Curve381Avx512ScalarBackend
