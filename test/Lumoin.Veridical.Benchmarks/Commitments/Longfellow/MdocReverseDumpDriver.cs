@@ -16,7 +16,7 @@ namespace Lumoin.Veridical.Benchmarks.Commitments.Longfellow;
 /// <remarks>
 /// Run with the working directory set to the Tests bin output dir so the credential fixture's CWD-relative path
 /// (<c>../../../TestMaterial/...</c>) resolves: e.g.
-/// <c>cd test/Lumoin.Veridical.Tests/bin/Release/net10.0 &amp;&amp; &lt;benchmarks exe&gt; --mdoc-reverse-dump &lt;abs path&gt;</c>.
+/// <c>cd test/Lumoin.Veridical.Tests/bin/Release/net11.0 &amp;&amp; &lt;benchmarks exe&gt; --mdoc-reverse-dump &lt;abs path&gt;</c>.
 /// </remarks>
 internal static class MdocReverseDumpDriver
 {

@@ -195,7 +195,7 @@ internal static class Program
 # the WASM bundle under wasmtime, compare byte-for-byte.
 set -euo pipefail
 PROJECT=test/Lumoin.Veridical.Hashing.Wasm.Verification/Lumoin.Veridical.Hashing.Wasm.Verification.csproj
-APP_BUNDLE=test/Lumoin.Veridical.Hashing.Wasm.Verification/bin/Release/net10.0/wasi-wasm/AppBundle
+APP_BUNDLE=test/Lumoin.Veridical.Hashing.Wasm.Verification/bin/Release/net11.0/wasi-wasm/AppBundle
 JIT_OUT=$(mktemp); WASM_OUT=$(mktemp)
 trap 'rm -f "$JIT_OUT" "$WASM_OUT"' EXIT
 

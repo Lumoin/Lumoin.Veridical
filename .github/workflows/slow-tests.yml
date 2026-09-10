@@ -75,5 +75,5 @@ jobs:
     # of the full category, so a wedged run fails long before it burns a weekly
     # slot's worth of minutes.
     - name: Run the slow proof gates
-      run: '${{ github.workspace }}/test/${{ env.VERIDICAL_TESTS }}/bin/${{ env.BUILD_CONFIGURATION }}/net10.0/${{ env.VERIDICAL_TESTS }} --filter "TestCategory=Slow"'
+      run: '${{ github.workspace }}/test/${{ env.VERIDICAL_TESTS }}/bin/${{ env.BUILD_CONFIGURATION }}/net11.0/${{ env.VERIDICAL_TESTS }} --filter "TestCategory=Slow"'
       timeout-minutes: 120
