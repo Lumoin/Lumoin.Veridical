@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Telemetry;
 using System;
+using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.Wasm;
 using System.Runtime.Intrinsics.X86;
@@ -26,7 +27,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// Capability ordering (highest to lowest):
 /// </para>
 /// <list type="number">
-///   <item><description>AVX-512F — 8-wide lane-interleaved batching via <see cref="Bls12Curve381Avx512ScalarBackend"/>.</description></item>
+///   <item><description>AVX-512F — 8-wide lane-interleaved batching via <see cref="Bls12Curve381Avx512ScalarBackend"/>. This backend is selected only where <see cref="Vector512.IsHardwareAccelerated"/> also reports 512-bit vectors as hardware-accelerated, because on parts whose JIT prefers 256-bit operation the 512-bit kernels can run below the AVX2 kernels; where that report is false the ordering falls through to AVX2.</description></item>
 ///   <item><description>AVX2 — 4-wide lane-interleaved batching via <see cref="Bls12Curve381Avx2ScalarBackend"/>.</description></item>
 ///   <item><description>AArch64 NEON — 2-wide lane-interleaved batching via <see cref="Bls12Curve381NeonScalarBackend"/>.</description></item>
 ///   <item><description>WebAssembly PackedSimd — 2-wide lane-interleaved batching via <see cref="Bls12Curve381WasmScalarBackend"/> (mutually exclusive with the others in practice; a WASM host has no AVX or NEON).</description></item>
@@ -52,7 +53,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarAddDelegate GetAdd()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetAdd();
         }
@@ -80,7 +81,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarSubtractDelegate GetSubtract()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetSubtract();
         }
@@ -108,7 +109,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarBatchAddDelegate GetBatchAdd()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetBatchAdd();
         }
@@ -136,7 +137,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarBatchSubtractDelegate GetBatchSubtract()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetBatchSubtract();
         }
@@ -164,7 +165,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarMultiplyDelegate GetMultiply()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetMultiply();
         }
@@ -192,7 +193,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarNegateDelegate GetNegate()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetNegate();
         }
@@ -220,7 +221,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarInvertDelegate GetInvert()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetInvert();
         }
@@ -253,7 +254,7 @@ internal static class Bls12Curve381SimdScalarBackend
     /// </summary>
     public static ScalarBatchMultiplyDelegate GetBatchMultiply()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bls12Curve381Avx512ScalarBackend.GetBatchMultiply();
         }

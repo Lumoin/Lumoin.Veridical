@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using System;
 using System.Numerics;
+using System.Runtime.Intrinsics;
 
 namespace Lumoin.Veridical.Longfellow;
 
@@ -66,11 +67,14 @@ internal static class LongfellowMdocBundles
     /// <summary>
     /// The lane-parallel Fp256 Montgomery batch multiply, selected by host capability: the AVX-512 octet
     /// backend when supported, else the AVX2 quartet backend, else <see langword="null"/> so the consumer
-    /// falls back to the scalar multiply. Both SIMD backends are byte-identical to the scalar Montgomery
-    /// oracle by construction.
+    /// falls back to the scalar multiply. The AVX-512 backend is selected only where the runtime also
+    /// reports 512-bit vectors as hardware-accelerated (<see cref="Vector512.IsHardwareAccelerated"/>),
+    /// because on parts whose JIT prefers 256-bit operation the 512-bit kernels can run below the AVX2
+    /// kernels; where that report is false the ordering falls through to AVX2. Both SIMD backends are
+    /// byte-identical to the scalar Montgomery oracle by construction.
     /// </summary>
     internal static ScalarBatchMultiplyDelegate? Fp256BatchMontgomery() =>
-        P256BaseFieldMontgomeryBatchBackendAvx512.IsSupported ? P256BaseFieldMontgomeryBatchBackendAvx512.GetBatchMultiplyMontgomery()
+        P256BaseFieldMontgomeryBatchBackendAvx512.IsSupported && Vector512.IsHardwareAccelerated ? P256BaseFieldMontgomeryBatchBackendAvx512.GetBatchMultiplyMontgomery()
         : P256BaseFieldMontgomeryBatchBackendAvx2.IsSupported ? P256BaseFieldMontgomeryBatchBackendAvx2.GetBatchMultiplyMontgomery()
         : null;
 
