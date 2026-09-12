@@ -32,7 +32,8 @@ that switches the test host Stryker instruments; unset it as soon as the run fin
 so an ordinary `dotnet build` or `dotnet test` is never affected. The `--concurrency 1`
 override above takes precedence over the `2` in the tracked config — see the
 concurrency caution below for why the first run on a given host should always pass it
-explicitly rather than relying on the tracked default.
+explicitly rather than relying on the tracked default. The switched build restores
+without the package lock file, so a Stryker run leaves `packages.lock.json` untouched.
 
 **Fallback.** Setting `UseVSTest` alone left the MSTest test host active (the suite
 still started through the Microsoft.Testing.Platform entry point instead of VsTest),

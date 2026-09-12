@@ -27,11 +27,17 @@
   <PropertyGroup Condition="'$(VERIDICAL_STRYKER_RUN)' == 'true'">
     <!--
       The mutation runner drives the suite through the VsTest host, so the
-      MSTest.Sdk's own test host is switched off for that build only.
+      MSTest.Sdk's own test host is switched off for that build only. The
+      VsTest host brings in a package the ordinary build does not reference,
+      so this build restores outside the package lock file rather than
+      reading or writing it.
       -->
     <UseVSTest>true</UseVSTest>
     <EnableMSTestRunner>false</EnableMSTestRunner>
     <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
+    <TestingExtensionsProfile></TestingExtensionsProfile>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <NuGetLockFilePath>$(BaseIntermediateOutputPath)stryker-packages.lock.json</NuGetLockFilePath>
   </PropertyGroup>
 
   <ItemGroup>
