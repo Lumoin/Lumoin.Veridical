@@ -27,10 +27,14 @@
   <PropertyGroup Condition="'$(VERIDICAL_STRYKER_RUN)' == 'true'">
     <!--
       The mutation runner drives the suite through the VsTest host, so the
-      MSTest.Sdk's own test host is switched off for that build only. The
-      VsTest host brings in a package the ordinary build does not reference,
-      so this build restores outside the package lock file rather than
-      reading or writing it.
+      MSTest SDK's own test host and its dotnet test integration are switched
+      off for that build only. That build restores outside the package lock
+      file because the VsTest host brings in a package the ordinary build
+      does not reference. The lock-file path is redirected to a location
+      under the intermediate output directory because NuGet refuses a
+      disabled lock file that still exists at its resolved path, and nothing
+      is ever written there. The testing-extensions profile is cleared
+      because the VsTest targets reject a non-empty profile.
       -->
     <UseVSTest>true</UseVSTest>
     <EnableMSTestRunner>false</EnableMSTestRunner>
