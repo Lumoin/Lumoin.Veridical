@@ -24,6 +24,16 @@
     <EnableSerializationBan>false</EnableSerializationBan>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(VERIDICAL_STRYKER_RUN)' == 'true'">
+    <!--
+      The mutation runner drives the suite through the VsTest host, so the
+      MSTest.Sdk's own test host is switched off for that build only.
+      -->
+    <UseVSTest>true</UseVSTest>
+    <EnableMSTestRunner>false</EnableMSTestRunner>
+    <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="CsCheck" />
     <PackageReference Include="Lumoin.Veritas.Cbor" />

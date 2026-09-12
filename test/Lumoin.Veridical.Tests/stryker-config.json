@@ -1,0 +1,31 @@
+{
+  "stryker-config": {
+    "solution": "../../Lumoin.Veridical.slnx",
+    "project": "Lumoin.Veridical.Core.csproj",
+    "test-runner": "vstest",
+    "test-case-filter": "TestCategory!=Slow",
+    "mutate": [
+      "../../src/Lumoin.Veridical.Core/Commitments/BaseFold/MerkleTree.cs",
+      "../../src/Lumoin.Veridical.Core/Commitments/BaseFold/MerkleAuthenticationPath.cs",
+      "../../src/Lumoin.Veridical.Core/Commitments/BaseFold/MerkleSetCommitment.cs",
+      "../../src/Lumoin.Veridical.Core/Algebraic/PoseidonPermutation.cs",
+      "../../src/Lumoin.Veridical.Core/Algebraic/PoseidonParameterGenerator.cs",
+      "../../src/Lumoin.Veridical.Core/Algebraic/FiatShamirTranscript.cs",
+      "../../src/Lumoin.Veridical.Core/Commitments/Ligero/FiatShamirTranscriptLigeroExtensions.cs",
+      "../../src/Lumoin.Veridical.Core/ConstraintSystems/Interop/ZkInterface/ZkInterfaceCursorDecoder.cs",
+      "../../src/Lumoin.Veridical.Core/ConstraintSystems/Interop/Circom/CircomR1csReader.cs",
+      "../../src/Lumoin.Veridical.Core/ConstraintSystems/Interop/Circom/CircomWitnessReader.cs",
+      "../../src/Lumoin.Veridical.Core/Commitments/Longfellow/Circuits/LongfellowBase64Decoder.cs"
+    ],
+    "mutation-level": "Standard",
+    "coverage-analysis": "perTest",
+    "concurrency": 2,
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 0
+    },
+    "reporters": ["html", "json", "markdown"],
+    "output": "../../StrykerOutput"
+  }
+}
