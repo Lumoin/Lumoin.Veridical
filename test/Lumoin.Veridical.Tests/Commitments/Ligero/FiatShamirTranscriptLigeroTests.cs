@@ -26,6 +26,43 @@ internal sealed class FiatShamirTranscriptLigeroTests
     private const int ScalarSize = Scalar.SizeBytes;
     private const int RootSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
+    /// <summary>The number of challenge scalars requested when the challenge destination is deliberately mis-sized.</summary>
+    private const int MisSizedChallengeCount = 1;
+
+    /// <summary>
+    /// A challenge destination one scalar longer than <see cref="MisSizedChallengeCount"/> scalars occupy, so the
+    /// length guard rejects it while every scalar the squeeze loop writes stays inside it.
+    /// </summary>
+    private const int OversizedChallengeDestinationBytes = (MisSizedChallengeCount + 1) * ScalarSize;
+
+    /// <summary>The extension width sampled from when the index destination is deliberately mis-sized; it is wider than the requested count, so the count guard accepts it.</summary>
+    private const int MisSizedIndexExtensionWidth = 4;
+
+    /// <summary>The number of distinct indices requested when the index destination is deliberately mis-sized.</summary>
+    private const int MisSizedIndexCount = 1;
+
+    /// <summary>
+    /// An index destination one slot longer than <see cref="MisSizedIndexCount"/>, so the length guard rejects it
+    /// while every index write the sampler makes stays inside it.
+    /// </summary>
+    private const int OversizedIndexDestinationLength = MisSizedIndexCount + 1;
+
+    /// <summary>The parameter name both destination-length guards report.</summary>
+    private const string DestinationParameterName = "destination";
+
+    /// <summary>
+    /// An extension width that is not a power of two. Since 4 is congruent to 1 modulo 3, 2^64 = 4^32 leaves
+    /// remainder one, so the acceptance limit is 2^64 - 1 and the all-ones 64-bit draw lies in the rejected
+    /// biased tail.
+    /// </summary>
+    private const int BiasedTailExtensionWidth = 3;
+
+    /// <summary>The number of indices requested from the saturated squeeze; one suffices because no draw is ever accepted.</summary>
+    private const int SaturatedSqueezeIndexCount = 1;
+
+    /// <summary>The leading words of the sampler's attempt-cap message; no argument guard produces this text.</summary>
+    private const string AttemptCapMessageFragment = "Could not draw a fresh opened-column index";
+
     private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
     private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
     private static ScalarReduceDelegate Reduce { get; } = SmallPrimeFieldScalars.GetReduce();
@@ -141,6 +178,72 @@ internal sealed class FiatShamirTranscriptLigeroTests
     }
 
 
+    /// <summary>
+    /// Pins that the Ligero challenge-scalar squeeze rejects a destination whose length is not the requested count
+    /// times the scalar width with an <see cref="ArgumentException"/> that names <c>destination</c> and states both
+    /// the required and the received byte length. The destination is one scalar too long rather than too short, so
+    /// the length guard is the only check that can refuse it: every scalar the squeeze loop writes lands inside it.
+    /// The transcript, the reduce backend and the pool are non-null and the count is not negative, so no sibling
+    /// guard answers first, and the exact exception type excludes the <see cref="ArgumentNullException"/> and
+    /// <see cref="ArgumentOutOfRangeException"/> those guards raise.
+    /// </summary>
+    [TestMethod]
+    public void ChallengeScalarSqueezeRejectsAnOversizedDestination()
+    {
+        string expectedMessage = $"Destination must be {MisSizedChallengeCount * ScalarSize} bytes; received {OversizedChallengeDestinationBytes}.";
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => SqueezeChallengeScalarsIntoOversizedDestination(),
+            "A challenge destination longer than the requested scalars must be rejected.");
+
+        Assert.AreEqual(DestinationParameterName, exception.ParamName, "The rejection must name the destination parameter.");
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Pins that the distinct opened-column-index sampler rejects a destination whose length differs from the
+    /// requested count with an <see cref="ArgumentException"/> that names <c>destination</c> and states both the
+    /// requested count and the received length. The destination is one slot too long rather than too short, so the
+    /// length guard is the only check that can refuse it: every index the sampler writes lands inside it. The
+    /// transcript is non-null, the width is positive and the count lies in <c>[0, extensionWidth]</c>, so no sibling
+    /// guard answers first, and the exact exception type excludes the <see cref="ArgumentNullException"/> and
+    /// <see cref="ArgumentOutOfRangeException"/> those guards raise.
+    /// </summary>
+    [TestMethod]
+    public void DistinctColumnIndexSqueezeRejectsAnOversizedDestination()
+    {
+        string expectedMessage = $"Destination must hold {MisSizedIndexCount} indices; received {OversizedIndexDestinationLength}.";
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => SampleIndicesIntoOversizedDestination(),
+            "An index destination longer than the requested count must be rejected.");
+
+        Assert.AreEqual(DestinationParameterName, exception.ParamName, "The rejection must name the destination parameter.");
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Pins that the distinct opened-column-index sampler re-squeezes every draw at or above the acceptance limit
+    /// instead of reducing it into range, and throws <see cref="InvalidOperationException"/> once the per-index
+    /// attempt cap is spent without an accepted draw. Over a width of three the acceptance limit is 2^64 - 1, so
+    /// the all-ones draw the saturated squeeze yields on every attempt is always in the biased tail; reduced modulo
+    /// the width it would be index zero, so a sampler that mapped a tail draw into range would return that index
+    /// instead of throwing. The transcript is non-null, the width is positive, the count lies in
+    /// <c>[0, extensionWidth]</c> and the destination holds exactly that count, so no argument guard answers first.
+    /// </summary>
+    [TestMethod]
+    public void DistinctColumnIndexSqueezeThrowsWhenEveryDrawFallsInTheBiasedTail()
+    {
+        InvalidOperationException exception = Assert.ThrowsExactly<InvalidOperationException>(
+            () => SampleIndicesFromSaturatedSqueeze(),
+            "A squeeze whose every draw lies in the biased tail must exhaust the attempt cap and throw.");
+
+        Assert.Contains(AttemptCapMessageFragment, exception.Message, StringComparison.Ordinal);
+    }
+
+
     //Runs the standalone challenge schedule against a fresh transcript: absorb
     //the root, squeeze the challenge scalars, then the opened-column indices.
     private static void RunSchedule(
@@ -191,5 +294,62 @@ internal sealed class FiatShamirTranscriptLigeroTests
         {
             root[i] = (byte)(key + i);
         }
+    }
+
+
+    /// <summary>
+    /// Squeezes <see cref="MisSizedChallengeCount"/> challenge scalars into a destination of
+    /// <see cref="OversizedChallengeDestinationBytes"/> bytes. The destination is stack-allocated inside this helper
+    /// because an assertion lambda cannot capture a stack span.
+    /// </summary>
+    private static void SqueezeChallengeScalarsIntoOversizedDestination()
+    {
+        Span<byte> destination = stackalloc byte[OversizedChallengeDestinationBytes];
+        using FiatShamirTranscript transcript = NewTranscript();
+
+        transcript.SqueezeLigeroChallengeScalars(
+            new FiatShamirOperationLabel(WellKnownLigeroTranscriptLabels.LowDegreeChallenge), MisSizedChallengeCount, destination, Squeeze, Hash, Reduce, CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
+
+
+    /// <summary>
+    /// Samples <see cref="MisSizedIndexCount"/> index over <see cref="MisSizedIndexExtensionWidth"/> columns into a
+    /// destination of <see cref="OversizedIndexDestinationLength"/> slots. The destination is stack-allocated inside
+    /// this helper because an assertion lambda cannot capture a stack span.
+    /// </summary>
+    private static void SampleIndicesIntoOversizedDestination()
+    {
+        Span<int> destination = stackalloc int[OversizedIndexDestinationLength];
+        using FiatShamirTranscript transcript = NewTranscript();
+
+        transcript.SqueezeLigeroDistinctColumnIndices(MisSizedIndexExtensionWidth, MisSizedIndexCount, destination, Squeeze, Hash);
+    }
+
+
+    /// <summary>
+    /// Samples <see cref="SaturatedSqueezeIndexCount"/> index over <see cref="BiasedTailExtensionWidth"/> columns with
+    /// <see cref="SaturatedSqueeze"/> as the squeeze backend and the BLAKE3 hash for the post-squeeze state update, so
+    /// every draw lies in the biased tail. The destination is stack-allocated inside this helper because an assertion
+    /// lambda cannot capture a stack span.
+    /// </summary>
+    private static void SampleIndicesFromSaturatedSqueeze()
+    {
+        Span<int> destination = stackalloc int[SaturatedSqueezeIndexCount];
+        using FiatShamirTranscript transcript = NewTranscript();
+
+        transcript.SqueezeLigeroDistinctColumnIndices(BiasedTailExtensionWidth, SaturatedSqueezeIndexCount, destination, SaturatedSqueeze, Hash);
+    }
+
+
+    /// <summary>
+    /// A squeeze backend that writes <see cref="byte.MaxValue"/> into every output byte, so each eight-byte index
+    /// draw reads as 2^64 - 1, the largest 64-bit value, whatever the transcript state.
+    /// </summary>
+    /// <param name="input">The squeeze input, which the saturated output does not depend on.</param>
+    /// <param name="output">Receives the all-ones bytes.</param>
+    /// <param name="hashFunction">The requested hash function name, which the saturated output does not depend on.</param>
+    private static void SaturatedSqueeze(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
+    {
+        output.Fill(byte.MaxValue);
     }
 }
