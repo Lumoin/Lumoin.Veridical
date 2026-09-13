@@ -6,7 +6,9 @@ using Lumoin.Veridical.Core.ConstraintSystems;
 using Lumoin.Veridical.Core.ConstraintSystems.Interop;
 using Lumoin.Veridical.Core.ConstraintSystems.Interop.Circom;
 using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading;
@@ -34,6 +36,78 @@ internal sealed class PoseidonPermutationTests
     //The well-known circomlib test vector: Poseidon(1, 2) over BN254.
     private const string CircomlibVectorHex = "115CC0F5E7D690413DF64C6B9662E9CF2A3617F2743245519E19607A4417189A";
 
+    /// <summary>The input count of a two-to-one Poseidon hash, whose state is three lanes wide.</summary>
+    private const int TwoInputCount = 2;
+
+    /// <summary>A state four scalars wide, one lane wider than the three-lane state a two-input parameter set declares.</summary>
+    private const int ForeignStateScalars = 4;
+
+    /// <summary>An input one scalar wide, one scalar short of what a two-input parameter set takes.</summary>
+    private const int ShortInputScalars = 1;
+
+    /// <summary>The width of a Poseidon digest in scalars.</summary>
+    private const int DigestScalars = 1;
+
+    /// <summary>A digest buffer two scalars wide, one scalar wider than the hash emits.</summary>
+    private const int ForeignDigestScalars = 2;
+
+    /// <summary>The capacity lanes of the hash state, which carry no input.</summary>
+    private const int CapacityLanes = 1;
+
+    /// <summary>One lane past the widest state the stack scratch holds: 544 bytes are 17 lanes, so this is 18.</summary>
+    private const int OversizedStateWidth = (WellKnownPoseidonScratch.MaximumStateBytes / ScalarSize) + 1;
+
+    /// <summary>The state width of a one-input hash, which the parameter constructor accepts but a two-to-one compression cannot use.</summary>
+    private const int OneInputStateWidth = 2;
+
+    /// <summary>The smallest full-round count the parameter constructor accepts: positive and even.</summary>
+    private const int MinimalFullRounds = 2;
+
+    /// <summary>The smallest partial-round count the parameter constructor accepts.</summary>
+    private const int MinimalPartialRounds = 1;
+
+    /// <summary>The fill salt of constructed round constants.</summary>
+    private const int RoundConstantFillSalt = 1;
+
+    /// <summary>The fill salt of constructed MDS entries.</summary>
+    private const int MdsFillSalt = 2;
+
+    /// <summary>The fill salt of a permutation state.</summary>
+    private const int StateFillSalt = 3;
+
+    /// <summary>The fill salt of hash inputs.</summary>
+    private const int InputFillSalt = 4;
+
+    /// <summary>The fill salt of a digest buffer, whose prior contents a refused hash never reads.</summary>
+    private const int DigestFillSalt = 5;
+
+    /// <summary>The parameter name both state guards of the permutation report.</summary>
+    private const string StateParameterName = "state";
+
+    /// <summary>The parameter name the input-arity guard of the hash reports.</summary>
+    private const string InputsParameterName = "inputs";
+
+    /// <summary>The parameter name the digest-width guard of the hash reports.</summary>
+    private const string DigestParameterName = "digest";
+
+    /// <summary>The parameter name the scratch-bound guard of the hash and the arity guard of the Merkle compression report.</summary>
+    private const string ParametersParameterName = "parameters";
+
+    /// <summary>The state-width refusal for a four-scalar state against three lanes: three lanes are 96 bytes, and four scalars are 128.</summary>
+    private const string WrongStateWidthMessage = "The state must be exactly 3 scalars (96 bytes); received 128.";
+
+    /// <summary>The scratch-bound refusal for an 18-lane parameter set; the permutation and the hash word it identically and differ only in the parameter name.</summary>
+    private const string ScratchBoundMessage = "The state width 18 exceeds the supported maximum.";
+
+    /// <summary>The input-arity refusal for a one-scalar input against a two-input parameter set.</summary>
+    private const string WrongInputArityMessage = "The inputs must be exactly 2 scalars; received 32 bytes.";
+
+    /// <summary>The digest-width refusal for a two-scalar digest buffer.</summary>
+    private const string WrongDigestWidthMessage = "The digest must be exactly 32 bytes; received 64.";
+
+    /// <summary>The Merkle compression's refusal of a two-lane parameter set.</summary>
+    private const string NotTwoInputMessage = "A two-to-one Merkle compression needs two-input parameters (StateWidth = 3); received 2.";
+
     private static ScalarAddDelegate Bn254Add { get; } = Bn254BigIntegerScalarReference.GetAdd();
     private static ScalarMultiplyDelegate Bn254Multiply { get; } = Bn254BigIntegerScalarReference.GetMultiply();
     private static ScalarInvertDelegate Bn254Invert { get; } = Bn254BigIntegerScalarReference.GetInvert();
@@ -41,6 +115,22 @@ internal sealed class PoseidonPermutationTests
     private static ScalarAddDelegate BlsAdd { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
     private static ScalarMultiplyDelegate BlsMultiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
     private static ScalarInvertDelegate BlsInvert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
+
+    /// <summary>The pooled rentals a test opened, released together in cleanup.</summary>
+    private List<IDisposable> Disposables { get; } = [];
+
+
+    /// <summary>Disposes every rental the test opened.</summary>
+    [TestCleanup]
+    public void DisposeRentals()
+    {
+        foreach(IDisposable rental in Disposables)
+        {
+            rental.Dispose();
+        }
+
+        Disposables.Clear();
+    }
 
 
     [TestMethod]
@@ -259,6 +349,148 @@ internal sealed class PoseidonPermutationTests
     }
 
 
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Permute"/> refuses a state that is not exactly
+    /// <see cref="PoseidonParameters.StateWidth"/> scalars wide with an <see cref="ArgumentException"/> that names
+    /// <c>state</c> and states the expected lane count, the expected byte count and the received length, instead of
+    /// permuting only the lanes the parameters declare and overwriting the extra lane with the unwritten, zeroed scratch
+    /// lane. The parameters are a generated three-lane set and the state is four canonical scalars, so every reference
+    /// argument is non-null and the state fits the stack scratch; the scratch-bound guard, which also names
+    /// <c>state</c>, words its refusal differently.
+    /// </summary>
+    [TestMethod]
+    public void PermuteRejectsAStateOfTheWrongWidth()
+    {
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+        Memory<byte> state = RentCanonicalScalars(ForeignStateScalars, StateFillSalt);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => PoseidonPermutation.Permute(parameters, state.Span, Bn254Add, Bn254Multiply),
+            "A state that is not StateWidth scalars wide must be refused.");
+
+        Assert.AreEqual(StateParameterName, exception.ParamName, "The refusal must name the state parameter.");
+        Assert.Contains(WrongStateWidthMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Permute"/> refuses parameters wider than its stack scratch holds with an
+    /// <see cref="ArgumentException"/> that names <c>state</c> and states the offending width, rather than faulting on
+    /// the undersized scratch with an <see cref="ArgumentOutOfRangeException"/>. The generated circomlib sets stop at 17
+    /// lanes, but the public <see cref="PoseidonParameters"/> constructor bounds the width only from below, so an
+    /// 18-lane set is constructible. The state is exactly 18 scalars, so the state-width guard passes, every reference
+    /// argument is non-null, and the refusal comes before any round reads the constants.
+    /// </summary>
+    [TestMethod]
+    public void PermuteRejectsAStateWiderThanTheScratchBound()
+    {
+        PoseidonParameters parameters = CreateMinimalParameters(OversizedStateWidth);
+        Memory<byte> state = RentCanonicalScalars(OversizedStateWidth, StateFillSalt);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => PoseidonPermutation.Permute(parameters, state.Span, Bn254Add, Bn254Multiply),
+            "A state wider than the stack scratch must be refused.");
+
+        Assert.AreEqual(StateParameterName, exception.ParamName, "The refusal must name the state parameter.");
+        Assert.Contains(ScratchBoundMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Hash"/> refuses inputs that are not exactly <c>StateWidth - 1</c>
+    /// scalars with an <see cref="ArgumentException"/> that names <c>inputs</c> and states the expected arity and the
+    /// received length, instead of hashing a short input as if the missing lanes were zero. The input is one canonical
+    /// scalar against a two-input parameter set; the digest is exactly one scalar wide and the three-lane state fits
+    /// the stack scratch, so neither later guard can answer, and no other guard names <c>inputs</c>. A short input is
+    /// the case only this guard stops: an oversized one would also fault when copied into the state.
+    /// </summary>
+    [TestMethod]
+    public void HashRejectsInputsOfTheWrongArity()
+    {
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+        Memory<byte> inputs = RentCanonicalScalars(ShortInputScalars, InputFillSalt);
+        Memory<byte> digest = RentCanonicalScalars(DigestScalars, DigestFillSalt);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => PoseidonPermutation.Hash(parameters, inputs.Span, digest.Span, Bn254Add, Bn254Multiply),
+            "Inputs that are not StateWidth - 1 scalars must be refused.");
+
+        Assert.AreEqual(InputsParameterName, exception.ParamName, "The refusal must name the inputs parameter.");
+        Assert.Contains(WrongInputArityMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Hash"/> refuses a digest buffer that is not exactly one scalar wide with
+    /// an <see cref="ArgumentException"/> that names <c>digest</c> and states the required and received widths, instead
+    /// of writing the digest into the first scalar of a wider buffer. The inputs are exactly two canonical scalars for a
+    /// two-input parameter set, so the input guard passes, and no other guard names <c>digest</c>. A wider buffer is
+    /// the case only this guard stops: a narrower one would also fault when the digest is copied out.
+    /// </summary>
+    [TestMethod]
+    public void HashRejectsADigestOfTheWrongWidth()
+    {
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+        Memory<byte> inputs = RentCanonicalScalars(TwoInputCount, InputFillSalt);
+        Memory<byte> digest = RentCanonicalScalars(ForeignDigestScalars, DigestFillSalt);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => PoseidonPermutation.Hash(parameters, inputs.Span, digest.Span, Bn254Add, Bn254Multiply),
+            "A digest buffer that is not one scalar wide must be refused.");
+
+        Assert.AreEqual(DigestParameterName, exception.ParamName, "The refusal must name the digest parameter.");
+        Assert.Contains(WrongDigestWidthMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Hash"/> refuses parameters wider than its stack scratch holds with an
+    /// <see cref="ArgumentException"/> that names <c>parameters</c> and states the offending width, rather than
+    /// faulting on the undersized scratch with an <see cref="ArgumentOutOfRangeException"/>. The 18-lane set comes from the
+    /// public constructor, the inputs are exactly 17 canonical scalars and the digest is one scalar wide, so both span
+    /// guards pass. <see cref="PoseidonPermutation.Permute"/> words its own scratch-bound refusal identically but names
+    /// <c>state</c>, and the hash refuses before the permutation is reached.
+    /// </summary>
+    [TestMethod]
+    public void HashRejectsParametersWiderThanTheScratchBound()
+    {
+        PoseidonParameters parameters = CreateMinimalParameters(OversizedStateWidth);
+        Memory<byte> inputs = RentCanonicalScalars(OversizedStateWidth - CapacityLanes, InputFillSalt);
+        Memory<byte> digest = RentCanonicalScalars(DigestScalars, DigestFillSalt);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => PoseidonPermutation.Hash(parameters, inputs.Span, digest.Span, Bn254Add, Bn254Multiply),
+            "Parameters wider than the stack scratch must be refused.");
+
+        Assert.AreEqual(ParametersParameterName, exception.ParamName, "The refusal must name the parameters parameter.");
+        Assert.Contains(ScratchBoundMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.GetMerkleHash"/> refuses parameters that are not two-input with an
+    /// <see cref="ArgumentException"/> that names <c>parameters</c> and states the required and received state widths,
+    /// when the compression is requested rather than at its first invocation. A two-lane set is legal for the public
+    /// constructor, every delegate is non-null and the returned compression is never invoked, so no guard of the hash
+    /// can answer in its place.
+    /// </summary>
+    [TestMethod]
+    public void GetMerkleHashRejectsParametersThatAreNotTwoInput()
+    {
+        PoseidonParameters parameters = CreateMinimalParameters(OneInputStateWidth);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => _ = PoseidonPermutation.GetMerkleHash(parameters, Bn254Add, Bn254Multiply),
+            "Parameters that are not two-input must be refused when the compression is requested.");
+
+        Assert.AreEqual(ParametersParameterName, exception.ParamName, "The refusal must name the parameters parameter.");
+        Assert.Contains(NotTwoInputMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+
     private static byte[] LoadFixtureWitnessBytes(string curveDirectory)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, FixtureDirectoryRelative, curveDirectory);
@@ -288,5 +520,44 @@ internal sealed class PoseidonPermutationTests
             curve,
             BaseMemoryPool.Shared,
             CancellationToken.None);
+    }
+
+
+    /// <summary>
+    /// Rents <paramref name="scalarCount"/> scalars of pooled memory, tracks the rental for cleanup and fills it with
+    /// deterministic canonical BN254 scalars. The buffer is sliced to exactly the requested width, because every guard
+    /// under test compares lengths exactly, and it is returned as <see cref="Memory{T}"/> because the assertion lambdas
+    /// capture it where they cannot capture a stack span.
+    /// </summary>
+    /// <param name="scalarCount">The buffer width in scalars.</param>
+    /// <param name="salt">The fill stream selector.</param>
+    /// <returns>The filled buffer, exactly <paramref name="scalarCount"/> scalars long.</returns>
+    private Memory<byte> RentCanonicalScalars(int scalarCount, int salt)
+    {
+        int length = scalarCount * ScalarSize;
+        System.Buffers.IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(length);
+        Disposables.Add(owner);
+
+        Memory<byte> scalars = owner.Memory[..length];
+        DeterministicScalarFill.FillCanonical(scalars.Span, salt, Bn254Reduce, CurveParameterSet.Bn254);
+
+        return scalars;
+    }
+
+
+    /// <summary>
+    /// Builds a BN254 parameter set of <paramref name="stateWidth"/> lanes through the public constructor, with the
+    /// smallest round shape it accepts and deterministic canonical round constants and MDS entries. The constructor
+    /// bounds the width only from below, so this reaches widths the generated circomlib sets never have. The values
+    /// are not a vetted instantiation; the tests that use them are refused before any round reads them.
+    /// </summary>
+    /// <param name="stateWidth">The state width <c>t</c>; at least two.</param>
+    /// <returns>The constructed parameter set.</returns>
+    private PoseidonParameters CreateMinimalParameters(int stateWidth)
+    {
+        Memory<byte> roundConstants = RentCanonicalScalars((MinimalFullRounds + MinimalPartialRounds) * stateWidth, RoundConstantFillSalt);
+        Memory<byte> mdsMatrix = RentCanonicalScalars(stateWidth * stateWidth, MdsFillSalt);
+
+        return new PoseidonParameters(stateWidth, MinimalFullRounds, MinimalPartialRounds, roundConstants.Span, mdsMatrix.Span, CurveParameterSet.Bn254);
     }
 }
