@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
@@ -18,7 +19,26 @@ internal sealed class MerkleSetCommitmentTests
 {
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
+    /// <summary>An entry is a key chunk followed by a value chunk, each one digest wide.</summary>
+    private const int ChunksPerEntry = 2;
+
     private static MerkleHashDelegate Hash { get; } = HashTwoToOne;
+
+    /// <summary>The pooled rentals, trees and paths a test opened, released together in cleanup.</summary>
+    private List<IDisposable> Disposables { get; } = [];
+
+
+    /// <summary>Disposes everything the test opened, in reverse order of acquisition.</summary>
+    [TestCleanup]
+    public void DisposeRentals()
+    {
+        for(int i = Disposables.Count - 1; i >= 0; i--)
+        {
+            Disposables[i].Dispose();
+        }
+
+        Disposables.Clear();
+    }
 
 
     [TestMethod]
@@ -185,6 +205,71 @@ internal sealed class MerkleSetCommitmentTests
 
 
     /// <summary>
+    /// An entries span that is not exactly <c>entryCount</c> whole key and value
+    /// entries is refused with an <see cref="ArgumentException"/> on the
+    /// <c>entries</c> parameter whose message names the received length. One
+    /// entry followed by a stray byte is the shape only the length check catches:
+    /// a single entry leaves no key pair to order, and the leaf hashing reads just
+    /// the first two digests, so no later step would notice the stray byte.
+    /// </summary>
+    [TestMethod]
+    public void CommitRefusesEntriesWhoseLengthIsNotTheEntryShape()
+    {
+        const int SingleEntryCount = 1;
+        const int TrailingByteCount = 1;
+        const int EntriesLengthBytes = (SingleEntryCount * ChunksPerEntry * DigestSizeBytes) + TrailingByteCount;
+        const string EntriesParameterName = "entries";
+
+        IMemoryOwner<byte> entriesOwner = Track(BaseMemoryPool.Shared.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        entries.Span.Clear();
+
+        ArgumentException thrown = Assert.ThrowsExactly<ArgumentException>(
+            () => MerkleSetCommitment.Commit(entries.Span, SingleEntryCount, DigestSizeBytes, Hash, BaseMemoryPool.Shared).Dispose(),
+            "An entries span that is not a whole number of entries must be refused.");
+
+        Assert.AreEqual(EntriesParameterName, thrown.ParamName, "The refusal must name the entries parameter.");
+        Assert.Contains($"received {EntriesLengthBytes}.", thrown.Message, StringComparison.Ordinal,
+            "The refusal must name the received length.");
+    }
+
+
+    /// <summary>
+    /// A negative entry index is a malformed membership claim that the
+    /// verification surface reports as a non-match instead of throwing. The same
+    /// key, value, path and root verify at the proven index and report
+    /// <see langword="false"/> at index <c>-1</c>; the key and value are one root
+    /// width each, so the index is the only malformed input.
+    /// </summary>
+    [TestMethod]
+    public void VerifyMembershipReportsANegativeEntryIndexAsANonMatch()
+    {
+        const int EntryCount = 2;
+        const int ProvenIndex = 0;
+        const int NegativeEntryIndex = -1;
+        const int ValueSalt = 7;
+        const int EntriesLengthBytes = EntryCount * ChunksPerEntry * DigestSizeBytes;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        IMemoryOwner<byte> entriesOwner = Track(pool.Rent(EntriesLengthBytes));
+        Span<byte> entries = entriesOwner.Memory.Span[..EntriesLengthBytes];
+        FillEntries(entries, EntryCount, ValueSalt);
+
+        MerkleTree tree = Track(MerkleSetCommitment.Commit(entries, EntryCount, DigestSizeBytes, Hash, pool));
+        MerkleAuthenticationPath path = Track(MerkleSetCommitment.ProveMembership(tree, ProvenIndex, pool));
+        ReadOnlySpan<byte> key = entries.Slice(ProvenIndex * ChunksPerEntry * DigestSizeBytes, DigestSizeBytes);
+        ReadOnlySpan<byte> value = entries.Slice((ProvenIndex * ChunksPerEntry * DigestSizeBytes) + DigestSizeBytes, DigestSizeBytes);
+
+        Assert.IsTrue(
+            MerkleSetCommitment.VerifyMembership(tree.Root, ProvenIndex, key, value, path, Hash),
+            "The claim must verify at the proven index, so only the index differs in the next check.");
+        Assert.IsFalse(
+            MerkleSetCommitment.VerifyMembership(tree.Root, NegativeEntryIndex, key, value, path, Hash),
+            "A negative entry index must report as a non-match, not throw.");
+    }
+
+
+    /// <summary>
     /// Entries with ascending keys derived from the index and values from a
     /// salt; deterministic so equal-set comparisons are exact.
     /// </summary>
@@ -249,5 +334,17 @@ internal sealed class MerkleSetCommitmentTests
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);
+    }
+
+
+    /// <summary>
+    /// Registers a disposable for release in <see cref="DisposeRentals"/> and
+    /// returns it, so a test body holds its rentals without using declarations.
+    /// </summary>
+    private T Track<T>(T disposable) where T : IDisposable
+    {
+        Disposables.Add(disposable);
+
+        return disposable;
     }
 }

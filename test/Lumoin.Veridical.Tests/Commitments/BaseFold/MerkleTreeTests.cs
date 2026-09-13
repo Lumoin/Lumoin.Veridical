@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
@@ -30,11 +31,40 @@ internal sealed class MerkleTreeTests
     //of up to 2^6 = 64 leaves.
     private const int MaximumLeafExponent = 6;
 
+    /// <summary>
+    /// The leaf count the byte-length rejection tests pass: a positive power of two, so the
+    /// leaf-count guards accept it and the byte-length guard under test is the first to fire.
+    /// </summary>
+    private const int ShapeCheckLeafCount = 4;
+
+    /// <summary>The byte length of <see cref="ShapeCheckLeafCount"/> leaves, one node width each.</summary>
+    private const int ExpectedShapeBytes = ShapeCheckLeafCount * DigestSizeBytes;
+
+    /// <summary>A byte length one node width short of <see cref="ExpectedShapeBytes"/>.</summary>
+    private const int OneNodeShortShapeBytes = ExpectedShapeBytes - DigestSizeBytes;
+
 
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
     /// <summary>The compression paired with the node width it produces.</summary>
     private static MerkleCommitmentParameters TreeParameters { get; } = new(Blake3TwoToOne, DigestSizeBytes);
+
+
+    /// <summary>The pooled rentals opened during a test, released together in cleanup.</summary>
+    private List<IDisposable> Disposables { get; } = [];
+
+
+    /// <summary>Disposes every rental the test opened, most recent first.</summary>
+    [TestCleanup]
+    public void DisposeRentals()
+    {
+        for(int i = Disposables.Count - 1; i >= 0; i--)
+        {
+            Disposables[i].Dispose();
+        }
+
+        Disposables.Clear();
+    }
 
 
     [TestMethod]
@@ -234,6 +264,89 @@ internal sealed class MerkleTreeTests
         byte[] captured = leaves.ToArray();
         Assert.ThrowsExactly<ArgumentException>(
             () => MerkleTree.Build(captured, 3, TreeParameters, BaseMemoryPool.Shared).Dispose());
+    }
+
+
+    /// <summary>
+    /// Build refuses leaf bytes one node width short of one node per leaf. The tree commits
+    /// layer 0 verbatim, so the refusal names the leaves parameter and states both the received
+    /// and the required byte length before any layer is rented.
+    /// </summary>
+    [TestMethod]
+    public void BuildRejectsLeafBytesOneNodeShort()
+    {
+        Memory<byte> leaves = RentCleared(OneNodeShortShapeBytes);
+
+        ArgumentException thrown = Assert.ThrowsExactly<ArgumentException>(
+            () => MerkleTree.Build(leaves.Span, ShapeCheckLeafCount, TreeParameters, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual("leaves", thrown.ParamName);
+        Assert.Contains(
+            $"Leaf bytes length {OneNodeShortShapeBytes} must be one {DigestSizeBytes}-byte node per leaf ({ExpectedShapeBytes});",
+            thrown.Message,
+            StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// BuildSalted refuses value bytes one node width short of one node per leaf while the salts
+    /// are correctly sized, naming the leaf-values parameter and stating both the received and
+    /// the required byte length.
+    /// </summary>
+    [TestMethod]
+    public void BuildSaltedRejectsLeafValueBytesOneNodeShort()
+    {
+        Memory<byte> leafValues = RentCleared(OneNodeShortShapeBytes);
+        Memory<byte> salts = RentCleared(ExpectedShapeBytes);
+
+        ArgumentException thrown = Assert.ThrowsExactly<ArgumentException>(
+            () => MerkleTree.BuildSalted(leafValues.Span, salts.Span, ShapeCheckLeafCount, TreeParameters, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual("leafValues", thrown.ParamName);
+        Assert.Contains(
+            $"Leaf value bytes length {OneNodeShortShapeBytes} must be one {DigestSizeBytes}-byte node per leaf ({ExpectedShapeBytes}).",
+            thrown.Message,
+            StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// BuildSalted refuses salt bytes one node width short of one salt per leaf while the values
+    /// are correctly sized, naming the salts parameter and stating both the received and the
+    /// required byte length.
+    /// </summary>
+    [TestMethod]
+    public void BuildSaltedRejectsSaltBytesOneNodeShort()
+    {
+        Memory<byte> leafValues = RentCleared(ExpectedShapeBytes);
+        Memory<byte> salts = RentCleared(OneNodeShortShapeBytes);
+
+        ArgumentException thrown = Assert.ThrowsExactly<ArgumentException>(
+            () => MerkleTree.BuildSalted(leafValues.Span, salts.Span, ShapeCheckLeafCount, TreeParameters, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual("salts", thrown.ParamName);
+        Assert.Contains(
+            $"Salt bytes length {OneNodeShortShapeBytes} must equal one {DigestSizeBytes}-byte salt per leaf ({ExpectedShapeBytes}).",
+            thrown.Message,
+            StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// Rents a pooled buffer, clears it so every byte a test passes is deterministic, and
+    /// registers the rental for release in <see cref="DisposeRentals"/>.
+    /// </summary>
+    /// <param name="length">The buffer length in bytes.</param>
+    /// <returns>The cleared buffer, exactly <paramref name="length"/> bytes long.</returns>
+    private Memory<byte> RentCleared(int length)
+    {
+        IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(length);
+        Disposables.Add(owner);
+
+        Memory<byte> buffer = owner.Memory[..length];
+        buffer.Span.Clear();
+
+        return buffer;
     }
 
 
