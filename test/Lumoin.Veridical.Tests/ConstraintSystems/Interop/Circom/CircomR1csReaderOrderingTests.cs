@@ -34,6 +34,31 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 [TestClass]
 internal sealed class CircomR1csReaderOrderingTests
 {
+    /// <summary>The wire count of the one-constraint circuit whose C linear combination has no terms: the constant wire and three others.</summary>
+    private const int EmptyMatrixWireCount = 4;
+
+    /// <summary>The constant wire <c>z[0] = 1</c>, which the B linear combination names.</summary>
+    private const int ConstantWire = 0;
+
+    /// <summary>A non-constant wire, which the A linear combination names.</summary>
+    private const int OutputWire = 1;
+
+    /// <summary>The number of entries the reader stores for a matrix that received no terms: the single synthesised entry.</summary>
+    private const int SynthesisedNonzeroCount = 1;
+
+    /// <summary>The row of the entry the reader synthesises for a matrix that received no terms.</summary>
+    private const int SynthesisedRow = 0;
+
+    /// <summary>The column of the entry the reader synthesises for a matrix that received no terms.</summary>
+    private const int SynthesisedColumn = 0;
+
+    /// <summary>The index of the first stored triple of a matrix.</summary>
+    private const int FirstTripleIndex = 0;
+
+    /// <summary>The value of every byte of a zero coefficient.</summary>
+    private const byte ZeroByte = 0;
+
+
     private static BigInteger Bls12Curve381Prime { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
     private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
     private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
@@ -103,6 +128,34 @@ internal sealed class CircomR1csReaderOrderingTests
         AssertMatricesEqual(fromAscending.A, fromDescending.A, "A");
         AssertMatricesEqual(fromAscending.B, fromDescending.B, "B");
         AssertMatricesEqual(fromAscending.C, fromDescending.C, "C");
+    }
+
+
+    /// <summary>
+    /// A constraint system in which the C linear combination of every constraint has no terms parses into a C matrix
+    /// holding one synthesised zero-valued entry at <c>(0, 0)</c>. The entry meets the at-least-one-entry requirement of
+    /// the matrix encoding without changing which witnesses satisfy the system. The file bytes come from the in-test
+    /// encoder of this class, which returns an array as the other tests here consume it.
+    /// </summary>
+    [TestMethod]
+    public void ReaderSynthesisesZeroEntryForMatrixWithNoTerms()
+    {
+        byte[] bytes = EncodeR1cs(
+            Bls12Curve381Prime,
+            wireCount: EmptyMatrixWireCount,
+            constraints:
+            [
+                new ConstraintTriple(
+                    A: [(OutputWire, BigInteger.One)],
+                    B: [(ConstantWire, BigInteger.One)],
+                    C: []),
+            ]);
+
+        using RawR1csInstance instance = ParseR1cs(bytes);
+
+        Assert.AreEqual(SynthesisedNonzeroCount, instance.C.NonzeroCount, "C must carry exactly the synthesised entry.");
+        Assert.AreEqual((SynthesisedRow, SynthesisedColumn), instance.C.GetTriplePosition(FirstTripleIndex), "The synthesised entry must sit at (0, 0).");
+        Assert.IsFalse(instance.C.GetValueBytes(FirstTripleIndex).ContainsAnyExcept(ZeroByte), "The synthesised coefficient must be zero.");
     }
 
 
