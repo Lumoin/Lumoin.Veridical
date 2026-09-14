@@ -270,6 +270,372 @@ internal sealed class MerkleSetCommitmentTests
 
 
     /// <summary>
+    /// A commitment taken without a compression is refused on the <c>hash</c>
+    /// parameter. The compression is the first argument the commitment checks,
+    /// and it has to be: a single all-zero entry satisfies the pool, the counts,
+    /// the digest width, the entry length and the key order alike, so the
+    /// compression would first be reached where the leaves are computed — past
+    /// the point where a missing one can be reported as a caller fault.
+    /// </summary>
+    [TestMethod]
+    public void CommitRefusesANullHash()
+    {
+        const int SingleEntryCount = 1;
+        const int EntriesLengthBytes = SingleEntryCount * ChunksPerEntry * DigestSizeBytes;
+        const string HashParameterName = "hash";
+
+        IMemoryOwner<byte> entriesOwner = Track(BaseMemoryPool.Shared.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        entries.Span.Clear();
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => MerkleSetCommitment.Commit(entries.Span, SingleEntryCount, DigestSizeBytes, null!, BaseMemoryPool.Shared).Dispose(),
+            "A commitment without a compression must be refused.");
+
+        Assert.AreEqual(HashParameterName, thrown.ParamName, "The refusal must name the hash parameter.");
+    }
+
+
+    /// <summary>
+    /// A commitment taken without a pool is refused on the <c>pool</c>
+    /// parameter. Every check that follows passes for a single all-zero entry,
+    /// so the pool would first be reached where the leaf buffer is rented — past
+    /// the point where a missing pool can be reported as a caller fault.
+    /// </summary>
+    [TestMethod]
+    public void CommitRefusesANullPool()
+    {
+        const int SingleEntryCount = 1;
+        const int EntriesLengthBytes = SingleEntryCount * ChunksPerEntry * DigestSizeBytes;
+        const string PoolParameterName = "pool";
+
+        IMemoryOwner<byte> entriesOwner = Track(BaseMemoryPool.Shared.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        entries.Span.Clear();
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => MerkleSetCommitment.Commit(entries.Span, SingleEntryCount, DigestSizeBytes, Hash, null!).Dispose(),
+            "A commitment without a pool must be refused.");
+
+        Assert.AreEqual(PoolParameterName, thrown.ParamName, "The refusal must name the pool parameter.");
+    }
+
+
+    /// <summary>
+    /// A set of no entries is refused on the <c>entryCount</c> parameter. An
+    /// empty entries span is exactly zero entries wide and a count of zero
+    /// leaves no key pair to order, so nothing downstream reports the empty set
+    /// as such: the leaf layer comes out empty and the tree builder answers for
+    /// its own leaf count instead of the count the caller supplied.
+    /// </summary>
+    [TestMethod]
+    public void CommitRefusesAnEmptySet()
+    {
+        const int ZeroEntryCount = 0;
+        const string EntryCountParameterName = "entryCount";
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => MerkleSetCommitment.Commit(ReadOnlySpan<byte>.Empty, ZeroEntryCount, DigestSizeBytes, Hash, BaseMemoryPool.Shared).Dispose(),
+            "A set of no entries must be refused.");
+
+        Assert.AreEqual(EntryCountParameterName, thrown.ParamName, "The refusal must name the entry count parameter.");
+        Assert.AreEqual(ZeroEntryCount, thrown.ActualValue, "The refusal must carry the refused entry count.");
+    }
+
+
+    /// <summary>
+    /// A zero digest width is refused on the <c>digestSizeBytes</c> parameter.
+    /// A zero width makes an entry zero bytes wide, so the entry-length check
+    /// accepts an empty span and a lone entry has no key order to violate: the
+    /// width would next be answered by the node-width pairing the tree is built
+    /// with, which names its own parameter rather than the caller's.
+    /// </summary>
+    [TestMethod]
+    public void CommitRefusesAZeroDigestWidth()
+    {
+        const int SingleEntryCount = 1;
+        const int ZeroDigestSizeBytes = 0;
+        const string DigestSizeParameterName = "digestSizeBytes";
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => MerkleSetCommitment.Commit(ReadOnlySpan<byte>.Empty, SingleEntryCount, ZeroDigestSizeBytes, Hash, BaseMemoryPool.Shared).Dispose(),
+            "A zero digest width must be refused.");
+
+        Assert.AreEqual(DigestSizeParameterName, thrown.ParamName, "The refusal must name the digest size parameter.");
+        Assert.AreEqual(ZeroDigestSizeBytes, thrown.ActualValue, "The refusal must carry the refused digest width.");
+    }
+
+
+    /// <summary>
+    /// A digest width one byte past the Merkle surface's cap is refused on the
+    /// <c>digestSizeBytes</c> parameter, carrying the width that was refused.
+    /// The width has to be named by the width check itself: were the entries
+    /// read first, the compression would fault on its own cap-sized buffers and
+    /// report a range fault naming nothing the caller passed.
+    /// </summary>
+    [TestMethod]
+    public void CommitRefusalNamesTheDigestWidthPastTheCap()
+    {
+        const int EntryCount = 2;
+        const int PastCapDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes + 1;
+        const int EntriesLengthBytes = EntryCount * ChunksPerEntry * PastCapDigestSizeBytes;
+        const string DigestSizeParameterName = "digestSizeBytes";
+
+        IMemoryOwner<byte> entriesOwner = Track(BaseMemoryPool.Shared.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        FillAscendingKeys(entries.Span, EntryCount, PastCapDigestSizeBytes);
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => MerkleSetCommitment.Commit(entries.Span, EntryCount, PastCapDigestSizeBytes, HashTwoToOneAtCap, BaseMemoryPool.Shared).Dispose(),
+            "A digest width past the Merkle surface's cap must be refused.");
+
+        Assert.AreEqual(DigestSizeParameterName, thrown.ParamName, "The refusal must name the digest size parameter.");
+        Assert.AreEqual(PastCapDigestSizeBytes, thrown.ActualValue, "The refusal must carry the refused digest width.");
+    }
+
+
+    /// <summary>
+    /// A membership proof asked for without a tree is refused on the
+    /// <c>tree</c> parameter even when the pool is missing as well. The tree is
+    /// what the proof is drawn from, so it is checked first and its absence is
+    /// what the caller is told about.
+    /// </summary>
+    [TestMethod]
+    public void ProveMembershipRefusesANullTreeBeforeANullPool()
+    {
+        const int FirstEntryIndex = 0;
+        const string TreeParameterName = "tree";
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => MerkleSetCommitment.ProveMembership(null!, FirstEntryIndex, null!).Dispose(),
+            "A membership proof without a tree must be refused.");
+
+        Assert.AreEqual(TreeParameterName, thrown.ParamName, "The tree is checked before the pool.");
+    }
+
+
+    /// <summary>
+    /// A membership check without a root is refused on the <c>root</c>
+    /// parameter. The root is the value every width in the claim is measured
+    /// against, so its absence is a caller fault rather than a claim the surface
+    /// could report as a non-match: there is nothing to measure against at all.
+    /// </summary>
+    [TestMethod]
+    public void VerifyMembershipRefusesANullRoot()
+    {
+        const int EntryCount = 2;
+        const int ProvenIndex = 0;
+        const int ValueSalt = 7;
+        const int EntriesLengthBytes = EntryCount * ChunksPerEntry * DigestSizeBytes;
+        const string RootParameterName = "root";
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        IMemoryOwner<byte> entriesOwner = Track(pool.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        FillEntries(entries.Span, EntryCount, ValueSalt);
+
+        MerkleTree tree = Track(MerkleSetCommitment.Commit(entries.Span, EntryCount, DigestSizeBytes, Hash, pool));
+        MerkleAuthenticationPath path = Track(MerkleSetCommitment.ProveMembership(tree, ProvenIndex, pool));
+        Memory<byte> key = entries.Slice(ProvenIndex * ChunksPerEntry * DigestSizeBytes, DigestSizeBytes);
+        Memory<byte> value = entries.Slice((ProvenIndex * ChunksPerEntry * DigestSizeBytes) + DigestSizeBytes, DigestSizeBytes);
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => _ = MerkleSetCommitment.VerifyMembership(null!, ProvenIndex, key.Span, value.Span, path, Hash),
+            "A membership check without a root must be refused.");
+
+        Assert.AreEqual(RootParameterName, thrown.ParamName, "The refusal must name the root parameter.");
+    }
+
+
+    /// <summary>
+    /// A membership check without a path is refused on the <c>path</c>
+    /// parameter even when the claim is malformed in a way the surface would
+    /// otherwise report as a non-match. A missing reference is a caller fault
+    /// and is answered before any shape is inspected, so the negative index
+    /// here — which is reported as a non-match when the path is present — does
+    /// not get to answer first.
+    /// </summary>
+    [TestMethod]
+    public void VerifyMembershipRefusesANullPathBeforeReportingANonMatch()
+    {
+        const int EntryCount = 2;
+        const int ProvenIndex = 0;
+        const int NegativeEntryIndex = -1;
+        const int ValueSalt = 7;
+        const int EntriesLengthBytes = EntryCount * ChunksPerEntry * DigestSizeBytes;
+        const string PathParameterName = "path";
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        IMemoryOwner<byte> entriesOwner = Track(pool.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        FillEntries(entries.Span, EntryCount, ValueSalt);
+
+        MerkleTree tree = Track(MerkleSetCommitment.Commit(entries.Span, EntryCount, DigestSizeBytes, Hash, pool));
+        Memory<byte> key = entries.Slice(ProvenIndex * ChunksPerEntry * DigestSizeBytes, DigestSizeBytes);
+        Memory<byte> value = entries.Slice((ProvenIndex * ChunksPerEntry * DigestSizeBytes) + DigestSizeBytes, DigestSizeBytes);
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => _ = MerkleSetCommitment.VerifyMembership(tree.Root, NegativeEntryIndex, key.Span, value.Span, null!, Hash),
+            "A membership check without a path must be refused.");
+
+        Assert.AreEqual(PathParameterName, thrown.ParamName, "The refusal must name the path parameter.");
+    }
+
+
+    /// <summary>
+    /// A membership check without a compression is refused on the <c>hash</c>
+    /// parameter. Every width in the claim is well formed, so the compression
+    /// would first be reached where the leaf is recomputed — past the point
+    /// where a missing one can be reported as a caller fault.
+    /// </summary>
+    [TestMethod]
+    public void VerifyMembershipRefusesANullHash()
+    {
+        const int EntryCount = 2;
+        const int ProvenIndex = 0;
+        const int ValueSalt = 7;
+        const int EntriesLengthBytes = EntryCount * ChunksPerEntry * DigestSizeBytes;
+        const string HashParameterName = "hash";
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        IMemoryOwner<byte> entriesOwner = Track(pool.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        FillEntries(entries.Span, EntryCount, ValueSalt);
+
+        MerkleTree tree = Track(MerkleSetCommitment.Commit(entries.Span, EntryCount, DigestSizeBytes, Hash, pool));
+        MerkleAuthenticationPath path = Track(MerkleSetCommitment.ProveMembership(tree, ProvenIndex, pool));
+        Memory<byte> key = entries.Slice(ProvenIndex * ChunksPerEntry * DigestSizeBytes, DigestSizeBytes);
+        Memory<byte> value = entries.Slice((ProvenIndex * ChunksPerEntry * DigestSizeBytes) + DigestSizeBytes, DigestSizeBytes);
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => _ = MerkleSetCommitment.VerifyMembership(tree.Root, ProvenIndex, key.Span, value.Span, path, null!),
+            "A membership check without a compression must be refused.");
+
+        Assert.AreEqual(HashParameterName, thrown.ParamName, "The refusal must name the hash parameter.");
+    }
+
+
+    /// <summary>
+    /// A value narrower than the committed root reports as a non-match even
+    /// when the committed leaf really is the compression of that key and that
+    /// narrow value. Key and value are each measured against the root width on
+    /// their own, so a key of exactly root width does not excuse a value one
+    /// byte short; the control check first shows the path authenticates
+    /// precisely that leaf, so only the refused width separates the two results.
+    /// </summary>
+    [TestMethod]
+    public void VerifyMembershipReportsAValueNarrowerThanTheRootAsANonMatch()
+    {
+        const int LeafCount = 2;
+        const int ProvenIndex = 0;
+        const int SingleEntryCount = 1;
+        const int ValueSalt = 7;
+        const int ShortValueLengthBytes = DigestSizeBytes - 1;
+        const int EntryLengthBytes = SingleEntryCount * ChunksPerEntry * DigestSizeBytes;
+        const int LeavesLengthBytes = LeafCount * DigestSizeBytes;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        IMemoryOwner<byte> entryOwner = Track(pool.Rent(EntryLengthBytes));
+        Span<byte> entry = entryOwner.Memory.Span[..EntryLengthBytes];
+        FillEntries(entry, SingleEntryCount, ValueSalt);
+        ReadOnlySpan<byte> key = entry[..DigestSizeBytes];
+        ReadOnlySpan<byte> shortValue = entry.Slice(DigestSizeBytes, ShortValueLengthBytes);
+
+        //The committed leaf is the compression of the key and the narrow value,
+        //so nothing but the width check can separate the claim from the tree.
+        IMemoryOwner<byte> leavesOwner = Track(pool.Rent(LeavesLengthBytes));
+        Span<byte> leaves = leavesOwner.Memory.Span[..LeavesLengthBytes];
+        leaves.Clear();
+        Hash(key, shortValue, leaves[..DigestSizeBytes]);
+
+        MerkleTree tree = Track(MerkleTree.Build(leaves, LeafCount, new MerkleCommitmentParameters(Hash, DigestSizeBytes), pool));
+        MerkleAuthenticationPath path = Track(tree.BuildPath(ProvenIndex, pool));
+
+        Assert.IsTrue(
+            path.Verify(tree.Root, ProvenIndex, leaves[..DigestSizeBytes], Hash),
+            "The path must authenticate exactly the leaf built from the key and the narrow value.");
+        Assert.IsFalse(
+            MerkleSetCommitment.VerifyMembership(tree.Root, ProvenIndex, key, shortValue, path, Hash),
+            "A value narrower than the root must report as a non-match.");
+    }
+
+
+    /// <summary>
+    /// A membership claim whose digest width is exactly the Merkle surface's
+    /// cap verifies. The cap is the widest node the verification stack reserves
+    /// room for, and that width is admitted rather than refused: a set the
+    /// commitment surface accepts at the cap must stay openable by the very
+    /// surface that committed it.
+    /// </summary>
+    [TestMethod]
+    public void VerifyMembershipAcceptsAnAtCapDigestWidth()
+    {
+        const int EntryCount = 2;
+        const int ProvenIndex = 0;
+        const int AtCapDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
+        const int EntriesLengthBytes = EntryCount * ChunksPerEntry * AtCapDigestSizeBytes;
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+
+        IMemoryOwner<byte> entriesOwner = Track(pool.Rent(EntriesLengthBytes));
+        Span<byte> entries = entriesOwner.Memory.Span[..EntriesLengthBytes];
+        FillAscendingKeys(entries, EntryCount, AtCapDigestSizeBytes);
+
+        MerkleTree tree = Track(MerkleSetCommitment.Commit(entries, EntryCount, AtCapDigestSizeBytes, HashTwoToOneAtCap, pool));
+        MerkleAuthenticationPath path = Track(MerkleSetCommitment.ProveMembership(tree, ProvenIndex, pool));
+        ReadOnlySpan<byte> key = entries.Slice(ProvenIndex * ChunksPerEntry * AtCapDigestSizeBytes, AtCapDigestSizeBytes);
+        ReadOnlySpan<byte> value = entries.Slice((ProvenIndex * ChunksPerEntry * AtCapDigestSizeBytes) + AtCapDigestSizeBytes, AtCapDigestSizeBytes);
+
+        Assert.IsTrue(
+            MerkleSetCommitment.VerifyMembership(tree.Root, ProvenIndex, key, value, path, HashTwoToOneAtCap),
+            "A membership claim at the cap digest width must verify.");
+    }
+
+
+    /// <summary>
+    /// A key that descends after an ascending pair is refused on the
+    /// <c>entries</c> parameter, and the refusal states the ascending-order rule
+    /// and names the first entry that breaks it. Each key is compared with its
+    /// immediate predecessor, not with the smallest key: here key 0 is below
+    /// both later keys, so the only way to see the violation is to compare
+    /// entry 2 against entry 1.
+    /// </summary>
+    [TestMethod]
+    public void CommitRefusalNamesTheFirstEntryWhoseKeyDescends()
+    {
+        const int EntryCount = 3;
+        const int ValueSalt = 7;
+        const int SecondEntryIndex = 1;
+        const int ThirdEntryIndex = 2;
+        const int EntriesLengthBytes = EntryCount * ChunksPerEntry * DigestSizeBytes;
+        const string EntriesParameterName = "entries";
+        const string AscendingRuleFragment = "strictly ascending";
+
+        IMemoryOwner<byte> entriesOwner = Track(BaseMemoryPool.Shared.Rent(EntriesLengthBytes));
+        Memory<byte> entries = entriesOwner.Memory[..EntriesLengthBytes];
+        FillEntries(entries.Span, EntryCount, ValueSalt);
+
+        //Exchange the keys of entries 1 and 2, so the keys read low, high,
+        //middle and the first ascending pair is still in order.
+        Span<byte> swap = stackalloc byte[DigestSizeBytes];
+        Span<byte> secondKey = entries.Span.Slice(SecondEntryIndex * ChunksPerEntry * DigestSizeBytes, DigestSizeBytes);
+        Span<byte> thirdKey = entries.Span.Slice(ThirdEntryIndex * ChunksPerEntry * DigestSizeBytes, DigestSizeBytes);
+        secondKey.CopyTo(swap);
+        thirdKey.CopyTo(secondKey);
+        swap.CopyTo(thirdKey);
+
+        ArgumentException thrown = Assert.ThrowsExactly<ArgumentException>(
+            () => MerkleSetCommitment.Commit(entries.Span, EntryCount, DigestSizeBytes, Hash, BaseMemoryPool.Shared).Dispose(),
+            "A key that descends after an ascending pair must be refused.");
+
+        Assert.AreEqual(EntriesParameterName, thrown.ParamName, "The refusal must name the entries parameter.");
+        Assert.Contains(AscendingRuleFragment, thrown.Message, StringComparison.Ordinal,
+            "The refusal must state the ascending-order rule.");
+        Assert.Contains($"violated at entry {ThirdEntryIndex}.", thrown.Message, StringComparison.Ordinal,
+            "The refusal must name the first entry whose key descends.");
+    }
+
+
+    /// <summary>
     /// Entries with ascending keys derived from the index and values from a
     /// salt; deterministic so equal-set comparisons are exact.
     /// </summary>

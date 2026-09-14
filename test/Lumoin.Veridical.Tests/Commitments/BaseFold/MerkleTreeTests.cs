@@ -32,8 +32,8 @@ internal sealed class MerkleTreeTests
     private const int MaximumLeafExponent = 6;
 
     /// <summary>
-    /// The leaf count the byte-length rejection tests pass: a positive power of two, so the
-    /// leaf-count guards accept it and the byte-length guard under test is the first to fire.
+    /// The leaf count the byte-length and null-argument rejection tests pass: a positive power of two,
+    /// so the leaf-count guards accept it and only the guard under test fires.
     /// </summary>
     private const int ShapeCheckLeafCount = 4;
 
@@ -42,6 +42,86 @@ internal sealed class MerkleTreeTests
 
     /// <summary>A byte length one node width short of <see cref="ExpectedShapeBytes"/>.</summary>
     private const int OneNodeShortShapeBytes = ExpectedShapeBytes - DigestSizeBytes;
+
+    /// <summary>
+    /// The leaf count of the tree the sibling-level, node-level and disposal tests read: four leaves
+    /// make a depth-two tree, so every path over it holds <see cref="PathDepth"/> siblings.
+    /// </summary>
+    private const int PathLeafCount = 4;
+
+    /// <summary>The depth of a <see cref="PathLeafCount"/>-leaf tree, which is also the sibling count of its paths.</summary>
+    private const int PathDepth = 2;
+
+    /// <summary>The leaf whose authentication path the sibling-level rejection tests read.</summary>
+    private const int PathLeafIndex = 0;
+
+    /// <summary>A level below the leaf level, which names no sibling.</summary>
+    private const int NegativeLevel = -1;
+
+    /// <summary>The parameter name both range guards of the sibling accessor, and both level guards of the node accessor, report.</summary>
+    private const string LevelParameterName = "level";
+
+    /// <summary>A digest width of zero bytes, which leaves a path no room for any sibling.</summary>
+    private const int ZeroDigestSizeBytes = 0;
+
+    /// <summary>
+    /// The rental length behind the zero-width path: one byte, the same minimum rental path
+    /// construction makes for the empty path of a single-leaf tree.
+    /// </summary>
+    private const int ZeroWidthPathRentBytes = 1;
+
+    /// <summary>The sibling count a zero-width path reports.</summary>
+    private const int ExpectedZeroWidthSiblingCount = 0;
+
+    /// <summary>A leaf count of zero, which describes no tree at all.</summary>
+    private const int ZeroLeafCount = 0;
+
+    /// <summary>A positive leaf count that is not a power of two, so no complete binary tree has that many leaves.</summary>
+    private const int NonPowerOfTwoLeafCount = 3;
+
+    /// <summary>The byte length of <see cref="NonPowerOfTwoLeafCount"/> values or salts, one node width each.</summary>
+    private const int NonPowerOfTwoShapeBytes = NonPowerOfTwoLeafCount * DigestSizeBytes;
+
+    /// <summary>The parameter name the null guard on the compression parameters reports.</summary>
+    private const string ParametersParameterName = "parameters";
+
+    /// <summary>The parameter name the null guard on the pool reports.</summary>
+    private const string PoolParameterName = "pool";
+
+    /// <summary>The parameter name both leaf-count guards of the builders report.</summary>
+    private const string LeafCountParameterName = "leafCount";
+
+    /// <summary>The parameter name both index guards of the node accessor report.</summary>
+    private const string IndexInLevelParameterName = "indexInLevel";
+
+    /// <summary>The leaf level, which the node accessor counts as level zero.</summary>
+    private const int LeafLevel = 0;
+
+    /// <summary>The index of the first node of a level.</summary>
+    private const int FirstIndexInLevel = 0;
+
+    /// <summary>An index before the first node of a level, which names no node.</summary>
+    private const int NegativeIndexInLevel = -1;
+
+    /// <summary>The level one above the root of a <see cref="PathLeafCount"/>-leaf tree, which holds no node.</summary>
+    private const int AboveRootLevel = PathDepth + 1;
+
+    /// <summary>The first level above the leaves of a <see cref="PathLeafCount"/>-leaf tree.</summary>
+    private const int FirstInternalLevel = 1;
+
+    /// <summary>
+    /// The node count of <see cref="FirstInternalLevel"/>, half the leaf count. As an index it is one past
+    /// the last node of that level, yet the slot it would address still lies inside the layer buffer: it
+    /// holds the root, which the layers store directly after that level.
+    /// </summary>
+    private const int FirstInternalLevelNodeCount = PathLeafCount >> FirstInternalLevel;
+
+    /// <summary>
+    /// The slabs a private pool reclaims once a <see cref="PathLeafCount"/>-leaf tree built from it is
+    /// disposed: the pool keeps one slab per rental length, and the tree rents its layer buffer and its
+    /// root at two different lengths.
+    /// </summary>
+    private const int ExpectedReclaimedSlabCount = 2;
 
 
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
@@ -333,6 +413,322 @@ internal sealed class MerkleTreeTests
 
 
     /// <summary>
+    /// A path whose digest width is zero reports no siblings. The sibling count is the buffer
+    /// length divided by the digest width, so a zero width is answered as zero siblings before
+    /// any division takes place, whatever length the buffer behind the path has.
+    /// </summary>
+    [TestMethod]
+    public void SiblingCountOfAZeroWidthPathIsZero()
+    {
+        IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(ZeroWidthPathRentBytes);
+
+        //The path takes ownership of the rental and releases it on dispose, so only the path is registered.
+        MerkleAuthenticationPath path = MerkleAuthenticationPath.Create(owner, ZeroDigestSizeBytes);
+        Disposables.Add(path);
+
+        Assert.AreEqual(ExpectedZeroWidthSiblingCount, path.SiblingCount, "A zero-width path carries no siblings.");
+    }
+
+
+    /// <summary>
+    /// GetSibling refuses a level below the leaf level with an <see cref="ArgumentOutOfRangeException"/>
+    /// naming <c>level</c> and carrying the refused value. The path holds <see cref="PathDepth"/>
+    /// siblings and minus one is below that count, so the upper-bound guard stays silent and only the
+    /// non-negative guard answers, before the sibling bytes are addressed.
+    /// </summary>
+    [TestMethod]
+    public void GetSiblingRejectsANegativeLevel()
+    {
+        MerkleAuthenticationPath path = BuildRegisteredPath();
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = path.GetSibling(NegativeLevel));
+
+        Assert.AreEqual(LevelParameterName, thrown.ParamName);
+        Assert.AreEqual(NegativeLevel, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// GetSibling refuses the level equal to the sibling count with an
+    /// <see cref="ArgumentOutOfRangeException"/> naming <c>level</c> and carrying the refused value.
+    /// A <see cref="PathLeafCount"/>-leaf tree has depth <see cref="PathDepth"/>, so that level is the
+    /// root, which has no sibling. The level is non-negative, so only the upper-bound guard answers,
+    /// before the sibling bytes past the end of the path are addressed.
+    /// </summary>
+    [TestMethod]
+    public void GetSiblingRejectsTheLevelAtTheRoot()
+    {
+        MerkleAuthenticationPath path = BuildRegisteredPath();
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = path.GetSibling(PathDepth));
+
+        Assert.AreEqual(LevelParameterName, thrown.ParamName);
+        Assert.AreEqual(PathDepth, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// Build refuses missing compression parameters, naming <c>parameters</c>. The leaf count and the leaf
+    /// bytes are well formed, so the parameters would otherwise first be reached where the node width is
+    /// read, as a null dereference rather than a caller fault.
+    /// </summary>
+    [TestMethod]
+    public void BuildRejectsNullParameters()
+    {
+        Memory<byte> leaves = RentCleared(ExpectedShapeBytes);
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => MerkleTree.Build(leaves.Span, ShapeCheckLeafCount, null!, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual(ParametersParameterName, thrown.ParamName);
+    }
+
+
+    /// <summary>
+    /// Build refuses a missing pool, naming <c>pool</c>. The leaf count and the leaf bytes are well formed,
+    /// so the pool would otherwise first be reached where the layer buffer is rented, as a null dereference
+    /// rather than a caller fault.
+    /// </summary>
+    [TestMethod]
+    public void BuildRejectsANullPool()
+    {
+        Memory<byte> leaves = RentCleared(ExpectedShapeBytes);
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => MerkleTree.Build(leaves.Span, ShapeCheckLeafCount, TreeParameters, null!).Dispose());
+
+        Assert.AreEqual(PoolParameterName, thrown.ParamName);
+    }
+
+
+    /// <summary>
+    /// Build refuses a leaf count of zero with an <see cref="ArgumentOutOfRangeException"/> naming
+    /// <c>leafCount</c> and carrying the refused value. Zero is not a power of two either, but that check
+    /// answers with a plain <see cref="ArgumentException"/>, so the exact type shows the positivity guard
+    /// answered first.
+    /// </summary>
+    [TestMethod]
+    public void BuildRejectsAZeroLeafCount()
+    {
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => MerkleTree.Build(ReadOnlySpan<byte>.Empty, ZeroLeafCount, TreeParameters, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual(LeafCountParameterName, thrown.ParamName);
+        Assert.AreEqual(ZeroLeafCount, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// BuildSalted refuses missing compression parameters, naming <c>parameters</c>. The leaf count, the
+    /// values and the salts are well formed, so the parameters would otherwise first be reached where the
+    /// node width is read, as a null dereference rather than a caller fault.
+    /// </summary>
+    [TestMethod]
+    public void BuildSaltedRejectsNullParameters()
+    {
+        Memory<byte> leafValues = RentCleared(ExpectedShapeBytes);
+        Memory<byte> salts = RentCleared(ExpectedShapeBytes);
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => MerkleTree.BuildSalted(leafValues.Span, salts.Span, ShapeCheckLeafCount, null!, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual(ParametersParameterName, thrown.ParamName);
+    }
+
+
+    /// <summary>
+    /// BuildSalted refuses a missing pool, naming <c>pool</c>. The leaf count, the values and the salts are
+    /// well formed, so the pool would otherwise first be reached where the layer buffer is rented, as a null
+    /// dereference rather than a caller fault.
+    /// </summary>
+    [TestMethod]
+    public void BuildSaltedRejectsANullPool()
+    {
+        Memory<byte> leafValues = RentCleared(ExpectedShapeBytes);
+        Memory<byte> salts = RentCleared(ExpectedShapeBytes);
+
+        ArgumentNullException thrown = Assert.ThrowsExactly<ArgumentNullException>(
+            () => MerkleTree.BuildSalted(leafValues.Span, salts.Span, ShapeCheckLeafCount, TreeParameters, null!).Dispose());
+
+        Assert.AreEqual(PoolParameterName, thrown.ParamName);
+    }
+
+
+    /// <summary>
+    /// BuildSalted refuses a leaf count of zero with an <see cref="ArgumentOutOfRangeException"/> naming
+    /// <c>leafCount</c> and carrying the refused value. Zero is not a power of two either, but that check
+    /// answers with a plain <see cref="ArgumentException"/>, so the exact type shows the positivity guard
+    /// answered first.
+    /// </summary>
+    [TestMethod]
+    public void BuildSaltedRejectsAZeroLeafCount()
+    {
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => MerkleTree.BuildSalted(ReadOnlySpan<byte>.Empty, ReadOnlySpan<byte>.Empty, ZeroLeafCount, TreeParameters, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual(LeafCountParameterName, thrown.ParamName);
+        Assert.AreEqual(ZeroLeafCount, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// BuildSalted refuses a leaf count that is not a power of two, naming <c>leafCount</c> and stating the
+    /// refused count. The values and the salts are sized for that count, so the byte-length guards accept
+    /// them. Without the refusal the halving layers would lose a node and the root slot would never be
+    /// written, so the tree would commit to whatever the rented buffer held there.
+    /// </summary>
+    [TestMethod]
+    public void BuildSaltedRejectsANonPowerOfTwoLeafCount()
+    {
+        Memory<byte> leafValues = RentCleared(NonPowerOfTwoShapeBytes);
+        Memory<byte> salts = RentCleared(NonPowerOfTwoShapeBytes);
+
+        ArgumentException thrown = Assert.ThrowsExactly<ArgumentException>(
+            () => MerkleTree.BuildSalted(leafValues.Span, salts.Span, NonPowerOfTwoLeafCount, TreeParameters, BaseMemoryPool.Shared).Dispose());
+
+        Assert.AreEqual(LeafCountParameterName, thrown.ParamName);
+        Assert.Contains(
+            $"Merkle leaf count must be a power of two; received {NonPowerOfTwoLeafCount}.",
+            thrown.Message,
+            StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// GetNode refuses a level below the leaf level, naming <c>level</c> and carrying the refused value.
+    /// Minus one is below the depth and the index is the first node, so only the non-negative level guard
+    /// answers. The index bound shifts the leaf count by the level, and a shift count of minus one is masked
+    /// to its low five bits, 31, which leaves a bound of zero, so without this guard the index guard would
+    /// misreport the fault.
+    /// </summary>
+    [TestMethod]
+    public void GetNodeRejectsANegativeLevel()
+    {
+        MerkleTree tree = BuildRegisteredTree();
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = tree.GetNode(NegativeLevel, FirstIndexInLevel));
+
+        Assert.AreEqual(LevelParameterName, thrown.ParamName);
+        Assert.AreEqual(NegativeLevel, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// GetNode refuses a level above the root, naming <c>level</c> and carrying the refused value. The level
+    /// is non-negative and the index is the first node, so only the upper level guard answers. Past the root
+    /// the shifted leaf count is zero, so without this guard the index guard would misreport the fault.
+    /// </summary>
+    [TestMethod]
+    public void GetNodeRejectsALevelAboveTheRoot()
+    {
+        MerkleTree tree = BuildRegisteredTree();
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = tree.GetNode(AboveRootLevel, FirstIndexInLevel));
+
+        Assert.AreEqual(LevelParameterName, thrown.ParamName);
+        Assert.AreEqual(AboveRootLevel, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// GetNode refuses an index before the first node of a level, naming <c>indexInLevel</c> and carrying the
+    /// refused value. The level is the leaf level and minus one is below the level's node count, so only the
+    /// non-negative index guard answers, before a byte offset in front of the layer buffer is computed.
+    /// </summary>
+    [TestMethod]
+    public void GetNodeRejectsANegativeIndex()
+    {
+        MerkleTree tree = BuildRegisteredTree();
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = tree.GetNode(LeafLevel, NegativeIndexInLevel));
+
+        Assert.AreEqual(IndexInLevelParameterName, thrown.ParamName);
+        Assert.AreEqual(NegativeIndexInLevel, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// GetNode refuses, at the first level above the leaves, the index equal to that level's node count, naming
+    /// <c>indexInLevel</c> and carrying the refused value. The bound is the leaf count shifted right by the level,
+    /// half the leaf count here. The slot that index would address holds the root, inside the layer buffer, so
+    /// without the bound the read would silently return a node from the wrong level.
+    /// </summary>
+    [TestMethod]
+    public void GetNodeRejectsAnIndexPastTheEndOfAnInternalLevel()
+    {
+        MerkleTree tree = BuildRegisteredTree();
+
+        ArgumentOutOfRangeException thrown = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = tree.GetNode(FirstInternalLevel, FirstInternalLevelNodeCount));
+
+        Assert.AreEqual(IndexInLevelParameterName, thrown.ParamName);
+        Assert.AreEqual(FirstInternalLevelNodeCount, thrown.ActualValue);
+    }
+
+
+    /// <summary>
+    /// A disposed tree refuses node reads with an <see cref="ObjectDisposedException"/> naming the tree. Dispose
+    /// releases the layer buffer and drops the tree's hold on it, so no read can reach bytes the pool may
+    /// already have handed to another renter.
+    /// </summary>
+    [TestMethod]
+    public void GetNodeRejectsADisposedTree()
+    {
+        Memory<byte> leaves = RentCleared(PathLeafCount * DigestSizeBytes);
+        MerkleTree tree = MerkleTree.Build(leaves.Span, PathLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        tree.Dispose();
+
+        ObjectDisposedException thrown = Assert.ThrowsExactly<ObjectDisposedException>(
+            () => _ = tree.GetNode(LeafLevel, FirstIndexInLevel));
+
+        Assert.AreEqual(nameof(MerkleTree), thrown.ObjectName);
+    }
+
+
+    /// <summary>
+    /// Disposing a tree disposes the root it owns. A reference to the root taken before disposal refuses to
+    /// expose its bytes afterwards, and the refusal names the root's own type, so it comes from the root's
+    /// disposed check rather than from the pool rental behind it.
+    /// </summary>
+    [TestMethod]
+    public void DisposeReleasesTheRootTheTreeOwns()
+    {
+        Memory<byte> leaves = RentCleared(PathLeafCount * DigestSizeBytes);
+        MerkleTree tree = MerkleTree.Build(leaves.Span, PathLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        MerkleRoot root = tree.Root;
+        tree.Dispose();
+
+        ObjectDisposedException thrown = Assert.ThrowsExactly<ObjectDisposedException>(() => _ = root.AsReadOnlySpan());
+
+        Assert.AreEqual(typeof(MerkleRoot).FullName, thrown.ObjectName);
+    }
+
+
+    /// <summary>
+    /// Disposing a tree returns both of its rentals, the layer buffer and the root, to the pool it was built
+    /// from. The tree is built from a private pool, and <see cref="BaseMemoryPool.TrimExcess"/> reclaims only
+    /// slabs with no active rental, so reclaiming <see cref="ExpectedReclaimedSlabCount"/> slabs shows that
+    /// neither rental is still held.
+    /// </summary>
+    [TestMethod]
+    public void DisposeReturnsTheLayerBufferAndTheRootToThePool()
+    {
+        using BaseMemoryPool pool = new();
+        Memory<byte> leaves = RentCleared(PathLeafCount * DigestSizeBytes);
+
+        MerkleTree tree = MerkleTree.Build(leaves.Span, PathLeafCount, TreeParameters, pool);
+        tree.Dispose();
+
+        Assert.AreEqual(ExpectedReclaimedSlabCount, pool.TrimExcess(), "A disposed tree must hold no rental from the pool it was built from.");
+    }
+
+
+    /// <summary>
     /// Rents a pooled buffer, clears it so every byte a test passes is deterministic, and
     /// registers the rental for release in <see cref="DisposeRentals"/>.
     /// </summary>
@@ -347,6 +743,37 @@ internal sealed class MerkleTreeTests
         buffer.Span.Clear();
 
         return buffer;
+    }
+
+
+    /// <summary>
+    /// Builds a tree over <see cref="PathLeafCount"/> cleared leaves and the authentication path of
+    /// leaf <see cref="PathLeafIndex"/>, registering the tree and the path for release in
+    /// <see cref="DisposeRentals"/>.
+    /// </summary>
+    /// <returns>A path holding <see cref="PathDepth"/> sibling digests, one node width each.</returns>
+    private MerkleAuthenticationPath BuildRegisteredPath()
+    {
+        MerkleTree tree = BuildRegisteredTree();
+        MerkleAuthenticationPath path = tree.BuildPath(PathLeafIndex, BaseMemoryPool.Shared);
+        Disposables.Add(path);
+
+        return path;
+    }
+
+
+    /// <summary>
+    /// Builds a tree over <see cref="PathLeafCount"/> cleared leaves, registering the leaves and the tree for
+    /// release in <see cref="DisposeRentals"/>.
+    /// </summary>
+    /// <returns>A tree of depth <see cref="PathDepth"/> whose nodes are one digest wide.</returns>
+    private MerkleTree BuildRegisteredTree()
+    {
+        Memory<byte> leaves = RentCleared(PathLeafCount * DigestSizeBytes);
+        MerkleTree tree = MerkleTree.Build(leaves.Span, PathLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        Disposables.Add(tree);
+
+        return tree;
     }
 
 
