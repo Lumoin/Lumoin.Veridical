@@ -297,12 +297,8 @@ public static class CircomWitnessReader
         }
 
         //Drop z[0] (the canonical constant 1) and reverse each
-        //remaining scalar LE -> BE into the destination buffer.
-        if(nWitness < 1)
-        {
-            throw new ArgumentException(".wtns witness section is empty; expected at least one element (the constant).");
-        }
-
+        //remaining scalar LE -> BE into the destination buffer. The header parse rejects nWitness = 0, so the
+        //constant is always present.
         int privateCount = (int)(nWitness - 1);
         if(privateCount == 0)
         {
@@ -312,24 +308,15 @@ public static class CircomWitnessReader
 
         byte[] destination = new byte[privateCount * scalarSizeBytes];
         var reader = new SequenceReader<byte>(witnessDataLittleEndian);
-
-        //Skip z[0].
         Span<byte> scratch = stackalloc byte[scalarSizeBytes];
-        if(!reader.TryCopyTo(scratch))
-        {
-            throw new ArgumentException(".wtns witness section truncated while skipping z[0].");
-        }
 
+        //The section length was checked against nWitness whole scalars above, so every element read below lies
+        //inside it. Element 0 is the constant z[0] and is skipped.
         reader.Advance(scalarSizeBytes);
 
         for(int i = 0; i < privateCount; i++)
         {
-            if(!reader.TryCopyTo(scratch))
-            {
-                throw new ArgumentException(
-                    $".wtns witness section truncated while reading element {i + 1} of {nWitness}.");
-            }
-
+            reader.UnreadSequence.Slice(0, scalarSizeBytes).CopyTo(scratch);
             reader.Advance(scalarSizeBytes);
 
             //LE -> BE: write the bytes in reverse order into the

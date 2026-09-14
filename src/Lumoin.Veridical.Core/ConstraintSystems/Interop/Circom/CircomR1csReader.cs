@@ -376,13 +376,13 @@ public static class CircomR1csReader
                 $"R1CS constraint section has {reader.Remaining} trailing bytes after the declared {constraintCount} constraints.");
         }
 
-        R1csMatrix a = aTriples.Build(constraintCount, variableCount, curve, pool, "A");
+        R1csMatrix a = aTriples.Build(constraintCount, variableCount, curve, pool);
         R1csMatrix b;
         R1csMatrix c;
 
         try
         {
-            b = bTriples.Build(constraintCount, variableCount, curve, pool, "B");
+            b = bTriples.Build(constraintCount, variableCount, curve, pool);
         }
         catch
         {
@@ -392,7 +392,7 @@ public static class CircomR1csReader
 
         try
         {
-            c = cTriples.Build(constraintCount, variableCount, curve, pool, "C");
+            c = cTriples.Build(constraintCount, variableCount, curve, pool);
         }
         catch
         {
@@ -434,14 +434,8 @@ public static class CircomR1csReader
     {
         uint nTerms = ReadUInt32Le(ref reader, "linearCombination.nTerms");
 
-        Span<byte> coefficientLe = stackalloc byte[64];
-        if(scalarSizeBytes > coefficientLe.Length)
-        {
-            throw new ArgumentException(
-                $"Scalar size {scalarSizeBytes} exceeds the inline buffer width.");
-        }
-
-        coefficientLe = coefficientLe[..scalarSizeBytes];
+        //The scalar width comes from the declared curve, never from the file, so the buffer holds exactly one coefficient.
+        Span<byte> coefficientLe = stackalloc byte[scalarSizeBytes];
 
         for(uint t = 0; t < nTerms; t++)
         {
@@ -514,8 +508,7 @@ public static class CircomR1csReader
             int rowCount,
             int columnCount,
             CurveParameterSet curve,
-            BaseMemoryPool pool,
-            string matrixName)
+            BaseMemoryPool pool)
         {
             if(rows.Count == 0)
             {
@@ -532,12 +525,8 @@ public static class CircomR1csReader
                     rowCount, columnCount, curve, pool);
             }
 
+            //Every Add appends one row and exactly one scalar's coefficient bytes, so valueBytes holds nnz scalars.
             int nnz = rows.Count;
-            if(valueBytes.Count != nnz * scalarSizeBytes)
-            {
-                throw new InvalidOperationException(
-                    $"Internal triple accumulator for matrix {matrixName} has {valueBytes.Count} value bytes for {nnz} triples; expected {nnz * scalarSizeBytes}.");
-            }
 
             //Sort triples lexicographically by (row, column). Rows already
             //arrive grouped and ascending (constraints are read in row order);
