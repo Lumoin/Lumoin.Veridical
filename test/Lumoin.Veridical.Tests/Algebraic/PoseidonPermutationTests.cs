@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
+using System.Numerics;
 using System.Threading;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
@@ -39,6 +40,9 @@ internal sealed class PoseidonPermutationTests
     /// <summary>The input count of a two-to-one Poseidon hash, whose state is three lanes wide.</summary>
     private const int TwoInputCount = 2;
 
+    /// <summary>The state width of a two-to-one Poseidon hash: its two input lanes plus the capacity lane.</summary>
+    private const int TwoInputStateWidth = TwoInputCount + CapacityLanes;
+
     /// <summary>A state four scalars wide, one lane wider than the three-lane state a two-input parameter set declares.</summary>
     private const int ForeignStateScalars = 4;
 
@@ -54,8 +58,11 @@ internal sealed class PoseidonPermutationTests
     /// <summary>The capacity lanes of the hash state, which carry no input.</summary>
     private const int CapacityLanes = 1;
 
+    /// <summary>The widest state the stack scratch holds: its 544 bytes are exactly 17 lanes.</summary>
+    private const int WidestScratchStateWidth = WellKnownPoseidonScratch.MaximumStateBytes / ScalarSize;
+
     /// <summary>One lane past the widest state the stack scratch holds: 544 bytes are 17 lanes, so this is 18.</summary>
-    private const int OversizedStateWidth = (WellKnownPoseidonScratch.MaximumStateBytes / ScalarSize) + 1;
+    private const int OversizedStateWidth = WidestScratchStateWidth + 1;
 
     /// <summary>The state width of a one-input hash, which the parameter constructor accepts but a two-to-one compression cannot use.</summary>
     private const int OneInputStateWidth = 2;
@@ -90,8 +97,20 @@ internal sealed class PoseidonPermutationTests
     /// <summary>The parameter name the digest-width guard of the hash reports.</summary>
     private const string DigestParameterName = "digest";
 
-    /// <summary>The parameter name the scratch-bound guard of the hash and the arity guard of the Merkle compression report.</summary>
+    /// <summary>
+    /// The parameter name the parameter-set null guards, the scratch-bound guard of the hash and the arity guard of
+    /// the Merkle compression report.
+    /// </summary>
     private const string ParametersParameterName = "parameters";
+
+    /// <summary>The parameter name the addition-backend null guards of the permutation and the Merkle compression report.</summary>
+    private const string AddParameterName = "add";
+
+    /// <summary>The parameter name the multiplication-backend null guards of the permutation and the Merkle compression report.</summary>
+    private const string MultiplyParameterName = "multiply";
+
+    /// <summary>The wire-name prefix the independent modular trace binds its intermediate values under.</summary>
+    private const string TraceName = "h";
 
     /// <summary>The state-width refusal for a four-scalar state against three lanes: three lanes are 96 bytes, and four scalars are 128.</summary>
     private const string WrongStateWidthMessage = "The state must be exactly 3 scalars (96 bytes); received 128.";
@@ -491,6 +510,190 @@ internal sealed class PoseidonPermutationTests
     }
 
 
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Permute"/> refuses a null parameter set with an
+    /// <see cref="ArgumentNullException"/> that names <c>parameters</c>, instead of faulting with a
+    /// <see cref="NullReferenceException"/> where the state width is read out of it. Both backends are non-null and the
+    /// state is three canonical scalars, so this is the first guard the call meets and nothing else can answer in its
+    /// place; the other refusals that name <c>parameters</c> are <see cref="ArgumentException"/>, which the exact-type
+    /// assertion separates from this one.
+    /// </summary>
+    [TestMethod]
+    public void PermuteRejectsNullParameters()
+    {
+        Memory<byte> state = RentCanonicalScalars(TwoInputStateWidth, StateFillSalt);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
+            () => PoseidonPermutation.Permute(null!, state.Span, Bn254Add, Bn254Multiply),
+            "A null parameter set must be refused.");
+
+        Assert.AreEqual(ParametersParameterName, exception.ParamName, "The refusal must name the parameters parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Permute"/> refuses a null addition backend with an
+    /// <see cref="ArgumentNullException"/> that names <c>add</c>, instead of invoking the missing delegate at the first
+    /// round-constant addition and faulting with a <see cref="NullReferenceException"/>. The parameter set is a
+    /// constructed three-lane set and the multiplication backend is non-null, and the state is exactly three canonical
+    /// scalars, which is both the declared width and inside the scratch bound, so only this guard can fire and no other
+    /// refusal names <c>add</c>.
+    /// </summary>
+    [TestMethod]
+    public void PermuteRejectsANullAddition()
+    {
+        PoseidonParameters parameters = CreateMinimalParameters(TwoInputStateWidth);
+        Memory<byte> state = RentCanonicalScalars(TwoInputStateWidth, StateFillSalt);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
+            () => PoseidonPermutation.Permute(parameters, state.Span, null!, Bn254Multiply),
+            "A null addition backend must be refused.");
+
+        Assert.AreEqual(AddParameterName, exception.ParamName, "The refusal must name the add parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Permute"/> refuses a null multiplication backend with an
+    /// <see cref="ArgumentNullException"/> that names <c>multiply</c>, instead of adding the first round's constants
+    /// through the live addition backend and then faulting with a <see cref="NullReferenceException"/> at the first
+    /// S-box squaring. The parameter set is a constructed three-lane set and the addition backend is non-null, and the
+    /// state is exactly three canonical scalars, so only this guard can fire and no other refusal names
+    /// <c>multiply</c>.
+    /// </summary>
+    [TestMethod]
+    public void PermuteRejectsANullMultiplication()
+    {
+        PoseidonParameters parameters = CreateMinimalParameters(TwoInputStateWidth);
+        Memory<byte> state = RentCanonicalScalars(TwoInputStateWidth, StateFillSalt);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
+            () => PoseidonPermutation.Permute(parameters, state.Span, Bn254Add, null!),
+            "A null multiplication backend must be refused.");
+
+        Assert.AreEqual(MultiplyParameterName, exception.ParamName, "The refusal must name the multiply parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Hash"/> refuses a null parameter set with an
+    /// <see cref="ArgumentNullException"/> that names <c>parameters</c>, instead of faulting with a
+    /// <see cref="NullReferenceException"/> where the state width is read out of it. The inputs are two canonical
+    /// scalars, the digest is one, and both backends are non-null, so this is the first guard the call meets; the
+    /// permutation's own null guard is never reached, and the scratch-bound refusal that also names <c>parameters</c>
+    /// is an <see cref="ArgumentException"/>.
+    /// </summary>
+    [TestMethod]
+    public void HashRejectsNullParameters()
+    {
+        Memory<byte> inputs = RentCanonicalScalars(TwoInputCount, InputFillSalt);
+        Memory<byte> digest = RentCanonicalScalars(DigestScalars, DigestFillSalt);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
+            () => PoseidonPermutation.Hash(null!, inputs.Span, digest.Span, Bn254Add, Bn254Multiply),
+            "A null parameter set must be refused.");
+
+        Assert.AreEqual(ParametersParameterName, exception.ParamName, "The refusal must name the parameters parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.Hash"/> still hashes at the widest state the stack scratch holds,
+    /// instead of refusing a width it can serve. The scratch is 544 bytes, which is exactly 17 lanes, and both
+    /// scratch-bound guards compare the state length against that scratch, so 17 lanes is the single width at which an
+    /// inclusive comparison refuses and the exclusive one admits; no narrower width the other tests use can tell the
+    /// two apart. The digest is held to <see cref="R1csPoseidonWitness.AddPoseidonHashWitness"/>, which reruns the
+    /// same schedule, MDS orientation and initial state in modular <see cref="BigInteger"/> arithmetic with neither a
+    /// stack scratch nor a width bound, so the expected value is independent of the guards under test. The parameter
+    /// set carries the smallest round shape the constructor accepts, which bounds the work to a few thousand field
+    /// operations.
+    /// </summary>
+    [TestMethod]
+    public void HashAtTheWidestScratchStateMatchesTheIndependentTrace()
+    {
+        const int WidestScratchInputCount = WidestScratchStateWidth - CapacityLanes;
+
+        PoseidonParameters parameters = CreateMinimalParameters(WidestScratchStateWidth);
+        Memory<byte> inputs = RentCanonicalScalars(WidestScratchInputCount, InputFillSalt);
+        Memory<byte> digest = RentCanonicalScalars(DigestScalars, DigestFillSalt);
+
+        PoseidonPermutation.Hash(parameters, inputs.Span, digest.Span, Bn254Add, Bn254Multiply);
+
+        BigInteger[] traceInputs = new BigInteger[WidestScratchInputCount];
+        for(int lane = 0; lane < WidestScratchInputCount; lane++)
+        {
+            traceInputs[lane] = ToFieldElement(inputs.Span.Slice(lane * ScalarSize, ScalarSize));
+        }
+
+        BigInteger expected = R1csPoseidonWitness.AddPoseidonHashWitness(
+            new Dictionary<string, BigInteger>(StringComparer.Ordinal), TraceName, traceInputs, parameters);
+
+        Assert.AreEqual(
+            expected,
+            ToFieldElement(digest.Span),
+            "The digest at the widest state the scratch holds must equal the independent modular trace.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.GetMerkleHash"/> refuses a null parameter set with an
+    /// <see cref="ArgumentNullException"/> that names <c>parameters</c>, instead of faulting with a
+    /// <see cref="NullReferenceException"/> where the state width is read out of it. Both backends are non-null, so
+    /// this is the first guard the call meets; the arity refusal also names <c>parameters</c> but is an
+    /// <see cref="ArgumentException"/>, which the exact-type assertion separates from this one.
+    /// </summary>
+    [TestMethod]
+    public void GetMerkleHashRejectsNullParameters()
+    {
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
+            () => _ = PoseidonPermutation.GetMerkleHash(null!, Bn254Add, Bn254Multiply),
+            "A null parameter set must be refused.");
+
+        Assert.AreEqual(ParametersParameterName, exception.ParamName, "The refusal must name the parameters parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.GetMerkleHash"/> refuses a null addition backend when the compression
+    /// is requested, with an <see cref="ArgumentNullException"/> that names <c>add</c>, instead of handing back a
+    /// compression that carries the missing backend and fails only at its first invocation. The parameter set is a
+    /// constructed three-lane set, so the arity guard passes, and the multiplication backend is non-null. The returned
+    /// compression is never invoked, so the permutation's own <c>add</c> guard cannot answer in its place.
+    /// </summary>
+    [TestMethod]
+    public void GetMerkleHashRejectsANullAddition()
+    {
+        PoseidonParameters parameters = CreateMinimalParameters(TwoInputStateWidth);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
+            () => _ = PoseidonPermutation.GetMerkleHash(parameters, null!, Bn254Multiply),
+            "A null addition backend must be refused when the compression is requested.");
+
+        Assert.AreEqual(AddParameterName, exception.ParamName, "The refusal must name the add parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonPermutation.GetMerkleHash"/> refuses a null multiplication backend when the
+    /// compression is requested, with an <see cref="ArgumentNullException"/> that names <c>multiply</c>, instead of
+    /// handing back a compression that carries the missing backend and fails only at its first invocation. The
+    /// parameter set is a constructed three-lane set, so the arity guard passes, and the addition backend is non-null.
+    /// The returned compression is never invoked, so the permutation's own <c>multiply</c> guard cannot answer in its
+    /// place.
+    /// </summary>
+    [TestMethod]
+    public void GetMerkleHashRejectsANullMultiplication()
+    {
+        PoseidonParameters parameters = CreateMinimalParameters(TwoInputStateWidth);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
+            () => _ = PoseidonPermutation.GetMerkleHash(parameters, Bn254Add, null!),
+            "A null multiplication backend must be refused when the compression is requested.");
+
+        Assert.AreEqual(MultiplyParameterName, exception.ParamName, "The refusal must name the multiply parameter.");
+    }
+
+
     private static byte[] LoadFixtureWitnessBytes(string curveDirectory)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, FixtureDirectoryRelative, curveDirectory);
@@ -549,7 +752,8 @@ internal sealed class PoseidonPermutationTests
     /// Builds a BN254 parameter set of <paramref name="stateWidth"/> lanes through the public constructor, with the
     /// smallest round shape it accepts and deterministic canonical round constants and MDS entries. The constructor
     /// bounds the width only from below, so this reaches widths the generated circomlib sets never have. The values
-    /// are not a vetted instantiation; the tests that use them are refused before any round reads them.
+    /// are not a vetted instantiation and carry no security claim; they are well-formed canonical field elements of
+    /// the declared shape, which is all a width guard and a digest comparison against an independent trace need.
     /// </summary>
     /// <param name="stateWidth">The state width <c>t</c>; at least two.</param>
     /// <returns>The constructed parameter set.</returns>
@@ -560,4 +764,15 @@ internal sealed class PoseidonPermutationTests
 
         return new PoseidonParameters(stateWidth, MinimalFullRounds, MinimalPartialRounds, roundConstants.Span, mdsMatrix.Span, CurveParameterSet.Bn254);
     }
+
+
+    /// <summary>
+    /// Reads a canonical big-endian scalar as the field element it encodes, which is the representation the modular
+    /// trace states its values in. Every scalar the permutation emits is already reduced, so the reading is exact and
+    /// needs no further reduction.
+    /// </summary>
+    /// <param name="canonicalBigEndian">The canonical scalar bytes.</param>
+    /// <returns>The field element the bytes encode.</returns>
+    private static BigInteger ToFieldElement(ReadOnlySpan<byte> canonicalBigEndian) =>
+        new(canonicalBigEndian, isUnsigned: true, isBigEndian: true);
 }
