@@ -1,6 +1,8 @@
 using Lumoin.Veridical.Core.Memory;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 
@@ -31,22 +33,44 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 /// </remarks>
 internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
 {
+    /// <summary>The curve identifying the scalar field of the decoded stream.</summary>
     private readonly CurveParameterSet curve;
+
+    /// <summary>The pool supplying staging buffers and the constructed instance's storage.</summary>
     private readonly BaseMemoryPool pool;
+
+    /// <summary>The canonical byte width of each coefficient.</summary>
     private readonly int scalarSizeBytes;
 
+    /// <summary>The accumulated terms of the left matrix.</summary>
     private readonly TripleAccumulator aTriples;
+
+    /// <summary>The accumulated terms of the middle matrix.</summary>
     private readonly TripleAccumulator bTriples;
+
+    /// <summary>The accumulated terms of the right matrix.</summary>
     private readonly TripleAccumulator cTriples;
 
+    /// <summary>Whether the stream has declared its field maximum.</summary>
     private bool fieldSeen;
+
+    /// <summary>Whether the stream has declared a free variable ID.</summary>
     private bool freeVariableIdSeen;
+
+    /// <summary>The widest variable space declared by the stream.</summary>
     private ulong freeVariableId;
+
+    /// <summary>The greatest referenced variable ID, or minus one when none has been seen.</summary>
     private long maxVariableId = -1;
+
+    /// <summary>The current constraint row, or minus one before the first constraint.</summary>
     private int currentRow = -1;
+
+    /// <summary>The number of constraints begun in the stream.</summary>
     private int constraintCount;
 
 
+    /// <summary>Creates an empty instance builder for the supplied curve and memory pool.</summary>
     public ZkInterfaceR1csInstanceBuilder(CurveParameterSet curve, BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(pool);
@@ -60,6 +84,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Checks the stream's single field maximum against the declared curve.</summary>
     public void OnFieldMaximum(ReadOnlySpan<byte> fieldMaximumLittleEndian)
     {
         if(fieldSeen)
@@ -72,6 +97,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Records the widest declared variable space.</summary>
     public void OnFreeVariableId(ulong freeVariableId)
     {
         //A complete circuit carries a single header; tolerate repeats by
@@ -81,6 +107,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Tracks an instance variable's ID under the convention that all nonconstant variables are private.</summary>
     public void OnInstanceVariable(ulong variableId, ReadOnlySpan<byte> valueLittleEndian)
     {
         //Values are ignored under the PublicInputCount = 0 convention; the ID
@@ -89,6 +116,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Advances to the next constraint row.</summary>
     public void BeginConstraint()
     {
         currentRow++;
@@ -96,6 +124,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Appends a term to the selected matrix at the current constraint row.</summary>
     public void OnConstraintTerm(ZkInterfaceConstraintMatrix matrix, ulong variableId, ReadOnlySpan<byte> coefficientLittleEndian)
     {
         if(currentRow < 0)
@@ -166,6 +195,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Resolves a positive column count covering all declared and referenced variable IDs.</summary>
     private int ResolveColumnCount()
     {
         int fromFreeVariableId = 0;
@@ -191,6 +221,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Validates a variable ID, widens the referenced variable space, and returns its column.</summary>
     private int TrackVariableId(ulong variableId)
     {
         //The resolved column count is maxVariableId + 1 and must fit in Int32; a variable id at
@@ -210,6 +241,7 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     }
 
 
+    /// <summary>Returns the accumulator for a recognised matrix selector.</summary>
     private TripleAccumulator Accumulator(ZkInterfaceConstraintMatrix matrix) => matrix switch
     {
         ZkInterfaceConstraintMatrix.A => aTriples,
@@ -228,18 +260,27 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
     /// </summary>
     private sealed class TripleAccumulator
     {
+        /// <summary>The canonical byte width of every coefficient stored in this accumulator.</summary>
         private readonly int scalarSizeBytes;
+
+        /// <summary>The constraint row for each encoded term, in arrival order.</summary>
         private readonly List<int> rows = new();
+
+        /// <summary>The variable column for each encoded term, in arrival order.</summary>
         private readonly List<int> columns = new();
+
+        /// <summary>The canonical big-endian coefficients, one scalar per encoded term in arrival order.</summary>
         private readonly List<byte> valueBytes = new();
 
 
+        /// <summary>Creates an empty accumulator whose coefficients have the supplied canonical byte width.</summary>
         public TripleAccumulator(int scalarSizeBytes)
         {
             this.scalarSizeBytes = scalarSizeBytes;
         }
 
 
+        /// <summary>Appends a term after bounding the accumulated bytes and converting its coefficient to canonical big-endian.</summary>
         public void Add(int row, int column, ReadOnlySpan<byte> coefficientLittleEndian)
         {
             //Bound the byte accumulator at intake, mirroring the witness builder's Assign cap:
@@ -267,6 +308,11 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
         }
 
 
+        /// <summary>Sorts terms by row and column and constructs a matrix, supplying one zero entry when no terms are encoded.</summary>
+        /// <remarks>
+        /// Coefficients are staged in a pooled buffer and copied into the matrix's own storage by
+        /// <see cref="R1csMatrix.FromSortedTriples"/>. The staging rental is disposed when this method exits.
+        /// </remarks>
         public R1csMatrix Build(int rowCount, int columnCount, CurveParameterSet curve, BaseMemoryPool pool)
         {
             if(rows.Count == 0)
@@ -276,7 +322,10 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
                 //the invariant without changing satisfaction semantics.
                 int[] singleRow = [0];
                 int[] singleColumn = [0];
-                byte[] zeroValue = new byte[scalarSizeBytes];
+                using IMemoryOwner<byte> zeroValueOwner = pool.Rent(scalarSizeBytes);
+                Span<byte> zeroValue = zeroValueOwner.Memory.Span[..scalarSizeBytes];
+                zeroValue.Clear();
+
                 return R1csMatrix.FromSortedTriples(singleRow, singleColumn, zeroValue, rowCount, columnCount, curve, pool);
             }
 
@@ -294,19 +343,23 @@ internal sealed class ZkInterfaceR1csInstanceBuilder: IZkInterfaceMessageSink
             Array.Sort(order, (x, y) =>
             {
                 int byRow = rows[x].CompareTo(rows[y]);
+
                 return byRow != 0 ? byRow : columns[x].CompareTo(columns[y]);
             });
 
             int[] sortedRows = new int[nonZeroCount];
             int[] sortedColumns = new int[nonZeroCount];
-            byte[] sortedValues = new byte[nonZeroCount * scalarSizeBytes];
-            byte[] flatValues = valueBytes.ToArray();
+            int sortedValuesLength = nonZeroCount * scalarSizeBytes;
+            using IMemoryOwner<byte> sortedValuesOwner = pool.Rent(sortedValuesLength);
+            Span<byte> sortedValues = sortedValuesOwner.Memory.Span[..sortedValuesLength];
+            ReadOnlySpan<byte> flatValues = CollectionsMarshal.AsSpan(valueBytes);
             for(int i = 0; i < nonZeroCount; i++)
             {
                 int source = order[i];
                 sortedRows[i] = rows[source];
                 sortedColumns[i] = columns[source];
-                Array.Copy(flatValues, source * scalarSizeBytes, sortedValues, i * scalarSizeBytes, scalarSizeBytes);
+                flatValues.Slice(source * scalarSizeBytes, scalarSizeBytes)
+                    .CopyTo(sortedValues.Slice(i * scalarSizeBytes, scalarSizeBytes));
             }
 
             return R1csMatrix.FromSortedTriples(sortedRows, sortedColumns, sortedValues, rowCount, columnCount, curve, pool);
