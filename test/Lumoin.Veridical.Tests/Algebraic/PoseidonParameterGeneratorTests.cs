@@ -9,9 +9,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
 /// The argument surface and the draw sequence of <see cref="PoseidonParameterGenerator.Generate"/>. A null
-/// delegate, a state width below two, a non-positive or odd round count, a field size outside one scalar and a
-/// modulus that is not one scalar wide are each rejected with the documented exception and parameter name before
-/// the Grain stream is seeded and before the caller-supplied add and invert backends run; a field size of exactly
+/// delegate, a state width below two, a non-positive or odd round count, a field size outside one scalar, a modulus
+/// that is not one scalar wide and a modulus whose bit length is not the field size are each rejected with the
+/// documented exception and parameter name before the Grain stream is seeded and before the caller-supplied add and
+/// invert backends run; a field size of exactly
 /// one scalar is accepted; and over fields narrow enough to follow draw by draw, the round constants the stream
 /// yields, the rejection sampling that keeps them below the modulus, and the one-step reduction of the raw Cauchy
 /// points are pinned to values derived from the Grain procedure rather than from this implementation.
@@ -48,6 +49,18 @@ internal sealed class PoseidonParameterGeneratorTests
 
     /// <summary>A field size one bit wider than a single scalar carries, above the accepted range.</summary>
     private const int FieldSizeBitsBeyondOneScalar = (BitsPerByte * ScalarSize) + 1;
+
+    /// <summary>A field size one bit shorter than the bit length of the BN254 order.</summary>
+    private const int FieldSizeBitsBelowTheBn254Order = Bn254FieldSizeBits - 1;
+
+    /// <summary>A field size one bit longer than the bit length of the BN254 order.</summary>
+    private const int FieldSizeBitsAboveTheBn254Order = Bn254FieldSizeBits + 1;
+
+    /// <summary>A modulus of zero, one scalar wide, whose bit length of zero matches no accepted field size.</summary>
+    private const string ZeroModulusHex = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    /// <summary>The bit length of the zero modulus.</summary>
+    private const int ZeroModulusBitLength = 0;
 
     /// <summary>A modulus length one byte short of one scalar.</summary>
     private const int NarrowModulusLength = ScalarSize - 1;
@@ -118,8 +131,14 @@ internal sealed class PoseidonParameterGeneratorTests
     /// </summary>
     private const string WidestModulusHex = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
 
-    /// <summary>An eight-bit field size, whose every draw lands far below the BN254 order and is accepted at once.</summary>
+    /// <summary>An eight-bit field size, matching the bit length of the eight-bit modulus.</summary>
     private const int EightBitFieldSize = 8;
+
+    /// <summary>
+    /// A modulus of <c>0xFB</c>, exactly eight bits wide like the field it samples, and above each of the six round
+    /// constants the stream yields for the two-lane shape, so none of those draws is rejected.
+    /// </summary>
+    private const string EightBitModulusHex = "00000000000000000000000000000000000000000000000000000000000000FB";
 
     /// <summary>
     /// The six round constants the Grain stream yields for the two-lane shape over an eight-bit field, one byte
@@ -283,6 +302,62 @@ internal sealed class PoseidonParameterGeneratorTests
 
 
     /// <summary>
+    /// Pins that <see cref="PoseidonParameterGenerator.Generate"/> rejects a modulus whose bit length is not
+    /// <c>fieldSizeBits</c> with an <see cref="ArgumentException"/> that names <c>modulus</c> and states both bit
+    /// lengths, before any backend delegate is called. The field size is the bit length the Grain descriptor
+    /// encodes, the width of every draw, and the bound the one-step Cauchy reduction relies on: with a shorter
+    /// modulus a raw draw can exceed twice the modulus and leave the reduction non-canonical, and with a longer one
+    /// the constants belong to a different parameter set. The BN254 order is 254 bits, so a field size one bit either
+    /// side of it is the smallest mismatch. Every other argument is valid and the modulus is one scalar wide, so no
+    /// sibling guard answers first, and the exact exception type excludes the
+    /// <see cref="ArgumentOutOfRangeException"/> the range checks raise.
+    /// </summary>
+    /// <param name="fieldSizeBits">A field size one bit shorter or longer than the BN254 order.</param>
+    [TestMethod]
+    [DataRow(FieldSizeBitsBelowTheBn254Order)]
+    [DataRow(FieldSizeBitsAboveTheBn254Order)]
+    public void GenerateRejectsAModulusWhoseBitLengthIsNotTheFieldSize(int fieldSizeBits)
+    {
+        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
+        var backend = new CountingBn254ScalarBackend();
+        string expectedMessage = $"The modulus bit length must equal fieldSizeBits ({fieldSizeBits}); received a modulus of {Bn254FieldSizeBits} bits.";
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, fieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            "A modulus whose bit length is not the field size must be rejected.");
+
+        Assert.AreEqual(ModulusParameterName, exception.ParamName, "The rejection must name the modulus parameter.");
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
+        Assert.AreEqual(NoBackendCalls, backend.AddCalls, "A modulus of the wrong bit length must be rejected before any scalar addition.");
+        Assert.AreEqual(NoBackendCalls, backend.InvertCalls, "A modulus of the wrong bit length must be rejected before any scalar inversion.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="PoseidonParameterGenerator.Generate"/> rejects a modulus of zero with an
+    /// <see cref="ArgumentException"/> that names <c>modulus</c>, instead of entering rejection sampling, where no
+    /// draw can ever fall below zero. Every accepted field size is at least one bit, so the zero modulus's bit length
+    /// of zero never matches; every other argument is valid, so no sibling guard answers first.
+    /// </summary>
+    [TestMethod]
+    public void GenerateRejectsAZeroModulus()
+    {
+        Memory<byte> modulus = RentModulus(ZeroModulusHex);
+        var backend = new CountingBn254ScalarBackend();
+        string expectedMessage = $"The modulus bit length must equal fieldSizeBits ({Bn254FieldSizeBits}); received a modulus of {ZeroModulusBitLength} bits.";
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            "A zero modulus must be rejected.");
+
+        Assert.AreEqual(ModulusParameterName, exception.ParamName, "The rejection must name the modulus parameter.");
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
+        Assert.AreEqual(NoBackendCalls, backend.AddCalls, "A zero modulus must be rejected before any scalar addition.");
+        Assert.AreEqual(NoBackendCalls, backend.InvertCalls, "A zero modulus must be rejected before any scalar inversion.");
+    }
+
+
+    /// <summary>
     /// Pins that <see cref="PoseidonParameterGenerator.Generate"/> rejects a null addition backend with an
     /// <see cref="ArgumentNullException"/> that names <c>add</c>, rather than seeding the Grain stream, drawing
     /// every round constant and every Cauchy point, and only then faulting with a
@@ -433,15 +508,15 @@ internal sealed class PoseidonParameterGeneratorTests
     /// <summary>
     /// Pins the round constants the Grain stream yields for a two-lane state over an eight-bit field against the
     /// values the procedure defines: seed the 80-bit register with the parameter descriptor, step it by the
-    /// feedback recurrence, discard the first 160 raw bits, and take the remaining bits pairwise. An eight-bit
-    /// field keeps every draw far below the BN254 order, so no draw is ever rejected and each constant is exactly
-    /// the eight filtered bits that follow the previous one. That makes the whole register — its seeding, its
-    /// stepping and the discarded prefix — observable in six bytes.
+    /// feedback recurrence, discard the first 160 raw bits, and take the remaining bits pairwise. The modulus
+    /// <c>0xFB</c> has the field's eight-bit length and lies above all six draws, so no draw is rejected and each
+    /// constant is exactly the eight filtered bits that follow the previous one. That makes the whole register — its
+    /// seeding, its stepping and the discarded prefix — observable in six bytes.
     /// </summary>
     [TestMethod]
     public void GenerateDrawsTheGrainRoundConstantsOverAnEightBitField()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
+        Memory<byte> modulus = RentModulus(EightBitModulusHex);
         var backend = new CountingBn254ScalarBackend();
 
         PoseidonParameters parameters = PoseidonParameterGenerator.Generate(

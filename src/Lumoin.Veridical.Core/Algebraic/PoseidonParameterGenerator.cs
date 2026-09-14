@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace Lumoin.Veridical.Core.Algebraic;
 
@@ -34,6 +35,9 @@ public static class PoseidonParameterGenerator
 {
     private const int ScalarSize = Scalar.SizeBytes;
 
+    /// <summary>The number of bits in one byte of the canonical big-endian modulus.</summary>
+    private const int BitsPerByte = 8;
+
     //The Grain LFSR's 80-bit state and the descriptor sub-field widths.
     private const int LfsrStateBits = 80;
     private const int DiscardedWarmupBits = 160;
@@ -59,15 +63,15 @@ public static class PoseidonParameterGenerator
     /// <param name="stateWidth">The state width <c>t</c>; at least 2.</param>
     /// <param name="fullRounds">The full round count <c>R_F</c>; positive and even.</param>
     /// <param name="partialRounds">The partial round count <c>R_P</c>; positive.</param>
-    /// <param name="fieldSizeBits">The modulus bit length <c>n</c> (254 for BN254, 255 for BLS12-381).</param>
-    /// <param name="modulus">The scalar-field modulus, canonical big-endian, one scalar wide.</param>
+    /// <param name="fieldSizeBits">The modulus bit length <c>n</c> (254 for BN254, 255 for BLS12-381); it must equal the bit length of <paramref name="modulus"/>.</param>
+    /// <param name="modulus">The scalar-field modulus, canonical big-endian, one scalar wide, of bit length <paramref name="fieldSizeBits"/>.</param>
     /// <param name="curve">The curve the parameters are for.</param>
     /// <param name="add">Scalar-addition backend (sums the Cauchy points).</param>
     /// <param name="invert">Scalar-inversion backend (builds the Cauchy MDS entries).</param>
     /// <returns>The generated parameters.</returns>
     /// <exception cref="ArgumentNullException">When a delegate argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range.</exception>
-    /// <exception cref="ArgumentException">When the modulus is not one scalar wide.</exception>
+    /// <exception cref="ArgumentException">When the modulus is not one scalar wide, or its bit length is not <paramref name="fieldSizeBits"/>.</exception>
     public static PoseidonParameters Generate(
         int stateWidth,
         int fullRounds,
@@ -96,6 +100,15 @@ public static class PoseidonParameterGenerator
         if(modulus.Length != ScalarSize)
         {
             throw new ArgumentException($"The modulus must be exactly {ScalarSize} canonical bytes; received {modulus.Length}.", nameof(modulus));
+        }
+
+        //The descriptor encodes n, every draw is n bits wide, and the one-step Cauchy reduction needs a raw n-bit draw
+        //to stay below twice the modulus, so the modulus must be exactly n bits long. That also rules out a zero
+        //modulus, below which rejection sampling could never accept a draw.
+        int modulusBitLength = BitLength(modulus);
+        if(modulusBitLength != fieldSizeBits)
+        {
+            throw new ArgumentException($"The modulus bit length must equal fieldSizeBits ({fieldSizeBits}); received a modulus of {modulusBitLength} bits.", nameof(modulus));
         }
 
         Span<byte> lfsr = stackalloc byte[LfsrStateBits];
@@ -199,7 +212,8 @@ public static class PoseidonParameterGenerator
 
     //n filtered bits MSB-first into a canonical scalar; rejection-sample below
     //the modulus (plain byte-lexicographic comparison — both are fixed-width
-    //big-endian).
+    //big-endian). The modulus has bit length n, so it is at least 2^(n-1) and
+    //every draw whose leading bit is clear is accepted.
     private static void SampleFieldElement(Span<byte> lfsr, int fieldSizeBits, ReadOnlySpan<byte> modulus, Span<byte> destination)
     {
         while(true)
@@ -224,8 +238,8 @@ public static class PoseidonParameterGenerator
 
 
     //n raw filtered bits MSB-first WITHOUT rejection, reduced once mod the
-    //modulus. One conditional subtraction suffices: the modulus has bit
-    //length n, so a raw n-bit value is below twice the modulus.
+    //modulus. One conditional subtraction suffices: Generate accepts only a
+    //modulus of bit length n, so a raw n-bit value is below twice the modulus.
     private static void SampleRawFieldElement(Span<byte> lfsr, int fieldSizeBits, ReadOnlySpan<byte> modulus, Span<byte> destination)
     {
         destination.Clear();
@@ -249,5 +263,25 @@ public static class PoseidonParameterGenerator
                 destination[i] = (byte)difference;
             }
         }
+    }
+
+
+    /// <summary>
+    /// Returns the bit length of a canonical big-endian value: one more than the position of its highest set bit, or
+    /// zero when every byte is zero.
+    /// </summary>
+    /// <param name="value">The value, canonical big-endian.</param>
+    /// <returns>The bit length of <paramref name="value"/>.</returns>
+    private static int BitLength(ReadOnlySpan<byte> value)
+    {
+        int leadingIndex = value.IndexOfAnyExcept((byte)0);
+        if(leadingIndex < 0)
+        {
+            return 0;
+        }
+
+        int bitsInLeadingByte = (sizeof(uint) * BitsPerByte) - BitOperations.LeadingZeroCount(value[leadingIndex]);
+
+        return ((value.Length - 1 - leadingIndex) * BitsPerByte) + bitsInLeadingByte;
     }
 }
