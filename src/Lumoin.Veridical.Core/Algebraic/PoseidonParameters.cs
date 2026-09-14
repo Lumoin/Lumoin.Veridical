@@ -11,6 +11,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// scalars.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This container is the convention seam: the permutation consumes any
 /// well-formed parameter set, and <see cref="PoseidonParameterGenerator"/>
 /// is one producer (the circomlib-compatible Grain procedure, the only one
@@ -19,6 +20,13 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// script, pasted constant tables — enters through the public constructor
 /// without touching the generator, and every evaluation path stays the
 /// single tested one.
+/// </para>
+/// <para>
+/// The round constants and the MDS matrix are public protocol constants that live as
+/// long as the parameter set and are shared by every permutation built over it, so
+/// they are held in plain arrays rather than pooled memory: the container owns nothing
+/// that must be returned or cleared, and stays non-disposable.
+/// </para>
 /// </remarks>
 public sealed class PoseidonParameters
 {
