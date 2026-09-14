@@ -132,6 +132,117 @@ internal sealed class CircomR1csReaderTests
     /// <summary>A constraint section payload size that holds the <c>nTerms</c> count and the wire index of the first term, and none of its coefficient.</summary>
     private const ulong WireIndexOnlyConstraintPayloadBytes = sizeof(uint) + sizeof(uint);
 
+    /// <summary>The number of constraints the Multiplier2 fixture declares: <c>a * b = c</c> and the padding constraint.</summary>
+    private const int Multiplier2ConstraintCount = 2;
+
+    /// <summary>The number of linear combinations every constraint carries: A, B and C.</summary>
+    private const int LinearCombinationsPerConstraint = 3;
+
+    /// <summary>The length of a single-term linear combination: the 4-byte <c>nTerms</c>, the 4-byte wire index and the 32-byte coefficient.</summary>
+    private const int SingleTermLinearCombinationBytes = sizeof(uint) + sizeof(uint) + WellKnownCurves.Bls12Curve381ScalarSizeBytes;
+
+    /// <summary>The length of the constraint section payload of the Multiplier2 fixture, whose linear combinations all hold a single term.</summary>
+    private const int Multiplier2ConstraintSectionPayloadBytes = Multiplier2ConstraintCount * LinearCombinationsPerConstraint * SingleTermLinearCombinationBytes;
+
+    /// <summary>The length of the wire-to-label map section payload of the Multiplier2 fixture: one 8-byte label per wire.</summary>
+    private const int Multiplier2LabelMapPayloadBytes = (int)Multiplier2WireCount * sizeof(ulong);
+
+    /// <summary>The total length of the Multiplier2 fixture, which ends with the payload of its wire-to-label map section.</summary>
+    private const int Multiplier2FileBytes = ConstraintSectionTypeOffset + SectionPrefixBytes + Multiplier2ConstraintSectionPayloadBytes + SectionPrefixBytes + Multiplier2LabelMapPayloadBytes;
+
+    /// <summary>The zero-based position of the wire-to-label map section, the last of the three sections of the Multiplier2 fixture.</summary>
+    private const uint LabelMapSectionIndex = 2u;
+
+    /// <summary>The number of trailing bytes cut from the Multiplier2 fixture, so its wire-to-label map section runs past the end of the file.</summary>
+    private const int CutTrailingBytes = 1;
+
+    /// <summary>The number of bytes present when the input ends halfway through a 4-byte field.</summary>
+    private const int UInt32FieldBytesPresent = 2;
+
+    /// <summary>The number of bytes present when the input ends halfway through an 8-byte field.</summary>
+    private const int UInt64FieldBytesPresent = 4;
+
+    /// <summary>The offset of <c>field_size</c> within the header section payload.</summary>
+    private const int FieldSizePayloadOffset = 0;
+
+    /// <summary>The offset of <c>nWires</c> within the header section payload, after <c>field_size</c> and the 32-byte prime modulus.</summary>
+    private const int NWiresPayloadOffset = sizeof(uint) + WellKnownCurves.Bls12Curve381ScalarSizeBytes;
+
+    /// <summary>The offset of <c>nPubOut</c> within the header section payload.</summary>
+    private const int NPubOutPayloadOffset = NWiresPayloadOffset + sizeof(uint);
+
+    /// <summary>The offset of <c>nPubIn</c> within the header section payload.</summary>
+    private const int NPubInPayloadOffset = NPubOutPayloadOffset + sizeof(uint);
+
+    /// <summary>The offset of <c>nPrvIn</c> within the header section payload.</summary>
+    private const int NPrvInPayloadOffset = NPubInPayloadOffset + sizeof(uint);
+
+    /// <summary>The offset of the 8-byte <c>nLabels</c> within the header section payload.</summary>
+    private const int NLabelsPayloadOffset = NPrvInPayloadOffset + sizeof(uint);
+
+    /// <summary>The offset of <c>nConstraints</c> within the header section payload, after the 8-byte <c>nLabels</c>.</summary>
+    private const int NConstraintsPayloadOffset = NLabelsPayloadOffset + sizeof(ulong);
+
+    /// <summary>The byte offset of <c>nPubIn</c> in the file.</summary>
+    private const int NPubInOffset = FieldSizeOffset + NPubInPayloadOffset;
+
+    /// <summary>The <c>nPubOut</c> the Multiplier2 fixture declares: the output wire <c>c</c>.</summary>
+    private const uint Multiplier2PublicOutputCount = 1u;
+
+    /// <summary>The <c>nPrvIn</c> the Multiplier2 fixture declares: the input wires <c>a</c> and <c>b</c>.</summary>
+    private const uint Multiplier2PrivateInputCount = 2u;
+
+    /// <summary>
+    /// An <c>nPubIn</c> of one, which together with the one public output, the two private inputs and the constant wire of
+    /// the fixture accounts for five wires, one more than the four the header declares.
+    /// </summary>
+    private const uint OverstatedPublicInputCount = 1u;
+
+    /// <summary>The byte offset of the first magic byte, the ASCII <c>r</c>.</summary>
+    private const int MagicLeadByteOffset = 0;
+
+    /// <summary>A byte written over the leading ASCII <c>r</c>, turning the magic into ASCII <c>x1cs</c>.</summary>
+    private const byte ForeignMagicLeadByte = (byte)'x';
+
+    /// <summary>The upper-case hex of the ASCII <c>x1cs</c> magic, as the reader reports the bytes it found.</summary>
+    private const string ForeignMagicHex = "78316373";
+
+    /// <summary>The largest <c>field_size</c> the shape check admits, a multiple of 8 equal to the 256 bound and wider than the 32-byte BLS12-381 scalar.</summary>
+    private const uint LargestShapeValidFieldSize = 256u;
+
+    /// <summary>The byte offset of the most significant byte of the little-endian prime modulus, the last byte before <c>nWires</c>.</summary>
+    private const int PrimeMostSignificantByteOffset = FieldSizeOffset + sizeof(uint) + WellKnownCurves.Bls12Curve381ScalarSizeBytes - sizeof(byte);
+
+    /// <summary>The top bit of a byte; set in the most significant prime byte it makes the declared modulus exceed 2^255.</summary>
+    private const byte TopBitMask = 0x80;
+
+    /// <summary>The BLS12-381 scalar field order as lower-case big-endian hex, the modulus the reader expects for that curve.</summary>
+    private const string Bls12Curve381ScalarFieldModulusHex = "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+
+    /// <summary>
+    /// The BLS12-381 scalar field order with its top bit set, as lower-case big-endian hex. The hex form of a positive
+    /// integer whose leading digit is 8 or above carries a leading zero, which tells it apart from a negative value.
+    /// </summary>
+    private const string TopBitSetModulusHex = "0f3eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+
+    /// <summary>A header count above <see cref="int.MaxValue"/>, which the <c>nWires</c> and <c>nConstraints</c> range checks reject.</summary>
+    private const uint HeaderCountAboveInt32Range = uint.MaxValue;
+
+    /// <summary>The largest header count the <c>nWires</c> and <c>nConstraints</c> range checks admit.</summary>
+    private const uint LargestAdmittedHeaderCount = int.MaxValue;
+
+    /// <summary>The number of bytes left in the constraint section once the two constraints the fixture stores have been read.</summary>
+    private const int ExhaustedBytesRemaining = 0;
+
+    /// <summary>A constraint section payload size that holds the <c>nTerms</c> count of the first linear combination and half of the wire index of its first term.</summary>
+    private const ulong WireIndexTruncatedConstraintPayloadBytes = sizeof(uint) + UInt32FieldBytesPresent;
+
+    /// <summary>The index of the first stored triple of a matrix.</summary>
+    private const int FirstTripleIndex = 0;
+
+    /// <summary>The number of further file bytes each read of the chunked pipe uncovers, so the 384-byte fixture arrives over three reads.</summary>
+    private const int DeliveryChunkBytes = 128;
+
 
     /// <summary>The pooled rentals opened during a test, released together in cleanup.</summary>
     private List<IDisposable> Disposables { get; } = [];
@@ -548,6 +659,354 @@ internal sealed class CircomR1csReaderTests
         {
             using RawR1csInstance parsed = ReadPipe(pipe);
         });
+    }
+
+
+    /// <summary>
+    /// A null pipe is rejected by the reader's own argument check with an <see cref="ArgumentNullException"/> naming
+    /// the pipe, rather than failing with a dereference when the pipe is drained.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsNullPipe()
+    {
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
+        {
+            using RawR1csInstance parsed = CircomR1csReader.Reader(
+                null!,
+                WellKnownR1csFormatLabel.CircomBinary,
+                CurveParameterSet.Bls12Curve381,
+                BaseMemoryPool.Shared,
+                CancellationToken.None);
+        });
+
+        Assert.AreEqual("pipe", exception.ParamName);
+    }
+
+
+    /// <summary>
+    /// A null pool is rejected with an <see cref="ArgumentNullException"/> naming the pool before the pipe is read at
+    /// all, so a well-formed file is not drained and parsed only to fail when the first matrix is built.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsNullPoolBeforeReadingThePipe()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        StrictChunkedPipeReader pipe = new(file, Multiplier2FileBytes);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
+        {
+            using RawR1csInstance parsed = CircomR1csReader.Reader(
+                pipe,
+                WellKnownR1csFormatLabel.CircomBinary,
+                CurveParameterSet.Bls12Curve381,
+                null!,
+                CancellationToken.None);
+        });
+
+        Assert.AreEqual("pool", exception.ParamName);
+        Assert.IsFalse(pipe.HasBeenRead, "The pool check must reject the call before the pipe is read.");
+    }
+
+
+    /// <summary>
+    /// A format label other than the Circom binary label is rejected with an <see cref="ArgumentException"/> on the
+    /// format parameter whose message names the accepted label and the label received.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsWrongFormatLabelNamingTheReceivedLabel()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(file));
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = CircomR1csReader.Reader(
+                pipe,
+                WellKnownR1csFormatLabel.CircomWitness,
+                CurveParameterSet.Bls12Curve381,
+                BaseMemoryPool.Shared,
+                CancellationToken.None);
+        });
+
+        Assert.AreEqual("format", exception.ParamName);
+        Assert.Contains($"handles only WellKnownR1csFormatLabel.CircomBinary; received '{WellKnownR1csFormatLabel.CircomWitness.Identifier}'.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A curve without reference support is rejected by the wired-curve gate, whose message lists the wired curves,
+    /// before the file is parsed and the scalar width lookup could reject the curve on its own terms.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsUnwiredCurveBeforeParsing()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(file));
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = CircomR1csReader.Reader(
+                pipe,
+                WellKnownR1csFormatLabel.CircomBinary,
+                CurveParameterSet.P256,
+                BaseMemoryPool.Shared,
+                CancellationToken.None);
+        });
+
+        Assert.AreEqual("curve", exception.ParamName);
+        Assert.Contains("is not wired; the wired curves are Bls12Curve381 and Bn254.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A successful read advances the pipe past every byte of the file, so the caller's pipe does not still hold the
+    /// parsed file as unread input.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csReadConsumesTheWholeFile()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        StrictChunkedPipeReader pipe = new(file, Multiplier2FileBytes);
+
+        using RawR1csInstance instance = ReadPipe(pipe);
+
+        Assert.AreEqual(Multiplier2ConstraintCount, instance.A.RowCount);
+        Assert.AreEqual(Multiplier2FileBytes, pipe.ConsumedBytes);
+    }
+
+
+    /// <summary>
+    /// A file that arrives over several reads is drained until the pipe reports completion, advancing past each partial
+    /// buffer before reading again and stopping at the completed read, and then parses into the same shape as a file
+    /// that arrives in one read.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csParsesAFileDeliveredInChunks()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        StrictChunkedPipeReader pipe = new(file, DeliveryChunkBytes);
+
+        using RawR1csInstance instance = ReadPipe(pipe);
+
+        Assert.AreEqual(Multiplier2ConstraintCount, instance.A.RowCount);
+        Assert.AreEqual((int)Multiplier2WireCount, instance.A.ColumnCount);
+        Assert.AreEqual((FirstConstraintRow, (int)FirstTermWireIndex), instance.A.GetTriplePosition(FirstTripleIndex));
+    }
+
+
+    /// <summary>
+    /// A file that ends halfway through the 4-byte section count, or through the 4-byte type field of its first section,
+    /// is rejected by the 32-bit field read with an <see cref="ArgumentException"/> that names that field, its width and
+    /// the number of bytes left.
+    /// </summary>
+    /// <param name="fieldOffset">The byte offset of the field the file ends inside.</param>
+    /// <param name="fieldName">The field name the reader reports.</param>
+    [TestMethod]
+    [DataRow(SectionCountOffset, "section count")]
+    [DataRow(HeaderSectionTypeOffset, "section type")]
+    public void Multiplier2R1csRejectsFileEndingInsideSectionField(int fieldOffset, string fieldName)
+    {
+        Memory<byte> file = RentFixtureCopy();
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file[..(fieldOffset + UInt32FieldBytesPresent)]);
+        });
+
+        Assert.Contains($"truncated while reading {fieldName} ({sizeof(uint)} bytes); only {UInt32FieldBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A file cut one byte short of its wire-to-label map section is rejected by the section length check with an
+    /// <see cref="ArgumentException"/> naming the section, its declared size and the bytes actually left in the file.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsSectionLongerThanTheRemainingFile()
+    {
+        Memory<byte> file = RentFixtureCopy();
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file[..(Multiplier2FileBytes - CutTrailingBytes)]);
+        });
+
+        Assert.Contains($"Section {LabelMapSectionIndex} declares size {Multiplier2LabelMapPayloadBytes} bytes but only {Multiplier2LabelMapPayloadBytes - CutTrailingBytes} bytes remain in the file.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A file whose magic is not ASCII <c>r1cs</c> is rejected with an <see cref="ArgumentException"/> whose message
+    /// gives the expected magic and the hex of the four bytes found in its place.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsWrongMagicNamingTheFoundBytes()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        file.Span[MagicLeadByteOffset] = ForeignMagicLeadByte;
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.Contains($"magic mismatch. Expected ASCII 'r1cs' (72 31 63 73); found {ForeignMagicHex}.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header section whose declared payload ends halfway through one of its fields is rejected by the field read over
+    /// that payload, with an <see cref="ArgumentException"/> naming the header field, its width and the bytes left.
+    /// </summary>
+    /// <param name="fieldPayloadOffset">The offset within the header section payload of the field the payload ends inside.</param>
+    /// <param name="fieldName">The header field name the reader reports.</param>
+    /// <param name="fieldWidthBytes">The width of the field.</param>
+    /// <param name="bytesPresent">The number of field bytes the shortened payload still holds.</param>
+    [TestMethod]
+    [DataRow(FieldSizePayloadOffset, "header.fieldSize", sizeof(uint), UInt32FieldBytesPresent)]
+    [DataRow(NWiresPayloadOffset, "header.nWires", sizeof(uint), UInt32FieldBytesPresent)]
+    [DataRow(NPubOutPayloadOffset, "header.nPubOut", sizeof(uint), UInt32FieldBytesPresent)]
+    [DataRow(NPubInPayloadOffset, "header.nPubIn", sizeof(uint), UInt32FieldBytesPresent)]
+    [DataRow(NPrvInPayloadOffset, "header.nPrvIn", sizeof(uint), UInt32FieldBytesPresent)]
+    [DataRow(NLabelsPayloadOffset, "header.nLabels", sizeof(ulong), UInt64FieldBytesPresent)]
+    [DataRow(NConstraintsPayloadOffset, "header.nConstraints", sizeof(uint), UInt32FieldBytesPresent)]
+    public void Multiplier2R1csRejectsHeaderSectionEndingInsideField(int fieldPayloadOffset, string fieldName, int fieldWidthBytes, int bytesPresent)
+    {
+        Memory<byte> file = RentFixtureCopy();
+        BinaryPrimitives.WriteUInt64LittleEndian(file.Span[HeaderSectionSizeOffset..], (ulong)(fieldPayloadOffset + bytesPresent));
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.Contains($"truncated while reading {fieldName} ({fieldWidthBytes} bytes); only {bytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header declaring <c>field_size = 256</c> passes the shape check, since the bound is inclusive, and is then
+    /// rejected only because it differs from the 32-byte scalar width of the curve.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsLargestShapeValidFieldSizeOnCurveWidth()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[FieldSizeOffset..], LargestShapeValidFieldSize);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.Contains($"field_size = {LargestShapeValidFieldSize} bytes but curve", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A prime modulus with its top bit set is read as an unsigned integer and rejected with an
+    /// <see cref="R1csUnsupportedFieldException"/> that carries both the expected and the found modulus as
+    /// lower-case hex, the found one positive and therefore written with its leading zero.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csReportsExpectedAndFoundModulusAsUnsignedHex()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        file.Span[PrimeMostSignificantByteOffset] |= TopBitMask;
+
+        R1csUnsupportedFieldException exception = Assert.ThrowsExactly<R1csUnsupportedFieldException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.AreEqual(Bls12Curve381ScalarFieldModulusHex, exception.ExpectedModulusHex);
+        Assert.AreEqual(TopBitSetModulusHex, exception.FoundModulusHex);
+    }
+
+
+    /// <summary>
+    /// A header declaring <c>nWires</c> or <c>nConstraints</c> above <see cref="int.MaxValue"/> is rejected by the range
+    /// check of that count, whose message names the count, the declared value and the largest supported value.
+    /// </summary>
+    /// <param name="littleEndianOffset">The byte offset of the count written over the one the fixture declares.</param>
+    /// <param name="countName">The header field name the reader reports.</param>
+    /// <param name="countNoun">The noun the reader uses for what the field counts.</param>
+    [TestMethod]
+    [DataRow(NWiresLittleEndianOffset, "nWires", "wire")]
+    [DataRow(NConstraintsLittleEndianOffset, "nConstraints", "constraint")]
+    public void Multiplier2R1csRejectsHeaderCountAboveInt32RangeNamingTheCount(int littleEndianOffset, string countName, string countNoun)
+    {
+        Memory<byte> file = RentFixtureCopy();
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[littleEndianOffset..], HeaderCountAboveInt32Range);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.Contains($"declares {countName} = {HeaderCountAboveInt32Range}, exceeding the maximum supported {countNoun} count ({int.MaxValue}).", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header declaring <c>nWires</c> and <c>nConstraints</c> of exactly <see cref="int.MaxValue"/> passes both range
+    /// checks, whose bounds are inclusive. The parse then reads the two constraints the file stores and is rejected when
+    /// the term count of the third runs past the end of the constraint section, before any buffer is sized by either count.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csAdmitsHeaderCountsAtInt32MaxPastTheRangeChecks()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[NWiresLittleEndianOffset..], LargestAdmittedHeaderCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[NConstraintsLittleEndianOffset..], LargestAdmittedHeaderCount);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.Contains($"truncated while reading linearCombination.nTerms ({sizeof(uint)} bytes); only {ExhaustedBytesRemaining} bytes remained.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header whose public outputs, public inputs, private inputs and constant wire add up to one more than
+    /// <c>nWires</c> is rejected by the header consistency check with a message giving each count. One wire over is the
+    /// smallest overstatement the check must catch, so every count and the constant wire must add into the sum.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsWireCountsOneBeyondNWires()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[NPubInOffset..], OverstatedPublicInputCount);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.Contains($"inconsistency: nPubOut ({Multiplier2PublicOutputCount}) + nPubIn ({OverstatedPublicInputCount}) + nPrvIn ({Multiplier2PrivateInputCount}) + 1 (constant) exceeds nWires ({Multiplier2WireCount}).", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A constraint section whose declared payload ends halfway through the wire index of its first term is rejected by
+    /// the 32-bit field read with an <see cref="ArgumentException"/> naming the wire index field and the bytes left. The
+    /// section count is lowered to two so the bytes after the shortened payload are not read as a further section.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2R1csRejectsConstraintSectionEndingInsideWireIndex()
+    {
+        Memory<byte> file = RentFixtureCopy();
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[SectionCountOffset..], HeaderAndConstraintSectionCount);
+        BinaryPrimitives.WriteUInt64LittleEndian(file.Span[ConstraintSectionSizeOffset..], WireIndexTruncatedConstraintPayloadBytes);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csInstance parsed = ReadMemory(file);
+        });
+
+        Assert.Contains($"truncated while reading linearCombination.wireIndex ({sizeof(uint)} bytes); only {UInt32FieldBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
     }
 
 

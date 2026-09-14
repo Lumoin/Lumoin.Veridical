@@ -58,6 +58,33 @@ internal sealed class CircomR1csReaderOrderingTests
     /// <summary>The value of every byte of a zero coefficient.</summary>
     private const byte ZeroByte = 0;
 
+    /// <summary>The wire count of the one-constraint circuit whose A linear combination holds two terms: the constant wire and three others.</summary>
+    private const int TwoTermWireCount = 4;
+
+    /// <summary>The lower-numbered wire of the two A terms, emitted second.</summary>
+    private const int LowerTermWire = 1;
+
+    /// <summary>The higher-numbered wire of the two A terms, emitted first.</summary>
+    private const int HigherTermWire = 2;
+
+    /// <summary>The wire the C linear combination names.</summary>
+    private const int ResultWire = 3;
+
+    /// <summary>The coefficient of the lower-numbered A term, distinct from the other so a value paired with the wrong wire shows.</summary>
+    private const int LowerTermCoefficient = 7;
+
+    /// <summary>The coefficient of the higher-numbered A term.</summary>
+    private const int HigherTermCoefficient = 9;
+
+    /// <summary>The number of entries the reader stores for the two-term A linear combination.</summary>
+    private const int TwoTermNonzeroCount = 2;
+
+    /// <summary>The row of the only constraint.</summary>
+    private const int OnlyConstraintRow = 0;
+
+    /// <summary>The index of the second stored triple of a matrix.</summary>
+    private const int SecondTripleIndex = 1;
+
 
     private static BigInteger Bls12Curve381Prime { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
     private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
@@ -156,6 +183,41 @@ internal sealed class CircomR1csReaderOrderingTests
         Assert.AreEqual(SynthesisedNonzeroCount, instance.C.NonzeroCount, "C must carry exactly the synthesised entry.");
         Assert.AreEqual((SynthesisedRow, SynthesisedColumn), instance.C.GetTriplePosition(FirstTripleIndex), "The synthesised entry must sit at (0, 0).");
         Assert.IsFalse(instance.C.GetValueBytes(FirstTripleIndex).ContainsAnyExcept(ZeroByte), "The synthesised coefficient must be zero.");
+    }
+
+
+    /// <summary>
+    /// A linear combination whose terms arrive in descending wire order is sorted into ascending column order with each
+    /// coefficient carried along with its own wire, so the value stored at each sorted position is the coefficient the
+    /// file gave that wire, in canonical big-endian form. The file bytes come from the in-test encoder of this class,
+    /// which returns an array as the other tests here consume it.
+    /// </summary>
+    [TestMethod]
+    public void ReaderCarriesEachCoefficientWithItsWireWhenSorting()
+    {
+        byte[] bytes = EncodeR1cs(
+            Bls12Curve381Prime,
+            wireCount: TwoTermWireCount,
+            constraints:
+            [
+                new ConstraintTriple(
+                    A: [(HigherTermWire, new BigInteger(HigherTermCoefficient)), (LowerTermWire, new BigInteger(LowerTermCoefficient))],
+                    B: [(ConstantWire, BigInteger.One)],
+                    C: [(ResultWire, BigInteger.One)]),
+            ]);
+
+        using RawR1csInstance instance = ParseR1cs(bytes);
+
+        Span<byte> lowerTermValue = stackalloc byte[Scalar.SizeBytes];
+        WriteCanonical(new BigInteger(LowerTermCoefficient), lowerTermValue);
+        Span<byte> higherTermValue = stackalloc byte[Scalar.SizeBytes];
+        WriteCanonical(new BigInteger(HigherTermCoefficient), higherTermValue);
+
+        Assert.AreEqual(TwoTermNonzeroCount, instance.A.NonzeroCount);
+        Assert.AreEqual((OnlyConstraintRow, LowerTermWire), instance.A.GetTriplePosition(FirstTripleIndex));
+        Assert.IsTrue(instance.A.GetValueBytes(FirstTripleIndex).SequenceEqual(lowerTermValue), "The first sorted entry must carry the coefficient of the lower wire.");
+        Assert.AreEqual((OnlyConstraintRow, HigherTermWire), instance.A.GetTriplePosition(SecondTripleIndex));
+        Assert.IsTrue(instance.A.GetValueBytes(SecondTripleIndex).SequenceEqual(higherTermValue), "The second sorted entry must carry the coefficient of the higher wire.");
     }
 
 

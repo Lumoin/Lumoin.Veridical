@@ -119,6 +119,97 @@ internal sealed class CircomWitnessReaderTests
     /// <summary>The length of the Multiplier2 fixture cut directly after <c>z[0]</c>, the whole file of a constant-only witness.</summary>
     private const int ConstantOnlyFileBytes = DataSectionPayloadOffset + WellKnownCurves.Bls12Curve381ScalarSizeBytes;
 
+    /// <summary>The byte offset of the first magic byte, the ASCII <c>w</c>.</summary>
+    private const int MagicLeadByteOffset = 0;
+
+    /// <summary>The byte offset of the little-endian section count, which follows the <c>version</c> field.</summary>
+    private const int SectionCountOffset = VersionOffset + sizeof(uint);
+
+    /// <summary>The number of section count bytes present when the file ends halfway through that 4-byte field.</summary>
+    private const int SectionCountBytesPresent = 2;
+
+    /// <summary>An input length that ends halfway through the section count field.</summary>
+    private const int SectionCountTruncatedLength = SectionCountOffset + SectionCountBytesPresent;
+
+    /// <summary>The number of section type bytes present when the file ends halfway through that 4-byte field.</summary>
+    private const int SectionTypeBytesPresent = 2;
+
+    /// <summary>An input length that ends halfway through the type field of the header section.</summary>
+    private const int SectionTypeTruncatedLength = HeaderSectionTypeOffset + SectionTypeBytesPresent;
+
+    /// <summary>The zero-based position of the witness data section among the sections of the Multiplier2 fixture.</summary>
+    private const uint DataSectionIndex = 1u;
+
+    /// <summary>The number of trailing bytes cut from the Multiplier2 fixture, so its witness data section runs past the end of the file.</summary>
+    private const int CutTrailingBytes = 1;
+
+    /// <summary>A byte written over the leading ASCII <c>w</c>, turning the magic into ASCII <c>xtns</c>.</summary>
+    private const byte ForeignMagicLeadByte = (byte)'x';
+
+    /// <summary>The upper-case hex of the ASCII <c>xtns</c> magic, as the reader reports the bytes it found.</summary>
+    private const string ForeignMagicHex = "78746E73";
+
+    /// <summary>A header section payload size that covers only half of the 4-byte <c>field_size</c>.</summary>
+    private const ulong HalfFieldSizeHeaderPayloadBytes = 2ul;
+
+    /// <summary>A <c>field_size</c> not exceeding 256 that is not a multiple of 8, so only the multiple-of-8 rule rejects it.</summary>
+    private const uint NonMultipleOfEightFieldSize = 33u;
+
+    /// <summary>The largest <c>field_size</c> the shape check admits, a multiple of 8 equal to the 256 bound and wider than the 32-byte BLS12-381 scalar.</summary>
+    private const uint LargestShapeValidFieldSize = 256u;
+
+    /// <summary>The number of <c>nWitness</c> bytes present when the header section payload ends halfway through that 4-byte field.</summary>
+    private const int NWitnessBytesPresent = 2;
+
+    /// <summary>A header section payload size that covers <c>field_size</c>, the 32-byte prime modulus and half of <c>nWitness</c>.</summary>
+    private const ulong NWitnessTruncatedHeaderPayloadBytes = sizeof(uint) + WellKnownCurves.Bls12Curve381ScalarSizeBytes + NWitnessBytesPresent;
+
+    /// <summary>The byte offset of the most significant byte of the little-endian prime modulus, the last byte before <c>nWitness</c>.</summary>
+    private const int PrimeMostSignificantByteOffset = NWitnessOffset - sizeof(byte);
+
+    /// <summary>The top bit of a byte; set in the most significant prime byte it makes the declared modulus exceed 2^255.</summary>
+    private const byte TopBitMask = 0x80;
+
+    /// <summary>The BLS12-381 scalar field order as lower-case big-endian hex, the modulus the reader expects for that curve.</summary>
+    private const string Bls12Curve381ScalarFieldModulusHex = "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+
+    /// <summary>
+    /// The BLS12-381 scalar field order with its top bit set, as lower-case big-endian hex. The hex form of a positive
+    /// integer whose leading digit is 8 or above carries a leading zero, which tells it apart from a negative value.
+    /// </summary>
+    private const string TopBitSetModulusHex = "0f3eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+
+    /// <summary>The number of witness variables the reader returns for the Multiplier2 fixture: every stored element but the constant.</summary>
+    private const int Multiplier2WitnessVariableCount = Multiplier2WitnessElementCount - (int)ConstantOnlyNWitness;
+
+    /// <summary>The Multiplier2 output <c>c = a * b = 33</c>, the first returned witness variable.</summary>
+    private const int Multiplier2OutputValue = 33;
+
+    /// <summary>The Multiplier2 left factor <c>a = 3</c>, the second returned witness variable.</summary>
+    private const int Multiplier2LeftFactorValue = 3;
+
+    /// <summary>The Multiplier2 right factor <c>b = 11</c>, the third returned witness variable.</summary>
+    private const int Multiplier2RightFactorValue = 11;
+
+    /// <summary>The byte offset of the output <c>c</c> within the returned big-endian witness bytes.</summary>
+    private const int OutputValueOffset = 0;
+
+    /// <summary>The byte offset of the left factor <c>a</c> within the returned big-endian witness bytes.</summary>
+    private const int LeftFactorValueOffset = OutputValueOffset + WellKnownCurves.Bls12Curve381ScalarSizeBytes;
+
+    /// <summary>The byte offset of the right factor <c>b</c> within the returned big-endian witness bytes.</summary>
+    private const int RightFactorValueOffset = LeftFactorValueOffset + WellKnownCurves.Bls12Curve381ScalarSizeBytes;
+
+    /// <summary>The number of further file bytes each read of the chunked pipe uncovers, so the 204-byte fixture arrives over four reads.</summary>
+    private const int DeliveryChunkBytes = 64;
+
+
+    /// <summary>
+    /// The largest <c>nWitness</c> whose dense witness vector still fits in one array: its <c>nWitness - 1</c> scalars of
+    /// 32 bytes stay within <see cref="Array.MaxLength"/>, while one scalar more would exceed it.
+    /// </summary>
+    private static uint LargestAddressableNWitness { get; } = (uint)(Array.MaxLength / WellKnownCurves.Bls12Curve381ScalarSizeBytes) + ConstantOnlyNWitness;
+
 
     /// <summary>The pooled rentals opened during a test, released together in cleanup.</summary>
     private List<IDisposable> Disposables { get; } = [];
@@ -493,6 +584,323 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>
+    /// A null pipe is rejected by the reader's own argument check with an <see cref="ArgumentNullException"/> naming
+    /// the pipe, rather than failing with a dereference when the pipe is drained.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsNullPipe()
+    {
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
+        {
+            using RawR1csWitness _ = CircomWitnessReader.Reader(
+                null!,
+                WellKnownR1csFormatLabel.CircomWitness,
+                CurveParameterSet.Bls12Curve381,
+                BaseMemoryPool.Shared,
+                CancellationToken.None);
+        });
+
+        Assert.AreEqual("pipe", exception.ParamName);
+    }
+
+
+    /// <summary>
+    /// A null pool is rejected with an <see cref="ArgumentNullException"/> naming the pool before the pipe is read at
+    /// all, so a well-formed file is not drained and parsed only to fail when the witness buffer is rented.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsNullPoolBeforeReadingThePipe()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        StrictChunkedPipeReader pipe = new(file, Multiplier2FileBytes);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
+        {
+            using RawR1csWitness _ = CircomWitnessReader.Reader(
+                pipe,
+                WellKnownR1csFormatLabel.CircomWitness,
+                CurveParameterSet.Bls12Curve381,
+                null!,
+                CancellationToken.None);
+        });
+
+        Assert.AreEqual("pool", exception.ParamName);
+        Assert.IsFalse(pipe.HasBeenRead, "The pool check must reject the call before the pipe is read.");
+    }
+
+
+    /// <summary>
+    /// A format label other than the Circom witness label is rejected with an <see cref="ArgumentException"/> on the
+    /// format parameter whose message names the accepted label and the label received.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsWrongFormatLabelNamingTheReceivedLabel()
+    {
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessFixture(
+                CircomWitnessFixtures.Multiplier2Bytes,
+                WellKnownR1csFormatLabel.CircomBinary);
+        });
+
+        Assert.AreEqual("format", exception.ParamName);
+        Assert.Contains($"handles only WellKnownR1csFormatLabel.CircomWitness; received '{WellKnownR1csFormatLabel.CircomBinary.Identifier}'.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A curve without reference support is rejected by the wired-curve gate, whose message lists the wired curves,
+    /// before the file is parsed and the scalar width lookup could reject the curve on its own terms.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsUnwiredCurveBeforeParsing()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(file));
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = CircomWitnessReader.Reader(
+                pipe,
+                WellKnownR1csFormatLabel.CircomWitness,
+                CurveParameterSet.P256,
+                BaseMemoryPool.Shared,
+                CancellationToken.None);
+        });
+
+        Assert.AreEqual("curve", exception.ParamName);
+        Assert.Contains("is not wired; the wired curves are Bls12Curve381 and Bn254.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A successful read advances the pipe past every byte of the file, so the caller's pipe does not still hold the
+    /// parsed file as unread input.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessReadConsumesTheWholeFile()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        StrictChunkedPipeReader pipe = new(file, Multiplier2FileBytes);
+
+        using RawR1csWitness witness = ReadWitnessPipe(pipe);
+
+        Assert.AreEqual(Multiplier2WitnessVariableCount, witness.WitnessVariableCount);
+        Assert.AreEqual(Multiplier2FileBytes, pipe.ConsumedBytes);
+    }
+
+
+    /// <summary>
+    /// A file that arrives over several reads is drained until the pipe reports completion, advancing past each partial
+    /// buffer before reading again and stopping at the completed read, and then parses into the same witness values as
+    /// a file that arrives in one read.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessParsesAFileDeliveredInChunks()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        StrictChunkedPipeReader pipe = new(file, DeliveryChunkBytes);
+
+        using RawR1csWitness witness = ReadWitnessPipe(pipe);
+
+        ReadOnlySpan<byte> bytes = witness.GetWitnessBytes();
+        Assert.AreEqual(Multiplier2WitnessVariableCount, witness.WitnessVariableCount);
+        Assert.AreEqual(Multiplier2OutputValue, ReadBigEndianInt(bytes.Slice(OutputValueOffset, WellKnownCurves.Bls12Curve381ScalarSizeBytes)));
+        Assert.AreEqual(Multiplier2LeftFactorValue, ReadBigEndianInt(bytes.Slice(LeftFactorValueOffset, WellKnownCurves.Bls12Curve381ScalarSizeBytes)));
+        Assert.AreEqual(Multiplier2RightFactorValue, ReadBigEndianInt(bytes.Slice(RightFactorValueOffset, WellKnownCurves.Bls12Curve381ScalarSizeBytes)));
+    }
+
+
+    /// <summary>
+    /// A file that ends inside the 4-byte section count field is rejected by the 32-bit field read with an
+    /// <see cref="ArgumentException"/> that names the section count, its width and the number of bytes left.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsTruncationInsideSectionCountField()
+    {
+        Memory<byte> file = RentFixturePrefix(SectionCountTruncatedLength);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"truncated while reading section count ({sizeof(uint)} bytes); only {SectionCountBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A file that ends inside the 4-byte type field of its first section is rejected by the 32-bit field read with an
+    /// <see cref="ArgumentException"/> that names the section type, its width and the number of bytes left.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsTruncationInsideSectionTypeField()
+    {
+        Memory<byte> file = RentFixturePrefix(SectionTypeTruncatedLength);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"truncated while reading section type ({sizeof(uint)} bytes); only {SectionTypeBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A file cut one byte short of its witness data section is rejected by the section length check with an
+    /// <see cref="ArgumentException"/> naming the section, its declared size and the bytes actually left in the file.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsSectionLongerThanTheRemainingFile()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes - CutTrailingBytes);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"Section {DataSectionIndex} declares size {Multiplier2DataSectionBytes} bytes but only {Multiplier2DataSectionBytes - CutTrailingBytes} bytes remain in the file.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A file whose magic is not ASCII <c>wtns</c> is rejected with an <see cref="ArgumentException"/> whose message
+    /// gives the expected magic and the hex of the four bytes found in its place.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsWrongMagicNamingTheFoundBytes()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        file.Span[MagicLeadByteOffset] = ForeignMagicLeadByte;
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"magic mismatch. Expected ASCII 'wtns' (77 74 6e 73); found {ForeignMagicHex}.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header section whose declared payload ends halfway through <c>field_size</c> is rejected by the 32-bit field
+    /// read over that payload, with an <see cref="ArgumentException"/> naming the header field and the bytes left.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsTruncationInsideFieldSizeField()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        BinaryPrimitives.WriteUInt64LittleEndian(file.Span[HeaderSectionSizeOffset..], HalfFieldSizeHeaderPayloadBytes);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"truncated while reading header.fieldSize ({sizeof(uint)} bytes); only {HalfFieldSizeHeaderPayloadBytes} bytes remained.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header declaring a <c>field_size</c> within the 256 bound that is not a multiple of 8 is rejected by the field
+    /// size shape check on the multiple-of-8 rule alone, before the comparison against the curve scalar width runs.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsFieldSizeNotMultipleOfEight()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[FieldSizeOffset..], NonMultipleOfEightFieldSize);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"field_size = {NonMultipleOfEightFieldSize}; must be a positive multiple of 8 not exceeding 256.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header declaring <c>field_size = 256</c> passes the shape check, since the bound is inclusive, and is then
+    /// rejected only because it differs from the 32-byte scalar width of the curve.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsLargestShapeValidFieldSizeOnCurveWidth()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[FieldSizeOffset..], LargestShapeValidFieldSize);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"field_size = {LargestShapeValidFieldSize} bytes but curve", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A header section whose declared payload ends halfway through <c>nWitness</c> is rejected by the 32-bit field
+    /// read over that payload, with an <see cref="ArgumentException"/> naming the header field and the bytes left.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessRejectsTruncationInsideNWitnessField()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        BinaryPrimitives.WriteUInt64LittleEndian(file.Span[HeaderSectionSizeOffset..], NWitnessTruncatedHeaderPayloadBytes);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"truncated while reading header.nWitness ({sizeof(uint)} bytes); only {NWitnessBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// The largest <c>nWitness</c> whose dense witness vector is still addressable passes the header range check, which
+    /// counts only the <c>nWitness - 1</c> scalars after the constant, and is rejected by the section length check instead.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessAdmitsLargestAddressableNWitnessPastTheRangeCheck()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.Span[NWitnessOffset..], LargestAddressableNWitness);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.Contains($"witness section has {Multiplier2DataSectionBytes} bytes but the header declares {LargestAddressableNWitness}", exception.Message, StringComparison.Ordinal);
+    }
+
+
+    /// <summary>
+    /// A prime modulus with its top bit set is read as an unsigned integer and rejected with an
+    /// <see cref="R1csUnsupportedFieldException"/> that carries both the expected and the found modulus as
+    /// lower-case hex, the found one positive and therefore written with its leading zero.
+    /// </summary>
+    [TestMethod]
+    public void Multiplier2WitnessReportsExpectedAndFoundModulusAsUnsignedHex()
+    {
+        Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
+        file.Span[PrimeMostSignificantByteOffset] |= TopBitMask;
+
+        R1csUnsupportedFieldException exception = Assert.ThrowsExactly<R1csUnsupportedFieldException>(() =>
+        {
+            using RawR1csWitness _ = ReadWitnessMemory(file);
+        });
+
+        Assert.AreEqual(Bls12Curve381ScalarFieldModulusHex, exception.ExpectedModulusHex);
+        Assert.AreEqual(TopBitSetModulusHex, exception.FoundModulusHex);
+    }
+
+
     [TestMethod]
     public void Multiplier2EndToEndProvesAndVerifiesWithStandardSpartan()
     {
@@ -595,6 +1003,20 @@ internal sealed class CircomWitnessReaderTests
     {
         PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(file));
 
+        return CircomWitnessReader.Reader(
+            pipe,
+            WellKnownR1csFormatLabel.CircomWitness,
+            CurveParameterSet.Bls12Curve381,
+            BaseMemoryPool.Shared,
+            CancellationToken.None);
+    }
+
+
+    /// <summary>Runs the <c>.wtns</c> reader for BLS12-381 over a caller-supplied pipe.</summary>
+    /// <param name="pipe">The pipe that yields the file bytes.</param>
+    /// <returns>The parsed witness, which the caller disposes.</returns>
+    private static RawR1csWitness ReadWitnessPipe(PipeReader pipe)
+    {
         return CircomWitnessReader.Reader(
             pipe,
             WellKnownR1csFormatLabel.CircomWitness,
