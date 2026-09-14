@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO.Pipelines;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.Circom;
@@ -541,6 +542,10 @@ public static class CircomR1csReader
 
 
         /// <summary>Sorts terms by row and column and constructs a matrix, supplying one zero entry when no terms are encoded.</summary>
+        /// <remarks>
+        /// Coefficients are staged in a pooled buffer and copied into the matrix's own storage by
+        /// <see cref="R1csMatrix.FromSortedTriples"/>. The staging rental is disposed when this method exits.
+        /// </remarks>
         public R1csMatrix Build(
             int rowCount,
             int columnCount,
@@ -553,7 +558,9 @@ public static class CircomR1csReader
                 //constant column satisfies that storage invariant without changing which witnesses satisfy it.
                 int[] singleRow = [EmptyMatrixRow];
                 int[] singleColumn = [ConstantWireColumn];
-                byte[] zeroValue = new byte[scalarSizeBytes];
+                using IMemoryOwner<byte> zeroValueOwner = pool.Rent(scalarSizeBytes);
+                Span<byte> zeroValue = zeroValueOwner.Memory.Span[..scalarSizeBytes];
+                zeroValue.Clear();
 
                 return R1csMatrix.FromSortedTriples(
                     singleRow, singleColumn, zeroValue,
@@ -583,14 +590,17 @@ public static class CircomR1csReader
 
             int[] sortedRows = new int[nnz];
             int[] sortedColumns = new int[nnz];
-            byte[] sortedValues = new byte[nnz * scalarSizeBytes];
-            byte[] flatValues = valueBytes.ToArray();
+            int sortedValuesLength = nnz * scalarSizeBytes;
+            using IMemoryOwner<byte> sortedValuesOwner = pool.Rent(sortedValuesLength);
+            Span<byte> sortedValues = sortedValuesOwner.Memory.Span[..sortedValuesLength];
+            ReadOnlySpan<byte> flatValues = CollectionsMarshal.AsSpan(valueBytes);
             for(int i = 0; i < nnz; i++)
             {
                 int source = order[i];
                 sortedRows[i] = rows[source];
                 sortedColumns[i] = columns[source];
-                Array.Copy(flatValues, source * scalarSizeBytes, sortedValues, i * scalarSizeBytes, scalarSizeBytes);
+                flatValues.Slice(source * scalarSizeBytes, scalarSizeBytes)
+                    .CopyTo(sortedValues.Slice(i * scalarSizeBytes, scalarSizeBytes));
             }
 
             return R1csMatrix.FromSortedTriples(

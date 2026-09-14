@@ -298,6 +298,10 @@ public static class CircomWitnessReader
 
 
     /// <summary>Checks the section length, skips the first scalar and copies the remaining scalars into canonical big-endian witness storage.</summary>
+    /// <remarks>
+    /// Canonical scalars are staged in a pooled buffer and copied into the witness's own storage by
+    /// <see cref="RawR1csWitness.FromCanonical"/>. The staging rental is disposed when this method exits.
+    /// </remarks>
     private static RawR1csWitness BuildWitness(
         ReadOnlySequence<byte> witnessDataLittleEndian,
         uint nWitness,
@@ -322,7 +326,9 @@ public static class CircomWitnessReader
                 ".wtns witness contains only the constant z[0] = 1; nothing to populate RawR1csWitness with.");
         }
 
-        byte[] destination = new byte[privateCount * scalarSizeBytes];
+        int destinationLength = privateCount * scalarSizeBytes;
+        using IMemoryOwner<byte> destinationOwner = pool.Rent(destinationLength);
+        Span<byte> destination = destinationOwner.Memory.Span[..destinationLength];
         var reader = new SequenceReader<byte>(witnessDataLittleEndian);
         Span<byte> scratch = stackalloc byte[scalarSizeBytes];
 
