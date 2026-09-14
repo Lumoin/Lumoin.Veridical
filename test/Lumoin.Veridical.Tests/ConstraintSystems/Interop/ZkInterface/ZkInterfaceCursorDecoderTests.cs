@@ -88,6 +88,24 @@ internal sealed class ZkInterfaceCursorDecoderTests
     /// <summary>The byte length of the size-prefixed stream <see cref="WriteEmptyAssignedVariablesWitnessStream"/> writes.</summary>
     private const int EmptyWitnessStreamBytes = SizePrefixBytes + EmptyWitnessMessageBytes;
 
+    /// <summary>The number of messages in example.zkif, which is also the index a message appended after them is numbered with.</summary>
+    private const int ExampleMessageCount = 3;
+
+    /// <summary>The stream-order index of the Witness message, the last message in example.zkif.</summary>
+    private const int WitnessMessageIndex = 2;
+
+    /// <summary>A number of stray bytes after the last message that is too few to hold a size prefix.</summary>
+    private const int TrailingByteCount = 2;
+
+    /// <summary>The message size a size prefix declares when the stream ends before that many bytes follow it.</summary>
+    private const int OverrunDeclaredMessageBytes = 8;
+
+    /// <summary>The number of bytes that actually follow the size prefix declaring <see cref="OverrunDeclaredMessageBytes"/>.</summary>
+    private const int OverrunPresentMessageBytes = 4;
+
+    /// <summary>The width of one <c>variable_ids</c> element, a little-endian <see cref="ulong"/>.</summary>
+    private const int VariableIdBytes = sizeof(ulong);
+
 
     /// <summary>The witness variable ids example.zkif assigns, in stream order.</summary>
     private static ulong[] ExampleWitnessVariableIds { get; } = [ExampleFirstWitnessId, ExampleSecondWitnessId];
@@ -402,6 +420,214 @@ internal sealed class ZkInterfaceCursorDecoderTests
     }
 
 
+    /// <summary>
+    /// Stray bytes after the last message that are too few to hold a size prefix are rejected with a
+    /// message that counts the stray bytes and names the last whole message before them, so the report
+    /// locates where the stream stopped framing.
+    /// </summary>
+    [TestMethod]
+    public void LocateMessagesReportsTrailingByteCountAndLastMessageIndex()
+    {
+        Memory<byte> stream = RentExampleWithZeroTail(TrailingByteCount);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(stream.Span));
+
+        Assert.Contains($"stream has {TrailingByteCount} trailing byte(s) after message {WitnessMessageIndex}; too few for a {SizePrefixBytes}-byte size prefix", exception.Message, "the trailing-bytes guard must count the stray bytes and name the last message");
+    }
+
+
+    /// <summary>
+    /// Four bytes after the last message exactly fill a size prefix, so they are read as one rather than
+    /// reported as trailing bytes. A prefix of zero declares an empty message, which is rejected under the
+    /// index that follows the messages before it.
+    /// </summary>
+    [TestMethod]
+    public void LocateMessagesRejectsZeroSizePrefixThatEndsTheStream()
+    {
+        Memory<byte> stream = RentExampleWithZeroTail(SizePrefixBytes);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(stream.Span));
+
+        Assert.Contains($"message {ExampleMessageCount} declares a zero-byte size", exception.Message, "the zero-size guard must reject the prefix under the next message index");
+    }
+
+
+    /// <summary>
+    /// A size prefix that declares more bytes than remain in the stream is rejected with a message that
+    /// gives both the declared size and the number of bytes actually left after the prefix.
+    /// </summary>
+    [TestMethod]
+    public void LocateMessagesReportsDeclaredSizeAndRemainingBytes()
+    {
+        int streamLength = SizePrefixBytes + OverrunPresentMessageBytes;
+        IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
+        Disposables.Add(owner);
+        Memory<byte> stream = owner.Memory[..streamLength];
+        stream.Span.Clear();
+        BinaryPrimitives.WriteUInt32LittleEndian(stream.Span, OverrunDeclaredMessageBytes);
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(stream.Span));
+
+        Assert.Contains($"declares size {OverrunDeclaredMessageBytes} bytes but only {OverrunPresentMessageBytes} bytes remain in the stream", exception.Message, "the message-bounds guard must report the declared size and the remaining bytes");
+    }
+
+
+    /// <summary>
+    /// A message whose union discriminator names a ConstraintSystem while its vtable marks the union value
+    /// absent is inconsistent, and framing rejects it with the discriminator and the missing value in the
+    /// message rather than classifying it. The stream is the byte array the fixture loader reads fresh from
+    /// disk, so clearing its vtable entry touches no other test.
+    /// </summary>
+    [TestMethod]
+    public void LocateMessagesRejectsUnionTypeWithoutValue()
+    {
+        byte[] file = ZkInterfaceExampleFixture.ExampleBytes();
+        ZkInterfaceMessageSpan target = ZkInterfaceCursorDecoder.LocateMessages(file)[ConstraintSystemMessageIndex];
+        Assert.AreEqual(ZkInterfaceMessageType.ConstraintSystem, target.Type, "the altered message must be the constraint system");
+
+        //The message buffer opens with a uoffset to its root table, and the root table opens with an
+        //soffset back to its vtable, where the union value entry sits at a fixed offset.
+        ReadOnlySpan<byte> body = file.AsSpan(target.BufferStart, target.BufferLength);
+        int rootPosition = (int)BinaryPrimitives.ReadUInt32LittleEndian(body);
+        int vtablePosition = rootPosition - BinaryPrimitives.ReadInt32LittleEndian(body[rootPosition..]);
+        file.AsSpan(target.BufferStart + vtablePosition + RootValueSlotEntryOffset, VtableEntryBytes).Clear();
+
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(file));
+
+        Assert.Contains($"message {ConstraintSystemMessageIndex} has an empty or inconsistent Root.message union (type {(byte)ZkInterfaceMessageType.ConstraintSystem}, value present: False)", exception.Message, "the union consistency guard must be what rejects the message");
+    }
+
+
+    /// <summary>
+    /// A null sink is rejected by the decoder's own argument check with an <see cref="ArgumentNullException"/>
+    /// naming the sink, rather than failing with a dereference when the first decoded field is pushed.
+    /// </summary>
+    [TestMethod]
+    public void DecoderRejectsNullSink()
+    {
+        var source = new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes());
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
+            ZkInterfaceCursorDecoder.Decoder(source, null!, CancellationToken.None));
+
+        Assert.AreEqual("sink", exception.ParamName, "the sink argument check must be what rejects the call");
+    }
+
+
+    /// <summary>
+    /// Cancellation is honoured between messages: a token that is already cancelled stops the decode with
+    /// an <see cref="OperationCanceledException"/> before the first message reaches the sink.
+    /// </summary>
+    [TestMethod]
+    public void DecoderHonoursCancellationBeforeTheFirstMessage()
+    {
+        var source = new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes());
+        var sink = new RecordingSink();
+        var cancelled = new CancellationToken(canceled: true);
+
+        Assert.ThrowsExactly<OperationCanceledException>(() => ZkInterfaceCursorDecoder.Decoder(source, sink, cancelled));
+    }
+
+
+    /// <summary>
+    /// Every constraint the decoder opens is closed again once its three linear combinations are pushed,
+    /// so a sink that groups terms between the two calls sees each of the example's constraints complete.
+    /// </summary>
+    [TestMethod]
+    public void DecoderClosesEveryConstraintItOpens()
+    {
+        var sink = new RecordingSink();
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes()), sink, CancellationToken.None);
+
+        Assert.AreEqual(ExampleConstraintCount, sink.ConstraintCount, "constraints opened");
+        Assert.AreEqual(ExampleConstraintCount, sink.EndedConstraintCount, "every opened constraint is closed");
+    }
+
+
+    /// <summary>
+    /// The decode-work budget admits work up to the stream's byte length inclusive: a stream whose decode
+    /// spends exactly its length decodes in full, and only work beyond the length is rejected.
+    /// </summary>
+    [TestMethod]
+    public void DecoderAcceptsStreamWhoseWorkEqualsItsByteLength()
+    {
+        //Each aliased constraint charges one event and each of its zero-width terms one more, so the work is
+        //117 x (1 + 4) = 585 units, and the packed stream is 85 + (4 x 117) + (8 x 4) = 585 bytes.
+        const int constraintAliases = 117;
+        const int idsPerConstraint = 4;
+
+        int streamLength = AliasedConstraintSystemStreamLength(constraintAliases, idsPerConstraint, NoValueBytes);
+        Assert.AreEqual(constraintAliases + (constraintAliases * idsPerConstraint), streamLength, "the decode work must equal the stream length");
+
+        IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
+        Disposables.Add(owner);
+        ReadOnlyMemory<byte> stream = owner.Memory[..streamLength];
+        WriteAliasedConstraintSystemStream(owner.Memory.Span[..streamLength], constraintAliases, idsPerConstraint, NoValueBytes, valuesPresent: true);
+
+        var sink = new RecordingSink();
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None);
+
+        Assert.AreEqual(constraintAliases, sink.ConstraintCount, "every aliased constraint is decoded");
+        Assert.HasCount(constraintAliases * idsPerConstraint, sink.Terms, "every term is decoded");
+    }
+
+
+    /// <summary>
+    /// One decode-work budget spans every message in the stream, and it charges a constraint's own event
+    /// as well as a witness assignment's event and value bytes. A ConstraintSystem followed by a Witness
+    /// whose combined work exceeds the stream length by one unit is rejected, and each of those charges is
+    /// needed for the work to exceed the length.
+    /// </summary>
+    [TestMethod]
+    public void DecoderChargesConstraintsAndAssignmentsAgainstOneStreamBudget()
+    {
+        //The ConstraintSystem spends 16 x (1 + 26) = 432 units in 85 + (4 x 16) + (8 x 26) = 357 bytes. The
+        //Witness assigns one id with a one-byte value, one event and one scanned byte, in 67 + 8 + 1 = 76
+        //bytes. The stream is 433 bytes and the work 434 units.
+        const int constraintAliases = 16;
+        const int idsPerConstraint = 26;
+        const int overshoot = 1;
+
+        int constraintSystemLength = AliasedConstraintSystemStreamLength(constraintAliases, idsPerConstraint, NoValueBytes);
+        int witnessLength = AssignedVariablesWitnessStreamLength(OneVariableId, OneValueByte);
+        int streamLength = constraintSystemLength + witnessLength;
+        int work = constraintAliases + (constraintAliases * idsPerConstraint) + OneVariableId + OneValueByte;
+        Assert.AreEqual(streamLength + overshoot, work, "the decode work must exceed the stream length by exactly one unit");
+
+        IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
+        Disposables.Add(owner);
+        ReadOnlyMemory<byte> stream = owner.Memory[..streamLength];
+        WriteAliasedConstraintSystemStream(owner.Memory.Span[..constraintSystemLength], constraintAliases, idsPerConstraint, NoValueBytes, valuesPresent: true);
+        WriteAssignedVariablesWitnessStream(owner.Memory.Span[constraintSystemLength..streamLength], OneVariableId, OneValueByte);
+
+        var sink = new RecordingSink();
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None));
+
+        Assert.Contains("more work than its byte length", exception.Message, "the decode-work budget must be what rejects the stream");
+    }
+
+
+    /// <summary>
+    /// Rents a pooled buffer holding example.zkif followed by <paramref name="tailBytes"/> zero bytes and
+    /// registers the rental for cleanup.
+    /// </summary>
+    /// <param name="tailBytes">The number of zero bytes appended after the example stream.</param>
+    /// <returns>The example stream and its zero tail, exactly as long as both together.</returns>
+    private Memory<byte> RentExampleWithZeroTail(int tailBytes)
+    {
+        byte[] example = ZkInterfaceExampleFixture.ExampleBytes();
+        int streamLength = example.Length + tailBytes;
+        IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
+        Disposables.Add(owner);
+        Memory<byte> stream = owner.Memory[..streamLength];
+        example.AsSpan().CopyTo(stream.Span);
+        stream.Span[example.Length..].Clear();
+
+        return stream;
+    }
+
+
     //Encodes an aliased ConstraintSystem of the given shape and asserts the decode-work budget
     //rejects it with its own message, so a mis-encoded buffer tripping a bounds check would fail
     //this test rather than pass for the wrong reason.
@@ -538,7 +764,33 @@ internal sealed class ZkInterfaceCursorDecoderTests
     /// offset is derived from the widths of the FlatBuffers building blocks; the layout is packed and
     /// every offset points forward.
     /// </summary>
-    private static void WriteEmptyAssignedVariablesWitnessStream(Span<byte> destination)
+    private static void WriteEmptyAssignedVariablesWitnessStream(Span<byte> destination) =>
+        WriteAssignedVariablesWitnessStream(destination, NoVariableIds, NoValueBytes);
+
+
+    /// <summary>
+    /// The byte length of the size-prefixed stream <see cref="WriteAssignedVariablesWitnessStream"/> writes:
+    /// the empty Witness stream grown by one <c>variable_ids</c> element per id and by the value bytes.
+    /// </summary>
+    /// <param name="idCount">The number of variable ids the Witness assigns.</param>
+    /// <param name="valueByteCount">The byte length of the values vector.</param>
+    /// <returns>The stream length in bytes, size prefix included.</returns>
+    private static int AssignedVariablesWitnessStreamLength(int idCount, int valueByteCount) =>
+        EmptyWitnessStreamBytes + (VariableIdBytes * idCount) + valueByteCount;
+
+
+    /// <summary>
+    /// Fills <paramref name="destination"/>, exactly <see cref="AssignedVariablesWitnessStreamLength"/>
+    /// bytes, with a single size-prefixed Witness message whose <c>assigned_variables</c> table holds
+    /// <paramref name="idCount"/> variable ids, numbered from zero, and a zero-filled values vector of
+    /// <paramref name="valueByteCount"/> bytes. Every table size, vtable size and field offset is derived
+    /// from the widths of the FlatBuffers building blocks; the layout is packed and every offset points
+    /// forward.
+    /// </summary>
+    /// <param name="destination">The span the stream is written into.</param>
+    /// <param name="idCount">The number of variable ids the Witness assigns.</param>
+    /// <param name="valueByteCount">The byte length of the values vector.</param>
+    private static void WriteAssignedVariablesWitnessStream(Span<byte> destination, int idCount, int valueByteCount)
     {
         destination.Clear();
 
@@ -547,7 +799,6 @@ internal sealed class ZkInterfaceCursorDecoderTests
         const int uoffsetBytes = sizeof(uint);
         const int vectorLengthBytes = sizeof(uint);
         const int unionTypeBytes = sizeof(byte);
-        const uint emptyVectorLength = 0;
 
         //Vtable entry offsets: the table inline size follows the vtable byte length, and the field
         //slots follow both header entries.
@@ -570,7 +821,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         const int variablesVtableBytes = secondSlotEntry + VtableEntryBytes;
 
         //Positions relative to the message body, low -> high address. Each vtable sits immediately
-        //before its table, and the two empty vectors close the message.
+        //before its table, and the ids vector then the values vector close the message.
         const int pRootOffset = 0;
         const int pVtRoot = pRootOffset + uoffsetBytes;
         const int pTRoot = pVtRoot + rootVtableBytes;
@@ -579,8 +830,8 @@ internal sealed class ZkInterfaceCursorDecoderTests
         const int pVtVars = pTWitness + witnessTableBytes;
         const int pTVars = pVtVars + variablesVtableBytes;
         const int pVIds = pTVars + variablesTableBytes;
-        const int pVValues = pVIds + vectorLengthBytes;
-        const int messageLength = pVValues + vectorLengthBytes;
+        int pVValues = pVIds + vectorLengthBytes + (VariableIdBytes * idCount);
+        int messageLength = pVValues + vectorLengthBytes + valueByteCount;
 
         //The message body follows the 4-byte size prefix.
         Span<byte> m = destination[SizePrefixBytes..];
@@ -611,14 +862,20 @@ internal sealed class ZkInterfaceCursorDecoderTests
         BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + secondSlotEntry)..], VariablesValuesFieldOffset);
         BinaryPrimitives.WriteInt32LittleEndian(m[pTVars..], pTVars - pVtVars);
         BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + variablesIdsFieldOffset)..], pVIds - (pTVars + variablesIdsFieldOffset));
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + VariablesValuesFieldOffset)..], pVValues - (pTVars + VariablesValuesFieldOffset));
+        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + VariablesValuesFieldOffset)..], (uint)(pVValues - (pTVars + VariablesValuesFieldOffset)));
 
-        //Both vectors are empty: a zero element count and no element bytes.
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pVIds..], emptyVectorLength);
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pVValues..], emptyVectorLength);
+        //The ids vector carries its element count and then that many ids; the values vector carries its
+        //byte count, and its bytes stay zero from the clear above.
+        BinaryPrimitives.WriteUInt32LittleEndian(m[pVIds..], (uint)idCount);
+        for(int i = 0; i < idCount; i++)
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(m[(pVIds + vectorLengthBytes + (VariableIdBytes * i))..], (ulong)i);
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(m[pVValues..], (uint)valueByteCount);
 
         //The 4-byte little-endian size prefix carries the message length.
-        BinaryPrimitives.WriteUInt32LittleEndian(destination, messageLength);
+        BinaryPrimitives.WriteUInt32LittleEndian(destination, (uint)messageLength);
     }
 
 
@@ -644,6 +901,10 @@ internal sealed class ZkInterfaceCursorDecoderTests
         public ulong FreeVariableId { get; private set; }
         public bool FieldMaximumSeen { get; private set; }
         public int ConstraintCount { get; private set; }
+
+        /// <summary>The number of constraints the decoder closed.</summary>
+        public int EndedConstraintCount { get; private set; }
+
         public List<ulong> InstanceVariableIds { get; } = new();
         public List<uint> InstanceVariableValues { get; } = new();
         public List<ulong> WitnessVariableIds { get; } = new();
@@ -669,6 +930,9 @@ internal sealed class ZkInterfaceCursorDecoderTests
 
         public void OnConstraintTerm(ZkInterfaceConstraintMatrix matrix, ulong variableId, ReadOnlySpan<byte> coefficientLittleEndian) =>
             Terms.Add(new Term(currentConstraint, matrix, variableId, ReadLittleEndianValue(coefficientLittleEndian)));
+
+        /// <summary>Counts one closed constraint.</summary>
+        public void EndConstraint() => EndedConstraintCount++;
 
         public void OnWitnessVariable(ulong variableId, ReadOnlySpan<byte> valueLittleEndian)
         {
