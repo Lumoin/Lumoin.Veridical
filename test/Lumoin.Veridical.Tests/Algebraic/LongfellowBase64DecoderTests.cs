@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Globalization;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -78,6 +79,42 @@ internal sealed class LongfellowBase64DecoderTests
     /// <summary><c>ceil(6 * 6 / 8)</c>: the decoded byte count the fixed-length decode writes for <see cref="CountedInputByteCount"/> symbols.</summary>
     private const int CountedDecodedByteCount = 5;
 
+    /// <summary>The parameter name the constructor's gadget-layer null check reports.</summary>
+    private const string LogicParameterName = "logic";
+
+    /// <summary>The parameter name the flag-reporting decode's input null check reports.</summary>
+    private const string InputParameterName = "input";
+
+    /// <summary>The parameter name reported by both output null checks, the flag-reporting decode's and the shared shape guard's, since both name an <c>output</c> parameter.</summary>
+    private const string OutputParameterName = "output";
+
+    /// <summary>The parameter name the shared shape guard's input-array null check reports.</summary>
+    private const string InputsParameterName = "inputs";
+
+    /// <summary>The parameter name the length-gated decode's length null check reports.</summary>
+    private const string LengthParameterName = "length";
+
+    /// <summary>The caller-argument expression the shared shape guard's output-length check reports, the one parameter name no other guard in the decoder produces.</summary>
+    private const string OutputLengthParameterName = "output.Length";
+
+    /// <summary>A zero input byte count: it clears every shape bound over empty arrays, so a null-argument check is the only guard left that can answer.</summary>
+    private const int EmptyCount = 0;
+
+    /// <summary>The decoder's overflow bound on its <c>count * 6</c> index arithmetic: a count at or above this is refused.</summary>
+    private const int OverflowBoundCount = 1 << 28;
+
+    /// <summary>One past <see cref="OverflowBoundCount"/>, so the refused count and the bound print as different numbers and the bound in the rejection message cannot be mistaken for the count.</summary>
+    private const int CountPastOverflowBound = OverflowBoundCount + 1;
+
+    /// <summary>A single input byte to decode, the smallest count whose decoded prefix is a whole byte.</summary>
+    private const int SingleSymbolCount = 1;
+
+    /// <summary><c>ceil(1 * 6 / 8)</c>: the decoded byte count <see cref="SingleSymbolCount"/> input byte needs.</summary>
+    private const int SingleSymbolDecodedByteCount = 1;
+
+    /// <summary>An output array holding no byte vectors at all, the length the output-length guard reports when it refuses one.</summary>
+    private const int EmptyOutputByteCount = 0;
+
     /// <summary>"ABC", the three-byte prefix the length-gated decode's output must spell when only the genuine length is claimed.</summary>
     private static byte[] ExpectedDecodedPrefix { get; } = [0x41, 0x42, 0x43];
 
@@ -95,6 +132,9 @@ internal sealed class LongfellowBase64DecoderTests
 
     /// <summary>"ABCD" followed by a zero partial byte: R and A (17, 0) pack to 0x44, and the low four bits of A with the top four bits of the constant-zero third symbol give 0x00.</summary>
     private static ReadOnlySpan<byte> ExpectedCountedOutput => [0x41, 0x42, 0x43, 0x44, 0x00];
+
+    /// <summary><see cref="OverflowBoundCount"/> in decimal, the message fragment only the overflow guard produces: the input-array guard measures the count against the input array's length and reports that instead.</summary>
+    private static string OverflowBoundText { get; } = OverflowBoundCount.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
@@ -314,6 +354,259 @@ internal sealed class LongfellowBase64DecoderTests
         for(int i = 0; i < ExpectedCountedOutput.Length; i++)
         {
             Assert.AreEqual(ExpectedCountedOutput[i], ReadByteFromBits(logic, output[i]), $"Decoded output byte {i} must equal byte {i} of 'ABCD' followed by a zero partial byte.");
+        }
+    }
+
+
+    /// <summary>
+    /// Pins that the constructor rejects a null gadget layer with an <see cref="ArgumentNullException"/>
+    /// naming <c>logic</c>. The constructor takes no other argument, so that null check is the only guard
+    /// that can answer.
+    /// </summary>
+    [TestMethod]
+    public void TheConstructorRejectsANullLogic()
+    {
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() => new LongfellowBase64Decoder(null!), "A null gadget layer must be rejected.");
+
+        Assert.AreEqual(LogicParameterName, exception.ParamName, "The rejection must name the gadget-layer parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that the flag-reporting overload rejects a null input vector with an
+    /// <see cref="ArgumentNullException"/> naming <c>input</c>. The output vector is non-null and carries
+    /// the six-bit symbol width, so neither the output null check nor the width guard can answer instead,
+    /// and only the input null check reports that parameter name.
+    /// </summary>
+    [TestMethod]
+    public void TheFlagReportingDecodeRejectsANullInputVector()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        var output = new LongfellowBitWire[SymbolBitWidth];
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() => decoder.Decode(null!, output, out _), "A null input vector must be rejected.");
+
+        Assert.AreEqual(InputParameterName, exception.ParamName, "The rejection must name the input parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that the flag-reporting overload rejects a null output vector with an
+    /// <see cref="ArgumentNullException"/> naming <c>output</c>. The input vector is non-null, exactly eight
+    /// bits wide and spells a genuine alphabet character, so neither the input null check nor the width
+    /// guard can answer instead, and only the output null check reports that parameter name.
+    /// </summary>
+    [TestMethod]
+    public void TheFlagReportingDecodeRejectsANullOutputVector()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[] input = logic.BitVector(LongfellowLogic.BitWidth8, ValidCharacter);
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() => decoder.Decode(input, null!, out _), "A null output vector must be rejected.");
+
+        Assert.AreEqual(OutputParameterName, exception.ParamName, "The rejection must name the output parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that the fixed-length overload rejects a null input array with an
+    /// <see cref="ArgumentNullException"/> naming <c>inputs</c>. The output array is non-null and a zero
+    /// count clears every bound the shape guard measures, so the input-array null check is the only guard
+    /// that can answer, and only it reports that parameter name.
+    /// </summary>
+    [TestMethod]
+    public void TheFixedLengthDecodeRejectsNullInputs()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] output = [];
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() => decoder.RawUrlDecode(null!, output, EmptyCount), "A null input array must be rejected.");
+
+        Assert.AreEqual(InputsParameterName, exception.ParamName, "The rejection must name the input-array parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that the fixed-length overload rejects a null output array with an
+    /// <see cref="ArgumentNullException"/> naming <c>output</c>. The input array is non-null and a zero
+    /// count clears every bound the shape guard measures, so the output null check is the only guard that
+    /// can answer, and only it reports that parameter name.
+    /// </summary>
+    [TestMethod]
+    public void TheFixedLengthDecodeRejectsANullOutput()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] inputs = [];
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() => decoder.RawUrlDecode(inputs, null!, EmptyCount), "A null output array must be rejected.");
+
+        Assert.AreEqual(OutputParameterName, exception.ParamName, "The rejection must name the output parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that the fixed-length overload rejects a count at or above the decoder's <c>count * 6</c>
+    /// index-arithmetic bound, reporting the bound it measured against. Both arrays are non-null and the
+    /// count is positive, so no null check and no non-negative check answers; the refused count is one past
+    /// the bound, so the bound's own digits appear in the message only because the overflow guard put them
+    /// there, and no other count guard measures against that number.
+    /// </summary>
+    [TestMethod]
+    public void TheFixedLengthDecodeRejectsACountPastTheOverflowBound()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] inputs = [];
+        LongfellowBitWire[][] output = [];
+
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => decoder.RawUrlDecode(inputs, output, CountPastOverflowBound), "A count past the index-arithmetic bound must be rejected.");
+
+        Assert.AreEqual(CountParameterName, exception.ParamName, "The rejection must name the count parameter.");
+        Assert.Contains(OverflowBoundText, exception.Message, StringComparison.Ordinal, "The rejection must quote the index-arithmetic bound it measured against.");
+    }
+
+
+    /// <summary>
+    /// Pins that the fixed-length overload rejects a count reaching past the input array with an
+    /// <see cref="ArgumentOutOfRangeException"/> naming <c>count</c> and carrying the refused value. Both
+    /// arrays are non-null, one is a non-negative count well below the overflow bound, and the output array
+    /// already holds the one byte that count decodes to, so the input-length bound is the only one the
+    /// shape guard can fail.
+    /// </summary>
+    [TestMethod]
+    public void TheFixedLengthDecodeRejectsACountPastTheInputArray()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] inputs = [];
+        LongfellowBitWire[][] output = AllocateOutputByteVectors(SingleSymbolDecodedByteCount);
+
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => decoder.RawUrlDecode(inputs, output, SingleSymbolCount), "A count reaching past the input array must be rejected.");
+
+        Assert.AreEqual(CountParameterName, exception.ParamName, "The rejection must name the count parameter.");
+        Assert.AreEqual(SingleSymbolCount, exception.ActualValue, "The rejection must carry the count it refused.");
+    }
+
+
+    /// <summary>
+    /// Pins that the fixed-length overload rejects an output array shorter than the
+    /// <c>ceil(count * 6 / 8)</c> decoded prefix, reporting the measured output length. Both arrays are
+    /// non-null, and a count of one is non-negative, below the overflow bound and within the one-byte input
+    /// array, so the output-length bound is the only one the shape guard can fail, and it is the only guard
+    /// in the decoder that reports the output length as its parameter name.
+    /// </summary>
+    [TestMethod]
+    public void TheFixedLengthDecodeRejectsAnOutputShorterThanTheDecodedPrefix()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] inputs = [logic.BitVector(LongfellowLogic.BitWidth8, ValidCharacter)];
+        LongfellowBitWire[][] output = [];
+
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => decoder.RawUrlDecode(inputs, output, SingleSymbolCount), "An output array shorter than the decoded prefix must be rejected.");
+
+        Assert.AreEqual(OutputLengthParameterName, exception.ParamName, "The rejection must name the output length it measured.");
+        Assert.AreEqual(EmptyOutputByteCount, exception.ActualValue, "The rejection must carry the output length it refused.");
+    }
+
+
+    /// <summary>
+    /// Pins that the wire-valued-length overload runs the same shape guard as the fixed-length one, rejecting
+    /// a negative input byte count with an <see cref="ArgumentOutOfRangeException"/> naming <c>count</c> and
+    /// carrying the refused value. Both arrays are non-null and empty and the length vector is non-null, so
+    /// no null check answers; a count of minus one is below the overflow bound, does not exceed the empty
+    /// input array and needs no output bytes, so only the non-negative bound rejects it, and only that
+    /// bound reports a negative actual value.
+    /// </summary>
+    [TestMethod]
+    public void TheLengthGatedDecodeRejectsANegativeCount()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] inputs = [];
+        LongfellowBitWire[][] output = [];
+        LongfellowBitWire[] length = logic.BitVector(LengthWireBitWidth, LengthGatedGenuineLength);
+
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => decoder.RawUrlDecodeWithLength(inputs, output, NegativeCount, length), "A negative input byte count must be rejected.");
+
+        Assert.AreEqual(CountParameterName, exception.ParamName, "The rejection must name the count parameter.");
+        Assert.AreEqual(NegativeCount, exception.ActualValue, "The rejection must carry the negative count it refused.");
+    }
+
+
+    /// <summary>
+    /// Pins that the wire-valued-length overload rejects a null length vector with an
+    /// <see cref="ArgumentNullException"/> naming <c>length</c>. Both arrays are non-null and a zero count
+    /// clears every bound the shape guard measures, so the length null check is the only guard that can
+    /// answer, and only it reports that parameter name.
+    /// </summary>
+    [TestMethod]
+    public void TheLengthGatedDecodeRejectsANullLength()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] inputs = [];
+        LongfellowBitWire[][] output = [];
+
+        ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() => decoder.RawUrlDecodeWithLength(inputs, output, EmptyCount, null!), "A null length vector must be rejected.");
+
+        Assert.AreEqual(LengthParameterName, exception.ParamName, "The rejection must name the length parameter.");
+    }
+
+
+    /// <summary>
+    /// Pins that the wire-valued-length overload reads exactly the counted input bytes across a full
+    /// four-symbol group and a trailing three-symbol group, writing every bit of the
+    /// <c>ceil(count * 6 / 8)</c> decoded bytes: "QUJDREU", whose array is exactly as long as the count,
+    /// repacks to "ABCDE" followed by the zero byte the trailing group's constant-zero fourth symbol
+    /// completes. The claimed length covers all seven bytes and every one of them is in the alphabet, so
+    /// no validity assertion latches.
+    /// </summary>
+    [TestMethod]
+    public void TheLengthGatedDecodeRepacksFullAndPartialGroups()
+    {
+        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        var logic = new LongfellowLogic(backend, Fp256Field);
+        var decoder = new LongfellowBase64Decoder(logic);
+
+        LongfellowBitWire[][] inputs = BuildInputByteVectors(logic, GroupedInputBytes);
+        LongfellowBitWire[][] output = AllocateOutputByteVectors(GroupedDecodedByteCount);
+        LongfellowBitWire[] length = logic.BitVector(LengthWireBitWidth, GroupedInputByteCount);
+
+        decoder.RawUrlDecodeWithLength(inputs, output, GroupedInputByteCount, length);
+
+        Assert.IsFalse(backend.AssertionFailed, "Every byte of 'QUJDREU' is in the alphabet and inside the claimed length, so no validity assertion may latch.");
+
+        for(int i = 0; i < ExpectedGroupedOutput.Length; i++)
+        {
+            for(int bit = 0; bit < LongfellowLogic.BitWidth8; bit++)
+            {
+                Assert.HasCount(Scalar.SizeBytes, output[i][bit].LinearCoefficient.Span, $"Decoded output byte {i}'s bit {bit} must be written.");
+            }
+
+            Assert.AreEqual(ExpectedGroupedOutput[i], ReadByteFromBits(logic, output[i]), $"Decoded output byte {i} must equal byte {i} of 'ABCDE' followed by a zero byte.");
         }
     }
 
