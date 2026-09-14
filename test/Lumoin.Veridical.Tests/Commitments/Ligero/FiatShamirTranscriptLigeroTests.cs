@@ -24,8 +24,50 @@ namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 [TestClass]
 internal sealed class FiatShamirTranscriptLigeroTests
 {
+    /// <summary>The encoded scalar width, so each challenge destination holds whole field elements.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The default Merkle digest width, so the absorbed root matches the configured hash output.</summary>
     private const int RootSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>Five challenge scalars exercise replay across multiple squeezes with a count distinct from the opened-column count.</summary>
+    private const int AgreementChallengeCount = 5;
+
+    /// <summary>Sixteen columns provide a power-of-two sampling domain with several columns left unopened.</summary>
+    private const int PowerOfTwoExtensionWidth = 16;
+
+    /// <summary>Four opened columns exercise distinct sampling over a proper subset of the sixteen-column domain.</summary>
+    private const int PowerOfTwoOpenedColumnCount = 4;
+
+    /// <summary>Twelve columns provide a domain that cannot be sampled correctly by assuming a power-of-two mask.</summary>
+    private const int NonPowerOfTwoExtensionWidth = 12;
+
+    /// <summary>Five opened columns exercise repeated distinct draws while leaving part of the twelve-column domain unopened.</summary>
+    private const int NonPowerOfTwoOpenedColumnCount = 5;
+
+    /// <summary>Eight columns keep whole-domain sampling small while requiring repeated draws and duplicate rejection.</summary>
+    private const int PermutationExtensionWidth = 8;
+
+    /// <summary>Four challenge scalars expose root binding across multiple squeezes.</summary>
+    private const int RootBindingChallengeCount = 4;
+
+    /// <summary>Four challenge scalars compare operation labels across multiple squeezes.</summary>
+    private const int LabelSeparationChallengeCount = 4;
+
+    /// <summary>The replay fixture's root key; both schedules use this byte so their absorbed roots are identical.</summary>
+    private const byte AgreementRootKey = 0x11;
+
+    /// <summary>The distinct-index fixture's root key, giving both extension widths the same deterministic root pattern.</summary>
+    private const byte DistinctIndicesRootKey = 0x22;
+
+    /// <summary>The whole-domain fixture's root key, selecting a deterministic draw sequence for its permutation.</summary>
+    private const byte PermutationRootKey = 0x33;
+
+    /// <summary>The first root-binding fixture's key, selecting the root whose challenges and indices are compared.</summary>
+    private const byte RootBindingKey = 0x44;
+
+    /// <summary>The adjacent root key changes every root byte by one while preserving the absorb schedule and dimensions.</summary>
+    private const byte DifferentRootBindingKey = RootBindingKey + 1;
 
     /// <summary>The number of challenge scalars requested when the challenge destination is deliberately mis-sized.</summary>
     private const int MisSizedChallengeCount = 1;
@@ -128,41 +170,47 @@ internal sealed class FiatShamirTranscriptLigeroTests
     /// <summary>The width of the big-endian squeeze counter the transcript writes as the last field of every XOF input.</summary>
     private const int SqueezeCounterBytes = sizeof(long);
 
+    /// <summary>The BLAKE3 transcript hash backend for initialisation, absorption and chained state updates.</summary>
     private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+
+    /// <summary>The BLAKE3 XOF backend that produces challenge and index draw bytes.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+
+    /// <summary>The small-prime field backend that reduces challenge bytes into canonical scalars.</summary>
     private static ScalarReduceDelegate Reduce { get; } = SmallPrimeFieldScalars.GetReduce();
 
-    //A fixed public-input seed; the transcript binds every challenge to it.
-    private static byte[] Seed { get; } = "Lumoin.Veridical.Ligero.Transcript.Test"u8.ToArray();
+    /// <summary>The public-input seed shared by every transcript, binding challenges to the same deterministic context.</summary>
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.Ligero.Transcript.Test"u8;
 
 
+    /// <summary>Identical prover and verifier absorb schedules produce identical challenge scalars and opened-column indices.</summary>
     [TestMethod]
     public void ProverAndVerifierAgreeOnChallengesAndIndices()
     {
-        const int ChallengeCount = 5;
-        const int ExtensionWidth = 16;
-        const int OpenedColumns = 4;
+        Span<byte> proverChallenges = stackalloc byte[AgreementChallengeCount * ScalarSize];
+        Span<int> proverIndices = stackalloc int[PowerOfTwoOpenedColumnCount];
+        Span<byte> verifierChallenges = stackalloc byte[AgreementChallengeCount * ScalarSize];
+        Span<int> verifierIndices = stackalloc int[PowerOfTwoOpenedColumnCount];
 
-        Span<byte> proverChallenges = stackalloc byte[ChallengeCount * ScalarSize];
-        Span<int> proverIndices = stackalloc int[OpenedColumns];
-        Span<byte> verifierChallenges = stackalloc byte[ChallengeCount * ScalarSize];
-        Span<int> verifierIndices = stackalloc int[OpenedColumns];
-
-        RunSchedule(0x11, ChallengeCount, ExtensionWidth, OpenedColumns, proverChallenges, proverIndices);
-        RunSchedule(0x11, ChallengeCount, ExtensionWidth, OpenedColumns, verifierChallenges, verifierIndices);
+        RunSchedule(AgreementRootKey, AgreementChallengeCount, PowerOfTwoExtensionWidth, PowerOfTwoOpenedColumnCount, proverChallenges, proverIndices);
+        RunSchedule(AgreementRootKey, AgreementChallengeCount, PowerOfTwoExtensionWidth, PowerOfTwoOpenedColumnCount, verifierChallenges, verifierIndices);
 
         Assert.IsTrue(proverChallenges.SequenceEqual(verifierChallenges), "Identical absorb schedules must yield identical challenge scalars.");
         Assert.IsTrue(proverIndices.SequenceEqual(verifierIndices), "Identical absorb schedules must yield identical opened-column indices.");
     }
 
 
+    /// <summary>Opened-column indices are distinct and within the domain for both power-of-two and non-power-of-two extension widths.</summary>
+    /// <param name="extensionWidth">The number of columns available for sampling.</param>
+    /// <param name="openedColumns">The number of distinct column indices requested.</param>
+    /// <param name="scenario">The domain shape identified in assertion messages.</param>
     [TestMethod]
-    [DataRow(16, 4, "power-of-two extension width")]
-    [DataRow(12, 5, "non-power-of-two extension width")]
+    [DataRow(PowerOfTwoExtensionWidth, PowerOfTwoOpenedColumnCount, "power-of-two extension width")]
+    [DataRow(NonPowerOfTwoExtensionWidth, NonPowerOfTwoOpenedColumnCount, "non-power-of-two extension width")]
     public void OpenedColumnIndicesAreDistinctAndInRange(int extensionWidth, int openedColumns, string scenario)
     {
         Span<int> indices = stackalloc int[openedColumns];
-        SampleIndices(0x22, extensionWidth, openedColumns, indices);
+        SampleIndices(DistinctIndicesRootKey, extensionWidth, openedColumns, indices);
 
         for(int i = 0; i < indices.Length; i++)
         {
@@ -176,16 +224,14 @@ internal sealed class FiatShamirTranscriptLigeroTests
     }
 
 
+    /// <summary>Requesting as many distinct indices as the extension width visits every column exactly once.</summary>
     [TestMethod]
     public void SamplingTheWholeDomainYieldsAPermutation()
     {
-        //count == width forces the dedup loop to fill out every position, so the
-        //draws must be exactly a permutation of [0, width).
-        const int Width = 8;
-        Span<int> indices = stackalloc int[Width];
-        SampleIndices(0x33, Width, Width, indices);
+        Span<int> indices = stackalloc int[PermutationExtensionWidth];
+        SampleIndices(PermutationRootKey, PermutationExtensionWidth, PermutationExtensionWidth, indices);
 
-        Span<bool> present = stackalloc bool[Width];
+        Span<bool> present = stackalloc bool[PermutationExtensionWidth];
         foreach(int index in indices)
         {
             Assert.IsFalse(present[index], "Each position must appear exactly once.");
@@ -199,44 +245,40 @@ internal sealed class FiatShamirTranscriptLigeroTests
     }
 
 
+    /// <summary>Changing the absorbed tableau root changes both challenge scalars and opened-column indices under the same schedule.</summary>
     [TestMethod]
     public void ChallengesAndIndicesBindToTheAbsorbedRoot()
     {
-        const int ChallengeCount = 4;
-        const int ExtensionWidth = 16;
-        const int OpenedColumns = 4;
+        Span<byte> challengesA = stackalloc byte[RootBindingChallengeCount * ScalarSize];
+        Span<int> indicesA = stackalloc int[PowerOfTwoOpenedColumnCount];
+        Span<byte> challengesB = stackalloc byte[RootBindingChallengeCount * ScalarSize];
+        Span<int> indicesB = stackalloc int[PowerOfTwoOpenedColumnCount];
 
-        Span<byte> challengesA = stackalloc byte[ChallengeCount * ScalarSize];
-        Span<int> indicesA = stackalloc int[OpenedColumns];
-        Span<byte> challengesB = stackalloc byte[ChallengeCount * ScalarSize];
-        Span<int> indicesB = stackalloc int[OpenedColumns];
-
-        RunSchedule(0x44, ChallengeCount, ExtensionWidth, OpenedColumns, challengesA, indicesA);
-        RunSchedule(0x45, ChallengeCount, ExtensionWidth, OpenedColumns, challengesB, indicesB);
+        RunSchedule(RootBindingKey, RootBindingChallengeCount, PowerOfTwoExtensionWidth, PowerOfTwoOpenedColumnCount, challengesA, indicesA);
+        RunSchedule(DifferentRootBindingKey, RootBindingChallengeCount, PowerOfTwoExtensionWidth, PowerOfTwoOpenedColumnCount, challengesB, indicesB);
 
         Assert.IsFalse(challengesA.SequenceEqual(challengesB), "A different absorbed root must change the challenges.");
         Assert.IsFalse(indicesA.SequenceEqual(indicesB), "A different absorbed root must change the opened-column indices.");
     }
 
 
+    /// <summary>Low-degree and linear challenge labels produce different scalar vectors from identical initial transcript states.</summary>
     [TestMethod]
     public void DistinctLabelsSeparateOtherwiseIdenticalSqueezes()
     {
-        const int Count = 4;
-
-        Span<byte> low = stackalloc byte[Count * ScalarSize];
-        Span<byte> linear = stackalloc byte[Count * ScalarSize];
+        Span<byte> low = stackalloc byte[LabelSeparationChallengeCount * ScalarSize];
+        Span<byte> linear = stackalloc byte[LabelSeparationChallengeCount * ScalarSize];
 
         using(FiatShamirTranscript transcript = NewTranscript())
         {
             transcript.SqueezeLigeroChallengeScalars(
-                new FiatShamirOperationLabel(WellKnownLigeroTranscriptLabels.LowDegreeChallenge), Count, low, Squeeze, Hash, Reduce, CurveParameterSet.None, BaseMemoryPool.Shared);
+                new FiatShamirOperationLabel(WellKnownLigeroTranscriptLabels.LowDegreeChallenge), LabelSeparationChallengeCount, low, Squeeze, Hash, Reduce, CurveParameterSet.None, BaseMemoryPool.Shared);
         }
 
         using(FiatShamirTranscript transcript = NewTranscript())
         {
             transcript.SqueezeLigeroChallengeScalars(
-                new FiatShamirOperationLabel(WellKnownLigeroTranscriptLabels.LinearChallenge), Count, linear, Squeeze, Hash, Reduce, CurveParameterSet.None, BaseMemoryPool.Shared);
+                new FiatShamirOperationLabel(WellKnownLigeroTranscriptLabels.LinearChallenge), LabelSeparationChallengeCount, linear, Squeeze, Hash, Reduce, CurveParameterSet.None, BaseMemoryPool.Shared);
         }
 
         Assert.IsFalse(low.SequenceEqual(linear), "The same squeeze under different operation labels must differ.");
@@ -550,8 +592,13 @@ internal sealed class FiatShamirTranscriptLigeroTests
     }
 
 
-    //Runs the standalone challenge schedule against a fresh transcript: absorb
-    //the root, squeeze the challenge scalars, then the opened-column indices.
+    /// <summary>Absorbs a tableau root into a fresh transcript, then squeezes challenge scalars followed by opened-column indices.</summary>
+    /// <param name="rootKey">The byte selecting the deterministic root pattern.</param>
+    /// <param name="challengeCount">The number of challenge scalars requested.</param>
+    /// <param name="extensionWidth">The number of columns available for sampling.</param>
+    /// <param name="openedColumns">The number of distinct column indices requested.</param>
+    /// <param name="challenges">Receives the challenge scalar encodings.</param>
+    /// <param name="indices">Receives the opened-column indices.</param>
     private static void RunSchedule(
         byte rootKey,
         int challengeCount,
@@ -572,6 +619,11 @@ internal sealed class FiatShamirTranscriptLigeroTests
     }
 
 
+    /// <summary>Absorbs a deterministic tableau root into a fresh transcript and samples distinct opened-column indices.</summary>
+    /// <param name="rootKey">The byte selecting the deterministic root pattern.</param>
+    /// <param name="extensionWidth">The number of columns available for sampling.</param>
+    /// <param name="openedColumns">The number of distinct column indices requested.</param>
+    /// <param name="indices">Receives the opened-column indices.</param>
     private static void SampleIndices(byte rootKey, int extensionWidth, int openedColumns, Span<int> indices)
     {
         Span<byte> rootBytes = stackalloc byte[RootSizeBytes];
@@ -584,16 +636,22 @@ internal sealed class FiatShamirTranscriptLigeroTests
     }
 
 
-    private static FiatShamirTranscript NewTranscript() =>
-        FiatShamirTranscript.Initialise(
+    /// <summary>Initialises a Ligero transcript with the shared public-input seed and BLAKE3 hash backend.</summary>
+    /// <returns>The transcript; the caller owns its disposal.</returns>
+    private static FiatShamirTranscript NewTranscript()
+    {
+        return FiatShamirTranscript.Initialise(
             new FiatShamirDomainLabel(WellKnownLigeroDomainLabels.LigeroV1),
             Seed,
             WellKnownHashAlgorithms.Blake3,
             Hash,
             BaseMemoryPool.Shared);
+    }
 
 
-    //Fills a distinct 32-byte root pattern keyed by a single byte.
+    /// <summary>Fills a root with a deterministic byte sequence whose starting value distinguishes the absorbed root.</summary>
+    /// <param name="key">The first byte of the root pattern.</param>
+    /// <param name="root">Receives consecutive byte values beginning at the key.</param>
     private static void FillRoot(byte key, Span<byte> root)
     {
         for(int i = 0; i < root.Length; i++)

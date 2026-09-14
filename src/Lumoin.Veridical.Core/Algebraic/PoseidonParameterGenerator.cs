@@ -6,15 +6,14 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <summary>
 /// Deterministic Poseidon parameter generation per the reference Grain-LFSR
 /// procedure (the <c>generate_parameters_grain</c> script of the Poseidon
-/// authors — the same procedure circomlib's pinned constants were produced
-/// with, so generating for BN254 at circomlib's round counts reproduces
-/// circomlib's constants byte-for-byte; the known-answer tests gate this).
-/// Derive-don't-embed: no constant tables ship, both wired curves are served
-/// by the one generator, and any (width, rounds) shape is constructible.
+/// authors). Generating for BN254 at circomlib's round counts reproduces
+/// circomlib's constants byte-for-byte. Both supported curves use this
+/// generator, which derives constants for any accepted width and round
+/// counts without embedded constant tables.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The Grain stream: an 80-bit LFSR seeded with the parameter descriptor —
+/// The Grain stream uses an 80-bit LFSR seeded with the parameter descriptor —
 /// 2 bits field type (1 = prime field), 4 bits S-box type (0 = <c>x^α</c>),
 /// 12 bits field size <c>n</c>, 12 bits <c>t</c>, 10 bits <c>R_F</c>, 10
 /// bits <c>R_P</c>, then 30 one-bits — each sub-field most-significant-bit
@@ -25,32 +24,50 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// rejects values ≥ the modulus. Round constants are drawn sequentially,
 /// <c>(R_F + R_P) · t</c> of them; the MDS matrix is the Cauchy matrix
 /// <c>M[i][j] = (x_i + y_j)^{−1}</c> whose <c>2t</c> points continue the
-/// same stream — drawn as raw <c>n</c>-bit values WITHOUT rejection
+/// same stream — drawn as raw <c>n</c>-bit values without rejection
 /// sampling, reduced once mod the modulus (the reference script's
-/// <c>create_mds_p</c> takes them unrejected; circomlib's tables pin this
-/// asymmetry, and the known-answer tests gate it).
+/// <c>create_mds_p</c> takes them unrejected).
 /// </para>
 /// </remarks>
 public static class PoseidonParameterGenerator
 {
+    /// <summary>The canonical byte width of one scalar, used for the modulus, sampled elements and MDS entries.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
     /// <summary>The number of bits in one byte of the canonical big-endian modulus.</summary>
     private const int BitsPerByte = 8;
 
-    //The Grain LFSR's 80-bit state and the descriptor sub-field widths.
+    /// <summary>The 80-bit register width specified by the reference Grain LFSR procedure.</summary>
     private const int LfsrStateBits = 80;
+
+    /// <summary>The 160 initial raw bits discarded to warm up the register as the reference Grain procedure requires.</summary>
     private const int DiscardedWarmupBits = 160;
+
+    /// <summary>The two-bit field-type slot in the reference Grain parameter descriptor.</summary>
     private const int FieldTypeBits = 2;
+
+    /// <summary>The four-bit S-box-type slot in the reference Grain parameter descriptor.</summary>
     private const int SboxTypeBits = 4;
+
+    /// <summary>The twelve-bit modulus-bit-length slot in the reference Grain parameter descriptor.</summary>
     private const int FieldSizeBits = 12;
+
+    /// <summary>The twelve-bit state-width slot in the reference Grain parameter descriptor.</summary>
     private const int StateWidthBits = 12;
+
+    /// <summary>The ten-bit full-round-count slot in the reference Grain parameter descriptor.</summary>
     private const int FullRoundsBits = 10;
+
+    /// <summary>The ten-bit partial-round-count slot in the reference Grain parameter descriptor.</summary>
     private const int PartialRoundsBits = 10;
+
+    /// <summary>The thirty one-bits that complete the reference Grain descriptor's 80-bit initial register state.</summary>
     private const int TrailingOneBits = 30;
 
-    //Descriptor codes: prime field, x^alpha S-box.
+    /// <summary>The reference Grain descriptor's code of one for a prime field.</summary>
     private const int PrimeFieldCode = 1;
+
+    /// <summary>The reference Grain descriptor's code of zero for the power S-box <c>x^α</c>.</summary>
     private const int PowerSboxCode = 0;
 
 
@@ -102,9 +119,10 @@ public static class PoseidonParameterGenerator
             throw new ArgumentException($"The modulus must be exactly {ScalarSize} canonical bytes; received {modulus.Length}.", nameof(modulus));
         }
 
-        //The descriptor encodes n, every draw is n bits wide, and the one-step Cauchy reduction needs a raw n-bit draw
-        //to stay below twice the modulus, so the modulus must be exactly n bits long. That also rules out a zero
-        //modulus, below which rejection sampling could never accept a draw.
+        //The Grain descriptor encodes n as the modulus bit length and the sampler draws n bits, so exact equality
+        //keeps the descriptor and sampler consistent. The one-step Cauchy reduction needs only a modulus of at
+        //least 2^(n-1), which keeps each raw n-bit draw below twice the modulus. The equality also excludes a zero
+        //modulus, which would leave rejection sampling unable to accept any draw.
         int modulusBitLength = BitLength(modulus);
         if(modulusBitLength != fieldSizeBits)
         {
@@ -119,7 +137,7 @@ public static class PoseidonParameterGenerator
             _ = NextRawBit(lfsr);
         }
 
-        //Round constants: (R_F + R_P) · t field elements drawn sequentially.
+        //Draw (R_F + R_P) · t round constants sequentially from the Grain stream.
         int constantCount = (fullRounds + partialRounds) * stateWidth;
         byte[] roundConstants = new byte[constantCount * ScalarSize];
         for(int i = 0; i < constantCount; i++)
@@ -127,9 +145,8 @@ public static class PoseidonParameterGenerator
             SampleFieldElement(lfsr, fieldSizeBits, modulus, roundConstants.AsSpan(i * ScalarSize, ScalarSize));
         }
 
-        //The Cauchy MDS: 2t points continue the stream as raw n-bit draws
-        //(no rejection — the reference create_mds_p takes them unrejected,
-        //which circomlib's tables pin), then M[i][j] = (x_i + y_j)^{−1}.
+        //Continue the stream with 2t raw n-bit Cauchy points without rejection,
+        //as the reference create_mds_p requires, then set M[i][j] = (x_i + y_j)^{−1}.
         byte[] cauchyPoints = new byte[2 * stateWidth * ScalarSize];
         for(int i = 0; i < 2 * stateWidth; i++)
         {
@@ -152,8 +169,15 @@ public static class PoseidonParameterGenerator
     }
 
 
-    //The 80-bit descriptor: field type ‖ sbox type ‖ n ‖ t ‖ R_F ‖ R_P ‖ 1^30,
-    //each sub-field MSB-first, stored one bit per byte slot.
+    /// <summary>
+    /// Seeds the 80-bit register with field type, S-box type, modulus bit length, state width, full-round count,
+    /// partial-round count and thirty trailing one-bits, each descriptor slot most-significant-bit first.
+    /// </summary>
+    /// <param name="lfsr">The register storage, one byte per bit.</param>
+    /// <param name="fieldSizeBits">The modulus bit length encoded in the descriptor.</param>
+    /// <param name="stateWidth">The number of state lanes encoded in the descriptor.</param>
+    /// <param name="fullRounds">The full-round count encoded in the descriptor.</param>
+    /// <param name="partialRounds">The partial-round count encoded in the descriptor.</param>
     private static void InitialiseLfsr(Span<byte> lfsr, int fieldSizeBits, int stateWidth, int fullRounds, int partialRounds)
     {
         int position = 0;
@@ -170,6 +194,11 @@ public static class PoseidonParameterGenerator
     }
 
 
+    /// <summary>Writes a descriptor value most-significant-bit first, using one register byte per bit.</summary>
+    /// <param name="lfsr">The register storage receiving the descriptor bits.</param>
+    /// <param name="position">The next register position, advanced by the slot width.</param>
+    /// <param name="value">The descriptor value to encode.</param>
+    /// <param name="width">The descriptor slot width in bits.</param>
     private static void WriteBits(Span<byte> lfsr, ref int position, int value, int width)
     {
         for(int bit = width - 1; bit >= 0; bit--)
@@ -179,8 +208,12 @@ public static class PoseidonParameterGenerator
     }
 
 
-    //b_{i+80} = b_{i+62} ⊕ b_{i+51} ⊕ b_{i+38} ⊕ b_{i+23} ⊕ b_{i+13} ⊕ b_i;
-    //shift the window forward and return the new bit.
+    /// <summary>
+    /// Advances the register by the Grain recurrence
+    /// <c>b_{i+80} = b_{i+62} ⊕ b_{i+51} ⊕ b_{i+38} ⊕ b_{i+23} ⊕ b_{i+13} ⊕ b_i</c>.
+    /// </summary>
+    /// <param name="lfsr">The register storage, shifted forward by one bit.</param>
+    /// <returns>The feedback bit appended to the register.</returns>
     private static byte NextRawBit(Span<byte> lfsr)
     {
         byte produced = (byte)(lfsr[62] ^ lfsr[51] ^ lfsr[38] ^ lfsr[23] ^ lfsr[13] ^ lfsr[0]);
@@ -195,7 +228,9 @@ public static class PoseidonParameterGenerator
     }
 
 
-    //The pairwise filter: emit the second bit of a pair when the first is 1.
+    /// <summary>Filters raw bits pairwise, emitting the second bit only when the first bit is one.</summary>
+    /// <param name="lfsr">The register storage advanced until one output bit is accepted.</param>
+    /// <returns>The accepted second bit of a raw pair.</returns>
     private static byte NextFilteredBit(Span<byte> lfsr)
     {
         while(true)
@@ -210,10 +245,14 @@ public static class PoseidonParameterGenerator
     }
 
 
-    //n filtered bits MSB-first into a canonical scalar; rejection-sample below
-    //the modulus (plain byte-lexicographic comparison — both are fixed-width
-    //big-endian). The modulus has bit length n, so it is at least 2^(n-1) and
-    //every draw whose leading bit is clear is accepted.
+    /// <summary>
+    /// Samples filtered bits most-significant-bit first into a canonical scalar, rejecting each draw at or above
+    /// the modulus. The modulus has bit length <c>n</c>, so every <c>n</c>-bit draw with a clear leading bit is accepted.
+    /// </summary>
+    /// <param name="lfsr">The register storage advanced for each sampled bit.</param>
+    /// <param name="fieldSizeBits">The number of filtered bits per draw, equal to the modulus bit length.</param>
+    /// <param name="modulus">The exclusive upper bound, canonical big-endian and one scalar wide.</param>
+    /// <param name="destination">The destination for the accepted canonical scalar.</param>
     private static void SampleFieldElement(Span<byte> lfsr, int fieldSizeBits, ReadOnlySpan<byte> modulus, Span<byte> destination)
     {
         while(true)
@@ -237,9 +276,15 @@ public static class PoseidonParameterGenerator
     }
 
 
-    //n raw filtered bits MSB-first WITHOUT rejection, reduced once mod the
-    //modulus. One conditional subtraction suffices: Generate accepts only a
-    //modulus of bit length n, so a raw n-bit value is below twice the modulus.
+    /// <summary>
+    /// Samples filtered bits most-significant-bit first without rejection and reduces the draw once modulo the
+    /// modulus. One subtraction suffices because a modulus of at least <c>2^(n-1)</c> keeps every raw
+    /// <c>n</c>-bit draw below twice the modulus.
+    /// </summary>
+    /// <param name="lfsr">The register storage advanced for each sampled bit.</param>
+    /// <param name="fieldSizeBits">The number of filtered bits in the draw, equal to the modulus bit length.</param>
+    /// <param name="modulus">The reduction modulus, canonical big-endian and one scalar wide.</param>
+    /// <param name="destination">The destination for the reduced canonical scalar.</param>
     private static void SampleRawFieldElement(Span<byte> lfsr, int fieldSizeBits, ReadOnlySpan<byte> modulus, Span<byte> destination)
     {
         destination.Clear();

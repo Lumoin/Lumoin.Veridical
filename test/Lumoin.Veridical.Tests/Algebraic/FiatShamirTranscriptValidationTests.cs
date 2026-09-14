@@ -37,6 +37,9 @@ internal sealed class FiatShamirTranscriptValidationTests
     /// <summary>The width of the squeeze destination, one full BLAKE3 output.</summary>
     private const int SqueezeByteCount = 32;
 
+    /// <summary>Zero XOF calls, because the null hash guard must reject before the squeeze delegate runs.</summary>
+    private const int NoSqueezeCalls = 0;
+
     /// <summary>The fixed-output BLAKE3 transcript hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
 
@@ -164,18 +167,26 @@ internal sealed class FiatShamirTranscriptValidationTests
     /// Pins that <c>SqueezeBytes</c> rejects a <see langword="null"/> hash delegate with an
     /// <see cref="ArgumentNullException"/> that reports the <c>hash</c> parameter before the XOF runs, instead of writing
     /// challenge bytes into the destination and failing only at the chained state-update hash. The transcript and the
-    /// squeeze delegate are non-null, so the hash delegate is the only null argument.
+    /// squeeze delegate are non-null, so the hash delegate is the only null argument. The recording squeeze delegate's
+    /// zero call count pins that rejection precedes the XOF invocation.
     /// </summary>
     [TestMethod]
     public void SqueezeBytesRejectsNullHashDelegate()
     {
         using FiatShamirTranscript transcript = FiatShamirTranscript.Initialise(DomainLabel, ReadOnlySpan<byte>.Empty, WellKnownHashAlgorithms.Blake3, Hash, BaseMemoryPool.Shared);
         using IMemoryOwner<byte> destinationOwner = BaseMemoryPool.Shared.Rent(SqueezeByteCount);
+        int squeezeCalls = NoSqueezeCalls;
+        FiatShamirSqueezeDelegate recordingSqueeze = (ReadOnlySpan<byte> input, Span<byte> output, string hashFunction) =>
+        {
+            squeezeCalls++;
+            Squeeze(input, output, hashFunction);
+        };
 
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
-            () => transcript.SqueezeBytes(OperationLabel, destinationOwner.Memory.Span[..SqueezeByteCount], Squeeze, null!),
+            () => transcript.SqueezeBytes(OperationLabel, destinationOwner.Memory.Span[..SqueezeByteCount], recordingSqueeze, null!),
             "A null hash delegate must reject the squeeze as a null argument.");
 
         Assert.AreEqual(HashParameterName, exception.ParamName, "The rejection must name the hash parameter.");
+        Assert.AreEqual(NoSqueezeCalls, squeezeCalls, "A null hash delegate must be rejected before the squeeze delegate runs.");
     }
 }

@@ -30,6 +30,54 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 [TestClass]
 internal sealed class CircomR1csReaderTests
 {
+    /// <summary>The 32-byte canonical scalar width of the BLS12-381 fixtures.</summary>
+    private const int ScalarSize = WellKnownCurves.Bls12Curve381ScalarSizeBytes;
+
+    /// <summary>The byte offset of the prime modulus, immediately after the four-byte field width.</summary>
+    private const int PrimeOffset = FieldSizeOffset + sizeof(uint);
+
+    /// <summary>The divisor that cuts the fixture in half, leaving a section payload incomplete.</summary>
+    private const int FixtureHalves = 2;
+
+    /// <summary>The Hyrax vector length for the four-column Multiplier2 witness, split into two columns.</summary>
+    private const int Multiplier2HyraxVectorLength = 2;
+
+    /// <summary>The BN254 scalar modulus substituted into a BLS12-381 header to exercise field mismatch rejection.</summary>
+    private const string Bn254ScalarFieldModulusHex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+
+    /// <summary>The four matrix columns of Multiplier2, one for each declared wire.</summary>
+    private const int Multiplier2ColumnCount = (int)Multiplier2WireCount;
+
+    /// <summary>The reader exposes no public input values because the R1CS file carries only circuit structure.</summary>
+    private const int Multiplier2PublicInputCount = 0;
+
+    /// <summary>Each Multiplier2 matrix stores one term per constraint, giving two terms.</summary>
+    private const int Multiplier2MatrixTermCount = Multiplier2ConstraintCount;
+
+    /// <summary>The second stored triple belongs to the padding constraint.</summary>
+    private const int SecondTripleIndex = 1;
+
+    /// <summary>The three nonconstant wires returned in the Multiplier2 witness.</summary>
+    private const int Multiplier2WitnessVariableCount = Multiplier2ColumnCount - 1;
+
+    /// <summary>The output is the first canonical scalar in the Multiplier2 witness.</summary>
+    private const int OutputValueOffset = 0;
+
+    /// <summary>The left factor follows the output by one canonical scalar.</summary>
+    private const int LeftFactorValueOffset = OutputValueOffset + ScalarSize;
+
+    /// <summary>The right factor follows the left factor by one canonical scalar.</summary>
+    private const int RightFactorValueOffset = LeftFactorValueOffset + ScalarSize;
+
+    /// <summary>The fixture output is 33 because the factors are 3 and 11.</summary>
+    private const int Multiplier2OutputValue = 33;
+
+    /// <summary>The left input of the fixture multiplication is 3.</summary>
+    private const int Multiplier2LeftFactorValue = 3;
+
+    /// <summary>The right input of the fixture multiplication is 11.</summary>
+    private const int Multiplier2RightFactorValue = 11;
+
     /// <summary>The length of the ASCII <c>r1cs</c> magic that opens every <c>.r1cs</c> file.</summary>
     private const int MagicBytes = 4;
 
@@ -261,6 +309,7 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>The Multiplier2 circuit parses into two constraint rows and four wire columns, with all nonconstant wires assigned to the witness.</summary>
     [TestMethod]
     public void Multiplier2R1csParsesIntoExpectedShape()
     {
@@ -270,43 +319,43 @@ internal sealed class CircomR1csReaderTests
         //inputs in the Veridical sense (all wires routed into the
         //witness — see CircomR1csReader's remarks on the public-input
         //convention).
-        Assert.AreEqual(2, instance.A.RowCount, "A.RowCount");
-        Assert.AreEqual(2, instance.B.RowCount, "B.RowCount");
-        Assert.AreEqual(2, instance.C.RowCount, "C.RowCount");
+        Assert.AreEqual(Multiplier2ConstraintCount, instance.A.RowCount, "A.RowCount");
+        Assert.AreEqual(Multiplier2ConstraintCount, instance.B.RowCount, "B.RowCount");
+        Assert.AreEqual(Multiplier2ConstraintCount, instance.C.RowCount, "C.RowCount");
 
-        Assert.AreEqual(4, instance.A.ColumnCount, "A.ColumnCount");
-        Assert.AreEqual(4, instance.B.ColumnCount, "B.ColumnCount");
-        Assert.AreEqual(4, instance.C.ColumnCount, "C.ColumnCount");
+        Assert.AreEqual(Multiplier2ColumnCount, instance.A.ColumnCount, "A.ColumnCount");
+        Assert.AreEqual(Multiplier2ColumnCount, instance.B.ColumnCount, "B.ColumnCount");
+        Assert.AreEqual(Multiplier2ColumnCount, instance.C.ColumnCount, "C.ColumnCount");
 
-        Assert.AreEqual(0, instance.PublicInputCount, "PublicInputCount");
+        Assert.AreEqual(Multiplier2PublicInputCount, instance.PublicInputCount, "PublicInputCount");
 
         //Each matrix has exactly 2 non-zeros: one per constraint row.
-        Assert.AreEqual(2, instance.A.NonzeroCount, "A.NonzeroCount");
-        Assert.AreEqual(2, instance.B.NonzeroCount, "B.NonzeroCount");
-        Assert.AreEqual(2, instance.C.NonzeroCount, "C.NonzeroCount");
+        Assert.AreEqual(Multiplier2MatrixTermCount, instance.A.NonzeroCount, "A.NonzeroCount");
+        Assert.AreEqual(Multiplier2MatrixTermCount, instance.B.NonzeroCount, "B.NonzeroCount");
+        Assert.AreEqual(Multiplier2MatrixTermCount, instance.C.NonzeroCount, "C.NonzeroCount");
 
-        //Triples — C0: a*b=c, C1: 1*1=1 padding.
-        (int aRow0, int aCol0) = instance.A.GetTriplePosition(0);
-        (int aRow1, int aCol1) = instance.A.GetTriplePosition(1);
+        //The first constraint enforces a * b = c, and the second is the constant-wire padding constraint.
+        (int aRow0, int aCol0) = instance.A.GetTriplePosition(FirstTripleIndex);
+        (int aRow1, int aCol1) = instance.A.GetTriplePosition(SecondTripleIndex);
         Assert.AreEqual((0, 2), (aRow0, aCol0), "A[0] expected at constraint 0, wire 2 (a)");
         Assert.AreEqual((1, 0), (aRow1, aCol1), "A[1] expected at padding constraint, constant wire");
 
-        (int bRow0, int bCol0) = instance.B.GetTriplePosition(0);
-        (int cRow0, int cCol0) = instance.C.GetTriplePosition(0);
+        (int bRow0, int bCol0) = instance.B.GetTriplePosition(FirstTripleIndex);
+        (int cRow0, int cCol0) = instance.C.GetTriplePosition(FirstTripleIndex);
         Assert.AreEqual((0, 3), (bRow0, bCol0), "B[0] expected at constraint 0, wire 3 (b)");
         Assert.AreEqual((0, 1), (cRow0, cCol0), "C[0] expected at constraint 0, wire 1 (c)");
     }
 
 
-    //The .r1cs header section stores nWires as a little-endian uint32 at byte offset 60
-    //(12 file header + 12 section header + 4 field_size + 32 prime) and nConstraints at
-    //offset 84. Both are attacker-controlled; a value above int.MaxValue must be rejected
-    //as malformed rather than overflow the checked (int) cast during construction. Offsets
-    //are the ones a fuzz sweep of this committed fixture triggered the overflow through.
-    private const int NWiresLittleEndianOffset = 60;
-    private const int NConstraintsLittleEndianOffset = 84;
+    /// <summary>The byte offset of nWires, following the file header, section prefix, field width and prime modulus.</summary>
+    private const int NWiresLittleEndianOffset = FieldSizeOffset + NWiresPayloadOffset;
+
+    /// <summary>The byte offset of nConstraints, following the wire counts and label count in the header payload.</summary>
+    private const int NConstraintsLittleEndianOffset = FieldSizeOffset + NConstraintsPayloadOffset;
 
 
+    /// <summary>A wire or constraint count above the signed 32-bit range is rejected as an argument error before matrix construction.</summary>
+    /// <param name="littleEndianOffset">The byte offset of the wire or constraint count to overwrite.</param>
     [TestMethod]
     [DataRow(NWiresLittleEndianOffset)]
     [DataRow(NConstraintsLittleEndianOffset)]
@@ -314,75 +363,76 @@ internal sealed class CircomR1csReaderTests
     {
         //Sanity: the untampered fixture parses, so the single tamper below is the only
         //change under test (and a fixture drift that moved the field would fail loudly here).
-        using(RawR1csInstance _ = ReadFixture(CircomR1csFixtures.Multiplier2Bytes))
+        using(RawR1csInstance parsed = ReadFixture(CircomR1csFixtures.Multiplier2Bytes))
         {
         }
 
         byte[] tampered = CircomR1csFixtures.Multiplier2Bytes;
-        BinaryPrimitives.WriteUInt32LittleEndian(tampered.AsSpan(littleEndianOffset, sizeof(uint)), uint.MaxValue);
+        BinaryPrimitives.WriteUInt32LittleEndian(tampered.AsSpan(littleEndianOffset, sizeof(uint)), HeaderCountAboveInt32Range);
 
-        //Before the upper-bound guard this surfaced as an OverflowException from the
-        //checked (int) cast; ThrowsExactly<ArgumentException> pins the documented rejection.
+        //Counts above the signed 32-bit range must produce the documented argument exception.
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csInstance _ = ReadFixture(tampered);
+            using RawR1csInstance parsed = ReadFixture(tampered);
         });
     }
 
 
+    /// <summary>The R1CS reader rejects the witness format label with an argument exception naming the format.</summary>
     [TestMethod]
     public void Multiplier2R1csRejectsWrongFormatLabel()
     {
-        Assert.ThrowsExactly<ArgumentException>(() =>
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csInstance _ = ReadFixture(
+            using RawR1csInstance parsed = ReadFixture(
                 CircomR1csFixtures.Multiplier2Bytes,
                 WellKnownR1csFormatLabel.CircomWitness);
         });
+
+        Assert.AreEqual("format", exception.ParamName, "The rejection must name the format parameter.");
     }
 
 
+    /// <summary>The R1CS reader rejects a fixture whose leading magic byte is not the expected ASCII character.</summary>
     [TestMethod]
     public void Multiplier2R1csRejectsWrongMagic()
     {
         byte[] mutated = (byte[])CircomR1csFixtures.Multiplier2Bytes.Clone();
-        mutated[0] = (byte)'x'; //corrupt the 'r' of "r1cs"
+        mutated[MagicLeadByteOffset] = ForeignMagicLeadByte;
 
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csInstance _ = ReadFixture(mutated);
+            using RawR1csInstance parsed = ReadFixture(mutated);
         });
     }
 
 
+    /// <summary>A BLS12-381 R1CS read rejects a header declaring the BN254 scalar field.</summary>
     [TestMethod]
     public void Multiplier2R1csRejectsBn254Field()
     {
-        //Construct a header with BN254's scalar prime in place of
-        //BLS12-381's. BN254 r =
-        //  0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
         byte[] bn254FieldFixture = MutatePrimeBytes(
             CircomR1csFixtures.Multiplier2Bytes,
-            replacementPrimeBigEndianHex:
-                "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
+            replacementPrimeBigEndianHex: Bn254ScalarFieldModulusHex);
 
         Assert.ThrowsExactly<R1csUnsupportedFieldException>(() =>
         {
-            using RawR1csInstance _ = ReadFixture(bn254FieldFixture);
+            using RawR1csInstance parsed = ReadFixture(bn254FieldFixture);
         });
     }
 
 
+    /// <summary>The R1CS reader rejects a fixture cut in half inside its declared constraint section.</summary>
     [TestMethod]
     public void Multiplier2R1csRejectsTruncatedFile()
     {
         //Cut the fixture in half — guaranteed to land mid-section.
         byte[] full = CircomR1csFixtures.Multiplier2Bytes;
-        byte[] truncated = full.AsSpan(0, full.Length / 2).ToArray();
+        byte[] truncated = full.AsSpan(0, full.Length / FixtureHalves).ToArray();
 
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csInstance _ = ReadFixture(truncated);
+            using RawR1csInstance parsed = ReadFixture(truncated);
         });
     }
 
@@ -735,13 +785,13 @@ internal sealed class CircomR1csReaderTests
 
     /// <summary>
     /// A curve without reference support is rejected by the wired-curve gate, whose message lists the wired curves,
-    /// before the file is parsed and the scalar width lookup could reject the curve on its own terms.
+    /// before any pipe read or scalar width lookup occurs.
     /// </summary>
     [TestMethod]
     public void Multiplier2R1csRejectsUnwiredCurveBeforeParsing()
     {
         Memory<byte> file = RentFixtureCopy();
-        PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(file));
+        StrictChunkedPipeReader pipe = new(file, Multiplier2FileBytes);
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
@@ -755,6 +805,7 @@ internal sealed class CircomR1csReaderTests
 
         Assert.AreEqual("curve", exception.ParamName);
         Assert.Contains("is not wired; the wired curves are Bls12Curve381 and Bn254.", exception.Message, StringComparison.Ordinal);
+        Assert.IsFalse(pipe.HasBeenRead, "The curve check must reject the call before the pipe is read.");
     }
 
 
@@ -1010,19 +1061,17 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>The parsed Multiplier2 instance and a satisfying witness produce a standard Spartan proof accepted by the verifier.</summary>
     [TestMethod]
     public void Multiplier2R1csParsedInstanceProvesAndVerifiesWithStandardSpartan()
     {
         //Build proving + verifying keys against the parsed instance,
         //feed a satisfying witness (a=3, b=11, c=33), prove with the
         //base Spartan prover, verify with the base Spartan verifier.
-        const int rowCount = 2;
-        const int columnCount = 4;
-
         using RawR1csWitness witness = BuildMultiplier2Witness();
 
-        using SpartanProver prover = BuildBaseProver(rowCount, columnCount);
-        using SpartanVerifier verifier = BuildBaseVerifier(rowCount, columnCount);
+        using SpartanProver prover = BuildBaseProver(Multiplier2ConstraintCount, Multiplier2ColumnCount);
+        using SpartanVerifier verifier = BuildBaseVerifier(Multiplier2ConstraintCount, Multiplier2ColumnCount);
 
         using RawR1csInstance proverInstance = ReadFixture(CircomR1csFixtures.Multiplier2Bytes);
         using RawR1csInstance verifierInstance = ReadFixture(CircomR1csFixtures.Multiplier2Bytes);
@@ -1045,15 +1094,14 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>The parsed Multiplier2 instance and a satisfying witness produce a masked Spartan proof accepted by the verifier.</summary>
     [TestMethod]
     public void Multiplier2R1csParsedInstanceProvesAndVerifiesWithMaskedSpartan()
     {
-        const int hyraxVectorLength = 2;
-
         using RawR1csWitness witness = BuildMultiplier2Witness();
 
-        using MaskedSpartanProver prover = BuildMaskedProver(hyraxVectorLength);
-        using MaskedSpartanVerifier verifier = BuildMaskedVerifier(hyraxVectorLength);
+        using MaskedSpartanProver prover = BuildMaskedProver(Multiplier2HyraxVectorLength);
+        using MaskedSpartanVerifier verifier = BuildMaskedVerifier(Multiplier2HyraxVectorLength);
 
         using RawR1csInstance proverInstance = ReadFixture(CircomR1csFixtures.Multiplier2Bytes);
         using RawR1csInstance verifierInstance = ReadFixture(CircomR1csFixtures.Multiplier2Bytes);
@@ -1076,14 +1124,17 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>Parses fixture bytes as a BLS12-381 instance under the Circom binary format label.</summary>
     private static RawR1csInstance ReadFixture(byte[] fixtureBytes) =>
         ReadFixture(fixtureBytes, WellKnownR1csFormatLabel.CircomBinary);
 
 
+    /// <summary>Parses fixture bytes as a BLS12-381 instance using the supplied format label.</summary>
     private static RawR1csInstance ReadFixture(byte[] fixtureBytes, WellKnownR1csFormatLabel format)
     {
         var stream = new MemoryStream(fixtureBytes, writable: false);
         PipeReader pipe = PipeReader.Create(stream);
+
         return CircomR1csReader.Reader(
             pipe,
             format,
@@ -1138,41 +1189,41 @@ internal sealed class CircomR1csReaderTests
 
     /// <summary>
     /// Returns a copy of <paramref name="fixtureBytes"/> with the
-    /// header section's prime modulus (32 little-endian bytes at offset
-    /// <c>20</c>: 12 file header + 12 section header + 4 field_size)
+    /// header section's prime modulus (one scalar at <see cref="PrimeOffset"/>)
     /// replaced by the bytes of <paramref name="replacementPrimeBigEndianHex"/>
     /// (reversed to little-endian on the way in).
     /// </summary>
     private static byte[] MutatePrimeBytes(byte[] fixtureBytes, string replacementPrimeBigEndianHex)
     {
-        const int primeOffset = 12 + 12 + 4;
         byte[] mutated = (byte[])fixtureBytes.Clone();
         byte[] replacementBe = Convert.FromHexString(replacementPrimeBigEndianHex);
         //File stores prime little-endian; reverse on the way in.
         for(int i = 0; i < replacementBe.Length; i++)
         {
-            mutated[primeOffset + i] = replacementBe[replacementBe.Length - 1 - i];
+            mutated[PrimeOffset + i] = replacementBe[replacementBe.Length - 1 - i];
         }
 
         return mutated;
     }
 
 
+    /// <summary>Builds the canonical witness (33, 3, 11), matching the output and factor wire order of the Multiplier2 circuit.</summary>
     private static RawR1csWitness BuildMultiplier2Witness()
     {
         //z = (1, c, a, b) = (1, 33, 3, 11) — satisfies a * b = c with
         //a = 3, b = 11. PublicInputCount = 0 means z[1..] is the
         //entire witness, in Veridical order matching Circom's wire
         //ordering.
-        int scalarSize = WellKnownCurves.Bls12Curve381ScalarSizeBytes;
-        byte[] witnessBytes = new byte[3 * scalarSize];
-        WriteCanonical(new BigInteger(33), witnessBytes.AsSpan(0 * scalarSize, scalarSize));
-        WriteCanonical(new BigInteger(3), witnessBytes.AsSpan(1 * scalarSize, scalarSize));
-        WriteCanonical(new BigInteger(11), witnessBytes.AsSpan(2 * scalarSize, scalarSize));
+        Span<byte> witnessBytes = stackalloc byte[Multiplier2WitnessVariableCount * ScalarSize];
+        WriteCanonical(new BigInteger(Multiplier2OutputValue), witnessBytes.Slice(OutputValueOffset, ScalarSize));
+        WriteCanonical(new BigInteger(Multiplier2LeftFactorValue), witnessBytes.Slice(LeftFactorValueOffset, ScalarSize));
+        WriteCanonical(new BigInteger(Multiplier2RightFactorValue), witnessBytes.Slice(RightFactorValueOffset, ScalarSize));
+
         return RawR1csWitness.FromCanonical(witnessBytes, CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
     }
 
 
+    /// <summary>Builds a standard Spartan prover with a commitment key sized for the fixture columns.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanProver via its constructor chain.")]
     private static SpartanProver BuildBaseProver(int rowCount, int columnCount)
     {
@@ -1197,6 +1248,7 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>Builds a standard Spartan verifier with a commitment key sized for the fixture columns.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanVerifier via its constructor chain.")]
     private static SpartanVerifier BuildBaseVerifier(int rowCount, int columnCount)
     {
@@ -1215,6 +1267,7 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>Builds a masked Spartan prover with enough commitment generators for the witness and statistical masks.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned MaskedSpartanProver via its constructor chain.")]
     private static MaskedSpartanProver BuildMaskedProver(int hyraxVectorLength)
     {
@@ -1233,6 +1286,7 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>Builds a masked Spartan verifier with enough commitment generators for the witness and statistical masks.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned MaskedSpartanVerifier via its constructor chain.")]
     private static MaskedSpartanVerifier BuildMaskedVerifier(int hyraxVectorLength)
     {
@@ -1248,6 +1302,7 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>Creates the Hyrax commitment provider and transfers ownership of the supplied key to it.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider takes ownership of the key (ownsKey: true) and transfers to the Spartan key that consumes it.")]
     private static PolynomialCommitmentProvider BuildProvider(HyraxCommitmentKey commitmentKey)
     {
@@ -1260,24 +1315,56 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>The BLAKE3 transcript hash backend used by the Spartan proofs.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The BLAKE3 transcript squeeze backend used by the Spartan proofs.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BLS12-381 reference scalar reduction backend.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 reference scalar addition backend.</summary>
     private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+
+    /// <summary>The BLS12-381 reference scalar subtraction backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+
+    /// <summary>The BLS12-381 reference scalar multiplication backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+
+    /// <summary>The BLS12-381 reference scalar inversion backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
+
+    /// <summary>The BLS12-381 reference random scalar backend.</summary>
     private static ScalarRandomDelegate ScalarRandom { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The BLS12-381 reference G1 addition backend.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BLS12-381 reference G1 scalar multiplication backend.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BLS12-381 test G1 multiscalar multiplication backend.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The BLS12-381 reference G1 curve membership backend.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BLS12-381 reference G1 prime-order subgroup membership backend.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BLS12-381 reference hash-to-G1 backend for deriving commitment generators.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The reference multilinear extension evaluation backend.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The reference multilinear extension folding backend.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
 
+    /// <summary>Creates a fresh BLAKE3 transcript under the Spartan protocol domain.</summary>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -1289,6 +1376,7 @@ internal sealed class CircomR1csReaderTests
     }
 
 
+    /// <summary>Reduces a scalar modulo the BLS12-381 field order and writes its zero-padded canonical big-endian representation.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

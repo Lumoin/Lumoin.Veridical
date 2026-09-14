@@ -37,10 +37,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.Circom;
 /// witness values. To produce a complete <see cref="RawR1csInstance"/>,
 /// the reader sets <see cref="RawR1csInstance.PublicInputCount"/> to
 /// zero and routes every wire (except the constant <c>z[0] = 1</c>)
-/// into the corresponding <see cref="RawR1csWitness"/>. Tests that need
-/// Circom's pub/priv distinction reconstruct an instance with
-/// caller-supplied public values; that pathway lands when
-/// <see cref="RawR1csInstance"/> grows a deferred-public-input mode.
+/// into the corresponding <see cref="RawR1csWitness"/>.
 /// </para>
 /// <para>
 /// Byte order: the file stores both length fields and coefficient
@@ -52,10 +49,31 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.Circom;
 /// </remarks>
 public static class CircomR1csReader
 {
+    /// <summary>The largest admitted field width, 256 bytes, bounding the header shape check before curve validation.</summary>
+    private const uint MaximumFieldSizeBytes = 256u;
+
+    /// <summary>The field width alignment required by the reader: a positive multiple of eight bytes.</summary>
+    private const uint FieldSizeAlignmentBytes = 8u;
+
+    /// <summary>The one leading wire reserved for the constant in the Circom witness convention.</summary>
+    private const int ConstantWireCount = 1;
+
+    /// <summary>The first constraint row, zero, used for the placeholder entry of an empty matrix.</summary>
+    private const int EmptyMatrixRow = 0;
+
+    /// <summary>The constant wire column, zero, used for the placeholder entry of an empty matrix.</summary>
+    private const int ConstantWireColumn = 0;
+
+    /// <summary>The only supported file version: 1 for the Circom R1CS format.</summary>
     private const uint SupportedFileVersion = 1u;
+
+    /// <summary>The section type code 1, which identifies the field and circuit header in the binary format.</summary>
     private const uint HeaderSectionType = 1u;
+
+    /// <summary>The section type code 2, which identifies the constraint terms in the binary format.</summary>
     private const uint ConstraintSectionType = 2u;
 
+    /// <summary>The four ASCII bytes that identify a <c>.r1cs</c> file.</summary>
     private static byte[] FileMagic { get; } = [(byte)'r', (byte)'1', (byte)'c', (byte)'s'];
 
     /// <summary>
@@ -84,6 +102,7 @@ public static class CircomR1csReader
             ReadInternal(pipe, format, curve, pool, cancellationToken);
 
 
+    /// <summary>Validates the reader arguments before draining the pipe, then parses and consumes its complete buffer.</summary>
     private static RawR1csInstance ReadInternal(
         PipeReader pipe,
         WellKnownR1csFormatLabel format,
@@ -119,6 +138,7 @@ public static class CircomR1csReader
     }
 
 
+    /// <summary>Validates the file envelope and required sections, then constructs the parsed instance.</summary>
     private static RawR1csInstance ParseBuffer(
         ReadOnlySequence<byte> buffer,
         CurveParameterSet curve,
@@ -153,20 +173,14 @@ public static class CircomR1csReader
             ReadOnlySequence<byte> sectionPayload = reader.UnreadSequence.Slice(0, (long)sectionSize);
             reader.Advance((long)sectionSize);
 
-            switch(sectionType)
+            //Only the header and data sections are interpreted; other payloads are skipped.
+            if(sectionType is HeaderSectionType)
             {
-                case HeaderSectionType:
-                    header = ParseHeaderSection(sectionPayload, curve);
-                    break;
-
-                case ConstraintSectionType:
-                    constraintSection = sectionPayload;
-                    break;
-
-                //All other section types (wire-to-label map, custom
-                //gates, etc.) are skipped per the spec.
-                default:
-                    break;
+                header = ParseHeaderSection(sectionPayload, curve);
+            }
+            else if(sectionType is ConstraintSectionType)
+            {
+                constraintSection = sectionPayload;
             }
         }
 
@@ -184,6 +198,7 @@ public static class CircomR1csReader
     }
 
 
+    /// <summary>Consumes the file magic and rejects truncated or unrecognised signatures.</summary>
     private static void ReadAndValidateMagic(ref SequenceReader<byte> reader)
     {
         Span<byte> magic = stackalloc byte[FileMagic.Length];
@@ -217,6 +232,7 @@ public static class CircomR1csReader
         }
 
         reader.Advance(sizeof(uint));
+
         return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
     }
 
@@ -235,10 +251,12 @@ public static class CircomR1csReader
         }
 
         reader.Advance(sizeof(ulong));
+
         return BinaryPrimitives.ReadUInt64LittleEndian(bytes);
     }
 
 
+    /// <summary>Validates the scalar field and header counts before returning the circuit dimensions.</summary>
     private static CircomR1csHeader ParseHeaderSection(
         ReadOnlySequence<byte> payload,
         CurveParameterSet curve)
@@ -246,7 +264,7 @@ public static class CircomR1csReader
         var reader = new SequenceReader<byte>(payload);
 
         uint fieldSize = ReadUInt32Le(ref reader, "header.fieldSize");
-        if(fieldSize == 0 || fieldSize > 256 || fieldSize % 8 != 0)
+        if(fieldSize == 0 || fieldSize > MaximumFieldSizeBytes || fieldSize % FieldSizeAlignmentBytes != 0)
         {
             throw new ArgumentException(
                 $"R1CS header declares field_size = {fieldSize}; must be a positive multiple of 8 not exceeding 256.");
@@ -303,7 +321,7 @@ public static class CircomR1csReader
         //The sum is computed in ulong: in uint arithmetic a crafted header
         //(e.g. nPubOut = 0xFFFFFFFF, nPubIn = 1) wraps mod 2^32 and slips
         //past this consistency check.
-        if((ulong)nPubOut + nPubIn + nPrvIn + 1 > nWires)
+        if((ulong)nPubOut + nPubIn + nPrvIn + ConstantWireCount > nWires)
         {
             throw new ArgumentException(
                 $"R1CS header inconsistency: nPubOut ({nPubOut}) + nPubIn ({nPubIn}) + nPrvIn ({nPrvIn}) + 1 (constant) exceeds nWires ({nWires}).");
@@ -313,6 +331,7 @@ public static class CircomR1csReader
     }
 
 
+    /// <summary>Checks the unsigned little-endian modulus against the declared curve scalar field.</summary>
     private static void ValidatePrimeModulus(ReadOnlySpan<byte> primeLittleEndian, CurveParameterSet curve)
     {
         //File stores the prime little-endian; reverse to big-endian to
@@ -339,6 +358,7 @@ public static class CircomR1csReader
     }
 
 
+    /// <summary>Reads every encoded constraint and constructs the three sorted matrices with no public input values.</summary>
     private static RawR1csInstance ParseConstraintsAndBuild(
         ReadOnlySequence<byte> payload,
         CircomR1csHeader header,
@@ -423,7 +443,7 @@ public static class CircomR1csReader
     /// Reads one linear combination (<c>nTerms</c> followed by
     /// <c>nTerms</c> × (wire_index, coefficient_LE)) into the
     /// <paramref name="accumulator"/>, contributing one triple per
-    /// non-zero term.
+    /// encoded term.
     /// </summary>
     private static void ReadLinearCombinationInto(
         ref SequenceReader<byte> reader,
@@ -460,6 +480,12 @@ public static class CircomR1csReader
 
 
     /// <summary>Header section payload, captured for the constraint-section parse.</summary>
+    /// <param name="NWires">The total wire count, including the constant.</param>
+    /// <param name="NPubOut">The declared number of public output wires.</param>
+    /// <param name="NPubIn">The declared number of public input wires.</param>
+    /// <param name="NPrvIn">The declared number of private input wires.</param>
+    /// <param name="NLabels">The number of labels in the wire-to-label map.</param>
+    /// <param name="NConstraints">The number of constraint rows to read.</param>
     private readonly record struct CircomR1csHeader(
         uint NWires,
         uint NPubOut,
@@ -476,21 +502,31 @@ public static class CircomR1csReader
     /// </summary>
     private sealed class TripleAccumulator
     {
+        /// <summary>The canonical byte width of every coefficient stored in this accumulator.</summary>
         private readonly int scalarSizeBytes;
+
+        /// <summary>The constraint row for each encoded term, in arrival order.</summary>
         private readonly List<int> rows = new();
+
+        /// <summary>The wire column for each encoded term, in arrival order.</summary>
         private readonly List<int> columns = new();
+
+        /// <summary>The canonical big-endian coefficients, one scalar per encoded term in arrival order.</summary>
         private readonly List<byte> valueBytes = new();
 
 
+        /// <summary>Creates an empty accumulator whose coefficients have the supplied canonical byte width.</summary>
         public TripleAccumulator(int scalarSizeBytes)
         {
             this.scalarSizeBytes = scalarSizeBytes;
         }
 
 
+        /// <summary>The number of encoded terms currently held by this accumulator.</summary>
         public int Count => rows.Count;
 
 
+        /// <summary>Appends a term and reverses its coefficient from little-endian to canonical big-endian.</summary>
         public void Add(int row, int column, ReadOnlySpan<byte> coefficientLittleEndian)
         {
             rows.Add(row);
@@ -504,6 +540,7 @@ public static class CircomR1csReader
         }
 
 
+        /// <summary>Sorts terms by row and column and constructs a matrix, supplying one zero entry when no terms are encoded.</summary>
         public R1csMatrix Build(
             int rowCount,
             int columnCount,
@@ -512,14 +549,12 @@ public static class CircomR1csReader
         {
             if(rows.Count == 0)
             {
-                //R1csMatrix requires at least one non-zero. A genuinely
-                //all-zero matrix is uncommon in real Circom output;
-                //synthesise a (0, 0) entry with coefficient zero to
-                //satisfy the invariant without changing satisfaction
-                //semantics.
-                int[] singleRow = [0];
-                int[] singleColumn = [0];
+                //R1csMatrix requires at least one stored entry. A zero coefficient at the first row and
+                //constant column satisfies that storage invariant without changing which witnesses satisfy it.
+                int[] singleRow = [EmptyMatrixRow];
+                int[] singleColumn = [ConstantWireColumn];
                 byte[] zeroValue = new byte[scalarSizeBytes];
+
                 return R1csMatrix.FromSortedTriples(
                     singleRow, singleColumn, zeroValue,
                     rowCount, columnCount, curve, pool);
@@ -542,6 +577,7 @@ public static class CircomR1csReader
             Array.Sort(order, (x, y) =>
             {
                 int byRow = rows[x].CompareTo(rows[y]);
+
                 return byRow != 0 ? byRow : columns[x].CompareTo(columns[y]);
             });
 
@@ -566,6 +602,7 @@ public static class CircomR1csReader
     }
 
 
+    /// <summary>Reads until completion, retaining all bytes and advancing the examined position after each partial read.</summary>
     private static ReadOnlySequence<byte> DrainPipe(PipeReader pipe, CancellationToken cancellationToken)
     {
         while(true)
@@ -582,10 +619,7 @@ public static class CircomR1csReader
                 return result.Buffer;
             }
 
-            //Tell the pipe we've examined everything but consumed
-            //nothing, so it keeps buffering until completion. The full
-            //file is small (Poseidon at ~200 constraints is well under
-            //100 KiB) so the whole-file-in-memory approach is fine.
+            //Retain every byte until the file is complete, while marking the current buffer as examined.
             pipe.AdvanceTo(result.Buffer.Start, result.Buffer.End);
         }
     }

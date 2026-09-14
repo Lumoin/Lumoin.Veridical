@@ -21,15 +21,62 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class MerkleTreeTests
 {
+    /// <summary>The default BLAKE3 node width, matching the output of the tree's compression delegate.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    //CsCheck iteration count. Enough random trees to exercise every depth in
-    //the sampled range many times over without making the suite slow.
+    /// <summary>Two hundred property samples exercise every supported sample depth repeatedly while keeping the suite small.</summary>
     private const int IterationCount = 200;
 
-    //The largest power-of-two exponent the property tests sample, giving trees
-    //of up to 2^6 = 64 leaves.
+    /// <summary>The largest sampled leaf-count exponent, limiting property trees to sixty-four leaves.</summary>
     private const int MaximumLeafExponent = 6;
+
+    /// <summary>The smallest sampled exponent, including the single-leaf tree with an empty authentication path.</summary>
+    private const int MinimumLeafExponent = 0;
+
+    /// <summary>The smallest tampering exponent, ensuring every sampled path has a sibling to corrupt.</summary>
+    private const int MinimumTamperingLeafExponent = 1;
+
+    /// <summary>A single leaf exercises authentication without any sibling digests.</summary>
+    private const int SingleLeafCount = 1;
+
+    /// <summary>The two children of each binary Merkle node, also the smallest tree with a sibling.</summary>
+    private const int BinaryChildCount = 2;
+
+    /// <summary>Eight leaves give tampering tests several branch directions while keeping their trees small.</summary>
+    private const int TamperingLeafCount = 8;
+
+    /// <summary>Four levels give the depth check several sibling digests to count.</summary>
+    private const int DepthCheckDepth = 4;
+
+    /// <summary>The complete binary tree with <see cref="DepthCheckDepth"/> levels below its root.</summary>
+    private const int DepthCheckLeafCount = SingleLeafCount << DepthCheckDepth;
+
+    /// <summary>The fourth leaf has both left and right branches in its authentication path.</summary>
+    private const int TamperingLeafIndex = 3;
+
+    /// <summary>The third leaf supplies a path whose branch directions differ from the claimed sixth leaf.</summary>
+    private const int MisroutedLeafIndex = 2;
+
+    /// <summary>The sixth leaf claims the third leaf's path, reversing all three branch directions.</summary>
+    private const int WrongLeafIndex = 5;
+
+    /// <summary>The first byte of a leaf or sibling is in bounds and provides a consistent corruption position.</summary>
+    private const int FirstByteOffset = 0;
+
+    /// <summary>The final root byte provides a corruption position distinct from the leaf and path fixtures.</summary>
+    private const int RootTamperingByteIndex = DigestSizeBytes - 1;
+
+    /// <summary>A single low bit changes exactly one bit of each corrupted fixture.</summary>
+    private const byte TamperingBitMask = 0x01;
+
+    /// <summary>The four-byte width written by the signed integer counter encoding in each distinct leaf.</summary>
+    private const int LeafCounterSizeBytes = sizeof(int);
+
+    /// <summary>A counter starting at one keeps even the first distinct leaf different from an all-zero node.</summary>
+    private const int FirstLeafCounter = 1;
+
+    /// <summary>The exclusive byte-value bound lets the property fill sample every possible byte uniformly.</summary>
+    private const uint ByteValueCount = byte.MaxValue + 1;
 
     /// <summary>
     /// The leaf count the byte-length and null-argument rejection tests pass: a positive power of two,
@@ -124,6 +171,7 @@ internal sealed class MerkleTreeTests
     private const int ExpectedReclaimedSlabCount = 2;
 
 
+    /// <summary>The production BLAKE3 hash wired as binary Merkle-node compression.</summary>
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
     /// <summary>The compression paired with the node width it produces.</summary>
@@ -147,12 +195,14 @@ internal sealed class MerkleTreeTests
     }
 
 
+    /// <summary>Every distinct leaf authenticates against its tree's root across empty and multi-level paths.</summary>
+    /// <param name="leafCount">The power-of-two number of leaves in the sample tree.</param>
     [TestMethod]
-    [DataRow(1)]
-    [DataRow(2)]
-    [DataRow(4)]
-    [DataRow(8)]
-    [DataRow(16)]
+    [DataRow(SingleLeafCount)]
+    [DataRow(BinaryChildCount)]
+    [DataRow(PathLeafCount)]
+    [DataRow(TamperingLeafCount)]
+    [DataRow(DepthCheckLeafCount)]
     public void RootAuthenticatesEveryLeaf(int leafCount)
     {
         using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(leafCount * DigestSizeBytes);
@@ -172,126 +222,134 @@ internal sealed class MerkleTreeTests
     }
 
 
+    /// <summary>A complete binary tree's depth and authentication-path length equal its leaf-count exponent.</summary>
     [TestMethod]
     public void PathDepthEqualsLogOfLeafCount()
     {
-        const int LeafCount = 16;
-        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(LeafCount * DigestSizeBytes);
-        Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
-        FillDistinctLeaves(leaves, LeafCount);
+        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(DepthCheckLeafCount * DigestSizeBytes);
+        Span<byte> leaves = leavesOwner.Memory.Span[..(DepthCheckLeafCount * DigestSizeBytes)];
+        FillDistinctLeaves(leaves, DepthCheckLeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
-        using MerkleAuthenticationPath path = tree.BuildPath(0, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, DepthCheckLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        using MerkleAuthenticationPath path = tree.BuildPath(PathLeafIndex, BaseMemoryPool.Shared);
 
-        //16 leaves is a depth-4 tree, so the path carries four sibling digests.
-        Assert.AreEqual(4, tree.Depth, "A 16-leaf tree has depth 4.");
-        Assert.AreEqual(4, path.SiblingCount, "The path carries one sibling per level below the root.");
+        Assert.AreEqual(DepthCheckDepth, tree.Depth, "A 16-leaf tree has depth 4.");
+        Assert.AreEqual(DepthCheckDepth, path.SiblingCount, "The path carries one sibling per level below the root.");
     }
 
 
+    /// <summary>Changing one bit of the claimed leaf breaks authentication against the correct root and path.</summary>
     [TestMethod]
     public void VerifyRejectsCorruptedLeaf()
     {
-        const int LeafCount = 8;
-        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(LeafCount * DigestSizeBytes);
-        Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
-        FillDistinctLeaves(leaves, LeafCount);
+        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(TamperingLeafCount * DigestSizeBytes);
+        Span<byte> leaves = leavesOwner.Memory.Span[..(TamperingLeafCount * DigestSizeBytes)];
+        FillDistinctLeaves(leaves, TamperingLeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
-        using MerkleAuthenticationPath path = tree.BuildPath(3, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, TamperingLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        using MerkleAuthenticationPath path = tree.BuildPath(TamperingLeafIndex, BaseMemoryPool.Shared);
 
         Span<byte> tamperedLeaf = stackalloc byte[DigestSizeBytes];
-        leaves.Slice(3 * DigestSizeBytes, DigestSizeBytes).CopyTo(tamperedLeaf);
-        tamperedLeaf[0] ^= 0x01;
+        leaves.Slice(TamperingLeafIndex * DigestSizeBytes, DigestSizeBytes).CopyTo(tamperedLeaf);
+        tamperedLeaf[FirstByteOffset] ^= TamperingBitMask;
 
-        bool authenticated = path.Verify(tree.Root, 3, tamperedLeaf, Blake3TwoToOne);
+        bool authenticated = path.Verify(tree.Root, TamperingLeafIndex, tamperedLeaf, Blake3TwoToOne);
 
         Assert.IsFalse(authenticated, "A single-bit change to the claimed leaf value must break authentication.");
     }
 
 
+    /// <summary>Changing one bit of a sibling digest breaks authentication of the unchanged leaf.</summary>
     [TestMethod]
     public void VerifyRejectsCorruptedPath()
     {
-        const int LeafCount = 8;
-        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(LeafCount * DigestSizeBytes);
-        Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
-        FillDistinctLeaves(leaves, LeafCount);
+        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(TamperingLeafCount * DigestSizeBytes);
+        Span<byte> leaves = leavesOwner.Memory.Span[..(TamperingLeafCount * DigestSizeBytes)];
+        FillDistinctLeaves(leaves, TamperingLeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
-        using MerkleAuthenticationPath path = tree.BuildPath(3, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, TamperingLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        using MerkleAuthenticationPath path = tree.BuildPath(TamperingLeafIndex, BaseMemoryPool.Shared);
 
         //Flip one bit in the first stored sibling digest.
-        MemoryMarshal.AsMemory(path.AsReadOnlyMemory()).Span[0] ^= 0x01;
+        MemoryMarshal.AsMemory(path.AsReadOnlyMemory()).Span[FirstByteOffset] ^= TamperingBitMask;
 
         bool authenticated = path.Verify(
-            tree.Root, 3, leaves.Slice(3 * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
+            tree.Root, TamperingLeafIndex, leaves.Slice(TamperingLeafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
 
         Assert.IsFalse(authenticated, "A single-bit change to a path sibling must break authentication.");
     }
 
 
+    /// <summary>Changing one bit of the expected root breaks authentication of an unchanged leaf and path.</summary>
     [TestMethod]
     public void VerifyRejectsWrongRoot()
     {
-        const int LeafCount = 8;
-        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(LeafCount * DigestSizeBytes);
-        Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
-        FillDistinctLeaves(leaves, LeafCount);
+        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(TamperingLeafCount * DigestSizeBytes);
+        Span<byte> leaves = leavesOwner.Memory.Span[..(TamperingLeafCount * DigestSizeBytes)];
+        FillDistinctLeaves(leaves, TamperingLeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
-        using MerkleAuthenticationPath path = tree.BuildPath(3, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, TamperingLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        using MerkleAuthenticationPath path = tree.BuildPath(TamperingLeafIndex, BaseMemoryPool.Shared);
 
         Span<byte> tamperedRoot = stackalloc byte[DigestSizeBytes];
         tree.Root.AsReadOnlySpan().CopyTo(tamperedRoot);
-        tamperedRoot[^1] ^= 0x01;
+        tamperedRoot[RootTamperingByteIndex] ^= TamperingBitMask;
         using MerkleRoot wrongRoot = MerkleRoot.FromBytes(tamperedRoot, BaseMemoryPool.Shared);
 
         bool authenticated = path.Verify(
-            wrongRoot, 3, leaves.Slice(3 * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
+            wrongRoot, TamperingLeafIndex, leaves.Slice(TamperingLeafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
 
         Assert.IsFalse(authenticated, "Authentication against a tampered root must fail.");
     }
 
 
+    /// <summary>A leaf's authentication path fails when verified at an index with different branch directions.</summary>
     [TestMethod]
     public void VerifyRejectsWrongLeafIndex()
     {
-        const int LeafCount = 8;
-        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(LeafCount * DigestSizeBytes);
-        Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
-        FillDistinctLeaves(leaves, LeafCount);
+        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(TamperingLeafCount * DigestSizeBytes);
+        Span<byte> leaves = leavesOwner.Memory.Span[..(TamperingLeafCount * DigestSizeBytes)];
+        FillDistinctLeaves(leaves, TamperingLeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, TamperingLeafCount, TreeParameters, BaseMemoryPool.Shared);
 
         //A path built for leaf 2 presented as if it authenticated leaf 5 folds
         //the leaf along the wrong directions and reaches a different root.
-        using MerkleAuthenticationPath path = tree.BuildPath(2, BaseMemoryPool.Shared);
+        using MerkleAuthenticationPath path = tree.BuildPath(MisroutedLeafIndex, BaseMemoryPool.Shared);
 
         bool authenticated = path.Verify(
-            tree.Root, 5, leaves.Slice(2 * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
+            tree.Root, WrongLeafIndex, leaves.Slice(MisroutedLeafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
 
         Assert.IsFalse(authenticated, "A path verified at the wrong leaf index must fail.");
     }
 
 
+    /// <summary>
+    /// Every leaf of a sampled tree authenticates against its root. CsCheck samples tree sizes and replayable
+    /// byte-generator seeds so the leaf bytes can be filled directly into a rental inside the property.
+    /// </summary>
     [TestMethod]
     public void RandomTreesAuthenticateEveryLeaf()
     {
-        Gen.Int[0, MaximumLeafExponent]
+        Gen.Int[MinimumLeafExponent, MaximumLeafExponent]
             .SelectMany(exponent =>
             {
-                int leafCount = 1 << exponent;
-                return Gen.Select(Gen.Const(leafCount), Gen.Byte.Array[leafCount * DigestSizeBytes]);
+                int leafCount = SingleLeafCount << exponent;
+
+                return Gen.Select(Gen.Const(leafCount), Gen.Seed);
             })
-            .Sample((leafCount, leafBytes) =>
+            .Sample((leafCount, seed) =>
             {
+                using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(leafCount * DigestSizeBytes);
+                Span<byte> leafBytes = leavesOwner.Memory.Span[..(leafCount * DigestSizeBytes)];
+                FillGeneratedLeaves(leafBytes, seed);
+
                 using MerkleTree tree = MerkleTree.Build(leafBytes, leafCount, TreeParameters, BaseMemoryPool.Shared);
                 for(int leafIndex = 0; leafIndex < leafCount; leafIndex++)
                 {
                     using MerkleAuthenticationPath path = tree.BuildPath(leafIndex, BaseMemoryPool.Shared);
                     bool authenticated = path.Verify(
-                        tree.Root, leafIndex, leafBytes.AsSpan(leafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
+                        tree.Root, leafIndex, leafBytes.Slice(leafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
                     if(!authenticated)
                     {
                         return false;
@@ -303,47 +361,54 @@ internal sealed class MerkleTreeTests
     }
 
 
+    /// <summary>
+    /// Flipping one sibling bit rejects every sampled path. CsCheck samples tree sizes, leaf indices and
+    /// replayable byte-generator seeds so the leaf bytes can be filled directly into a rental inside the property.
+    /// </summary>
     [TestMethod]
     public void RandomPathTamperingIsAlwaysRejected()
     {
         //Trees of at least two leaves so every path has at least one sibling to
         //tamper with.
-        Gen.Int[1, MaximumLeafExponent]
+        Gen.Int[MinimumTamperingLeafExponent, MaximumLeafExponent]
             .SelectMany(exponent =>
             {
-                int leafCount = 1 << exponent;
+                int leafCount = SingleLeafCount << exponent;
+
                 return Gen.Select(
                     Gen.Const(leafCount),
-                    Gen.Byte.Array[leafCount * DigestSizeBytes],
-                    Gen.Int[0, leafCount - 1]);
+                    Gen.Seed,
+                    Gen.Int[PathLeafIndex, leafCount - 1]);
             })
-            .Sample((leafCount, leafBytes, leafIndex) =>
+            .Sample((leafCount, seed, leafIndex) =>
             {
+                using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(leafCount * DigestSizeBytes);
+                Span<byte> leafBytes = leavesOwner.Memory.Span[..(leafCount * DigestSizeBytes)];
+                FillGeneratedLeaves(leafBytes, seed);
+
                 using MerkleTree tree = MerkleTree.Build(leafBytes, leafCount, TreeParameters, BaseMemoryPool.Shared);
                 using MerkleAuthenticationPath path = tree.BuildPath(leafIndex, BaseMemoryPool.Shared);
 
                 //Flip the first bit of the first sibling; authentication must fail.
-                MemoryMarshal.AsMemory(path.AsReadOnlyMemory()).Span[0] ^= 0x01;
+                MemoryMarshal.AsMemory(path.AsReadOnlyMemory()).Span[FirstByteOffset] ^= TamperingBitMask;
                 bool authenticated = path.Verify(
-                    tree.Root, leafIndex, leafBytes.AsSpan(leafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
+                    tree.Root, leafIndex, leafBytes.Slice(leafIndex * DigestSizeBytes, DigestSizeBytes), Blake3TwoToOne);
 
                 return !authenticated;
             }, iter: IterationCount);
     }
 
 
+    /// <summary>A positive leaf count that is not a power of two is rejected even when all leaf bytes are present.</summary>
     [TestMethod]
     public void BuildRejectsNonPowerOfTwoLeafCount()
     {
-        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(3 * DigestSizeBytes);
-        Span<byte> leaves = leavesOwner.Memory.Span[..(3 * DigestSizeBytes)];
-        FillDistinctLeaves(leaves, 3);
+        using IMemoryOwner<byte> leavesOwner = BaseMemoryPool.Shared.Rent(NonPowerOfTwoShapeBytes);
+        Memory<byte> leaves = leavesOwner.Memory[..NonPowerOfTwoShapeBytes];
+        FillDistinctLeaves(leaves.Span, NonPowerOfTwoLeafCount);
 
-        //Build cannot be called inside a lambda capturing a Span; copy the
-        //bytes out so the assertion's delegate is span-free.
-        byte[] captured = leaves.ToArray();
         Assert.ThrowsExactly<ArgumentException>(
-            () => MerkleTree.Build(captured, 3, TreeParameters, BaseMemoryPool.Shared).Dispose());
+            () => MerkleTree.Build(leaves.Span, NonPowerOfTwoLeafCount, TreeParameters, BaseMemoryPool.Shared).Dispose());
     }
 
 
@@ -710,7 +775,7 @@ internal sealed class MerkleTreeTests
 
 
     /// <summary>
-    /// Disposing a tree returns both of its rentals, the layer buffer and the root, to the pool it was built
+    /// Disposing a tree returns both of its rentals, the layer buffer and the root, to the pool it is built
     /// from. The tree is built from a private pool, and <see cref="BaseMemoryPool.TrimExcess"/> reclaims only
     /// slabs with no active rental, so reclaiming <see cref="ExpectedReclaimedSlabCount"/> slabs shows that
     /// neither rental is still held.
@@ -724,7 +789,7 @@ internal sealed class MerkleTreeTests
         MerkleTree tree = MerkleTree.Build(leaves.Span, PathLeafCount, TreeParameters, pool);
         tree.Dispose();
 
-        Assert.AreEqual(ExpectedReclaimedSlabCount, pool.TrimExcess(), "A disposed tree must hold no rental from the pool it was built from.");
+        Assert.AreEqual(ExpectedReclaimedSlabCount, pool.TrimExcess(), "A disposed tree must hold no rental from its construction pool.");
     }
 
 
@@ -777,8 +842,11 @@ internal sealed class MerkleTreeTests
     }
 
 
-    //Fills each leaf with a distinct value so that a misrouted path or a
-    //swapped index surfaces as a mismatch rather than an accidental collision.
+    /// <summary>
+    /// Fills each leaf with a distinct value so a misrouted path or swapped index produces an authentication mismatch.
+    /// </summary>
+    /// <param name="leaves">The buffer holding one digest-width value per leaf.</param>
+    /// <param name="leafCount">The number of distinct leaf values to encode.</param>
     private static void FillDistinctLeaves(Span<byte> leaves, int leafCount)
     {
         leaves.Clear();
@@ -786,16 +854,31 @@ internal sealed class MerkleTreeTests
         {
             //A distinct four-byte big-endian counter at the end of each leaf.
             Span<byte> leaf = leaves.Slice(i * DigestSizeBytes, DigestSizeBytes);
-            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(leaf[^4..], i + 1);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(leaf[^LeafCounterSizeBytes..], i + FirstLeafCounter);
         }
     }
 
 
-    //Wires BLAKE3 as the two-to-one Merkle compression: hash the left and
-    //right child bytes concatenated into the fixed 32-byte digest.
+    /// <summary>Fills pooled leaf storage with uniform bytes reproduced from the seed CsCheck samples.</summary>
+    /// <param name="leaves">The exact leaf-byte region to fill.</param>
+    /// <param name="seed">The replayable PCG seed supplied by CsCheck.</param>
+    private static void FillGeneratedLeaves(Span<byte> leaves, string seed)
+    {
+        PCG random = PCG.Parse(seed);
+        for(int byteIndex = 0; byteIndex < leaves.Length; byteIndex++)
+        {
+            leaves[byteIndex] = (byte)random.Next(ByteValueCount);
+        }
+    }
+
+
+    /// <summary>Hashes the concatenated left and right children with BLAKE3 into one default-width Merkle digest.</summary>
+    /// <param name="left">The left child's digest.</param>
+    /// <param name="right">The right child's digest.</param>
+    /// <param name="output">Receives the parent digest.</param>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        Span<byte> combined = stackalloc byte[BinaryChildCount * DigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

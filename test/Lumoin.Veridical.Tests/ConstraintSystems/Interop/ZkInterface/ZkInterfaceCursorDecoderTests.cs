@@ -17,7 +17,128 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 [TestClass]
 internal sealed class ZkInterfaceCursorDecoderTests
 {
-    private const int SizePrefixBytes = 4;
+    /// <summary>The framing prefix is one little-endian unsigned 32-bit message length.</summary>
+    private const int SizePrefixBytes = sizeof(uint);
+
+    /// <summary>The table-to-vtable offset is a signed 32-bit FlatBuffers offset.</summary>
+    private const int SignedOffsetBytes = sizeof(int);
+
+    /// <summary>The root, table references and vector elements use unsigned 32-bit FlatBuffers offsets.</summary>
+    private const int UnsignedOffsetBytes = sizeof(uint);
+
+    /// <summary>Each FlatBuffers vector begins with an unsigned 32-bit element count.</summary>
+    private const int VectorLengthBytes = sizeof(uint);
+
+    /// <summary>The Root union discriminator occupies one byte in the schema.</summary>
+    private const int UnionTypeBytes = sizeof(byte);
+
+    /// <summary>The inline table size follows the vtable length, so it occupies the second vtable header entry.</summary>
+    private const int TableSizeEntryOffset = VtableEntryBytes;
+
+    /// <summary>The first field slot follows the two FlatBuffers vtable header entries.</summary>
+    private const int FirstSlotEntryOffset = VtableHeaderEntries * VtableEntryBytes;
+
+    /// <summary>The packed Root discriminator immediately follows its signed vtable offset.</summary>
+    private const int RootTypeFieldOffset = SignedOffsetBytes;
+
+    /// <summary>The packed Root union reference immediately follows its discriminator byte.</summary>
+    private const int RootValueFieldOffset = RootTypeFieldOffset + UnionTypeBytes;
+
+    /// <summary>The packed Root ends after its union reference, following its vtable offset and discriminator.</summary>
+    private const int RootTableBytes = RootValueFieldOffset + UnsignedOffsetBytes;
+
+    /// <summary>The Root vtable holds its two header entries and the discriminator and value slots.</summary>
+    private const int RootVtableBytes = RootValueSlotEntryOffset + VtableEntryBytes;
+
+    /// <summary>The sole field of each packed ConstraintSystem, Witness and BilinearConstraint follows its signed vtable offset.</summary>
+    private const int SingleOffsetFieldOffset = SignedOffsetBytes;
+
+    /// <summary>The packed ConstraintSystem, Witness and BilinearConstraint tables each hold a vtable offset and one reference.</summary>
+    private const int SingleOffsetTableBytes = SingleOffsetFieldOffset + UnsignedOffsetBytes;
+
+    /// <summary>The one-reference tables need two vtable header entries and one field slot.</summary>
+    private const int SingleOffsetVtableBytes = FirstSlotEntryOffset + VtableEntryBytes;
+
+    /// <summary>The packed Variables id-vector reference immediately follows its vtable offset.</summary>
+    private const int VariablesIdsFieldOffset = SignedOffsetBytes;
+
+    /// <summary>The packed Variables table ends after its second vector reference.</summary>
+    private const int VariablesTableBytes = VariablesValuesFieldOffset + UnsignedOffsetBytes;
+
+    /// <summary>The Variables vtable holds two header entries and the ids and values slots.</summary>
+    private const int VariablesVtableBytes = RootValueSlotEntryOffset + VtableEntryBytes;
+
+    /// <summary>The root reference begins the message body, so its body-relative position is zero.</summary>
+    private const int RootOffsetPosition = 0;
+
+    /// <summary>The packed Root vtable immediately follows the root reference.</summary>
+    private const int RootVtablePosition = RootOffsetPosition + UnsignedOffsetBytes;
+
+    /// <summary>The packed Root table immediately follows its vtable.</summary>
+    private const int RootTablePosition = RootVtablePosition + RootVtableBytes;
+
+    /// <summary>The ConstraintSystem or Witness vtable immediately follows the packed Root table.</summary>
+    private const int PayloadVtablePosition = RootTablePosition + RootTableBytes;
+
+    /// <summary>The ConstraintSystem or Witness table immediately follows its one-field vtable.</summary>
+    private const int PayloadTablePosition = PayloadVtablePosition + SingleOffsetVtableBytes;
+
+    /// <summary>The constraints vector or assigned Variables vtable immediately follows the payload table.</summary>
+    private const int PayloadDataPosition = PayloadTablePosition + SingleOffsetTableBytes;
+
+    /// <summary>The aliased stream framing comprises the root reference and the Root, ConstraintSystem, BilinearConstraint and Variables tables with their vtables.</summary>
+    private const int AliasedTablesAndVtablesBytes = UnsignedOffsetBytes + RootVtableBytes + RootTableBytes + SingleOffsetVtableBytes + SingleOffsetTableBytes + SingleOffsetVtableBytes + SingleOffsetTableBytes + VariablesVtableBytes + VariablesTableBytes;
+
+    /// <summary>The example header is the first message, so its stream-order index is zero.</summary>
+    private const int HeaderMessageIndex = 0;
+
+    /// <summary>The first example constraint squares variable one, so its zero-based index is zero.</summary>
+    private const int FirstConstraintIndex = 0;
+
+    /// <summary>The second example constraint squares variable two, so its zero-based index is one.</summary>
+    private const int SecondConstraintIndex = 1;
+
+    /// <summary>The example sum relation is the final constraint, following the two square relations.</summary>
+    private const int LastConstraintIndex = ExampleConstraintCount - 1;
+
+    /// <summary>Removing eight bytes cuts the final example message short while retaining its size prefix.</summary>
+    private const int TruncatedByteCount = 8;
+
+    /// <summary>Thirty-two aliased constraints amplify the term events beyond the packed stream byte budget.</summary>
+    private const int EventConstraintAliases = 32;
+
+    /// <summary>Thirty-two ids per shared combination make the aliased event count exceed the stream length.</summary>
+    private const int EventIdsPerConstraint = 32;
+
+    /// <summary>Eight aliases repeat the wide coefficient scan enough to exceed the byte budget with few events.</summary>
+    private const int ScanConstraintAliases = 8;
+
+    /// <summary>A 64-byte padded coefficient makes repeated scanning dominate the small event count.</summary>
+    private const int WideCoefficientBytes = 64;
+
+    /// <summary>With four zero-width terms per constraint, 117 aliases make both stream length and work equal 585.</summary>
+    private const int ExactBudgetConstraintAliases = 117;
+
+    /// <summary>Four zero-width terms per constraint balance the packed stream length at 117 aliases.</summary>
+    private const int ExactBudgetIdsPerConstraint = 4;
+
+    /// <summary>Sixteen aliases with 26 zero-width terms leave the combined constraint and witness work one unit over budget.</summary>
+    private const int SharedBudgetConstraintAliases = 16;
+
+    /// <summary>Twenty-six terms per shared combination make the combined constraint and witness work exceed their stream length by one.</summary>
+    private const int SharedBudgetIdsPerConstraint = 26;
+
+    /// <summary>A one-unit excess pins the shared budget boundary and requires every constraint and witness charge.</summary>
+    private const int SharedBudgetOvershoot = 1;
+
+    /// <summary>The sink starts before zero so the first begin callback assigns constraint index zero.</summary>
+    private const int NoCurrentConstraint = -1;
+
+    /// <summary>The fixture values are unsigned 32-bit integers, so the recording sink reads at most this many bytes.</summary>
+    private const int FixtureValueBytes = sizeof(uint);
+
+    /// <summary>Each successive byte contributes eight higher bits to the little-endian fixture value.</summary>
+    private const int BitsPerByte = 8;
 
     /// <summary>The index of the first byte of a sequence: the running index of its first segment and the start offset within that segment.</summary>
     private const int SequenceStartIndex = 0;
@@ -56,7 +177,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     private const ushort AbsentFieldOffset = 0;
 
     /// <summary>The field offset of <c>Variables.values</c> in the packed Variables tables the stream writers lay out: it follows the table's four-byte soffset and the four-byte <c>variable_ids</c> uoffset.</summary>
-    private const ushort VariablesValuesFieldOffset = sizeof(int) + sizeof(uint);
+    private const ushort VariablesValuesFieldOffset = SignedOffsetBytes + UnsignedOffsetBytes;
 
     /// <summary>The constraint count a decode observes when the stream's only ConstraintSystem message is skipped.</summary>
     private const int SkippedConstraintCount = 0;
@@ -83,7 +204,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     private const int IndivisibleValueByteCount = 3;
 
     /// <summary>The packed byte length of the Witness message <see cref="WriteEmptyAssignedVariablesWitnessStream"/> writes.</summary>
-    private const int EmptyWitnessMessageBytes = 63;
+    private const int EmptyWitnessMessageBytes = PayloadDataPosition + VariablesVtableBytes + VariablesTableBytes + VectorLengthBytes + VectorLengthBytes;
 
     /// <summary>The byte length of the size-prefixed stream <see cref="WriteEmptyAssignedVariablesWitnessStream"/> writes.</summary>
     private const int EmptyWitnessStreamBytes = SizePrefixBytes + EmptyWitnessMessageBytes;
@@ -128,6 +249,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     }
 
 
+    /// <summary>Locates the example header, constraint system and witness in order, with their size-prefixed ranges tiling the stream.</summary>
     [TestMethod]
     public void LocateMessagesYieldsHeaderConstraintSystemWitnessInOrder()
     {
@@ -136,9 +258,9 @@ internal sealed class ZkInterfaceCursorDecoderTests
         IReadOnlyList<ZkInterfaceMessageSpan> messages = ZkInterfaceCursorDecoder.LocateMessages(file);
 
         Assert.HasCount(3, messages, "message count");
-        Assert.AreEqual(ZkInterfaceMessageType.CircuitHeader, messages[0].Type, "message 0");
-        Assert.AreEqual(ZkInterfaceMessageType.ConstraintSystem, messages[1].Type, "message 1");
-        Assert.AreEqual(ZkInterfaceMessageType.Witness, messages[2].Type, "message 2");
+        Assert.AreEqual(ZkInterfaceMessageType.CircuitHeader, messages[HeaderMessageIndex].Type, "message 0");
+        Assert.AreEqual(ZkInterfaceMessageType.ConstraintSystem, messages[ConstraintSystemMessageIndex].Type, "message 1");
+        Assert.AreEqual(ZkInterfaceMessageType.Witness, messages[WitnessMessageIndex].Type, "message 2");
 
         //The located ranges must tile the file exactly: each buffer follows its
         //size prefix, and the last ends at the stream end.
@@ -153,111 +275,82 @@ internal sealed class ZkInterfaceCursorDecoderTests
     }
 
 
+    /// <summary>Rejects a stream whose final message extends beyond the supplied bytes.</summary>
     [TestMethod]
     public void LocateMessagesRejectsTruncatedStream()
     {
         byte[] full = ZkInterfaceExampleFixture.ExampleBytes();
         //Cut mid-stream so the final message's declared size overruns.
-        byte[] truncated = full.AsSpan(0, full.Length - 8).ToArray();
+        ReadOnlyMemory<byte> truncated = full.AsMemory(..(full.Length - TruncatedByteCount));
 
-        Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(truncated));
+        Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(truncated.Span));
     }
 
 
+    /// <summary>Rejects a stream ending in too few trailing bytes to hold another size prefix.</summary>
     [TestMethod]
     public void LocateMessagesRejectsTrailingBytes()
     {
-        byte[] full = ZkInterfaceExampleFixture.ExampleBytes();
-        //Append two stray bytes: too few to be a size prefix after the last
-        //message, so the loop reports trailing bytes.
-        byte[] extended = [.. full, 0, 0];
+        Memory<byte> extended = RentExampleWithZeroTail(TrailingByteCount);
 
-        Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(extended));
+        Assert.ThrowsExactly<ArgumentException>(() => ZkInterfaceCursorDecoder.LocateMessages(extended.Span));
     }
 
 
+    /// <summary>Pushes the example header values, constraint terms and witness assignments with their fixture identities and coefficients.</summary>
     [TestMethod]
     public void DecoderPushesExampleHeaderConstraintsAndWitness()
     {
         var sink = new RecordingSink();
         ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes()), sink, CancellationToken.None);
 
-        //CircuitHeader.
         Assert.AreEqual(6UL, sink.FreeVariableId, "free_variable_id");
         Assert.IsFalse(sink.FieldMaximumSeen, "field_maximum is absent in the toy sample");
         Assert.AreSequenceEqual(new ulong[] { 1, 2, 3 }, sink.InstanceVariableIds, "instance variable ids");
         Assert.AreSequenceEqual(new uint[] { 3, 4, 25 }, sink.InstanceVariableValues, "instance variable values");
 
-        //ConstraintSystem: three constraints, each coefficient the field element 1.
+        //Every coefficient in the three constraints is the field element one.
         Assert.AreEqual(3, sink.ConstraintCount, "constraint count");
         foreach(RecordingSink.Term term in sink.Terms)
         {
             Assert.AreEqual(1U, term.Coefficient, $"coefficient (constraint {term.ConstraintIndex}, {term.Matrix})");
         }
 
-        //C0: v1*v1 = v4
-        AssertTerms(sink, 0, ZkInterfaceConstraintMatrix.A, [1]);
-        AssertTerms(sink, 0, ZkInterfaceConstraintMatrix.B, [1]);
-        AssertTerms(sink, 0, ZkInterfaceConstraintMatrix.C, [4]);
-        //C2: 1*(v4 + v5) = v3 — B spans two variables.
-        AssertTerms(sink, 2, ZkInterfaceConstraintMatrix.A, [0]);
-        AssertTerms(sink, 2, ZkInterfaceConstraintMatrix.B, [4, 5]);
-        AssertTerms(sink, 2, ZkInterfaceConstraintMatrix.C, [3]);
+        //The first constraint squares v1 to produce v4.
+        AssertTerms(sink, FirstConstraintIndex, ZkInterfaceConstraintMatrix.A, [1]);
+        AssertTerms(sink, FirstConstraintIndex, ZkInterfaceConstraintMatrix.B, [1]);
+        AssertTerms(sink, FirstConstraintIndex, ZkInterfaceConstraintMatrix.C, [4]);
+        //The last constraint sums v4 and v5 to produce v3, so B spans two variables.
+        AssertTerms(sink, LastConstraintIndex, ZkInterfaceConstraintMatrix.A, [0]);
+        AssertTerms(sink, LastConstraintIndex, ZkInterfaceConstraintMatrix.B, [4, 5]);
+        AssertTerms(sink, LastConstraintIndex, ZkInterfaceConstraintMatrix.C, [3]);
 
-        //Witness.
         Assert.AreSequenceEqual(new ulong[] { 4, 5 }, sink.WitnessVariableIds, "witness variable ids");
         Assert.AreSequenceEqual(new uint[] { 9, 16 }, sink.WitnessVariableValues, "witness variable values");
     }
 
 
+    /// <summary>Rejects aliased constraint offsets whose repeated term events and coefficient scans exceed the stream byte budget.</summary>
     [TestMethod]
     public void DecoderRejectsOffsetAliasingAmplification()
     {
-        //A ConstraintSystem whose `constraints` vector holds many offset elements ALL aliased to
-        //one BilinearConstraint — whose lc_a shares a single variable_ids vector — decodes
-        //O(aliases x ids) terms from a linear-sized message. The decode-work budget, bounded by
-        //the source byte length, rejects it before a sink's accumulators can grow: a valid stream's
-        //decode work sits far below its byte length, so only aliasing exceeds it. Coefficient width
-        //is 1 here, so both budget axes contribute; the zero-width and wide-coefficient siblings
-        //isolate the event and scan axes respectively.
-        const int constraintAliases = 32;
-        const int idsPerConstraint = 32;
-        const int coefficientByteWidth = 1;
-
-        AssertAliasedConstraintSystemRejected(constraintAliases, idsPerConstraint, coefficientByteWidth);
+        AssertAliasedConstraintSystemRejected(EventConstraintAliases, EventIdsPerConstraint, OneValueByte);
     }
 
 
+    /// <summary>Rejects aliased zero-width terms whose event count alone exceeds the stream byte budget.</summary>
     [TestMethod]
     public void DecoderRejectsTermCountAmplificationWithoutCoefficientBytes()
     {
-        //Isolates the per-term EVENT charge: zero-width coefficients (an empty `values` vector, so
-        //elementSize resolves to 0) make the scan charge contribute nothing, leaving only the
-        //per-term event unit to bound the aliased term count. Revert that per-term SpendEvent and the
-        //term count slips under budget, so this pins the event axis specifically, not the scan axis.
-        const int constraintAliases = 32;
-        const int idsPerConstraint = 32;
-        const int coefficientByteWidth = 0;
-
-        AssertAliasedConstraintSystemRejected(constraintAliases, idsPerConstraint, coefficientByteWidth);
+        AssertAliasedConstraintSystemRejected(EventConstraintAliases, EventIdsPerConstraint, NoValueBytes);
     }
 
 
+    /// <summary>Rejects aliased wide coefficients whose repeated scans exceed the stream byte budget despite a small event count.</summary>
     [TestMethod]
     public void DecoderRejectsCoefficientScanAmplification()
     {
-        //The amplification also travels the per-term BYTE axis: a `constraints` vector aliasing a
-        //few offsets onto one BilinearConstraint whose lc_a carries a single id but an over-long
-        //(zero-padded) coefficient makes each aliased term re-scan the whole coefficient span in
-        //the canonical-scalar writer — O(aliases x coefficient) byte work from a linear message,
-        //while the event count stays far under the source length. The budget charges the scanned
-        //coefficient bytes, so this is rejected too. Reverting that charge lets the low event count
-        //slip through, so this pins the byte axis specifically, not the event axis.
-        const int constraintAliases = 8;
-        const int idsPerConstraint = 1;
-        const int coefficientByteWidth = 64;
-
-        AssertAliasedConstraintSystemRejected(constraintAliases, idsPerConstraint, coefficientByteWidth);
+        AssertAliasedConstraintSystemRejected(ScanConstraintAliases, OneVariableId, WideCoefficientBytes);
     }
 
 
@@ -516,7 +609,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
 
     /// <summary>
     /// Cancellation is honoured between messages: a token that is already cancelled stops the decode with
-    /// an <see cref="OperationCanceledException"/> before the first message reaches the sink.
+    /// an <see cref="OperationCanceledException"/> carrying that token before any callback reaches the sink.
     /// </summary>
     [TestMethod]
     public void DecoderHonoursCancellationBeforeTheFirstMessage()
@@ -525,13 +618,16 @@ internal sealed class ZkInterfaceCursorDecoderTests
         var sink = new RecordingSink();
         var cancelled = new CancellationToken(canceled: true);
 
-        Assert.ThrowsExactly<OperationCanceledException>(() => ZkInterfaceCursorDecoder.Decoder(source, sink, cancelled));
+        OperationCanceledException exception = Assert.ThrowsExactly<OperationCanceledException>(() => ZkInterfaceCursorDecoder.Decoder(source, sink, cancelled));
+
+        Assert.AreEqual(cancelled, exception.CancellationToken, "The cancellation exception must carry the token supplied to the decoder.");
+        Assert.IsEmpty(sink.Callbacks, "Cancellation before the first message must prevent every sink callback.");
     }
 
 
     /// <summary>
     /// Every constraint the decoder opens is closed again once its three linear combinations are pushed,
-    /// so a sink that groups terms between the two calls sees each of the example's constraints complete.
+    /// so each begin is followed by exactly that constraint's fixture terms and then its matching end.
     /// </summary>
     [TestMethod]
     public void DecoderClosesEveryConstraintItOpens()
@@ -541,6 +637,37 @@ internal sealed class ZkInterfaceCursorDecoderTests
 
         Assert.AreEqual(ExampleConstraintCount, sink.ConstraintCount, "constraints opened");
         Assert.AreEqual(ExampleConstraintCount, sink.EndedConstraintCount, "every opened constraint is closed");
+
+        (string Name, RecordingSink.Term? Term)[] expectedCallbacks =
+        [
+            (nameof(RecordingSink.BeginConstraint), null),
+            (nameof(RecordingSink.OnConstraintTerm), new(FirstConstraintIndex, ZkInterfaceConstraintMatrix.A, 1, 1)),
+            (nameof(RecordingSink.OnConstraintTerm), new(FirstConstraintIndex, ZkInterfaceConstraintMatrix.B, 1, 1)),
+            (nameof(RecordingSink.OnConstraintTerm), new(FirstConstraintIndex, ZkInterfaceConstraintMatrix.C, 4, 1)),
+            (nameof(RecordingSink.EndConstraint), null),
+            (nameof(RecordingSink.BeginConstraint), null),
+            (nameof(RecordingSink.OnConstraintTerm), new(SecondConstraintIndex, ZkInterfaceConstraintMatrix.A, 2, 1)),
+            (nameof(RecordingSink.OnConstraintTerm), new(SecondConstraintIndex, ZkInterfaceConstraintMatrix.B, 2, 1)),
+            (nameof(RecordingSink.OnConstraintTerm), new(SecondConstraintIndex, ZkInterfaceConstraintMatrix.C, 5, 1)),
+            (nameof(RecordingSink.EndConstraint), null),
+            (nameof(RecordingSink.BeginConstraint), null),
+            (nameof(RecordingSink.OnConstraintTerm), new(LastConstraintIndex, ZkInterfaceConstraintMatrix.A, 0, 1)),
+            (nameof(RecordingSink.OnConstraintTerm), new(LastConstraintIndex, ZkInterfaceConstraintMatrix.B, 4, 1)),
+            (nameof(RecordingSink.OnConstraintTerm), new(LastConstraintIndex, ZkInterfaceConstraintMatrix.B, 5, 1)),
+            (nameof(RecordingSink.OnConstraintTerm), new(LastConstraintIndex, ZkInterfaceConstraintMatrix.C, 3, 1)),
+            (nameof(RecordingSink.EndConstraint), null)
+        ];
+        var constraintCallbacks = new List<(string Name, RecordingSink.Term? Term)>();
+        foreach(var callback in sink.Callbacks)
+        {
+            if(callback.Name is nameof(RecordingSink.BeginConstraint) or nameof(RecordingSink.OnConstraintTerm) or nameof(RecordingSink.EndConstraint))
+            {
+                constraintCallbacks.Add(callback);
+            }
+        }
+
+        Assert.AreSequenceEqual(expectedCallbacks, constraintCallbacks,
+            "Each begin must enclose the fixture terms for v1*v1=v4, v2*v2=v5 or 1*(v4+v5)=v3, all with coefficient one, before its end.");
     }
 
 
@@ -553,22 +680,20 @@ internal sealed class ZkInterfaceCursorDecoderTests
     {
         //Each aliased constraint charges one event and each of its zero-width terms one more, so the work is
         //117 x (1 + 4) = 585 units, and the packed stream is 85 + (4 x 117) + (8 x 4) = 585 bytes.
-        const int constraintAliases = 117;
-        const int idsPerConstraint = 4;
 
-        int streamLength = AliasedConstraintSystemStreamLength(constraintAliases, idsPerConstraint, NoValueBytes);
-        Assert.AreEqual(constraintAliases + (constraintAliases * idsPerConstraint), streamLength, "the decode work must equal the stream length");
+        int streamLength = AliasedConstraintSystemStreamLength(ExactBudgetConstraintAliases, ExactBudgetIdsPerConstraint, NoValueBytes);
+        Assert.AreEqual(ExactBudgetConstraintAliases + (ExactBudgetConstraintAliases * ExactBudgetIdsPerConstraint), streamLength, "the decode work must equal the stream length");
 
         IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
         Disposables.Add(owner);
         ReadOnlyMemory<byte> stream = owner.Memory[..streamLength];
-        WriteAliasedConstraintSystemStream(owner.Memory.Span[..streamLength], constraintAliases, idsPerConstraint, NoValueBytes, valuesPresent: true);
+        WriteAliasedConstraintSystemStream(owner.Memory.Span[..streamLength], ExactBudgetConstraintAliases, ExactBudgetIdsPerConstraint, NoValueBytes, valuesPresent: true);
 
         var sink = new RecordingSink();
         ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None);
 
-        Assert.AreEqual(constraintAliases, sink.ConstraintCount, "every aliased constraint is decoded");
-        Assert.HasCount(constraintAliases * idsPerConstraint, sink.Terms, "every term is decoded");
+        Assert.AreEqual(ExactBudgetConstraintAliases, sink.ConstraintCount, "every aliased constraint is decoded");
+        Assert.HasCount(ExactBudgetConstraintAliases * ExactBudgetIdsPerConstraint, sink.Terms, "every term is decoded");
     }
 
 
@@ -584,20 +709,17 @@ internal sealed class ZkInterfaceCursorDecoderTests
         //The ConstraintSystem spends 16 x (1 + 26) = 432 units in 85 + (4 x 16) + (8 x 26) = 357 bytes. The
         //Witness assigns one id with a one-byte value, one event and one scanned byte, in 67 + 8 + 1 = 76
         //bytes. The stream is 433 bytes and the work 434 units.
-        const int constraintAliases = 16;
-        const int idsPerConstraint = 26;
-        const int overshoot = 1;
 
-        int constraintSystemLength = AliasedConstraintSystemStreamLength(constraintAliases, idsPerConstraint, NoValueBytes);
+        int constraintSystemLength = AliasedConstraintSystemStreamLength(SharedBudgetConstraintAliases, SharedBudgetIdsPerConstraint, NoValueBytes);
         int witnessLength = AssignedVariablesWitnessStreamLength(OneVariableId, OneValueByte);
         int streamLength = constraintSystemLength + witnessLength;
-        int work = constraintAliases + (constraintAliases * idsPerConstraint) + OneVariableId + OneValueByte;
-        Assert.AreEqual(streamLength + overshoot, work, "the decode work must exceed the stream length by exactly one unit");
+        int work = SharedBudgetConstraintAliases + (SharedBudgetConstraintAliases * SharedBudgetIdsPerConstraint) + OneVariableId + OneValueByte;
+        Assert.AreEqual(streamLength + SharedBudgetOvershoot, work, "the decode work must exceed the stream length by exactly one unit");
 
         IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
         Disposables.Add(owner);
         ReadOnlyMemory<byte> stream = owner.Memory[..streamLength];
-        WriteAliasedConstraintSystemStream(owner.Memory.Span[..constraintSystemLength], constraintAliases, idsPerConstraint, NoValueBytes, valuesPresent: true);
+        WriteAliasedConstraintSystemStream(owner.Memory.Span[..constraintSystemLength], SharedBudgetConstraintAliases, SharedBudgetIdsPerConstraint, NoValueBytes, valuesPresent: true);
         WriteAssignedVariablesWitnessStream(owner.Memory.Span[constraintSystemLength..streamLength], OneVariableId, OneValueByte);
 
         var sink = new RecordingSink();
@@ -628,9 +750,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     }
 
 
-    //Encodes an aliased ConstraintSystem of the given shape and asserts the decode-work budget
-    //rejects it with its own message, so a mis-encoded buffer tripping a bounds check would fail
-    //this test rather than pass for the wrong reason.
+    /// <summary>Encodes the given aliased constraint shape and requires the decode-work budget rejection message, so a bounds failure cannot satisfy the assertion.</summary>
     private static void AssertAliasedConstraintSystemRejected(int constraintAliases, int idsPerConstraint, int coefficientByteWidth)
     {
         int valueByteCount = idsPerConstraint * coefficientByteWidth;
@@ -647,17 +767,14 @@ internal sealed class ZkInterfaceCursorDecoderTests
     }
 
 
-    //The packed stream length for the aliased fixture, mirroring WriteAliasedConstraintSystemStream:
-    //the size prefix, the fixed table/vtable framing, and the three data vectors (constraint
-    //offsets, variable ids, coefficient values — the values vector holds valueByteCount bytes).
+    /// <summary>Computes the packed aliased stream length from its framing and the constraint-offset, variable-id and coefficient-value vectors.</summary>
     private static int AliasedConstraintSystemStreamLength(int constraintAliases, int idsPerConstraint, int valueByteCount)
     {
-        const int tablesAndVtablesBytes = 69;   //root uoffset + Root/ConstraintSystem/BilinearConstraint/Variables tables and their vtables.
-        int constraintsVectorBytes = 4 + (4 * constraintAliases);
-        int idsVectorBytes = 4 + (8 * idsPerConstraint);
-        int valuesVectorBytes = 4 + valueByteCount;
+        int constraintsVectorBytes = VectorLengthBytes + (UnsignedOffsetBytes * constraintAliases);
+        int idsVectorBytes = VectorLengthBytes + (VariableIdBytes * idsPerConstraint);
+        int valuesVectorBytes = VectorLengthBytes + valueByteCount;
 
-        return SizePrefixBytes + tablesAndVtablesBytes + constraintsVectorBytes + idsVectorBytes + valuesVectorBytes;
+        return SizePrefixBytes + AliasedTablesAndVtablesBytes + constraintsVectorBytes + idsVectorBytes + valuesVectorBytes;
     }
 
 
@@ -677,82 +794,68 @@ internal sealed class ZkInterfaceCursorDecoderTests
     {
         destination.Clear();
 
-        int k = constraintAliases;
-        int l = idsPerConstraint;
+        Span<byte> message = destination[SizePrefixBytes..];
 
-        //The message body follows the 4-byte size prefix; positions below are relative to it.
-        Span<byte> m = destination[SizePrefixBytes..];
+        //Each vtable immediately precedes its table; vector payloads determine the later positions.
+        int constraintsPosition = PayloadDataPosition;
+        int constraintVtablePosition = constraintsPosition + VectorLengthBytes + (UnsignedOffsetBytes * constraintAliases);
+        int constraintTablePosition = constraintVtablePosition + SingleOffsetVtableBytes;
+        int variablesVtablePosition = constraintTablePosition + SingleOffsetTableBytes;
+        int variablesTablePosition = variablesVtablePosition + VariablesVtableBytes;
+        int idsPosition = variablesTablePosition + VariablesTableBytes;
+        int valuesPosition = idsPosition + VectorLengthBytes + (VariableIdBytes * idsPerConstraint);
+        int messageLength = valuesPosition + VectorLengthBytes + valueByteCount;
 
-        //Positions, low -> high address. Each vtable sits immediately before its table.
-        const int pRootOffset = 0;                  //uoffset -> T_root (4 bytes).
-        const int pVtRoot = 4;                       //8 bytes.
-        const int pTRoot = 12;                       //9 bytes: soffset(4) msgType(1) msg-uoffset(4).
-        const int pVtCs = 21;                        //6 bytes.
-        const int pTCs = 27;                         //8 bytes: soffset(4) constraints-uoffset(4).
-        const int pVConstraints = 35;                //4 + 4k.
-        int pVtBc = pVConstraints + 4 + (4 * k);     //6 bytes.
-        int pTBc = pVtBc + 6;                        //8 bytes: soffset(4) lcA-uoffset(4).
-        int pVtVars = pTBc + 8;                      //8 bytes.
-        int pTVars = pVtVars + 8;                    //12 bytes: soffset(4) ids-uoffset(4) values-uoffset(4).
-        int pVIds = pTVars + 12;                     //4 + 8l.
-        int pVValues = pVIds + 4 + (8 * l);          //4 + valueByteCount.
-        int messageLength = pVValues + 4 + valueByteCount;
+        BinaryPrimitives.WriteUInt32LittleEndian(message[RootOffsetPosition..], RootTablePosition - RootOffsetPosition);
 
-        //Root uoffset -> T_root.
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pRootOffset..], (uint)(pTRoot - pRootOffset));
+        //The Root identifies the ConstraintSystem and points to its table.
+        BinaryPrimitives.WriteUInt16LittleEndian(message[RootVtablePosition..], RootVtableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(RootVtablePosition + TableSizeEntryOffset)..], RootTableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(RootVtablePosition + FirstSlotEntryOffset)..], RootTypeFieldOffset);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(RootVtablePosition + RootValueSlotEntryOffset)..], RootValueFieldOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(message[RootTablePosition..], RootTablePosition - RootVtablePosition);
+        message[RootTablePosition + RootTypeFieldOffset] = (byte)ZkInterfaceMessageType.ConstraintSystem;
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(RootTablePosition + RootValueFieldOffset)..], PayloadTablePosition - (RootTablePosition + RootValueFieldOffset));
 
-        //VT_root: [vtableSize=8][tableSize=9][msgTypeOff=4][msgOff=5].
-        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtRoot..], 8);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + 2)..], 9);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + 4)..], 4);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + 6)..], 5);
-        BinaryPrimitives.WriteInt32LittleEndian(m[pTRoot..], pTRoot - pVtRoot);
-        m[pTRoot + 4] = (byte)ZkInterfaceMessageType.ConstraintSystem;
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTRoot + 5)..], (uint)(pTCs - (pTRoot + 5)));
+        //The ConstraintSystem points to the aliased constraints vector.
+        BinaryPrimitives.WriteUInt16LittleEndian(message[PayloadVtablePosition..], SingleOffsetVtableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(PayloadVtablePosition + TableSizeEntryOffset)..], SingleOffsetTableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(PayloadVtablePosition + FirstSlotEntryOffset)..], SingleOffsetFieldOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(message[PayloadTablePosition..], PayloadTablePosition - PayloadVtablePosition);
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(PayloadTablePosition + SingleOffsetFieldOffset)..], (uint)(constraintsPosition - (PayloadTablePosition + SingleOffsetFieldOffset)));
 
-        //VT_cs: [6][8][constraintsOff=4].
-        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtCs..], 6);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtCs + 2)..], 8);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtCs + 4)..], 4);
-        BinaryPrimitives.WriteInt32LittleEndian(m[pTCs..], pTCs - pVtCs);
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTCs + 4)..], (uint)(pVConstraints - (pTCs + 4)));
-
-        //V_constraints: length k, then k uoffsets all -> T_bc (the aliasing).
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pVConstraints..], (uint)k);
-        for(int i = 0; i < k; i++)
+        //Every vector element points to the same BilinearConstraint table.
+        BinaryPrimitives.WriteUInt32LittleEndian(message[constraintsPosition..], (uint)constraintAliases);
+        for(int i = 0; i < constraintAliases; i++)
         {
-            int elemPos = pVConstraints + 4 + (4 * i);
-            BinaryPrimitives.WriteUInt32LittleEndian(m[elemPos..], (uint)(pTBc - elemPos));
+            int elementPosition = constraintsPosition + VectorLengthBytes + (UnsignedOffsetBytes * i);
+            BinaryPrimitives.WriteUInt32LittleEndian(message[elementPosition..], (uint)(constraintTablePosition - elementPosition));
         }
 
-        //VT_bc: [6][8][lcAOff=4] — lc_b, lc_c absent.
-        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtBc..], 6);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtBc + 2)..], 8);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtBc + 4)..], 4);
-        BinaryPrimitives.WriteInt32LittleEndian(m[pTBc..], pTBc - pVtBc);
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTBc + 4)..], (uint)(pTVars - (pTBc + 4)));
+        //Only lc_a is present, so lc_b and lc_c contribute no terms.
+        BinaryPrimitives.WriteUInt16LittleEndian(message[constraintVtablePosition..], SingleOffsetVtableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(constraintVtablePosition + TableSizeEntryOffset)..], SingleOffsetTableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(constraintVtablePosition + FirstSlotEntryOffset)..], SingleOffsetFieldOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(message[constraintTablePosition..], constraintTablePosition - constraintVtablePosition);
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(constraintTablePosition + SingleOffsetFieldOffset)..], (uint)(variablesTablePosition - (constraintTablePosition + SingleOffsetFieldOffset)));
 
-        //VT_vars: [8][12][idsOff=4][valuesOff=8, or the absent marker 0 when valuesPresent is false].
-        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtVars..], 8);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + 2)..], 12);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + 4)..], 4);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + 6)..], valuesPresent ? VariablesValuesFieldOffset : AbsentFieldOffset);
-        BinaryPrimitives.WriteInt32LittleEndian(m[pTVars..], pTVars - pVtVars);
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + 4)..], (uint)(pVIds - (pTVars + 4)));
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + 8)..], (uint)(pVValues - (pTVars + 8)));
+        //The Variables table retains both vectors even when its values slot marks the field absent.
+        BinaryPrimitives.WriteUInt16LittleEndian(message[variablesVtablePosition..], VariablesVtableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(variablesVtablePosition + TableSizeEntryOffset)..], VariablesTableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(variablesVtablePosition + FirstSlotEntryOffset)..], VariablesIdsFieldOffset);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(variablesVtablePosition + RootValueSlotEntryOffset)..], valuesPresent ? VariablesValuesFieldOffset : AbsentFieldOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(message[variablesTablePosition..], variablesTablePosition - variablesVtablePosition);
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(variablesTablePosition + VariablesIdsFieldOffset)..], (uint)(idsPosition - (variablesTablePosition + VariablesIdsFieldOffset)));
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(variablesTablePosition + VariablesValuesFieldOffset)..], (uint)(valuesPosition - (variablesTablePosition + VariablesValuesFieldOffset)));
 
-        //V_ids: length l (uint64 element count), then l ids. V_values: length valueByteCount (a
-        //ubyte vector, so its length prefix is a byte count), then that many zero bytes — element
-        //size resolves to valueByteCount / l.
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pVIds..], (uint)l);
-        for(int i = 0; i < l; i++)
+        //The ids vector counts ulong elements; the values vector counts zero-filled coefficient bytes.
+        BinaryPrimitives.WriteUInt32LittleEndian(message[idsPosition..], (uint)idsPerConstraint);
+        for(int i = 0; i < idsPerConstraint; i++)
         {
-            BinaryPrimitives.WriteUInt64LittleEndian(m[(pVIds + 4 + (8 * i))..], (ulong)i);
+            BinaryPrimitives.WriteUInt64LittleEndian(message[(idsPosition + VectorLengthBytes + (VariableIdBytes * i))..], (ulong)i);
         }
 
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pVValues..], (uint)valueByteCount);
-
-        //The 4-byte little-endian size prefix carries the message length.
+        BinaryPrimitives.WriteUInt32LittleEndian(message[valuesPosition..], (uint)valueByteCount);
         BinaryPrimitives.WriteUInt32LittleEndian(destination, (uint)messageLength);
     }
 
@@ -794,91 +897,54 @@ internal sealed class ZkInterfaceCursorDecoderTests
     {
         destination.Clear();
 
-        //Widths of the FlatBuffers building blocks the layout is packed from.
-        const int soffsetBytes = sizeof(int);
-        const int uoffsetBytes = sizeof(uint);
-        const int vectorLengthBytes = sizeof(uint);
-        const int unionTypeBytes = sizeof(byte);
+        //The assigned Variables vtable follows the Witness; both vectors follow the Variables table.
+        int variablesVtablePosition = PayloadDataPosition;
+        int variablesTablePosition = variablesVtablePosition + VariablesVtableBytes;
+        int idsPosition = variablesTablePosition + VariablesTableBytes;
+        int valuesPosition = idsPosition + VectorLengthBytes + (VariableIdBytes * idCount);
+        int messageLength = valuesPosition + VectorLengthBytes + valueByteCount;
+        Span<byte> message = destination[SizePrefixBytes..];
 
-        //Vtable entry offsets: the table inline size follows the vtable byte length, and the field
-        //slots follow both header entries.
-        const int tableBytesEntry = VtableEntryBytes;
-        const int firstSlotEntry = VtableHeaderEntries * VtableEntryBytes;
-        const int secondSlotEntry = firstSlotEntry + VtableEntryBytes;
+        BinaryPrimitives.WriteUInt32LittleEndian(message[RootOffsetPosition..], RootTablePosition - RootOffsetPosition);
 
-        //Root holds its soffset, the union type byte and the union value uoffset; Witness holds its
-        //soffset and the assigned_variables uoffset; Variables holds its soffset and the variable_ids
-        //and values uoffsets. Each vtable carries its two header entries plus one entry per field.
-        const int rootTypeFieldOffset = soffsetBytes;
-        const int rootValueFieldOffset = rootTypeFieldOffset + unionTypeBytes;
-        const int rootTableBytes = rootValueFieldOffset + uoffsetBytes;
-        const int rootVtableBytes = secondSlotEntry + VtableEntryBytes;
-        const int witnessAssignedFieldOffset = soffsetBytes;
-        const int witnessTableBytes = witnessAssignedFieldOffset + uoffsetBytes;
-        const int witnessVtableBytes = firstSlotEntry + VtableEntryBytes;
-        const int variablesIdsFieldOffset = soffsetBytes;
-        const int variablesTableBytes = VariablesValuesFieldOffset + uoffsetBytes;
-        const int variablesVtableBytes = secondSlotEntry + VtableEntryBytes;
+        //The Root identifies the Witness and points to its table.
+        BinaryPrimitives.WriteUInt16LittleEndian(message[RootVtablePosition..], RootVtableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(RootVtablePosition + TableSizeEntryOffset)..], RootTableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(RootVtablePosition + FirstSlotEntryOffset)..], RootTypeFieldOffset);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(RootVtablePosition + RootValueSlotEntryOffset)..], RootValueFieldOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(message[RootTablePosition..], RootTablePosition - RootVtablePosition);
+        message[RootTablePosition + RootTypeFieldOffset] = (byte)ZkInterfaceMessageType.Witness;
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(RootTablePosition + RootValueFieldOffset)..], PayloadTablePosition - (RootTablePosition + RootValueFieldOffset));
 
-        //Positions relative to the message body, low -> high address. Each vtable sits immediately
-        //before its table, and the ids vector then the values vector close the message.
-        const int pRootOffset = 0;
-        const int pVtRoot = pRootOffset + uoffsetBytes;
-        const int pTRoot = pVtRoot + rootVtableBytes;
-        const int pVtWitness = pTRoot + rootTableBytes;
-        const int pTWitness = pVtWitness + witnessVtableBytes;
-        const int pVtVars = pTWitness + witnessTableBytes;
-        const int pTVars = pVtVars + variablesVtableBytes;
-        const int pVIds = pTVars + variablesTableBytes;
-        int pVValues = pVIds + vectorLengthBytes + (VariableIdBytes * idCount);
-        int messageLength = pVValues + vectorLengthBytes + valueByteCount;
+        //The Witness points to the table holding its assigned variables.
+        BinaryPrimitives.WriteUInt16LittleEndian(message[PayloadVtablePosition..], SingleOffsetVtableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(PayloadVtablePosition + TableSizeEntryOffset)..], SingleOffsetTableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(PayloadVtablePosition + FirstSlotEntryOffset)..], SingleOffsetFieldOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(message[PayloadTablePosition..], PayloadTablePosition - PayloadVtablePosition);
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(PayloadTablePosition + SingleOffsetFieldOffset)..], (uint)(variablesTablePosition - (PayloadTablePosition + SingleOffsetFieldOffset)));
 
-        //The message body follows the 4-byte size prefix.
-        Span<byte> m = destination[SizePrefixBytes..];
+        //The Variables table points to its id and value vectors.
+        BinaryPrimitives.WriteUInt16LittleEndian(message[variablesVtablePosition..], VariablesVtableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(variablesVtablePosition + TableSizeEntryOffset)..], VariablesTableBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(variablesVtablePosition + FirstSlotEntryOffset)..], VariablesIdsFieldOffset);
+        BinaryPrimitives.WriteUInt16LittleEndian(message[(variablesVtablePosition + RootValueSlotEntryOffset)..], VariablesValuesFieldOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(message[variablesTablePosition..], variablesTablePosition - variablesVtablePosition);
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(variablesTablePosition + VariablesIdsFieldOffset)..], (uint)(idsPosition - (variablesTablePosition + VariablesIdsFieldOffset)));
+        BinaryPrimitives.WriteUInt32LittleEndian(message[(variablesTablePosition + VariablesValuesFieldOffset)..], (uint)(valuesPosition - (variablesTablePosition + VariablesValuesFieldOffset)));
 
-        //Root uoffset -> T_root.
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pRootOffset..], pTRoot - pRootOffset);
-
-        //VT_root declares the union type and value fields; T_root carries the Witness tag and a uoffset -> T_witness.
-        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtRoot..], rootVtableBytes);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + tableBytesEntry)..], rootTableBytes);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + firstSlotEntry)..], rootTypeFieldOffset);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtRoot + secondSlotEntry)..], rootValueFieldOffset);
-        BinaryPrimitives.WriteInt32LittleEndian(m[pTRoot..], pTRoot - pVtRoot);
-        m[pTRoot + rootTypeFieldOffset] = (byte)ZkInterfaceMessageType.Witness;
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTRoot + rootValueFieldOffset)..], pTWitness - (pTRoot + rootValueFieldOffset));
-
-        //VT_witness declares assigned_variables; T_witness carries a uoffset -> T_vars.
-        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtWitness..], witnessVtableBytes);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtWitness + tableBytesEntry)..], witnessTableBytes);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtWitness + firstSlotEntry)..], witnessAssignedFieldOffset);
-        BinaryPrimitives.WriteInt32LittleEndian(m[pTWitness..], pTWitness - pVtWitness);
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTWitness + witnessAssignedFieldOffset)..], pTVars - (pTWitness + witnessAssignedFieldOffset));
-
-        //VT_vars declares variable_ids and values; T_vars carries a uoffset to each vector.
-        BinaryPrimitives.WriteUInt16LittleEndian(m[pVtVars..], variablesVtableBytes);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + tableBytesEntry)..], variablesTableBytes);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + firstSlotEntry)..], variablesIdsFieldOffset);
-        BinaryPrimitives.WriteUInt16LittleEndian(m[(pVtVars + secondSlotEntry)..], VariablesValuesFieldOffset);
-        BinaryPrimitives.WriteInt32LittleEndian(m[pTVars..], pTVars - pVtVars);
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + variablesIdsFieldOffset)..], pVIds - (pTVars + variablesIdsFieldOffset));
-        BinaryPrimitives.WriteUInt32LittleEndian(m[(pTVars + VariablesValuesFieldOffset)..], (uint)(pVValues - (pTVars + VariablesValuesFieldOffset)));
-
-        //The ids vector carries its element count and then that many ids; the values vector carries its
-        //byte count, and its bytes stay zero from the clear above.
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pVIds..], (uint)idCount);
+        //The ids vector counts elements; the values vector counts bytes that remain zero after clearing.
+        BinaryPrimitives.WriteUInt32LittleEndian(message[idsPosition..], (uint)idCount);
         for(int i = 0; i < idCount; i++)
         {
-            BinaryPrimitives.WriteUInt64LittleEndian(m[(pVIds + vectorLengthBytes + (VariableIdBytes * i))..], (ulong)i);
+            BinaryPrimitives.WriteUInt64LittleEndian(message[(idsPosition + VectorLengthBytes + (VariableIdBytes * i))..], (ulong)i);
         }
 
-        BinaryPrimitives.WriteUInt32LittleEndian(m[pVValues..], (uint)valueByteCount);
-
-        //The 4-byte little-endian size prefix carries the message length.
+        BinaryPrimitives.WriteUInt32LittleEndian(message[valuesPosition..], (uint)valueByteCount);
         BinaryPrimitives.WriteUInt32LittleEndian(destination, (uint)messageLength);
     }
 
 
+    /// <summary>Checks the fixture variable ids in stream order for one matrix of one constraint.</summary>
     private static void AssertTerms(RecordingSink sink, int constraintIndex, ZkInterfaceConstraintMatrix matrix, ulong[] expectedIds)
     {
         var ids = new List<ulong>();
@@ -894,65 +960,121 @@ internal sealed class ZkInterfaceCursorDecoderTests
     }
 
 
+    /// <summary>Records every decoder callback in arrival order together with the example's header, terms and witness values.</summary>
     private sealed class RecordingSink: IZkInterfaceMessageSink
     {
-        private int currentConstraint = -1;
+        /// <summary>The zero-based index assigned by the latest begin callback, initially before the first constraint.</summary>
+        private int currentConstraint = NoCurrentConstraint;
 
+        /// <summary>The free variable id supplied by the header.</summary>
         public ulong FreeVariableId { get; private set; }
+
+        /// <summary>Whether the header supplies a field maximum.</summary>
         public bool FieldMaximumSeen { get; private set; }
+
+        /// <summary>The number of constraints the decoder opened.</summary>
         public int ConstraintCount { get; private set; }
 
         /// <summary>The number of constraints the decoder closed.</summary>
         public int EndedConstraintCount { get; private set; }
 
+        /// <summary>The public variable ids supplied by the header, in callback order.</summary>
         public List<ulong> InstanceVariableIds { get; } = new();
+
+        /// <summary>The public values supplied by the header, in callback order.</summary>
         public List<uint> InstanceVariableValues { get; } = new();
+
+        /// <summary>The variable ids assigned by the witness, in callback order.</summary>
         public List<ulong> WitnessVariableIds { get; } = new();
+
+        /// <summary>The values assigned by the witness, in callback order.</summary>
         public List<uint> WitnessVariableValues { get; } = new();
+
+        /// <summary>The constraint terms paired with the latest begin callback's index.</summary>
         internal List<Term> Terms { get; } = [];
 
+        /// <summary>Every sink callback's name in arrival order, with its term payload when it delivers a constraint term.</summary>
+        internal List<(string Name, Term? Term)> Callbacks { get; } = [];
 
-        public void OnFieldMaximum(ReadOnlySpan<byte> fieldMaximumLittleEndian) => FieldMaximumSeen = true;
 
-        public void OnFreeVariableId(ulong freeVariableId) => FreeVariableId = freeVariableId;
+        /// <summary>Records the field-maximum callback and marks the field present.</summary>
+        public void OnFieldMaximum(ReadOnlySpan<byte> fieldMaximumLittleEndian)
+        {
+            Callbacks.Add((nameof(OnFieldMaximum), null));
+            FieldMaximumSeen = true;
+        }
 
+
+        /// <summary>Records the header's free variable id and the callback's position in the stream.</summary>
+        public void OnFreeVariableId(ulong freeVariableId)
+        {
+            Callbacks.Add((nameof(OnFreeVariableId), null));
+            FreeVariableId = freeVariableId;
+        }
+
+
+        /// <summary>Records one public variable's id and value and the callback's position in the stream.</summary>
         public void OnInstanceVariable(ulong variableId, ReadOnlySpan<byte> valueLittleEndian)
         {
+            Callbacks.Add((nameof(OnInstanceVariable), null));
             InstanceVariableIds.Add(variableId);
             InstanceVariableValues.Add(ReadLittleEndianValue(valueLittleEndian));
         }
 
+
+        /// <summary>Records a begin callback and advances the constraint index and count.</summary>
         public void BeginConstraint()
         {
+            Callbacks.Add((nameof(BeginConstraint), null));
             currentConstraint++;
             ConstraintCount++;
         }
 
-        public void OnConstraintTerm(ZkInterfaceConstraintMatrix matrix, ulong variableId, ReadOnlySpan<byte> coefficientLittleEndian) =>
-            Terms.Add(new Term(currentConstraint, matrix, variableId, ReadLittleEndianValue(coefficientLittleEndian)));
 
-        /// <summary>Counts one closed constraint.</summary>
-        public void EndConstraint() => EndedConstraintCount++;
+        /// <summary>Records one term with its matrix, variable, coefficient and current constraint index at its callback position.</summary>
+        public void OnConstraintTerm(ZkInterfaceConstraintMatrix matrix, ulong variableId, ReadOnlySpan<byte> coefficientLittleEndian)
+        {
+            var term = new Term(currentConstraint, matrix, variableId, ReadLittleEndianValue(coefficientLittleEndian));
+            Callbacks.Add((nameof(OnConstraintTerm), term));
+            Terms.Add(term);
+        }
 
+
+        /// <summary>Records an end callback and counts one closed constraint.</summary>
+        public void EndConstraint()
+        {
+            Callbacks.Add((nameof(EndConstraint), null));
+            EndedConstraintCount++;
+        }
+
+
+        /// <summary>Records one witness variable's id and value and the callback's position in the stream.</summary>
         public void OnWitnessVariable(ulong variableId, ReadOnlySpan<byte> valueLittleEndian)
         {
+            Callbacks.Add((nameof(OnWitnessVariable), null));
             WitnessVariableIds.Add(variableId);
             WitnessVariableValues.Add(ReadLittleEndianValue(valueLittleEndian));
         }
 
 
+        /// <summary>Reads the fixture's low unsigned 32-bit value, treating an empty coefficient as zero.</summary>
         private static uint ReadLittleEndianValue(ReadOnlySpan<byte> littleEndian)
         {
             uint value = 0;
-            for(int b = 0; b < littleEndian.Length && b < sizeof(uint); b++)
+            for(int b = 0; b < littleEndian.Length && b < FixtureValueBytes; b++)
             {
-                value |= (uint)littleEndian[b] << (8 * b);
+                value |= (uint)littleEndian[b] << (BitsPerByte * b);
             }
 
             return value;
         }
 
 
+        /// <summary>A recorded fixture term identified by its constraint, matrix, variable id and unsigned coefficient.</summary>
+        /// <param name="ConstraintIndex">The zero-based constraint index assigned by begin callbacks.</param>
+        /// <param name="Matrix">The linear combination receiving the term.</param>
+        /// <param name="VariableId">The variable multiplied by the coefficient.</param>
+        /// <param name="Coefficient">The coefficient's low unsigned 32-bit value.</param>
         internal readonly record struct Term(int ConstraintIndex, ZkInterfaceConstraintMatrix Matrix, ulong VariableId, uint Coefficient);
     }
 

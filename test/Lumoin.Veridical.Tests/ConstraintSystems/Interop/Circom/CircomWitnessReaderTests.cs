@@ -29,6 +29,30 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 [TestClass]
 internal sealed class CircomWitnessReaderTests
 {
+    /// <summary>The 32-byte canonical scalar width of the BLS12-381 fixtures.</summary>
+    private const int ScalarSize = WellKnownCurves.Bls12Curve381ScalarSizeBytes;
+
+    /// <summary>The byte offset of the prime modulus, immediately after the four-byte field width.</summary>
+    private const int PrimeOffset = FieldSizeOffset + sizeof(uint);
+
+    /// <summary>The divisor that cuts the fixture in half, leaving a section payload incomplete.</summary>
+    private const int FixtureHalves = 2;
+
+    /// <summary>The Hyrax vector length for the four-column Multiplier2 witness, split into two columns.</summary>
+    private const int Multiplier2HyraxVectorLength = 2;
+
+    /// <summary>The BN254 scalar modulus substituted into a BLS12-381 header to exercise field mismatch rejection.</summary>
+    private const string Bn254ScalarFieldModulusHex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+
+    /// <summary>A witness count requiring roughly 3.2 GB of canonical scalars, beyond the maximum array length.</summary>
+    private const uint NWitnessAboveAddressableRange = 100000000u;
+
+    /// <summary>The four wire columns of Multiplier2, including the constant omitted from the returned witness.</summary>
+    private const int Multiplier2ColumnCount = Multiplier2WitnessElementCount;
+
+    /// <summary>The four trailing bytes that hold each small fixture scalar when read as a signed integer.</summary>
+    private const int ScalarIntegerTailBytes = sizeof(int);
+
     /// <summary>The length of the ASCII <c>wtns</c> magic that opens every <c>.wtns</c> file.</summary>
     private const int MagicBytes = 4;
 
@@ -228,6 +252,7 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>The Multiplier2 witness omits the constant and returns the output and both factors in canonical scalar slots.</summary>
     [TestMethod]
     public void Multiplier2WitnessParsesIntoExpectedValues()
     {
@@ -236,94 +261,88 @@ internal sealed class CircomWitnessReaderTests
         //RawR1csWitness contains z[1..nWitness] = (c, a, b) = (33, 3, 11)
         //in canonical big-endian, 32 bytes each. (The constant z[0] = 1
         //is dropped by the reader per the CircomWitnessReader convention.)
-        Assert.AreEqual(3, witness.WitnessVariableCount);
+        Assert.AreEqual(Multiplier2WitnessVariableCount, witness.WitnessVariableCount);
 
         ReadOnlySpan<byte> bytes = witness.GetWitnessBytes();
-        int scalarSize = WellKnownCurves.Bls12Curve381ScalarSizeBytes;
-        Assert.HasCount(3 * scalarSize, bytes);
+        Assert.HasCount(Multiplier2WitnessVariableCount * ScalarSize, bytes);
 
-        Assert.AreEqual(33, ReadBigEndianInt(bytes.Slice(0 * scalarSize, scalarSize)));
-        Assert.AreEqual(3, ReadBigEndianInt(bytes.Slice(1 * scalarSize, scalarSize)));
-        Assert.AreEqual(11, ReadBigEndianInt(bytes.Slice(2 * scalarSize, scalarSize)));
+        Assert.AreEqual(33, ReadBigEndianInt(bytes.Slice(OutputValueOffset, ScalarSize)), "The Multiplier2 output c is 33.");
+        Assert.AreEqual(3, ReadBigEndianInt(bytes.Slice(LeftFactorValueOffset, ScalarSize)), "The Multiplier2 left factor a is 3.");
+        Assert.AreEqual(11, ReadBigEndianInt(bytes.Slice(RightFactorValueOffset, ScalarSize)), "The Multiplier2 right factor b is 11.");
     }
 
 
+    /// <summary>The witness reader rejects the R1CS binary format label with an argument exception naming the format.</summary>
     [TestMethod]
     public void Multiplier2WitnessRejectsWrongFormatLabel()
     {
-        Assert.ThrowsExactly<ArgumentException>(() =>
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessFixture(
+            using RawR1csWitness witness = ReadWitnessFixture(
                 CircomWitnessFixtures.Multiplier2Bytes,
                 WellKnownR1csFormatLabel.CircomBinary);
         });
+
+        Assert.AreEqual("format", exception.ParamName, "The rejection must name the format parameter.");
     }
 
 
+    /// <summary>The witness reader rejects a fixture whose leading magic byte is not the expected ASCII character.</summary>
     [TestMethod]
     public void Multiplier2WitnessRejectsWrongMagic()
     {
         byte[] mutated = (byte[])CircomWitnessFixtures.Multiplier2Bytes.Clone();
-        mutated[0] = (byte)'x';
+        mutated[MagicLeadByteOffset] = ForeignMagicLeadByte;
 
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessFixture(mutated);
+            using RawR1csWitness witness = ReadWitnessFixture(mutated);
         });
     }
 
 
+    /// <summary>A BLS12-381 witness read rejects a header declaring the BN254 scalar field.</summary>
     [TestMethod]
     public void Multiplier2WitnessRejectsBn254Field()
     {
-        //Same prime-mutation pattern as the .r1cs test; the prime sits
-        //at offset 12 (file header) + 12 (section header) + 4 (field_size) = 28.
-        const int primeOffset = 12 + 12 + 4;
         byte[] mutated = (byte[])CircomWitnessFixtures.Multiplier2Bytes.Clone();
-        byte[] bn254Be = Convert.FromHexString(
-            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
+        byte[] bn254Be = Convert.FromHexString(Bn254ScalarFieldModulusHex);
         for(int i = 0; i < bn254Be.Length; i++)
         {
-            mutated[primeOffset + i] = bn254Be[bn254Be.Length - 1 - i];
+            mutated[PrimeOffset + i] = bn254Be[bn254Be.Length - 1 - i];
         }
 
         Assert.ThrowsExactly<R1csUnsupportedFieldException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessFixture(mutated);
+            using RawR1csWitness witness = ReadWitnessFixture(mutated);
         });
     }
 
 
+    /// <summary>The witness reader rejects a fixture cut in half inside its declared witness data section.</summary>
     [TestMethod]
     public void Multiplier2WitnessRejectsTruncatedFile()
     {
         byte[] full = CircomWitnessFixtures.Multiplier2Bytes;
-        byte[] truncated = full.AsSpan(0, full.Length / 2).ToArray();
+        byte[] truncated = full.AsSpan(0, full.Length / FixtureHalves).ToArray();
 
         Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessFixture(truncated);
+            using RawR1csWitness witness = ReadWitnessFixture(truncated);
         });
     }
 
 
+    /// <summary>A witness count whose dense scalar vector exceeds the maximum array length is rejected by the header range check.</summary>
     [TestMethod]
     public void Multiplier2WitnessRejectsNWitnessAboveAddressableRange()
     {
-        //nWitness sits at file header (12) + section header (12) + field_size (4) + prime (32) = 60.
-        //A declared nWitness whose (nWitness - 1) * 32-byte dense vector exceeds the maximum array
-        //size is rejected at header parse with the reader's documented ArgumentException, not an
-        //OverflowException from the allocation. Asserting the guard's OWN message distinguishes it
-        //from the section-length mismatch that also rejects this (small) input.
-        const int nWitnessOffset = 12 + 12 + 4 + 32;
-        const uint hugeNWitness = 100_000_000;   //(nWitness - 1) * 32 ~= 3.2 GB > Array.MaxLength.
-
         byte[] mutated = (byte[])CircomWitnessFixtures.Multiplier2Bytes.Clone();
-        BinaryPrimitives.WriteUInt32LittleEndian(mutated.AsSpan(nWitnessOffset), hugeNWitness);
+        BinaryPrimitives.WriteUInt32LittleEndian(mutated.AsSpan(NWitnessOffset), NWitnessAboveAddressableRange);
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessFixture(mutated);
+            using RawR1csWitness witness = ReadWitnessFixture(mutated);
         });
 
         Assert.Contains("exceeds the maximum addressable size", exception.Message, "the nWitness range guard must be what rejects the header");
@@ -341,7 +360,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"shorter than the {MagicBytes}-byte magic", exception.Message, StringComparison.Ordinal);
@@ -359,7 +378,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"truncated while reading version ({sizeof(uint)} bytes); only {VersionBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
@@ -378,7 +397,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"supports only .wtns file version {SupportedFileVersion}; file declares version {UnsupportedFileVersion}.", exception.Message, StringComparison.Ordinal);
@@ -396,7 +415,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"truncated while reading section size ({sizeof(ulong)} bytes); only {SectionSizeBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
@@ -416,7 +435,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains("missing the header section (type 1).", exception.Message, StringComparison.Ordinal);
@@ -436,7 +455,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains("missing the witness data section (type 2).", exception.Message, StringComparison.Ordinal);
@@ -455,7 +474,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"field_size = {ZeroFieldSize}; must be a positive multiple of 8 not exceeding 256.", exception.Message, StringComparison.Ordinal);
@@ -475,7 +494,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"field_size = {HalfWidthFieldSizeBytes} bytes but curve", exception.Message, StringComparison.Ordinal);
@@ -495,7 +514,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"truncated while reading the prime modulus ({WellKnownCurves.Bls12Curve381ScalarSizeBytes} bytes).", exception.Message, StringComparison.Ordinal);
@@ -514,7 +533,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"nWitness = {ZeroNWitness}; witness must have at least the constant.", exception.Message, StringComparison.Ordinal);
@@ -533,7 +552,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"witness section has {Multiplier2DataSectionBytes} bytes but the header declares {UnderstatedNWitness}", exception.Message, StringComparison.Ordinal);
@@ -553,7 +572,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains("contains only the constant z[0] = 1;", exception.Message, StringComparison.Ordinal);
@@ -574,7 +593,7 @@ internal sealed class CircomWitnessReaderTests
 
         Assert.ThrowsExactly<OperationCanceledException>(() =>
         {
-            using RawR1csWitness _ = CircomWitnessReader.Reader(
+            using RawR1csWitness witness = CircomWitnessReader.Reader(
                 pipe,
                 WellKnownR1csFormatLabel.CircomWitness,
                 CurveParameterSet.Bls12Curve381,
@@ -593,7 +612,7 @@ internal sealed class CircomWitnessReaderTests
     {
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
         {
-            using RawR1csWitness _ = CircomWitnessReader.Reader(
+            using RawR1csWitness witness = CircomWitnessReader.Reader(
                 null!,
                 WellKnownR1csFormatLabel.CircomWitness,
                 CurveParameterSet.Bls12Curve381,
@@ -617,7 +636,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
         {
-            using RawR1csWitness _ = CircomWitnessReader.Reader(
+            using RawR1csWitness witness = CircomWitnessReader.Reader(
                 pipe,
                 WellKnownR1csFormatLabel.CircomWitness,
                 CurveParameterSet.Bls12Curve381,
@@ -639,7 +658,7 @@ internal sealed class CircomWitnessReaderTests
     {
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessFixture(
+            using RawR1csWitness witness = ReadWitnessFixture(
                 CircomWitnessFixtures.Multiplier2Bytes,
                 WellKnownR1csFormatLabel.CircomBinary);
         });
@@ -651,17 +670,17 @@ internal sealed class CircomWitnessReaderTests
 
     /// <summary>
     /// A curve without reference support is rejected by the wired-curve gate, whose message lists the wired curves,
-    /// before the file is parsed and the scalar width lookup could reject the curve on its own terms.
+    /// before any pipe read or scalar width lookup occurs.
     /// </summary>
     [TestMethod]
     public void Multiplier2WitnessRejectsUnwiredCurveBeforeParsing()
     {
         Memory<byte> file = RentFixturePrefix(Multiplier2FileBytes);
-        PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(file));
+        StrictChunkedPipeReader pipe = new(file, Multiplier2FileBytes);
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = CircomWitnessReader.Reader(
+            using RawR1csWitness witness = CircomWitnessReader.Reader(
                 pipe,
                 WellKnownR1csFormatLabel.CircomWitness,
                 CurveParameterSet.P256,
@@ -671,6 +690,7 @@ internal sealed class CircomWitnessReaderTests
 
         Assert.AreEqual("curve", exception.ParamName);
         Assert.Contains("is not wired; the wired curves are Bls12Curve381 and Bn254.", exception.Message, StringComparison.Ordinal);
+        Assert.IsFalse(pipe.HasBeenRead, "The curve check must reject the call before the pipe is read.");
     }
 
 
@@ -706,9 +726,14 @@ internal sealed class CircomWitnessReaderTests
 
         ReadOnlySpan<byte> bytes = witness.GetWitnessBytes();
         Assert.AreEqual(Multiplier2WitnessVariableCount, witness.WitnessVariableCount);
-        Assert.AreEqual(Multiplier2OutputValue, ReadBigEndianInt(bytes.Slice(OutputValueOffset, WellKnownCurves.Bls12Curve381ScalarSizeBytes)));
-        Assert.AreEqual(Multiplier2LeftFactorValue, ReadBigEndianInt(bytes.Slice(LeftFactorValueOffset, WellKnownCurves.Bls12Curve381ScalarSizeBytes)));
-        Assert.AreEqual(Multiplier2RightFactorValue, ReadBigEndianInt(bytes.Slice(RightFactorValueOffset, WellKnownCurves.Bls12Curve381ScalarSizeBytes)));
+        Span<byte> expected = stackalloc byte[ScalarSize];
+        expected.Clear();
+        BinaryPrimitives.WriteInt32BigEndian(expected[^ScalarIntegerTailBytes..], Multiplier2OutputValue);
+        Assert.IsTrue(expected.SequenceEqual(bytes.Slice(OutputValueOffset, ScalarSize)), "The full output scalar must be canonical 33.");
+        BinaryPrimitives.WriteInt32BigEndian(expected[^ScalarIntegerTailBytes..], Multiplier2LeftFactorValue);
+        Assert.IsTrue(expected.SequenceEqual(bytes.Slice(LeftFactorValueOffset, ScalarSize)), "The full left-factor scalar must be canonical 3.");
+        BinaryPrimitives.WriteInt32BigEndian(expected[^ScalarIntegerTailBytes..], Multiplier2RightFactorValue);
+        Assert.IsTrue(expected.SequenceEqual(bytes.Slice(RightFactorValueOffset, ScalarSize)), "The full right-factor scalar must be canonical 11.");
     }
 
 
@@ -723,7 +748,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"truncated while reading section count ({sizeof(uint)} bytes); only {SectionCountBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
@@ -741,7 +766,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"truncated while reading section type ({sizeof(uint)} bytes); only {SectionTypeBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
@@ -759,7 +784,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"Section {DataSectionIndex} declares size {Multiplier2DataSectionBytes} bytes but only {Multiplier2DataSectionBytes - CutTrailingBytes} bytes remain in the file.", exception.Message, StringComparison.Ordinal);
@@ -778,7 +803,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"magic mismatch. Expected ASCII 'wtns' (77 74 6e 73); found {ForeignMagicHex}.", exception.Message, StringComparison.Ordinal);
@@ -797,7 +822,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"truncated while reading header.fieldSize ({sizeof(uint)} bytes); only {HalfFieldSizeHeaderPayloadBytes} bytes remained.", exception.Message, StringComparison.Ordinal);
@@ -816,7 +841,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"field_size = {NonMultipleOfEightFieldSize}; must be a positive multiple of 8 not exceeding 256.", exception.Message, StringComparison.Ordinal);
@@ -835,7 +860,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"field_size = {LargestShapeValidFieldSize} bytes but curve", exception.Message, StringComparison.Ordinal);
@@ -854,7 +879,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"truncated while reading header.nWitness ({sizeof(uint)} bytes); only {NWitnessBytesPresent} bytes remained.", exception.Message, StringComparison.Ordinal);
@@ -873,7 +898,7 @@ internal sealed class CircomWitnessReaderTests
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.Contains($"witness section has {Multiplier2DataSectionBytes} bytes but the header declares {LargestAddressableNWitness}", exception.Message, StringComparison.Ordinal);
@@ -893,7 +918,7 @@ internal sealed class CircomWitnessReaderTests
 
         R1csUnsupportedFieldException exception = Assert.ThrowsExactly<R1csUnsupportedFieldException>(() =>
         {
-            using RawR1csWitness _ = ReadWitnessMemory(file);
+            using RawR1csWitness witness = ReadWitnessMemory(file);
         });
 
         Assert.AreEqual(Bls12Curve381ScalarFieldModulusHex, exception.ExpectedModulusHex);
@@ -901,15 +926,13 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>The parsed Multiplier2 circuit and witness produce a standard Spartan proof accepted by the verifier.</summary>
     [TestMethod]
     public void Multiplier2EndToEndProvesAndVerifiesWithStandardSpartan()
     {
-        //The capability gate: both files parsed through the adapter,
-        //prove with base Spartan, verify with base Spartan, accept.
-        const int columnCount = 4;
         using RawR1csWitness witness = ReadWitnessFixture(CircomWitnessFixtures.Multiplier2Bytes);
-        using SpartanProver prover = BuildBaseProver(columnCount);
-        using SpartanVerifier verifier = BuildBaseVerifier(columnCount);
+        using SpartanProver prover = BuildBaseProver(Multiplier2ColumnCount);
+        using SpartanVerifier verifier = BuildBaseVerifier(Multiplier2ColumnCount);
 
         using RawR1csInstance proverInstance = ReadR1csFixture(CircomR1csFixtures.Multiplier2Bytes);
         using RawR1csInstance verifierInstance = ReadR1csFixture(CircomR1csFixtures.Multiplier2Bytes);
@@ -932,13 +955,13 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>The parsed Multiplier2 circuit and witness produce a masked Spartan proof accepted by the verifier.</summary>
     [TestMethod]
     public void Multiplier2EndToEndProvesAndVerifiesWithMaskedSpartan()
     {
-        const int hyraxVectorLength = 2;
         using RawR1csWitness witness = ReadWitnessFixture(CircomWitnessFixtures.Multiplier2Bytes);
-        using MaskedSpartanProver prover = BuildMaskedProver(hyraxVectorLength);
-        using MaskedSpartanVerifier verifier = BuildMaskedVerifier(hyraxVectorLength);
+        using MaskedSpartanProver prover = BuildMaskedProver(Multiplier2HyraxVectorLength);
+        using MaskedSpartanVerifier verifier = BuildMaskedVerifier(Multiplier2HyraxVectorLength);
 
         using RawR1csInstance proverInstance = ReadR1csFixture(CircomR1csFixtures.Multiplier2Bytes);
         using RawR1csInstance verifierInstance = ReadR1csFixture(CircomR1csFixtures.Multiplier2Bytes);
@@ -961,14 +984,17 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>Parses fixture bytes as a BLS12-381 witness under the Circom witness format label.</summary>
     private static RawR1csWitness ReadWitnessFixture(byte[] fixtureBytes) =>
         ReadWitnessFixture(fixtureBytes, WellKnownR1csFormatLabel.CircomWitness);
 
 
+    /// <summary>Parses fixture bytes as a BLS12-381 witness using the supplied format label.</summary>
     private static RawR1csWitness ReadWitnessFixture(byte[] fixtureBytes, WellKnownR1csFormatLabel format)
     {
         var stream = new MemoryStream(fixtureBytes, writable: false);
         PipeReader pipe = PipeReader.Create(stream);
+
         return CircomWitnessReader.Reader(
             pipe,
             format,
@@ -1026,10 +1052,12 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>Parses fixture bytes as a BLS12-381 Circom R1CS instance.</summary>
     private static RawR1csInstance ReadR1csFixture(byte[] fixtureBytes)
     {
         var stream = new MemoryStream(fixtureBytes, writable: false);
         PipeReader pipe = PipeReader.Create(stream);
+
         return CircomR1csReader.Reader(
             pipe,
             WellKnownR1csFormatLabel.CircomBinary,
@@ -1039,17 +1067,20 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>Reads the trailing signed integer from a canonical scalar whose fixture value fits in that integer width.</summary>
     private static int ReadBigEndianInt(ReadOnlySpan<byte> bytes)
     {
         //The scalar's value is small enough to fit in a 32-bit int —
         //the witness elements are 1, 33, 3, 11. The leading 28 bytes
         //are zeroes; we read only the trailing four-byte big-endian
         //tail.
-        ReadOnlySpan<byte> tail = bytes[(bytes.Length - 4)..];
+        ReadOnlySpan<byte> tail = bytes[(bytes.Length - ScalarIntegerTailBytes)..];
+
         return BinaryPrimitives.ReadInt32BigEndian(tail);
     }
 
 
+    /// <summary>Builds a standard Spartan prover with a commitment key sized for the fixture columns.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanProver via its constructor chain.")]
     private static SpartanProver BuildBaseProver(int columnCount)
     {
@@ -1068,6 +1099,7 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>Builds a standard Spartan verifier with a commitment key sized for the fixture columns.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanVerifier via its constructor chain.")]
     private static SpartanVerifier BuildBaseVerifier(int columnCount)
     {
@@ -1086,6 +1118,7 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>Builds a masked Spartan prover with enough commitment generators for the witness and statistical masks.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned MaskedSpartanProver via its constructor chain.")]
     private static MaskedSpartanProver BuildMaskedProver(int hyraxVectorLength)
     {
@@ -1104,6 +1137,7 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>Builds a masked Spartan verifier with enough commitment generators for the witness and statistical masks.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned MaskedSpartanVerifier via its constructor chain.")]
     private static MaskedSpartanVerifier BuildMaskedVerifier(int hyraxVectorLength)
     {
@@ -1119,6 +1153,7 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>Creates the Hyrax commitment provider and transfers ownership of the supplied key to it.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider takes ownership of the key (ownsKey: true) and transfers to the Spartan key that consumes it.")]
     private static PolynomialCommitmentProvider BuildProvider(HyraxCommitmentKey commitmentKey)
     {
@@ -1131,24 +1166,56 @@ internal sealed class CircomWitnessReaderTests
     }
 
 
+    /// <summary>The BLAKE3 transcript hash backend used by the Spartan proofs.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The BLAKE3 transcript squeeze backend used by the Spartan proofs.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BLS12-381 reference scalar reduction backend.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 reference scalar addition backend.</summary>
     private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+
+    /// <summary>The BLS12-381 reference scalar subtraction backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+
+    /// <summary>The BLS12-381 reference scalar multiplication backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+
+    /// <summary>The BLS12-381 reference scalar inversion backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
+
+    /// <summary>The BLS12-381 reference random scalar backend.</summary>
     private static ScalarRandomDelegate ScalarRandom { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The BLS12-381 reference G1 addition backend.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BLS12-381 reference G1 scalar multiplication backend.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BLS12-381 test G1 multiscalar multiplication backend.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The BLS12-381 reference G1 curve membership backend.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BLS12-381 reference G1 prime-order subgroup membership backend.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BLS12-381 reference hash-to-G1 backend for deriving commitment generators.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The reference multilinear extension evaluation backend.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The reference multilinear extension folding backend.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
 
+    /// <summary>Creates a fresh BLAKE3 transcript under the Spartan protocol domain.</summary>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(

@@ -30,7 +30,8 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.Circom;
 /// <para>
 /// Output: the <c>.wtns</c> file contains the full witness vector
 /// <c>z = (1, z[1], z[2], ..., z[nWitness - 1])</c>. The reader
-/// drops <c>z[0] = 1</c> (the canonical constant) and returns the
+/// treats the first scalar as the constant <c>z[0]</c>, skips it without
+/// checking its value, and returns the
 /// remaining elements via <see cref="RawR1csWitness.FromCanonical"/> in
 /// Veridical's canonical big-endian byte order. This matches the
 /// "PublicInputCount = 0, all wires in the witness" convention the
@@ -40,12 +41,28 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.Circom;
 /// </remarks>
 public static class CircomWitnessReader
 {
+    /// <summary>The largest admitted field width, 256 bytes, bounding the header shape check before curve validation.</summary>
+    private const uint MaximumFieldSizeBytes = 256u;
+
+    /// <summary>The field width alignment required by the reader: a positive multiple of eight bytes.</summary>
+    private const uint FieldSizeAlignmentBytes = 8u;
+
+    /// <summary>The one leading wire reserved for the constant in the Circom witness convention.</summary>
+    private const int ConstantWireCount = 1;
+
+    /// <summary>The only supported file version: 2 for the Circom witness format.</summary>
     private const uint SupportedFileVersion = 2u;
+
+    /// <summary>The section type code 1, which identifies the field and circuit header in the binary format.</summary>
     private const uint HeaderSectionType = 1u;
+
+    /// <summary>The section type code 2, which identifies the witness scalars in the binary format.</summary>
     private const uint WitnessDataSectionType = 2u;
 
+    /// <summary>The four ASCII bytes that identify a <c>.wtns</c> file.</summary>
     private static byte[] FileMagic { get; } = [(byte)'w', (byte)'t', (byte)'n', (byte)'s'];
 
+    /// <summary>The BLS12-381 scalar field order for validating the prime declared by a BLS12-381 witness file.</summary>
     private static BigInteger Bls12Curve381ScalarFieldModulus { get; } = BigInteger.Parse(
         "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
         NumberStyles.HexNumber,
@@ -64,6 +81,7 @@ public static class CircomWitnessReader
             ReadInternal(pipe, format, curve, pool, cancellationToken);
 
 
+    /// <summary>Validates the reader arguments before draining the pipe, then parses and consumes its complete buffer.</summary>
     private static RawR1csWitness ReadInternal(
         PipeReader pipe,
         WellKnownR1csFormatLabel format,
@@ -96,6 +114,7 @@ public static class CircomWitnessReader
     }
 
 
+    /// <summary>Validates the file envelope and required sections, then constructs the parsed witness.</summary>
     private static RawR1csWitness ParseBuffer(
         ReadOnlySequence<byte> buffer,
         CurveParameterSet curve,
@@ -130,20 +149,14 @@ public static class CircomWitnessReader
             ReadOnlySequence<byte> sectionPayload = reader.UnreadSequence.Slice(0, (long)sectionSize);
             reader.Advance((long)sectionSize);
 
-            switch(sectionType)
+            //Only the header and data sections are interpreted; other payloads are skipped.
+            if(sectionType is HeaderSectionType)
             {
-                case HeaderSectionType:
-                    witnessLength = ParseHeaderSection(sectionPayload, curve);
-                    break;
-
-                case WitnessDataSectionType:
-                    witnessData = sectionPayload;
-                    break;
-
-                //Any other section type is read past per the same
-                //spec-conformance pattern the .r1cs reader follows.
-                default:
-                    break;
+                witnessLength = ParseHeaderSection(sectionPayload, curve);
+            }
+            else if(sectionType is WitnessDataSectionType)
+            {
+                witnessData = sectionPayload;
             }
         }
 
@@ -161,6 +174,7 @@ public static class CircomWitnessReader
     }
 
 
+    /// <summary>Consumes the file magic and rejects truncated or unrecognised signatures.</summary>
     private static void ReadAndValidateMagic(ref SequenceReader<byte> reader)
     {
         Span<byte> magic = stackalloc byte[FileMagic.Length];
@@ -179,6 +193,7 @@ public static class CircomWitnessReader
     }
 
 
+    /// <summary>Reads a four-byte little-endian count or type field and rejects truncation with the field name.</summary>
     private static uint ReadUInt32Le(ref SequenceReader<byte> reader, string fieldName)
     {
         Span<byte> bytes = stackalloc byte[sizeof(uint)];
@@ -189,10 +204,12 @@ public static class CircomWitnessReader
         }
 
         reader.Advance(sizeof(uint));
+
         return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
     }
 
 
+    /// <summary>Reads an eight-byte little-endian section size and rejects truncation with the field name.</summary>
     private static ulong ReadUInt64Le(ref SequenceReader<byte> reader, string fieldName)
     {
         Span<byte> bytes = stackalloc byte[sizeof(ulong)];
@@ -203,16 +220,18 @@ public static class CircomWitnessReader
         }
 
         reader.Advance(sizeof(ulong));
+
         return BinaryPrimitives.ReadUInt64LittleEndian(bytes);
     }
 
 
+    /// <summary>Validates the scalar field and header counts before returning the stored witness length.</summary>
     private static uint ParseHeaderSection(ReadOnlySequence<byte> payload, CurveParameterSet curve)
     {
         var reader = new SequenceReader<byte>(payload);
 
         uint fieldSize = ReadUInt32Le(ref reader, "header.fieldSize");
-        if(fieldSize == 0 || fieldSize > 256 || fieldSize % 8 != 0)
+        if(fieldSize == 0 || fieldSize > MaximumFieldSizeBytes || fieldSize % FieldSizeAlignmentBytes != 0)
         {
             throw new ArgumentException(
                 $".wtns header declares field_size = {fieldSize}; must be a positive multiple of 8 not exceeding 256.");
@@ -241,13 +260,9 @@ public static class CircomWitnessReader
             throw new ArgumentException(".wtns header declares nWitness = 0; witness must have at least the constant.");
         }
 
-        //The witness vector is (nWitness - 1) dense scalars; reject a declared count whose buffer
-        //cannot be addressed as a single array before (nWitness - 1) * scalarSizeBytes overflows the
-        //Int32 allocation in BuildWitness (an undocumented OverflowException). Mirrors the
-        //nWires/nConstraints int-range guard in CircomR1csReader. A genuine witness this large would
-        //need a multi-gigabyte section that fails the section-length cross-check anyway, so this only
-        //rejects a hostile declaration early — from the header alone.
-        if((long)(nWitness - 1) * scalarSizeBytes > Array.MaxLength)
+        //Only scalars after the constant occupy the returned witness buffer. Reject counts whose dense vector
+        //exceeds one array before the byte count is computed with signed 32-bit arithmetic.
+        if((long)(nWitness - ConstantWireCount) * scalarSizeBytes > Array.MaxLength)
         {
             throw new ArgumentException(
                 $".wtns header declares nWitness = {nWitness}; the witness vector exceeds the maximum addressable size.");
@@ -257,6 +272,7 @@ public static class CircomWitnessReader
     }
 
 
+    /// <summary>Checks the unsigned little-endian modulus against the declared curve scalar field.</summary>
     private static void ValidatePrimeModulus(ReadOnlySpan<byte> primeLittleEndian, CurveParameterSet curve)
     {
         Span<byte> primeBe = stackalloc byte[primeLittleEndian.Length];
@@ -281,6 +297,7 @@ public static class CircomWitnessReader
     }
 
 
+    /// <summary>Checks the section length, skips the first scalar and copies the remaining scalars into canonical big-endian witness storage.</summary>
     private static RawR1csWitness BuildWitness(
         ReadOnlySequence<byte> witnessDataLittleEndian,
         uint nWitness,
@@ -296,10 +313,9 @@ public static class CircomWitnessReader
                 $".wtns witness section has {witnessDataLittleEndian.Length} bytes but the header declares {nWitness} × {scalarSizeBytes} = {expectedBytes} bytes.");
         }
 
-        //Drop z[0] (the canonical constant 1) and reverse each
-        //remaining scalar LE -> BE into the destination buffer. The header parse rejects nWitness = 0, so the
-        //constant is always present.
-        int privateCount = (int)(nWitness - 1);
+        //The first scalar exists because the header rejects an empty witness. Treat it as the constant z[0]
+        //without checking its value, and reverse each remaining scalar from LE to BE into the destination buffer.
+        int privateCount = (int)(nWitness - ConstantWireCount);
         if(privateCount == 0)
         {
             throw new ArgumentException(
@@ -310,8 +326,8 @@ public static class CircomWitnessReader
         var reader = new SequenceReader<byte>(witnessDataLittleEndian);
         Span<byte> scratch = stackalloc byte[scalarSizeBytes];
 
-        //The section length was checked against nWitness whole scalars above, so every element read below lies
-        //inside it. Element 0 is the constant z[0] and is skipped.
+        //The section length covers nWitness whole scalars, so every element read below lies inside it.
+        //The first element is treated as the constant z[0] and skipped.
         reader.Advance(scalarSizeBytes);
 
         for(int i = 0; i < privateCount; i++)
@@ -332,6 +348,7 @@ public static class CircomWitnessReader
     }
 
 
+    /// <summary>Reads until completion, retaining all bytes and advancing the examined position after each partial read.</summary>
     private static ReadOnlySequence<byte> DrainPipe(PipeReader pipe, CancellationToken cancellationToken)
     {
         while(true)

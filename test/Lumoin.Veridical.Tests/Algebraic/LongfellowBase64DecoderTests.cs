@@ -1,33 +1,32 @@
 using Lumoin.Veridical.Backends.Managed;
+using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 using System.Globalization;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// Gates for the base64url decoder gadget (<see cref="LongfellowBase64Decoder"/>), the
-/// evaluation-half port of google/longfellow-zk's <c>decode_test.cc</c>: the reference's
-/// <c>test_each_symbol</c> exhaustive byte sweep (every one of the 256 possible input bytes decodes
-/// to its alphabet index with a clear invalid flag, or else latches the flag), plus two gates the
-/// reference's <c>test_strings</c> table does not cover on its own — the asserting overload's latch
-/// on a single invalid byte, and the wire-valued-length overload's trailing-garbage tolerance versus
-/// its full-length latch.
+/// Pins the base64url decoder gadget's alphabet mapping, invalid-input latch, decoded-byte
+/// repacking, length gating and argument guards over the P-256 base field. Every possible input
+/// byte decodes to its alphabet index with a clear invalid flag or latches the flag; the asserting
+/// overload latches on an invalid byte; and the wire-valued-length overload tolerates garbage only
+/// beyond its claimed length.
 /// </summary>
 /// <remarks>
-/// The reference sweeps both gates over <c>Fp256Base</c> (this port's <see cref="Fp256Field"/>); the
-/// GF(2^128) arm has no counterpart in <c>decode_test.cc</c>, so this port does not add one either.
-/// <c>test_strings</c>'s table of whole base64 strings is replaced here by
-/// <see cref="TheLengthGatedDecodeIgnoresTrailingGarbage"/>, which exercises the same
-/// <c>base64_rawurl_decode</c>/<c>base64_rawurl_decode_len</c> repacking path on a single deterministic
-/// string ("QUJD" decodes to "ABC") while additionally covering the wire-valued length the reference's
-/// fixed-length table never exercises.
+/// The exhaustive byte sweep follows google/longfellow-zk's <c>decode_test.cc</c> over
+/// <c>Fp256Base</c>. Deterministic strings cover full and partial four-symbol groups and the
+/// wire-valued length's boundary between genuine payload and trailing garbage.
 /// </remarks>
 [TestClass]
 internal sealed class LongfellowBase64DecoderTests
 {
+    /// <summary>The canonical byte width of one scalar, which the P-256 modulus-minus-one buffer must occupy.</summary>
+    private const int ScalarSize = Scalar.SizeBytes;
+
     /// <summary>The decoder's fixed six-bit symbol width.</summary>
     private const int SymbolBitWidth = 6;
 
@@ -116,10 +115,10 @@ internal sealed class LongfellowBase64DecoderTests
     private const int EmptyOutputByteCount = 0;
 
     /// <summary>"ABC", the three-byte prefix the length-gated decode's output must spell when only the genuine length is claimed.</summary>
-    private static byte[] ExpectedDecodedPrefix { get; } = [0x41, 0x42, 0x43];
+    private static ReadOnlySpan<byte> ExpectedDecodedPrefix => [0x41, 0x42, 0x43];
 
     /// <summary>"QUJD", the base64url encoding of "ABC", padded with four trailing '#' bytes outside the genuine payload.</summary>
-    private static byte[] LengthGatedInputBytes { get; } = "QUJD####"u8.ToArray();
+    private static ReadOnlySpan<byte> LengthGatedInputBytes => "QUJD####"u8;
 
     /// <summary>"QUJDREU", the unpadded base64url encoding of "ABCDE": the full group "QUJD" followed by the trailing three-symbol group "REU".</summary>
     private static ReadOnlySpan<byte> GroupedInputBytes => "QUJDREU"u8;
@@ -136,8 +135,11 @@ internal sealed class LongfellowBase64DecoderTests
     /// <summary><see cref="OverflowBoundCount"/> in decimal, the message fragment only the overflow guard produces: the input-array guard measures the count against the input array's length and reports that instead.</summary>
     private static string OverflowBoundText { get; } = OverflowBoundCount.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>Owns the P-256 modulus-minus-one bytes retained by the shared field bundle until class cleanup.</summary>
+    private static IMemoryOwner<byte> Fp256MinusOneOwner { get; } = BuildFp256MinusOne();
+
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
-    private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
+    private static ReadOnlyMemory<byte> Fp256MinusOne => Fp256MinusOneOwner.Memory[..ScalarSize];
 
     /// <summary>The P-256 base field bundle gated over by every test in this class.</summary>
     private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
@@ -146,6 +148,14 @@ internal sealed class LongfellowBase64DecoderTests
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
         Fp256MinusOne);
+
+
+    /// <summary>Returns the modulus rental after every test using the shared field bundle has completed.</summary>
+    [ClassCleanup]
+    public static void DisposeModulusRental()
+    {
+        Fp256MinusOneOwner.Dispose();
+    }
 
 
     /// <summary>Pins that every one of the 256 possible input bytes decodes to its alphabet index with a clear invalid flag, or else latches the invalid flag.</summary>
@@ -171,9 +181,9 @@ internal sealed class LongfellowBase64DecoderTests
                 for(int bit = 0; bit < SymbolBitWidth; bit++)
                 {
                     int expectedBit = (alphabetIndex >> bit) & 1;
-                    byte[] expected = (expectedBit == 0 ? Fp256Field.Compiler.Zero : Fp256Field.Compiler.One).ToArray();
+                    ReadOnlySpan<byte> expected = (expectedBit == 0 ? Fp256Field.Compiler.Zero : Fp256Field.Compiler.One).Span;
 
-                    Assert.IsTrue(EvaluatedBytes(logic, logic.Eval(output[bit])).AsSpan().SequenceEqual(expected), $"Byte {b}'s decoded bit {bit} must equal alphabet index {alphabetIndex}'s bit {bit}.");
+                    Assert.IsTrue(EvaluatedBytes(logic, logic.Eval(output[bit])).SequenceEqual(expected), $"Byte {b}'s decoded bit {bit} must equal alphabet index {alphabetIndex}'s bit {bit}.");
                 }
             }
             else
@@ -214,7 +224,7 @@ internal sealed class LongfellowBase64DecoderTests
     [TestMethod]
     public void TheLengthGatedDecodeIgnoresTrailingGarbage()
     {
-        byte[] paddedInput = LengthGatedInputBytes;
+        ReadOnlySpan<byte> paddedInput = LengthGatedInputBytes;
 
         var shortLengthBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         var shortLengthLogic = new LongfellowLogic(shortLengthBackend, Fp256Field);
@@ -665,17 +675,18 @@ internal sealed class LongfellowBase64DecoderTests
     /// <param name="logic">The gadget layer the wire was built over.</param>
     /// <param name="wire">The wire to read.</param>
     /// <returns>The wire's canonical bytes.</returns>
-    private static byte[] EvaluatedBytes(LongfellowLogic logic, int wire) => ((LongfellowEvaluationLogicBackend)logic.Backend).ElementAt(wire).ToArray();
+    private static ReadOnlySpan<byte> EvaluatedBytes(LongfellowLogic logic, int wire) => ((LongfellowEvaluationLogicBackend)logic.Backend).ElementAt(wire).Span;
 
 
-    /// <summary>Builds the P-256 base field's modulus-minus-one, canonical big-endian, for <see cref="LongfellowLogicFieldOperations.CreateFp256"/>.</summary>
-    /// <returns>The canonical <c>p - 1</c>.</returns>
-    private static byte[] BuildFp256MinusOne()
+    /// <summary>Rents and writes the P-256 base field's modulus-minus-one, canonical big-endian, for <see cref="LongfellowLogicFieldOperations.CreateFp256"/>.</summary>
+    /// <returns>The owner of the canonical <c>p - 1</c> buffer, released by class cleanup.</returns>
+    private static IMemoryOwner<byte> BuildFp256MinusOne()
     {
-        byte[] canonical = new byte[Scalar.SizeBytes];
-        byte[] bigEndian = (P256BaseFieldReference.FieldOrder - 1).ToByteArray(isUnsigned: true, isBigEndian: true);
-        bigEndian.CopyTo(canonical.AsSpan(Scalar.SizeBytes - bigEndian.Length));
+        IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(ScalarSize);
+        Span<byte> canonical = owner.Memory.Span[..ScalarSize];
+        //The P-256 modulus-minus-one occupies every canonical byte, so the write fills the rental.
+        _ = (P256BaseFieldReference.FieldOrder - 1).TryWriteBytes(canonical, out _, isUnsigned: true, isBigEndian: true);
 
-        return canonical;
+        return owner;
     }
 }
