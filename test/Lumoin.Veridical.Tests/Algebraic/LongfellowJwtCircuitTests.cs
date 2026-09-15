@@ -73,7 +73,7 @@ internal sealed class LongfellowJwtCircuitTests: IDisposable
     public void TheReferenceTokenSatisfiesTheStatementInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
 
         LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;

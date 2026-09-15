@@ -125,7 +125,8 @@ internal sealed class LongfellowBitAdderTests: IDisposable
     [TestMethod]
     public void AsFieldElementMatchesOfScalarOverFp256()
     {
-        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Fp256Field), Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         using var adder = new LongfellowBitAdder(logic, EncodedElementWidth);
 
         for(int value = 0; value < (1 << EncodedElementWidth); value++)
@@ -143,7 +144,8 @@ internal sealed class LongfellowBitAdderTests: IDisposable
     [TestMethod]
     public void AsFieldElementMatchesTheAlphaPowerProductOverGf2128()
     {
-        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Gf2128Field);
+        using var logic = new LongfellowLogic(backend, Gf2128Field);
         using var adder = new LongfellowBitAdder(logic, EncodedElementWidth);
 
         for(int value = 0; value < (1 << EncodedElementWidth); value++)
@@ -161,7 +163,8 @@ internal sealed class LongfellowBitAdderTests: IDisposable
     [TestMethod]
     public void AddOfTwoEncodedElementsIsFieldAdditionOverFp256()
     {
-        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Fp256Field), Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         using var adder = new LongfellowBitAdder(logic, AdderWidth);
 
         for(int a = 0; a < (1 << AdderWidth); a++)
@@ -185,7 +188,8 @@ internal sealed class LongfellowBitAdderTests: IDisposable
     [TestMethod]
     public void AddOfTwoEncodedElementsIsFieldMultiplicationOverGf2128()
     {
-        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Gf2128Field);
+        using var logic = new LongfellowLogic(backend, Gf2128Field);
         using var adder = new LongfellowBitAdder(logic, AdderWidth);
 
         for(int a = 0; a < (1 << AdderWidth); a++)
@@ -219,7 +223,7 @@ internal sealed class LongfellowBitAdderTests: IDisposable
                 {
                     for(int s = 0; s < (1 << AdderWidth); s++)
                     {
-                        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+                        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
                         using var logic = new LongfellowLogic(backend, field);
                         using var adder = new LongfellowBitAdder(logic, AdderWidth);
 

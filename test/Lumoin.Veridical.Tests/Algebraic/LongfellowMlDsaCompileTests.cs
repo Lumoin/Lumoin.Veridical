@@ -286,12 +286,13 @@ internal sealed class LongfellowMlDsaCompileTests: IDisposable
     /// <returns>The pooled witness column; the caller disposes it.</returns>
     private static IMemoryOwner<byte> BuildStatementColumn(LongfellowLogicFieldOperations field, LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example, LongfellowSumcheckCircuit circuit, out int witnessStartWire)
     {
-        LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(
+        using LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(
             parameters,
             Convert.FromHexString(example.PublicKey),
             Convert.FromHexString(example.Signature),
             Convert.FromHexString(example.Message),
-            Convert.FromHexString(example.Context));
+            Convert.FromHexString(example.Context),
+            field.Pool);
         Assert.IsNotNull(witness, "The example witness must compute.");
 
         IMemoryOwner<byte> columnOwner = BaseMemoryPool.Shared.Rent(circuit.InputCount * Scalar.SizeBytes);
@@ -328,12 +329,13 @@ internal sealed class LongfellowMlDsaCompileTests: IDisposable
     private void AssertColumnCovers(LongfellowMlDsaParameters parameters, CounterPin pin, LongfellowMlDsaSignatureExample example, string setName)
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
-        LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(
+        using LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(
             parameters,
             Convert.FromHexString(example.PublicKey),
             Convert.FromHexString(example.Signature),
             Convert.FromHexString(example.Message),
-            Convert.FromHexString(example.Context));
+            Convert.FromHexString(example.Context),
+            field.Pool);
         Assert.IsNotNull(witness, $"The {setName} example witness must compute.");
 
         var column = new byte[pin.InputCount * Scalar.SizeBytes];

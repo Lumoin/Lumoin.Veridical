@@ -82,7 +82,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     public void TheReferenceSpanSatisfiesTheStatementInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
 
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;
@@ -173,7 +173,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     public void TheListStatementAcceptsAnUnlistedIdentifierInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
@@ -192,7 +192,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     public void TheListStatementRejectsAListedIdentifierInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
@@ -211,7 +211,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     public void TheListStatementRejectsAWrongInverseInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
@@ -252,7 +252,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     private bool SpanEvaluationFails(byte[] id, ulong? epoch = null, byte[]? circuitPkX = null, byte[]? circuitPkY = null, Action<byte[]>? corruptColumn = null)
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
 
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;

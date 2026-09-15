@@ -65,10 +65,10 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
     {
         foreach(LongfellowEcdsaTestVectors.SignatureTuple tuple in LongfellowEcdsaTestVectors.Accepting)
         {
-            RunVector(tuple, out bool computed, out LongfellowEvaluationLogicBackend backend);
+            RunVector(tuple, out bool computed, out bool assertionFailed);
 
             Assert.IsTrue(computed, "The accepting vector's witness walk must terminate at the identity.");
-            Assert.IsFalse(backend.AssertionFailed, "The accepting vector must satisfy every circuit assertion.");
+            Assert.IsFalse(assertionFailed, "The accepting vector must satisfy every circuit assertion.");
         }
     }
 
@@ -79,9 +79,9 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
     {
         foreach(LongfellowEcdsaTestVectors.SignatureTuple tuple in LongfellowEcdsaTestVectors.Rejecting)
         {
-            RunVector(tuple, out _, out LongfellowEvaluationLogicBackend backend);
+            RunVector(tuple, out _, out bool assertionFailed);
 
-            Assert.IsTrue(backend.AssertionFailed, "The rejecting vector must trip a circuit assertion.");
+            Assert.IsTrue(assertionFailed, "The rejecting vector must trip a circuit assertion.");
         }
     }
 
@@ -123,11 +123,11 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
     /// </summary>
     /// <param name="tuple">The signature vector.</param>
     /// <param name="computed">Receives the witness walk's verdict.</param>
-    /// <param name="backend">Receives the backend for latch inspection.</param>
-    private void RunVector(LongfellowEcdsaTestVectors.SignatureTuple tuple, out bool computed, out LongfellowEvaluationLogicBackend backend)
+    /// <param name="assertionFailed">Receives the assertion latch before the helper disposes its backend.</param>
+    private void RunVector(LongfellowEcdsaTestVectors.SignatureTuple tuple, out bool computed, out bool assertionFailed)
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
 
         byte[] pkX = ParseScalar(tuple.PkX);
@@ -145,6 +145,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
         LongfellowEcdsaVerifyWitnessWires wires = InternColumn(backend, column);
         var circuit = new LongfellowEcdsaVerifyCircuit(logic, Curve);
         circuit.VerifySignature3(backend.Constant(pkX), backend.Constant(pkY), backend.Constant(e), wires);
+        assertionFailed = backend.AssertionFailed;
     }
 
 

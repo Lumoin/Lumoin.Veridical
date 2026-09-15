@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
@@ -29,15 +30,20 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// omitting the members, keeping one abstract surface across both backends.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
+internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend, IDisposable
 {
-    private readonly List<byte[]> values = [];
+    /// <summary>The borrowed value views indexed by integer wire handles.</summary>
+    private readonly List<ReadOnlyMemory<byte>> values = [];
+
+    /// <summary>Owns the retained values through the field's caller pool.</summary>
+    private readonly LongfellowCircuitStorage storage;
     private readonly bool panicOnAssertionFailure;
     private bool assertionFailed;
 
 
     /// <summary>
-    /// Constructs the backend over a field-operation bundle.
+    /// Constructs an owner of retained values over a borrowed field-operation bundle.
+    /// The field and its pool must outlive this backend; a logic gadget borrows the backend.
     /// </summary>
     /// <param name="field">The gadget-layer field-operation bundle.</param>
     /// <param name="panicOnAssertionFailure">When <see langword="true"/> (the default), <see cref="AssertZero"/> throws on a nonzero value; when <see langword="false"/>, it latches <see cref="AssertionFailed"/> instead.</param>
@@ -45,6 +51,7 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
         : base(field)
     {
         this.panicOnAssertionFailure = panicOnAssertionFailure;
+        storage = new LongfellowCircuitStorage(field.Pool);
     }
 
 
@@ -68,7 +75,7 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// Returns the canonical bytes a wire holds, for test and assertion use.
     /// </summary>
     /// <param name="wire">The wire to read.</param>
-    /// <returns>The wire's value, canonical big-endian.</returns>
+    /// <returns>The wire's read-only value, canonical big-endian, borrowed until backend disposal.</returns>
     public ReadOnlyMemory<byte> ElementAt(int wire) => values[wire];
 
 
@@ -82,7 +89,7 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <exception cref="InvalidOperationException">When the value is nonzero and this backend panics on assertion failure.</exception>
     public override int AssertZero(int wire)
     {
-        if(LongfellowCompilerFieldOperations.ElementIsZero(values[wire]))
+        if(LongfellowCompilerFieldOperations.ElementIsZero(values[wire].Span))
         {
             return wire;
         }
@@ -104,8 +111,8 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <returns>The interned sum wire.</returns>
     public override int Add(int left, int right)
     {
-        var sum = new byte[Scalar.SizeBytes];
-        Field.Compiler.Add(values[left], values[right], sum, Field.Compiler.Curve);
+        Memory<byte> sum = storage.Allocate(Scalar.SizeBytes);
+        Field.Compiler.Add(values[left].Span, values[right].Span, sum.Span, Field.Compiler.Curve);
 
         return Intern(sum);
     }
@@ -117,8 +124,8 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <returns>The interned difference wire.</returns>
     public override int Sub(int left, int right)
     {
-        var difference = new byte[Scalar.SizeBytes];
-        Field.Subtract(values[left], values[right], difference, Field.Compiler.Curve);
+        Memory<byte> difference = storage.Allocate(Scalar.SizeBytes);
+        Field.Subtract(values[left].Span, values[right].Span, difference.Span, Field.Compiler.Curve);
 
         return Intern(difference);
     }
@@ -130,8 +137,8 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <returns>The interned product wire.</returns>
     public override int Mul(int left, int right)
     {
-        var product = new byte[Scalar.SizeBytes];
-        Field.Compiler.Multiply(values[left], values[right], product, Field.Compiler.Curve);
+        Memory<byte> product = storage.Allocate(Scalar.SizeBytes);
+        Field.Compiler.Multiply(values[left].Span, values[right].Span, product.Span, Field.Compiler.Curve);
 
         return Intern(product);
     }
@@ -143,8 +150,8 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <returns>The interned scaled wire.</returns>
     public override int MultiplyScaled(ReadOnlySpan<byte> coefficient, int wire)
     {
-        var product = new byte[Scalar.SizeBytes];
-        Field.Compiler.Multiply(coefficient, values[wire], product, Field.Compiler.Curve);
+        Memory<byte> product = storage.Allocate(Scalar.SizeBytes);
+        Field.Compiler.Multiply(coefficient, values[wire].Span, product.Span, Field.Compiler.Curve);
 
         return Intern(product);
     }
@@ -157,11 +164,13 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <returns>The interned scaled product wire.</returns>
     public override int MultiplyScaled(ReadOnlySpan<byte> coefficient, int left, int right)
     {
-        var innerProduct = new byte[Scalar.SizeBytes];
-        Field.Compiler.Multiply(values[left], values[right], innerProduct, Field.Compiler.Curve);
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> innerProduct = owner.Memory.Span[..Scalar.SizeBytes];
+        innerProduct.Clear();
+        Field.Compiler.Multiply(values[left].Span, values[right].Span, innerProduct, Field.Compiler.Curve);
 
-        var scaled = new byte[Scalar.SizeBytes];
-        Field.Compiler.Multiply(coefficient, innerProduct, scaled, Field.Compiler.Curve);
+        Memory<byte> scaled = storage.Allocate(Scalar.SizeBytes);
+        Field.Compiler.Multiply(coefficient, innerProduct, scaled.Span, Field.Compiler.Curve);
 
         return Intern(scaled);
     }
@@ -170,7 +179,7 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <summary>The reference's <c>konst</c>: interns a raw value as a wire, with no dependency on any other wire. This is also how this port represents the reference's direct <c>V{x}</c> construction, since the evaluating backend has no witness-wire concept of its own.</summary>
     /// <param name="value">The constant, canonical big-endian.</param>
     /// <returns>The interned constant wire.</returns>
-    public override int Constant(ReadOnlySpan<byte> value) => Intern(value.ToArray());
+    public override int Constant(ReadOnlySpan<byte> value) => Intern(storage.Copy(value));
 
 
     /// <summary>The reference's <c>axpy</c>: <c>accumulator + coefficient·wire</c>, computed directly through the field's addition and multiplication.</summary>
@@ -180,11 +189,13 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <returns>The interned result wire.</returns>
     public override int Axpy(int accumulator, ReadOnlySpan<byte> coefficient, int wire)
     {
-        var scaled = new byte[Scalar.SizeBytes];
-        Field.Compiler.Multiply(coefficient, values[wire], scaled, Field.Compiler.Curve);
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> scaled = owner.Memory.Span[..Scalar.SizeBytes];
+        scaled.Clear();
+        Field.Compiler.Multiply(coefficient, values[wire].Span, scaled, Field.Compiler.Curve);
 
-        var sum = new byte[Scalar.SizeBytes];
-        Field.Compiler.Add(values[accumulator], scaled, sum, Field.Compiler.Curve);
+        Memory<byte> sum = storage.Allocate(Scalar.SizeBytes);
+        Field.Compiler.Add(values[accumulator].Span, scaled, sum.Span, Field.Compiler.Curve);
 
         return Intern(sum);
     }
@@ -196,23 +207,31 @@ internal sealed class LongfellowEvaluationLogicBackend : LongfellowLogicBackend
     /// <returns>The interned result wire.</returns>
     public override int Apy(int accumulator, ReadOnlySpan<byte> constant)
     {
-        var sum = new byte[Scalar.SizeBytes];
-        Field.Compiler.Add(values[accumulator], constant, sum, Field.Compiler.Curve);
+        Memory<byte> sum = storage.Allocate(Scalar.SizeBytes);
+        Field.Compiler.Add(values[accumulator].Span, constant, sum.Span, Field.Compiler.Curve);
 
         return Intern(sum);
     }
 
 
     /// <summary>
-    /// Interns a computed value, returning its index as the wire handle.
+    /// Interns a computed value borrowed from this backend's storage, returning its index as the wire handle.
     /// </summary>
-    /// <param name="value">The value to intern, canonical big-endian.</param>
+    /// <param name="value">The value in this backend's storage, canonical big-endian.</param>
     /// <returns>The new wire's index.</returns>
-    private int Intern(byte[] value)
+    private int Intern(ReadOnlyMemory<byte> value)
     {
         int index = values.Count;
         values.Add(value);
 
         return index;
+    }
+
+
+    /// <summary>Clears and releases all retained values. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        values.Clear();
+        storage.Dispose();
     }
 }

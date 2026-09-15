@@ -181,7 +181,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void EveryByteDecodesToItsAlphabetValue()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -217,7 +217,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheAssertingDecodeLatchesOnAnInvalidByte()
     {
-        var invalidBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var invalidBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         using var invalidLogic = new LongfellowLogic(invalidBackend, Fp256Field);
         var invalidDecoder = new LongfellowBase64Decoder(invalidLogic);
 
@@ -227,7 +227,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
 
         Assert.IsTrue(invalidBackend.AssertionFailed, "Decoding the padding character must latch an invalid-alphabet assertion failure.");
 
-        var validBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var validBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         using var validLogic = new LongfellowLogic(validBackend, Fp256Field);
         var validDecoder = new LongfellowBase64Decoder(validLogic);
 
@@ -245,7 +245,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     {
         ReadOnlySpan<byte> paddedInput = LengthGatedInputBytes;
 
-        var shortLengthBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var shortLengthBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         using var shortLengthLogic = new LongfellowLogic(shortLengthBackend, Fp256Field);
         var shortLengthDecoder = new LongfellowBase64Decoder(shortLengthLogic);
 
@@ -264,7 +264,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
             Assert.AreEqual(ExpectedDecodedPrefix[i], actual, $"Decoded output byte {i} must equal 'ABC' byte {i}.");
         }
 
-        var fullLengthBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var fullLengthBackend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         using var fullLengthLogic = new LongfellowLogic(fullLengthBackend, Fp256Field);
         var fullLengthDecoder = new LongfellowBase64Decoder(fullLengthLogic);
 
@@ -289,7 +289,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFlagReportingDecodeRejectsAnOversizedInputVector()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -313,7 +313,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeRejectsANegativeCount()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -337,7 +337,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeRepacksFullAndPartialGroups()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -369,7 +369,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeLeavesBytesPastCountUnread()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -410,7 +410,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFlagReportingDecodeRejectsANullInputVector()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -431,7 +431,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFlagReportingDecodeRejectsANullOutputVector()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -452,7 +452,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeRejectsNullInputs()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -473,7 +473,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeRejectsANullOutput()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -495,7 +495,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeRejectsACountPastTheOverflowBound()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -519,7 +519,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeRejectsACountPastTheInputArray()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -543,7 +543,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheFixedLengthDecodeRejectsAnOutputShorterThanTheDecodedPrefix()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -568,7 +568,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheLengthGatedDecodeRejectsANegativeCount()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -592,7 +592,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheLengthGatedDecodeRejectsANullLength()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 
@@ -616,7 +616,7 @@ internal sealed class LongfellowBase64DecoderTests: IDisposable
     [TestMethod]
     public void TheLengthGatedDecodeRepacksFullAndPartialGroups()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var decoder = new LongfellowBase64Decoder(logic);
 

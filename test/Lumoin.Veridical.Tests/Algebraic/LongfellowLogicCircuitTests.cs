@@ -128,7 +128,7 @@ internal sealed class LongfellowLogicCircuitTests: IDisposable
         int productWidth = 2 * MultiplierWidth;
 
         LongfellowLogicFieldOperations evaluationField = circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert, circuitScope.Pool));
-        var evaluationBackend = new LongfellowEvaluationLogicBackend(evaluationField);
+        using var evaluationBackend = new LongfellowEvaluationLogicBackend(evaluationField);
         using var evaluationLogic = new LongfellowLogic(evaluationBackend, evaluationField);
 
         for(ulong x = 0; x < (1UL << MultiplierWidth); x++)

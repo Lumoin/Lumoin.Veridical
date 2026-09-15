@@ -133,7 +133,8 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     [TestMethod]
     public void PackedV32ElementCountAtLogPointCountTwoMatchesTheReferenceKNv32EltsFormula()
     {
-        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Gf2128Field);
+        using var logic = new LongfellowLogic(backend, Gf2128Field);
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
@@ -146,7 +147,8 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     [TestMethod]
     public void MakePackedV32RoundTripsThroughUnpackAtLogPointCountTwoOverGf2128()
     {
-        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Gf2128Field);
+        using var logic = new LongfellowLogic(backend, Gf2128Field);
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
@@ -202,7 +204,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     [TestMethod]
     public void PolynomialEvaluationAndParallelHornerAgreeWithTheClosedFormValue()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         var polynomial = new LongfellowCircuitPolynomial(backend);
 
         //P(x) = 3 + x + 4x^2 + x^3 + 5x^4 at x = 7: 3 + 7 + 196 + 343 + 12005 = 12554. Five
@@ -232,7 +234,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         //there to keep a hostile width from driving an unbounded interpolation.
         const int BeyondMaxLogPointCount = 9;
 
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new LongfellowBitPlucker(logic, BeyondMaxLogPointCount), "The plucker must reject a point-count exponent beyond eight.");
@@ -296,7 +298,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     {
         for(int logPointCount = MinLogPointCount; logPointCount <= MaxLogPointCount; logPointCount++)
         {
-            var backend = new LongfellowEvaluationLogicBackend(field);
+            using var backend = new LongfellowEvaluationLogicBackend(field);
             using var logic = new LongfellowLogic(backend, field);
             var encoder = new LongfellowBitPluckerEncoder(field, logPointCount);
             var plucker = new LongfellowBitPlucker(logic, logPointCount);
@@ -328,7 +330,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     {
         int pointCount = 1 << PackingLogPointCount;
 
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 

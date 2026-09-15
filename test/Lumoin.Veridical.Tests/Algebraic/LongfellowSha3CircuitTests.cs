@@ -75,7 +75,7 @@ internal sealed class LongfellowSha3CircuitTests: IDisposable
     public void TheWitnessFreePermutationMatchesTheHostInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
@@ -121,7 +121,7 @@ internal sealed class LongfellowSha3CircuitTests: IDisposable
             byte[] seed = Convert.FromHexString(vector.Input);
             byte[] expected = Convert.FromHexString(vector.Output);
 
-            var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+            using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
             using var logic = new LongfellowLogic(backend, field);
             var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
@@ -150,7 +150,7 @@ internal sealed class LongfellowSha3CircuitTests: IDisposable
         byte[] seed = Convert.FromHexString(vector.Input);
         byte[] expected = Convert.FromHexString(vector.Output);
 
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
         using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 

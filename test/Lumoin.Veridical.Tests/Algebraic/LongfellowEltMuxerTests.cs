@@ -87,7 +87,7 @@ internal sealed class LongfellowEltMuxerTests: IDisposable
     [TestMethod]
     public void TheMuxerSelectsEveryTableEntry()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
 
         AssertMuxerSelectsEveryEntry(backend, logic, ZTable, TableEntryCount);
@@ -101,7 +101,7 @@ internal sealed class LongfellowEltMuxerTests: IDisposable
     [TestMethod]
     public void TheNineEntryMuxerRangeChecksTheDigitDomain()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
 
         int[] wires = BuildTableWires(backend, Fp256Field, DigitRangeCheckTable);

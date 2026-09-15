@@ -146,7 +146,7 @@ internal sealed class LongfellowRoutingTests: IDisposable
     /// <param name="unroll">The per-round amount-bit budget.</param>
     private void AssertOneCombination(int logn, int n, int k, int shift, int unroll)
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         using var logic = new LongfellowLogic(backend, Fp256Field);
         var routing = new LongfellowRouting(logic);
 
