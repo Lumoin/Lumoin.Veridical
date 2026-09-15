@@ -195,7 +195,7 @@ internal sealed class LongfellowMdocRevocationSpanWitness
 
         r.CopyTo(spanR);
         s.CopyTo(spanS);
-        ReduceOnce(e, basePrime, digest);
+        CanonicalScalarReduction.ReduceOnce(e, basePrime, digest);
 
         //The signed span: the epoch, then both bounds, all little endian.
         Span<byte> message = stackalloc byte[LongfellowMdocRevocationConstants.SpanMessageLength];
@@ -335,39 +335,5 @@ internal sealed class LongfellowMdocRevocationSpanWitness
     {
         element.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
         cursor++;
-    }
-
-
-    /// <summary>Reduces a raw 256-bit value once modulo <paramref name="modulus"/> (the same single conditional subtraction the ECDSA witness generator uses).</summary>
-    /// <param name="value">The raw big-endian value.</param>
-    /// <param name="modulus">The modulus.</param>
-    /// <param name="destination">Receives the reduced value.</param>
-    private static void ReduceOnce(ReadOnlySpan<byte> value, ReadOnlySpan<byte> modulus, Span<byte> destination)
-    {
-        bool subtract = true;
-        for(int i = 0; i < Scalar.SizeBytes; i++)
-        {
-            if(value[i] != modulus[i])
-            {
-                subtract = value[i] > modulus[i];
-
-                break;
-            }
-        }
-
-        if(!subtract)
-        {
-            value.CopyTo(destination);
-
-            return;
-        }
-
-        int borrow = 0;
-        for(int i = Scalar.SizeBytes - 1; i >= 0; i--)
-        {
-            int difference = value[i] - modulus[i] - borrow;
-            borrow = difference < 0 ? 1 : 0;
-            destination[i] = (byte)(difference & 0xFF);
-        }
     }
 }

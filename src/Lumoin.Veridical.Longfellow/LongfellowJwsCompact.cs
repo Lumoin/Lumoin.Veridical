@@ -1,6 +1,5 @@
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
-using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
@@ -158,7 +157,7 @@ public static class LongfellowJwsCompact
 
         Span<byte> raw = stackalloc byte[Scalar.SizeBytes];
         SHA256.HashData(keyBindingJws[..segments.SigningInputLength], raw);
-        LongfellowJwtWitness.ReduceOnce(raw, CanonicalBasePrime, digest);
+        CanonicalScalarReduction.ReduceOnce(raw, CanonicalBasePrime, digest);
         raw.Clear();
 
         return true;

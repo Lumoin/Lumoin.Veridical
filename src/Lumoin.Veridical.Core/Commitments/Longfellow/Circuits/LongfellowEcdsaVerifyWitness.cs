@@ -138,9 +138,9 @@ internal sealed class LongfellowEcdsaVerifyWitness
         Span<byte> eOrder = stackalloc byte[Scalar.SizeBytes];
         Span<byte> rOrder = stackalloc byte[Scalar.SizeBytes];
         Span<byte> sOrder = stackalloc byte[Scalar.SizeBytes];
-        ReduceOnce(e, curve.Order.Span, eOrder);
-        ReduceOnce(r, curve.Order.Span, rOrder);
-        ReduceOnce(s, curve.Order.Span, sOrder);
+        CanonicalScalarReduction.ReduceOnce(e, curve.Order.Span, eOrder);
+        CanonicalScalarReduction.ReduceOnce(r, curve.Order.Span, rOrder);
+        CanonicalScalarReduction.ReduceOnce(s, curve.Order.Span, sOrder);
 
         //u1 = e/s and u2 = r/s in the order field; a zero s yields zero quotients under the
         //Fermat zero-maps-to-zero convention and the walk below rejects.
@@ -159,7 +159,7 @@ internal sealed class LongfellowEcdsaVerifyWitness
         Normalize(ref recovered);
 
         //rx is the signature scalar r read in the base field; ry is the recovered point's y.
-        ReduceOnce(r, basePrime, rx);
+        CanonicalScalarReduction.ReduceOnce(r, basePrime, rx);
         recovered.Y.CopyTo(ry.AsSpan());
 
         Array.Clear(rxInverse);
@@ -572,48 +572,6 @@ internal sealed class LongfellowEcdsaVerifyWitness
         }
 
         return prime;
-    }
-
-
-    /// <summary>Reduces a raw 256-bit value once modulo <paramref name="modulus"/>: values below twice the modulus land in canonical range with a single conditional subtraction.</summary>
-    /// <param name="value">The raw big-endian value.</param>
-    /// <param name="modulus">The modulus.</param>
-    /// <param name="destination">Receives the reduced value.</param>
-    private static void ReduceOnce(ReadOnlySpan<byte> value, ReadOnlySpan<byte> modulus, Span<byte> destination)
-    {
-        bool subtract = CompareBigEndian(value, modulus) >= 0;
-        if(!subtract)
-        {
-            value.CopyTo(destination);
-
-            return;
-        }
-
-        int borrow = 0;
-        for(int i = Scalar.SizeBytes - 1; i >= 0; i--)
-        {
-            int difference = value[i] - modulus[i] - borrow;
-            borrow = difference < 0 ? 1 : 0;
-            destination[i] = (byte)(difference & 0xFF);
-        }
-    }
-
-
-    /// <summary>Compares two big-endian values as unsigned integers.</summary>
-    /// <param name="a">The first value.</param>
-    /// <param name="b">The second value.</param>
-    /// <returns>A negative, zero or positive sign.</returns>
-    private static int CompareBigEndian(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-    {
-        for(int i = 0; i < Scalar.SizeBytes; i++)
-        {
-            if(a[i] != b[i])
-            {
-                return a[i] < b[i] ? -1 : 1;
-            }
-        }
-
-        return 0;
     }
 
 

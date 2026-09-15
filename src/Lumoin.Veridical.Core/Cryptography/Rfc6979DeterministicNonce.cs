@@ -1,3 +1,4 @@
+using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Numerics;
 using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
@@ -79,7 +80,8 @@ public static class Rfc6979DeterministicNonce
         messageHash.CopyTo(hashReduced);
         if(!IsLess(hashReduced, order))
         {
-            SubtractInPlace(hashReduced, order);
+            //Big-endian in-place subtraction a -= b, assuming a >= b (the caller's conditional guards this).
+            CanonicalScalarReduction.SubtractInPlace(hashReduced, order);
         }
 
         //HMAC_DRBG state. V = 0x01·hlen, K = 0x00·hlen (steps b, c).
@@ -168,18 +170,5 @@ public static class Rfc6979DeterministicNonce
 
         order.Clear();
         qBytes.CopyTo(order[(HashLength - qBytes.Length)..]);
-    }
-
-
-    //Big-endian in-place subtraction a -= b, assuming a >= b (the caller's conditional guards this).
-    private static void SubtractInPlace(Span<byte> a, ReadOnlySpan<byte> b)
-    {
-        int borrow = 0;
-        for(int i = a.Length - 1; i >= 0; i--)
-        {
-            int difference = a[i] - b[i] - borrow;
-            borrow = (difference >> 8) & 1;
-            a[i] = (byte)difference;
-        }
     }
 }

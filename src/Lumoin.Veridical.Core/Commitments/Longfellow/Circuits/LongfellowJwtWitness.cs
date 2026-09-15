@@ -271,7 +271,7 @@ internal sealed class LongfellowJwtWitness
 
         LongfellowFlatSha256Witness.TransformAndWitnessMessage(issuerJws[..issuer.MessageLength], maxBlocks, out occupiedBlockCount, preimage, blocks);
 
-        ReduceOnce(issuer.Digest, basePrime, issuerDigest);
+        CanonicalScalarReduction.ReduceOnce(issuer.Digest, basePrime, issuerDigest);
         payloadIndex = issuer.PayloadIndex;
         payloadLength = issuer.PayloadLength;
 
@@ -319,7 +319,7 @@ internal sealed class LongfellowJwtWitness
             return false;
         }
 
-        ReduceOnce(kb.Digest, basePrime, kbDigest);
+        CanonicalScalarReduction.ReduceOnce(kb.Digest, basePrime, kbDigest);
 
         return true;
     }
@@ -490,8 +490,8 @@ internal sealed class LongfellowJwtWitness
             return false;
         }
 
-        ReduceOnce(xBytes.AsSpan(0, Scalar.SizeBytes), basePrime, deviceKeyX);
-        ReduceOnce(yBytes.AsSpan(0, Scalar.SizeBytes), basePrime, deviceKeyY);
+        CanonicalScalarReduction.ReduceOnce(xBytes.AsSpan(0, Scalar.SizeBytes), basePrime, deviceKeyX);
+        CanonicalScalarReduction.ReduceOnce(yBytes.AsSpan(0, Scalar.SizeBytes), basePrime, deviceKeyY);
 
         return true;
     }
@@ -615,39 +615,5 @@ internal sealed class LongfellowJwtWitness
     {
         element.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
         cursor++;
-    }
-
-
-    /// <summary>Reduces a raw 256-bit value once modulo <paramref name="modulus"/> (the same single conditional subtraction the ECDSA witness generator uses); shared with the facade's verifier-side key-binding digest computation, which must reduce identically.</summary>
-    /// <param name="value">The raw big-endian value.</param>
-    /// <param name="modulus">The modulus.</param>
-    /// <param name="destination">Receives the reduced value.</param>
-    internal static void ReduceOnce(ReadOnlySpan<byte> value, ReadOnlySpan<byte> modulus, Span<byte> destination)
-    {
-        bool subtract = true;
-        for(int i = 0; i < Scalar.SizeBytes; i++)
-        {
-            if(value[i] != modulus[i])
-            {
-                subtract = value[i] > modulus[i];
-
-                break;
-            }
-        }
-
-        if(!subtract)
-        {
-            value.CopyTo(destination);
-
-            return;
-        }
-
-        int borrow = 0;
-        for(int i = Scalar.SizeBytes - 1; i >= 0; i--)
-        {
-            int difference = value[i] - modulus[i] - borrow;
-            borrow = difference < 0 ? 1 : 0;
-            destination[i] = (byte)(difference & 0xFF);
-        }
     }
 }

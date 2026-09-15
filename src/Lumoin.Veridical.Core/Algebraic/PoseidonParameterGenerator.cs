@@ -324,16 +324,7 @@ public static class PoseidonParameterGenerator
             }
         }
 
-        if(destination.SequenceCompareTo(modulus) >= 0)
-        {
-            int borrow = 0;
-            for(int i = ScalarSize - 1; i >= 0; i--)
-            {
-                int difference = destination[i] - modulus[i] - borrow;
-                borrow = difference < 0 ? 1 : 0;
-                destination[i] = (byte)difference;
-            }
-        }
+        CanonicalScalarReduction.ReduceOnceInPlace(destination, modulus);
     }
 
 
