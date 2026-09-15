@@ -278,6 +278,7 @@ internal sealed class GkrMdocDisclosureTests
     //combined Fp system (MAC region + ECDSA gadget), commit GF (both roots absorbed), squeeze the
     //verifier key, compute the macs, prove all GF instances under the disclosure statement, then
     //prove the Fp linear statement over the Montgomery backend.
+    /// <summary>Proves the cross-field statement while retaining its pooled builder witness snapshot.</summary>
     private static (LigeroProof FpProof, GkrCommittedProof GfProof) ProveCrossField(
         LigeroConstraintSystemBuilder builder,
         ReadOnlySpan<byte> fpWitness,
@@ -295,8 +296,9 @@ internal sealed class GkrMdocDisclosureTests
 
         using FiatShamirTranscript transcript = NewTranscript();
 
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
         using LigeroCommitment fpCommitment = LigeroProver.Commit(
-            fpParameters, builder.WitnessBytes(), fpQuadratics, new GkrCrossFieldMacSupport.FpDeterministicRandom(FpRandomnessSeed).AsDelegate(),
+            fpParameters, (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, fpQuadratics, new GkrCrossFieldMacSupport.FpDeterministicRandom(FpRandomnessSeed).AsDelegate(),
             Montgomery.Add, Montgomery.Subtract, Montgomery.Multiply, Montgomery.Invert,
             GkrTestSupport.Hash, WellKnownHashAlgorithms.Blake3, GkrTestSupport.Merkle, CurveParameterSet.None,
             BaseMemoryPool.Shared);
@@ -406,12 +408,14 @@ internal sealed class GkrMdocDisclosureTests
 
     //The combined Fp linear statement: the builder's gadget constraints, then the MAC parity
     //statement re-indexed past them (the digest-plus-ECDSA binding's structure verbatim).
+    /// <summary>Combines gadget and parity constraints, copying the gadget targets before returning their owner.</summary>
     private static (int LinearCount, LigeroLinearConstraint[] Constraints, byte[] Targets) CombinedLinear(
         LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> verifierKey, ReadOnlySpan<byte> macs, ulong[] maskedQuotients)
     {
         int gadgetCount = builder.LinearConstraintCount;
         LigeroLinearConstraint[] gadget = builder.LinearConstraints();
-        byte[] gadgetTargets = builder.TargetBytes();
+        using IMemoryOwner<byte>? gadgetTargetsOwner = builder.TargetBytes();
+        ReadOnlySpan<byte> gadgetTargets = (gadgetTargetsOwner?.Memory ?? Memory<byte>.Empty).Span;
         (LigeroLinearConstraint[] parity, byte[] parityTargets) = GkrCrossFieldMacSupport.BuildParityStatement(verifierKey, macs, maskedQuotients);
 
         int linearCount = gadgetCount + (Halves * HalfBits);
@@ -424,7 +428,7 @@ internal sealed class GkrMdocDisclosureTests
         }
 
         byte[] combinedTargets = new byte[gadgetTargets.Length + parityTargets.Length];
-        gadgetTargets.CopyTo(combinedTargets, 0);
+        gadgetTargets.CopyTo(combinedTargets);
         parityTargets.CopyTo(combinedTargets, gadgetTargets.Length);
 
         return (linearCount, combined, combinedTargets);

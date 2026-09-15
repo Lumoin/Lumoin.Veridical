@@ -90,6 +90,7 @@ internal sealed class GkrMdocEcdsaTests
     }
 
 
+    /// <summary>Checks the ECDSA and MAC constraints over an owned pooled witness snapshot.</summary>
     [TestMethod]
     public void TheMacBoundDigestBitsSatisfyTheEcdsaVerifierInCircuit()
     {
@@ -112,7 +113,8 @@ internal sealed class GkrMdocEcdsaTests
 
         //The MAC quadratics: every product triple and bitness over the packed MAC bytes (the MAC
         //region is wires 0..FpWitnessCount-1, so the indices line up with the builder witness).
-        byte[] witnessBytes = builder.WitnessBytes();
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+        ReadOnlySpan<byte> witnessBytes = (witnessOwner?.Memory ?? Memory<byte>.Empty).Span;
         Assert.IsTrue(QuadraticsSatisfied(GkrCrossFieldMacSupport.BuildFpQuadratics(), witnessBytes), "Every MAC product and bitness quadratic must hold over the packed witness.");
 
         //The parity statement reproduces: the masked quotients from the witness make every parity
@@ -284,13 +286,14 @@ internal sealed class GkrMdocEcdsaTests
 
 
     //Every quadratic W[z] = W[x]·W[y] over the packed witness bytes, in the MAC index space.
-    private static bool QuadraticsSatisfied(LigeroQuadraticConstraint[] quadratics, byte[] witness)
+    /// <summary>Checks the MAC quadratic constraints against borrowed witness bytes.</summary>
+    private static bool QuadraticsSatisfied(LigeroQuadraticConstraint[] quadratics, ReadOnlySpan<byte> witness)
     {
         Span<byte> product = stackalloc byte[ScalarSize];
         foreach(LigeroQuadraticConstraint q in quadratics)
         {
-            GkrTestSupport.Multiply(witness.AsSpan(q.XIndex * ScalarSize, ScalarSize), witness.AsSpan(q.YIndex * ScalarSize, ScalarSize), product, CurveParameterSet.None);
-            if(!product.SequenceEqual(witness.AsSpan(q.ZIndex * ScalarSize, ScalarSize)))
+            GkrTestSupport.Multiply(witness.Slice(q.XIndex * ScalarSize, ScalarSize), witness.Slice(q.YIndex * ScalarSize, ScalarSize), product, CurveParameterSet.None);
+            if(!product.SequenceEqual(witness.Slice(q.ZIndex * ScalarSize, ScalarSize)))
             {
                 return false;
             }
@@ -301,7 +304,8 @@ internal sealed class GkrMdocEcdsaTests
 
 
     //Every parity constraint Σ coefficient·W = target over the packed witness bytes.
-    private static bool ParityStatementSatisfied(ReadOnlySpan<byte> verifierKey, ReadOnlySpan<byte> macs, ulong[] maskedQuotients, byte[] witness)
+    /// <summary>Checks the MAC parity statement against borrowed witness bytes.</summary>
+    private static bool ParityStatementSatisfied(ReadOnlySpan<byte> verifierKey, ReadOnlySpan<byte> macs, ulong[] maskedQuotients, ReadOnlySpan<byte> witness)
     {
         (LigeroLinearConstraint[] constraints, byte[] targets) = GkrCrossFieldMacSupport.BuildParityStatement(verifierKey, macs, maskedQuotients);
         int constraintCount = targets.Length / ScalarSize;
@@ -311,7 +315,7 @@ internal sealed class GkrMdocEcdsaTests
         foreach(LigeroLinearConstraint term in constraints)
         {
             Span<byte> slot = sums.AsSpan(term.ConstraintIndex * ScalarSize, ScalarSize);
-            GkrTestSupport.Multiply(term.Coefficient.Span, witness.AsSpan(term.WitnessIndex * ScalarSize, ScalarSize), product, CurveParameterSet.None);
+            GkrTestSupport.Multiply(term.Coefficient.Span, witness.Slice(term.WitnessIndex * ScalarSize, ScalarSize), product, CurveParameterSet.None);
             GkrTestSupport.Add(slot, product, next, CurveParameterSet.None);
             next.CopyTo(slot);
         }

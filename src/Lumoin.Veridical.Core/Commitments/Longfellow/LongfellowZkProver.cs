@@ -271,12 +271,15 @@ internal static class LongfellowZkProver
         int witnessCount = LongfellowZkVerifier.WitnessCount(circuit);
         int padSize = LongfellowZkVerifier.PadSize(circuit);
 
-        //Draw the pad FIRST (the reference's fill_pad before the Ligero commit), then assemble the
-        //committed witness [private inputs ‖ pad]. The pad transfers into the returned holder.
-        LongfellowProofPad pad = LongfellowProofPad.Fill(circuit, random, profile, multiply, curve, pool);
-        bool padTransferred = false;
+        //The holder owns the commitment and pad once it exists; anything still held when this block exits is released here.
+        LongfellowProofPad? pad = null;
+        LongfellowLigeroCommitment? commitment = null;
         try
         {
+            //Draw the pad FIRST (the reference's fill_pad before the Ligero commit), then assemble the
+            //committed witness [private inputs ‖ pad]. The pad transfers into the returned holder.
+            pad = LongfellowProofPad.Fill(circuit, random, profile, multiply, curve, pool);
+
             using IMemoryOwner<byte> witnessOwner = pool.Rent((witnessCount + padSize) * ScalarSize);
             Span<byte> committedWitness = witnessOwner.Memory.Span[..((witnessCount + padSize) * ScalarSize)];
             committedWitness.Clear();
@@ -293,29 +296,18 @@ internal static class LongfellowZkProver
 
                 //Commit to the witness and pad; the same random source continues from the pad draws. The
                 //caller absorbs the root before any challenge (commit-then-challenge).
-                LongfellowLigeroCommitment commitment = LongfellowLigeroCommitment.Commit(
+                commitment = LongfellowLigeroCommitment.Commit(
                     parameters, committedWitness, quadraticConstraints, subFieldBytes, subfieldBoundary, random, encoderFactory, profile,
                     add, subtract, multiply, merkleHash, leafHash, hashAlgorithm, curve, pool);
 
-                bool commitmentTransferred = false;
-                try
-                {
-                    Span<byte> root = stackalloc byte[DigestLength];
-                    commitment.CopyRoot(root);
+                Span<byte> root = stackalloc byte[DigestLength];
+                commitment.CopyRoot(root);
 
-                    var holder = new LongfellowZkCommitment(commitment, pad, quadraticConstraints, root);
-                    commitmentTransferred = true;
-                    padTransferred = true;
+                var holder = new LongfellowZkCommitment(commitment, pad, quadraticConstraints, root, pool);
+                commitment = null;
+                pad = null;
 
-                    return holder;
-                }
-                finally
-                {
-                    if(!commitmentTransferred)
-                    {
-                        commitment.Dispose();
-                    }
-                }
+                return holder;
             }
             finally
             {
@@ -324,10 +316,8 @@ internal static class LongfellowZkProver
         }
         finally
         {
-            if(!padTransferred)
-            {
-                pad.Dispose();
-            }
+            commitment?.Dispose();
+            pad?.Dispose();
         }
     }
 

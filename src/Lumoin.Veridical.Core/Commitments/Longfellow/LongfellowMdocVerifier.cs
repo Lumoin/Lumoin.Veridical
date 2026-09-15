@@ -3,7 +3,6 @@ using Lumoin.Veridical.Core.Commitments.BaseFold;
 using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 
@@ -202,9 +201,8 @@ internal static class LongfellowMdocVerifier
     }
 
 
-    //Parses one field's ZkProof (com || sc || com_proof) from the front of `source`, field-generically
-    //through the supplied codec. Parse-safe: any underflow or malformed segment leaves Ok == false.
-    [SuppressMessage("Reliability", "CA2000", Justification = "The parsed sumcheck and Ligero proofs transfer ownership into the returned ParsedProof, which the caller disposes through its own using declaration; on the Ligero-read failure path the already-parsed sumcheck proof is disposed before returning.")]
+    /// <summary>Parses one field's proof, transferring its root and segments only on success.</summary>
+    /// <remarks>Underflow or malformed segments leave <see cref="ParsedProof.Ok"/> false and release partial results.</remarks>
     private static ParsedProof ParseProof(LongfellowMdocFieldVerifier field, ReadOnlySpan<byte> source, BaseMemoryPool pool)
     {
         if(source.Length < DigestLength)
@@ -212,42 +210,60 @@ internal static class LongfellowMdocVerifier
             return ParsedProof.Failed;
         }
 
-        byte[] root = source[..DigestLength].ToArray();
-        int scSize = LongfellowSumcheckProofSerializer.SerializedSize(field.Circuit, field.Profile);
-        if(source.Length < DigestLength + scSize)
+        IMemoryOwner<byte>? root = pool.Rent(DigestLength);
+        LongfellowSumcheckProof? sumcheck = null;
+        LongfellowLigeroProof? ligero = null;
+        try
         {
-            return ParsedProof.Failed;
-        }
+            source[..DigestLength].CopyTo(root.Memory.Span[..DigestLength]);
+            int scSize = LongfellowSumcheckProofSerializer.SerializedSize(field.Circuit, field.Profile);
+            if(source.Length < DigestLength + scSize)
+            {
+                return ParsedProof.Failed;
+            }
 
-        ReadOnlySpan<byte> scBytes = source.Slice(DigestLength, scSize);
-        LongfellowSumcheckProof? sumcheck = LongfellowSumcheckProofSerializer.Read(field.Circuit, field.Profile, pool, scBytes, out _);
-        if(sumcheck is null)
+            ReadOnlySpan<byte> scBytes = source.Slice(DigestLength, scSize);
+            sumcheck = LongfellowSumcheckProofSerializer.Read(field.Circuit, field.Profile, pool, scBytes, out _);
+            if(sumcheck is null)
+            {
+                return ParsedProof.Failed;
+            }
+
+            ReadOnlySpan<byte> comProofBytes = source[(DigestLength + scSize)..];
+            ligero = LongfellowLigeroProofSerializer.Read(field.Parameters, field.Profile, field.Codec, pool, comProofBytes, out int comProofBytesRead);
+            if(ligero is null)
+            {
+                return ParsedProof.Failed;
+            }
+
+            var parsed = new ParsedProof(root, sumcheck, ligero, DigestLength + scSize + comProofBytesRead);
+            root = null;
+            sumcheck = null;
+            ligero = null;
+
+            return parsed;
+        }
+        finally
         {
-            return ParsedProof.Failed;
+            root?.Dispose();
+            sumcheck?.Dispose();
+            ligero?.Dispose();
         }
-
-        ReadOnlySpan<byte> comProofBytes = source[(DigestLength + scSize)..];
-        LongfellowLigeroProof? ligero = LongfellowLigeroProofSerializer.Read(field.Parameters, field.Profile, field.Codec, pool, comProofBytes, out int comProofBytesRead);
-        if(ligero is null)
-        {
-            sumcheck.Dispose();
-
-            return ParsedProof.Failed;
-        }
-
-        return new ParsedProof(root, sumcheck, ligero, DigestLength + scSize + comProofBytesRead);
     }
 
 
-    //One field's parsed ZkProof: the 32-byte root and the two parsed segments, plus the total bytes
-    //consumed (so the next region starts where this one ends). Disposable: it owns the two proof objects.
+    /// <summary>Owns one field's pooled root and parsed proof segments until verification completes.</summary>
     private readonly struct ParsedProof: IDisposable
     {
+        /// <summary>The pooled storage for the root, absent on a failed parse.</summary>
+        private readonly IMemoryOwner<byte>? root;
+
         public static ParsedProof Failed => default;
 
-        public ParsedProof(byte[] root, LongfellowSumcheckProof sumcheck, LongfellowLigeroProof ligero, int totalBytes)
+        /// <summary>Takes ownership of a successfully parsed root and both proof segments.</summary>
+        public ParsedProof(IMemoryOwner<byte> root, LongfellowSumcheckProof sumcheck, LongfellowLigeroProof ligero, int totalBytes)
         {
-            Root = root;
+            this.root = root;
             Sumcheck = sumcheck;
             Ligero = ligero;
             TotalBytes = totalBytes;
@@ -256,7 +272,8 @@ internal static class LongfellowMdocVerifier
 
         public bool Ok { get; }
 
-        public byte[]? Root { get; }
+        /// <summary>The exact root bytes, or an empty span on a failed parse.</summary>
+        public ReadOnlySpan<byte> Root => root is null ? ReadOnlySpan<byte>.Empty : root.Memory.Span[..DigestLength];
 
         public LongfellowSumcheckProof? Sumcheck { get; }
 
@@ -264,8 +281,10 @@ internal static class LongfellowMdocVerifier
 
         public int TotalBytes { get; }
 
+        /// <summary>Releases the root and both proof segments.</summary>
         public void Dispose()
         {
+            root?.Dispose();
             Sumcheck?.Dispose();
             Ligero?.Dispose();
         }

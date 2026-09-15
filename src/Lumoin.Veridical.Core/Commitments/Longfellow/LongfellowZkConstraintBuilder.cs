@@ -71,8 +71,17 @@ internal static class LongfellowZkConstraintBuilder
     /// </summary>
     internal sealed class ConstraintSystem: IDisposable
     {
+        /// <summary>Amortizes coefficient rentals in 16 KiB slabs while preserving stable term views.</summary>
+        private const int CoefficientsPerSlab = 512;
+
         private readonly BaseMemoryPool pool;
         private readonly List<LigeroLinearConstraint> terms;
+        /// <summary>Owns every coefficient slab until all constraint consumers finish.</summary>
+        private readonly List<IMemoryOwner<byte>> coefficientSlabs = [];
+        /// <summary>The current slab's logical memory.</summary>
+        private Memory<byte> coefficientSlab;
+        /// <summary>The number of occupied scalar slots in the current slab.</summary>
+        private int coefficientOffset;
         private IMemoryOwner<byte>? targetsOwner;
         private int targetCount;
 
@@ -80,7 +89,7 @@ internal static class LongfellowZkConstraintBuilder
         /// <summary>The number of constraints <c>cn</c> (the Ligero verifier's constraint count).</summary>
         public int ConstraintCount { get; internal set; }
 
-        /// <summary>The sparse linear terms; each contributes <c>k · W[w]</c> to constraint <c>c</c>.</summary>
+        /// <summary>The sparse linear terms; their coefficient views remain valid until this system is disposed.</summary>
         public IReadOnlyList<LigeroLinearConstraint> Terms => terms;
 
         /// <summary>The constraint targets <c>b</c>: <see cref="ConstraintCount"/> canonical scalars.</summary>
@@ -97,11 +106,32 @@ internal static class LongfellowZkConstraintBuilder
         }
 
 
+        /// <summary>Copies a coefficient into owned slab storage and appends its sparse linear term.</summary>
+        /// <remarks>Short coefficients retain zero padding to the scalar width.</remarks>
         internal void AddTerm(int constraintIndex, int witnessIndex, ReadOnlySpan<byte> coefficient)
         {
-            byte[] copy = new byte[ScalarSize];
-            coefficient.CopyTo(copy);
+            if(coefficientSlabs.Count == 0 || coefficientOffset == CoefficientsPerSlab)
+            {
+                IMemoryOwner<byte>? owner = pool.Rent(CoefficientsPerSlab * ScalarSize);
+                try
+                {
+                    Memory<byte> memory = owner.Memory[..(CoefficientsPerSlab * ScalarSize)];
+                    coefficientSlabs.Add(owner);
+                    owner = null;
+                    coefficientSlab = memory;
+                    coefficientOffset = 0;
+                }
+                finally
+                {
+                    owner?.Dispose();
+                }
+            }
+
+            Memory<byte> copy = coefficientSlab.Slice(coefficientOffset * ScalarSize, ScalarSize);
+            copy.Span.Clear();
+            coefficient.CopyTo(copy.Span);
             terms.Add(new LigeroLinearConstraint(constraintIndex, witnessIndex, copy));
+            coefficientOffset++;
         }
 
 
@@ -113,7 +143,7 @@ internal static class LongfellowZkConstraintBuilder
         }
 
 
-        /// <inheritdoc/>
+        /// <summary>Releases the target and coefficient rentals owned by this constraint system.</summary>
         public void Dispose()
         {
             IMemoryOwner<byte>? local = targetsOwner;
@@ -123,6 +153,15 @@ internal static class LongfellowZkConstraintBuilder
                 local.Memory.Span.Clear();
                 local.Dispose();
             }
+
+            foreach(IMemoryOwner<byte> slab in coefficientSlabs)
+            {
+                slab.Dispose();
+            }
+
+            coefficientSlabs.Clear();
+            coefficientSlab = Memory<byte>.Empty;
+            coefficientOffset = 0;
         }
     }
 

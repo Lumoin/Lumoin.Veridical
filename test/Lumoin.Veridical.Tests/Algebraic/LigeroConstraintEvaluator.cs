@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -35,23 +36,25 @@ internal static class LigeroConstraintEvaluator
     private static ScalarMultiplyDelegate Multiply { get; } = P256BaseFieldReference.GetMultiply();
 
 
-    //True iff the builder's current witness satisfies every constraint. Reads
-    //WitnessBytes(), so a prior SetWireForTesting is reflected.
+    /// <summary>Checks the builder's current witness using caller-disposed pooled snapshots.</summary>
     public static bool IsSatisfied(LigeroConstraintSystemBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return IsSatisfied(builder.LinearConstraints(), builder.TargetBytes(), builder.QuadraticConstraints(), builder.WitnessBytes());
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+
+        return IsSatisfied(builder.LinearConstraints(), (targetsOwner?.Memory ?? Memory<byte>.Empty).Span,
+            builder.QuadraticConstraints(), (witnessOwner?.Memory ?? Memory<byte>.Empty).Span);
     }
 
 
+    /// <summary>Checks all linear and quadratic constraints against borrowed target and witness bytes.</summary>
     public static bool IsSatisfied(
-        LigeroLinearConstraint[] linear, byte[] targets, LigeroQuadraticConstraint[] quadratic, byte[] witness)
+        LigeroLinearConstraint[] linear, ReadOnlySpan<byte> targets, LigeroQuadraticConstraint[] quadratic, ReadOnlySpan<byte> witness)
     {
         ArgumentNullException.ThrowIfNull(linear);
-        ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(quadratic);
-        ArgumentNullException.ThrowIfNull(witness);
 
         //Fold every term into its constraint's running sum, then compare to the target.
         int constraintCount = targets.Length / S;
@@ -61,14 +64,14 @@ internal static class LigeroConstraintEvaluator
         foreach(LigeroLinearConstraint term in linear)
         {
             Span<byte> slot = sums.AsSpan(term.ConstraintIndex * S, S);
-            Multiply(term.Coefficient.Span, witness.AsSpan(term.WitnessIndex * S, S), product, CurveParameterSet.None);
+            Multiply(term.Coefficient.Span, witness.Slice(term.WitnessIndex * S, S), product, CurveParameterSet.None);
             Add(slot, product, next, CurveParameterSet.None);
             next.CopyTo(slot);
         }
 
         for(int c = 0; c < constraintCount; c++)
         {
-            Subtract(sums.AsSpan(c * S, S), targets.AsSpan(c * S, S), next, CurveParameterSet.None);
+            Subtract(sums.AsSpan(c * S, S), targets.Slice(c * S, S), next, CurveParameterSet.None);
             if(!IsZero(next))
             {
                 return false;
@@ -77,8 +80,8 @@ internal static class LigeroConstraintEvaluator
 
         foreach(LigeroQuadraticConstraint q in quadratic)
         {
-            Multiply(witness.AsSpan(q.XIndex * S, S), witness.AsSpan(q.YIndex * S, S), product, CurveParameterSet.None);
-            Subtract(product, witness.AsSpan(q.ZIndex * S, S), next, CurveParameterSet.None);
+            Multiply(witness.Slice(q.XIndex * S, S), witness.Slice(q.YIndex * S, S), product, CurveParameterSet.None);
+            Subtract(product, witness.Slice(q.ZIndex * S, S), next, CurveParameterSet.None);
             if(!IsZero(next))
             {
                 return false;

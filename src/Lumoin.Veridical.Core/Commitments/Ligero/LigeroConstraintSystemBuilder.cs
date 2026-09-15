@@ -41,8 +41,8 @@ namespace Lumoin.Veridical.Core.Commitments.Ligero;
 /// arena (<see cref="RentScalar"/>) is Pinned because the wires include the witness — the
 /// ECDSA nonce coordinates enter as wire values — so its zeroize-on-return wipe lands on the
 /// exact bytes with no GC-relocation copy, matching how <see cref="LigeroProver"/> retains
-/// its witness. The wire-index arena (<see cref="RentWireWord"/>) and the fixed public
-/// constant basis stay Managed: indices and coefficients are public circuit structure, never
+/// its witness. The constant basis shares the scalar arena's lifetime. The wire-index arena
+/// (<see cref="RentWireWord"/>) stays Managed: indices are public circuit structure, never
 /// a secret. Pinned is the portable floor (pure managed pinned-object-heap, identical on
 /// every platform including WASM), so the guarantee needs no native backing.
 /// </para>
@@ -81,25 +81,35 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     private int wireSlabByteOffset;
     private bool disposed;
 
-    private readonly byte[] zero = new byte[ScalarSize];
-    private readonly byte[] one;
-    private readonly byte[] modulus;
+    /// <summary>The canonical zero in the owned scalar arena.</summary>
+    private readonly Memory<byte> zero;
+    /// <summary>The canonical one in the owned scalar arena.</summary>
+    private readonly Memory<byte> one;
+    /// <summary>The field modulus in the owned scalar arena.</summary>
+    private readonly Memory<byte> modulus;
 
     //Repeated coefficient constants, derived once so the constraint-building hot paths
     //(bit decomposition, recomposition) reuse them instead of re-allocating per call.
-    private readonly byte[] negativeOne;
-    private readonly byte[] two;
-    private readonly byte[] negativeTwo;
+    /// <summary>The canonical negative one in the owned scalar arena.</summary>
+    private readonly Memory<byte> negativeOne;
+    /// <summary>The canonical two in the owned scalar arena.</summary>
+    private readonly Memory<byte> two;
+    /// <summary>The canonical negative two in the owned scalar arena.</summary>
+    private readonly Memory<byte> negativeTwo;
 
     //2^i and −2^i as canonical field elements, grown on demand and cached: the
     //recomposition constraint reuses them across every scalar instead of rebuilding the
     //table (and its negations) on each call.
-    private readonly List<byte[]> powerOfTwo = [];
-    private readonly List<byte[]> negativePowerOfTwo = [];
+    /// <summary>Cached powers of two backed by the owned scalar arena.</summary>
+    private readonly List<Memory<byte>> powerOfTwo = [];
+    /// <summary>Cached negated powers of two backed by the owned scalar arena.</summary>
+    private readonly List<Memory<byte>> negativePowerOfTwo = [];
 
     private int lastOutputWire = -1;
 
 
+    /// <summary>Creates a field-generic builder whose scalar storage belongs to the supplied pool.</summary>
+    /// <remarks>Construction failures release any scalar slabs already rented for the constant basis.</remarks>
     public LigeroConstraintSystemBuilder(
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
@@ -130,22 +140,35 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         this.openedColumnCount = openedColumnCount;
         this.block = block;
 
-        one = new byte[ScalarSize];
-        EncodeConstant(1, one);
+        try
+        {
+            zero = RentScalar();
+            zero.Span.Clear();
+            one = RentScalar();
+            EncodeConstant(1, one.Span);
 
-        negativeOne = new byte[ScalarSize];
-        Negate(one, negativeOne);
-        two = new byte[ScalarSize];
-        EncodeConstant(2, two);
-        negativeTwo = new byte[ScalarSize];
-        Negate(two, negativeTwo);
+            negativeOne = RentScalar();
+            negativeOne.Span.Clear();
+            Negate(one.Span, negativeOne.Span);
+            two = RentScalar();
+            EncodeConstant(2, two.Span);
+            negativeTwo = RentScalar();
+            negativeTwo.Span.Clear();
+            Negate(two.Span, negativeTwo.Span);
 
-        //The field modulus p, derived once from the delegates as (0 − 1) + 1, so the
-        //canonical-bits gadget can pin a decomposition to the unique integer in [0, p)
-        //without the caller having to supply p separately.
-        modulus = new byte[ScalarSize];
-        subtract(zero, one, modulus, curve);
-        IncrementCanonical(modulus);
+            //The field modulus p, derived once from the delegates as (0 − 1) + 1, so the
+            //canonical-bits gadget can pin a decomposition to the unique integer in [0, p)
+            //without the caller having to supply p separately.
+            modulus = RentScalar();
+            modulus.Span.Clear();
+            subtract(zero.Span, one.Span, modulus.Span, curve);
+            IncrementCanonical(modulus.Span);
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
 
@@ -174,7 +197,8 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     public void InvertValue(ReadOnlySpan<byte> a, Span<byte> result) => invert(a, result, curve);
 
     //−a = 0 − a (canonical); matches the reference field's Subtract semantics.
-    public void Negate(ReadOnlySpan<byte> a, Span<byte> result) => subtract(zero, a, result, curve);
+    /// <summary>Writes the canonical field negation of <paramref name="a"/>.</summary>
+    public void Negate(ReadOnlySpan<byte> a, Span<byte> result) => subtract(zero.Span, a, result, curve);
 
     //Encodes a small non-negative integer as a canonical big-endian scalar.
     public static void EncodeConstant(uint value, Span<byte> destination)
@@ -249,6 +273,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //Allocates a wire equal to Σ coefficient·W[wire] (value computed from the
     //terms — never a hand-supplied parallel value) and emits the defining linear
     //constraint w − Σ coefficient·W = 0.
+    /// <summary>Computes a linear combination and emits its defining constraint.</summary>
     public int Combine(LinearTerm[] terms)
     {
         ArgumentNullException.ThrowIfNull(terms);
@@ -273,7 +298,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         //zero-length pooled rent would throw — so emit its single defining term directly.
         if(terms.Length == 0)
         {
-            AddLinear(zero, constraintTerms);
+            AddLinear(zero.Span, constraintTerms);
 
             return w;
         }
@@ -291,18 +316,19 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
             constraintTerms[i + 1] = new LinearTerm(terms[i].Wire, negated);
         }
 
-        AddLinear(zero, constraintTerms);
+        AddLinear(zero.Span, constraintTerms);
 
         return w;
     }
 
 
     //Boolean constraint: pins W[b] to {0,1} via the quadratic identity b² = b.
+    /// <summary>Adds a wire constrained to a canonical boolean value.</summary>
     public int AddBit(ReadOnlySpan<byte> value)
     {
         int b = AddWire(value);
         int bSquared = Multiply(b, b);
-        AddLinear(zero, [new LinearTerm(bSquared, one), new LinearTerm(b, negativeOne)]);
+        AddLinear(zero.Span, [new LinearTerm(bSquared, one), new LinearTerm(b, negativeOne)]);
 
         return b;
     }
@@ -311,6 +337,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //Scalar recomposition: a wire constrained to equal Σ bit_i·2^i (bits least-
     //significant first) by one linear constraint. The 2^i coefficients are reduced
     //mod the field; below the field order the residue equals the integer value.
+    /// <summary>Binds the least-significant-first bits to their recomposed scalar.</summary>
     public int AddRecomposedScalar(ReadOnlySpan<int> bitsLeastSignificantFirst)
     {
         EnsurePowersOfTwo(bitsLeastSignificantFirst.Length);
@@ -321,7 +348,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         accumulator.Clear();
         for(int i = 0; i < bitsLeastSignificantFirst.Length; i++)
         {
-            multiply(powerOfTwo[i], wires[bitsLeastSignificantFirst[i]].Span, product, curve);
+            multiply(powerOfTwo[i].Span, wires[bitsLeastSignificantFirst[i]].Span, product, curve);
             add(accumulator, product, next, curve);
             next.CopyTo(accumulator);
         }
@@ -335,7 +362,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
             terms[i + 1] = new LinearTerm(bitsLeastSignificantFirst[i], negativePowerOfTwo[i]);
         }
 
-        AddLinear(zero, terms);
+        AddLinear(zero.Span, terms);
 
         return w;
     }
@@ -347,10 +374,11 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //bit patterns recomposing to the same residue (v and v + p); the < p chain pins
     //the canonical one, so a malicious non-canonical representative is rejected.
     //Returns the bits least-significant first.
+    /// <summary>Decomposes a wire into bits and constrains the result below the field modulus.</summary>
     public WireWord AddCanonicalBits(int wire, int bitCount = 256)
     {
         WireWord bits = DecomposeAndBind(wire, bitCount);
-        AddAssertLessThanConstant(bits, modulus);
+        AddAssertLessThanConstant(bits, modulus.Span);
 
         return bits;
     }
@@ -406,6 +434,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //the top differing position. Every gate is on {0,1} operands, so no sum that could
     //wrap mod p is ever formed — that is what makes the bound sound over Fp. The
     //constant must be < 2^bitCount.
+    /// <summary>Constrains a boolean decomposition to be strictly below the supplied constant.</summary>
     public void AddAssertLessThanConstant(ReadOnlySpan<int> bitsLeastSignificantFirst, ReadOnlySpan<byte> constant)
     {
         if(constant.Length != ScalarSize)
@@ -414,7 +443,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         }
 
         //prefixEqual = "every bit above the current position equals the constant's".
-        int prefixEqual = AddConstant(one);
+        int prefixEqual = AddConstant(one.Span);
         for(int i = bitsLeastSignificantFirst.Length - 1; i >= 0; i--)
         {
             int bit = bitsLeastSignificantFirst[i];
@@ -442,6 +471,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //{0,1}, and ties Σ bit_i·2^i to the wire by one linear constraint. NOT canonical
     //on its own (see AddCanonicalBits); the building block both it and the range
     //gadget compose from.
+    /// <summary>Witnesses low bits and binds their recomposition to the supplied wire.</summary>
     private WireWord DecomposeAndBind(int wire, int bitCount)
     {
         WireWord bits = RentWireWord(bitCount);
@@ -453,7 +483,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         }
 
         int recomposed = AddRecomposedScalar(bits);
-        AddLinear(zero, [new LinearTerm(recomposed, one), new LinearTerm(wire, negativeOne)]);
+        AddLinear(zero.Span, [new LinearTerm(recomposed, one), new LinearTerm(wire, negativeOne)]);
 
         return bits;
     }
@@ -462,13 +492,14 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //Asserts W[wire] ≠ 0 by witnessing its inverse and pinning the product to 1: a
     //zero wire has no inverse (a prover following the protocol cannot build the witness) and no
     //witness satisfies wire·inv = 1, so a zero value is rejected either way.
+    /// <summary>Constrains a wire to have a multiplicative inverse.</summary>
     public void AddNonzeroCheck(int wire)
     {
         Span<byte> inverse = stackalloc byte[ScalarSize];
         InvertValue(wires[wire].Span, inverse);
         int inv = AddWire(inverse);
         int product = Multiply(wire, inv);
-        AddLinear(one, [new LinearTerm(product, one)]);
+        AddLinear(one.Span, [new LinearTerm(product, one)]);
     }
 
 
@@ -514,6 +545,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
         AddReduceModOrderCore(valueWire, reducedValue, modulus, bitCount, quotient);
 
 
+    /// <summary>Binds the reduced value through a boolean quotient and a carry-constrained integer sum.</summary>
     private (int Wire, WireWord BitsMostSignificantFirst) AddReduceModOrderCore(int valueWire, ReadOnlySpan<byte> reducedValue, ReadOnlySpan<byte> modulus, int bitCount, bool quotientIsOne)
     {
         int reducedWire = AddConstant(reducedValue);
@@ -526,7 +558,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
 
         //Ripple-carry addition reducedValue + quotient·modulus, asserting each column
         //equals value's bit with a carry, and the final carry is zero.
-        int carryWire = AddConstant(zero);
+        int carryWire = AddConstant(zero.Span);
         int carry = 0;
         for(int i = 0; i < bitCount; i++)
         {
@@ -539,7 +571,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
             if(i == bitCount - 1)
             {
                 //No carry past the top bit: pinning it to zero forbids an overflowing sum.
-                nextCarryWire = AddConstant(zero);
+                nextCarryWire = AddConstant(zero.Span);
             }
             else
             {
@@ -558,7 +590,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
                 terms = [new LinearTerm(reducedBits[i], one), new LinearTerm(carryWire, one), new LinearTerm(valueBits[i], negativeOne), new LinearTerm(nextCarryWire, negativeTwo)];
             }
 
-            AddLinear(zero, terms);
+            AddLinear(zero.Span, terms);
 
             carryWire = nextCarryWire;
             carry = nextCarry;
@@ -571,9 +603,10 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
 
 
     //Asserts W[wire] = 0 (e.g. a projective accumulator's Z, asserting it is O).
+    /// <summary>Pins a wire to zero and records it as the output.</summary>
     public void AddAssertZero(int wire)
     {
-        AddLinear(zero, [new LinearTerm(wire, one)]);
+        AddLinear(zero.Span, [new LinearTerm(wire, one)]);
         lastOutputWire = wire;
     }
 
@@ -582,10 +615,11 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     public void SetLastOutput(int wire) => lastOutputWire = wire;
 
     //Corrupts the last output wire so its defining constraint no longer holds.
+    /// <summary>Perturbs the stored output so tests can reject an unsatisfied witness.</summary>
     public void CorruptLastOutputForTesting()
     {
         Span<byte> perturbed = stackalloc byte[ScalarSize];
-        add(wires[lastOutputWire].Span, one, perturbed, curve);
+        add(wires[lastOutputWire].Span, one.Span, perturbed, curve);
         perturbed.CopyTo(wires[lastOutputWire].Span);
     }
 
@@ -605,27 +639,65 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
 
     public LigeroParameters BuildParameters() => new(wires.Count, quadratics.Count, inverseRate, openedColumnCount, block);
 
-    public byte[] WitnessBytes()
+    /// <summary>Copies the current witness into an independently owned pooled buffer.</summary>
+    /// <returns>The caller-disposed owner of exactly <see cref="WireCount"/> scalars, or <see langword="null"/> for an empty witness.</returns>
+    public IMemoryOwner<byte>? WitnessBytes()
     {
-        byte[] bytes = new byte[wires.Count * ScalarSize];
-        for(int i = 0; i < wires.Count; i++)
+        if(wires.Count == 0)
         {
-            wires[i].Span.CopyTo(bytes.AsSpan(i * ScalarSize, ScalarSize));
+            return null;
         }
 
-        return bytes;
+        int length = wires.Count * ScalarSize;
+        IMemoryOwner<byte>? owner = memoryPool.Rent(length);
+        try
+        {
+            Span<byte> bytes = owner.Memory.Span[..length];
+            for(int i = 0; i < wires.Count; i++)
+            {
+                wires[i].Span.CopyTo(bytes.Slice(i * ScalarSize, ScalarSize));
+            }
+
+            IMemoryOwner<byte> result = owner;
+            owner = null;
+
+            return result;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
     }
 
 
-    public byte[] TargetBytes()
+    /// <summary>Copies the current linear targets into an independently owned pooled buffer.</summary>
+    /// <returns>The caller-disposed owner of exactly <see cref="LinearConstraintCount"/> scalars, or <see langword="null"/> for an empty target vector.</returns>
+    public IMemoryOwner<byte>? TargetBytes()
     {
-        byte[] bytes = new byte[targets.Count * ScalarSize];
-        for(int i = 0; i < targets.Count; i++)
+        if(targets.Count == 0)
         {
-            targets[i].Span.CopyTo(bytes.AsSpan(i * ScalarSize, ScalarSize));
+            return null;
         }
 
-        return bytes;
+        int length = targets.Count * ScalarSize;
+        IMemoryOwner<byte>? owner = memoryPool.Rent(length);
+        try
+        {
+            Span<byte> bytes = owner.Memory.Span[..length];
+            for(int i = 0; i < targets.Count; i++)
+            {
+                targets[i].Span.CopyTo(bytes.Slice(i * ScalarSize, ScalarSize));
+            }
+
+            IMemoryOwner<byte> result = owner;
+            owner = null;
+
+            return result;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
     }
 
 
@@ -695,22 +767,25 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //Grows the cached 2^i and −2^i tables so indices [0, count) are populated. Each power
     //is twice the previous (2^0 = 1) as a canonical field element, computed once and reused
     //across every recomposition instead of being rebuilt and negated per call.
+    /// <summary>Extends both power caches with scalars owned until this builder is disposed.</summary>
     private void EnsurePowersOfTwo(int count)
     {
         while(powerOfTwo.Count < count)
         {
-            byte[] power = new byte[ScalarSize];
+            Memory<byte> power = RentScalar();
+            power.Span.Clear();
             if(powerOfTwo.Count == 0)
             {
                 one.CopyTo(power);
             }
             else
             {
-                add(powerOfTwo[^1], powerOfTwo[^1], power, curve);
+                add(powerOfTwo[^1].Span, powerOfTwo[^1].Span, power.Span, curve);
             }
 
-            byte[] negated = new byte[ScalarSize];
-            Negate(power, negated);
+            Memory<byte> negated = RentScalar();
+            negated.Span.Clear();
+            Negate(power.Span, negated.Span);
             powerOfTwo.Add(power);
             negativePowerOfTwo.Add(negated);
         }
@@ -729,14 +804,24 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     //LigeroProver retains its secret witness; a witness-scale arena is too large for the
     //native (locked) tier, so Pinned is the portable floor — pure managed, identical guarantee
     //on every platform including WASM, no native backing required.
+    /// <summary>Returns one scalar backed by a pinned slab owned by this builder.</summary>
     internal Memory<byte> RentScalar()
     {
         if(slabs.Count == 0 || slabOffset == ScalarsPerSlab)
         {
-            IMemoryOwner<byte> owner = memoryPool.Rent(ScalarsPerSlab * ScalarSize, AllocationKind.Pinned);
-            slabs.Add(owner);
-            currentSlab = owner.Memory[..(ScalarsPerSlab * ScalarSize)];
-            slabOffset = 0;
+            IMemoryOwner<byte>? owner = memoryPool.Rent(ScalarsPerSlab * ScalarSize, AllocationKind.Pinned);
+            try
+            {
+                Memory<byte> memory = owner.Memory[..(ScalarsPerSlab * ScalarSize)];
+                slabs.Add(owner);
+                owner = null;
+                currentSlab = memory;
+                slabOffset = 0;
+            }
+            finally
+            {
+                owner?.Dispose();
+            }
         }
 
         Memory<byte> scalar = currentSlab.Slice(slabOffset * ScalarSize, ScalarSize);
@@ -788,7 +873,7 @@ internal sealed class LigeroConstraintSystemBuilder: IDisposable
     }
 
 
-    //Returns the arena slabs to the pool, which zeroes them.
+    /// <summary>Releases the wire, target, coefficient and constant-cache slabs to the pool.</summary>
     public void Dispose()
     {
         if(disposed)

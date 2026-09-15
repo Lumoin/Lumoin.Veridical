@@ -6,6 +6,7 @@ using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
@@ -301,23 +302,36 @@ internal sealed class LigeroRangeGadgetTests
     }
 
 
-    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder) => LigeroProver.Prove(
-        builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), TranscriptSeed,
-        new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Proves with pooled snapshots that remain owned until the prover returns.</summary>
+    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder)
+    {
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroProver.Prove(
+            builder.BuildParameters(), (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), TranscriptSeed,
+            new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
-    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof) => LigeroVerifier.Verify(
-        builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), TranscriptSeed,
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
+    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof)
+    {
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroVerifier.Verify(
+            builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), TranscriptSeed,
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)

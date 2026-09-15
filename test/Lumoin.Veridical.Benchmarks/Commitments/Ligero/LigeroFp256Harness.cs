@@ -8,6 +8,7 @@ using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Algebraic;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Numerics;
@@ -97,25 +98,38 @@ internal static class LigeroFp256Harness
     }
 
 
+    /// <summary>Proves with pooled snapshots that remain owned until the prover returns.</summary>
     public static LigeroProof Prove(
         LigeroConstraintSystemBuilder builder, ScalarAddDelegate add, ScalarSubtractDelegate subtract,
-        ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, ScalarReduceDelegate reduce) => LigeroProver.Prove(
-            builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-            builder.TargetBytes(), builder.QuadraticConstraints(), TranscriptSeed,
+        ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, ScalarReduceDelegate reduce)
+    {
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroProver.Prove(
+            builder.BuildParameters(), (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), TranscriptSeed,
             new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
             add, subtract, multiply, invert, reduce,
             Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
             CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
+    /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
     public static bool Verify(
         LigeroConstraintSystemBuilder builder, LigeroProof proof, ScalarAddDelegate add, ScalarSubtractDelegate subtract,
-        ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, ScalarReduceDelegate reduce) => LigeroVerifier.Verify(
+        ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, ScalarReduceDelegate reduce)
+    {
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroVerifier.Verify(
             builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
-            builder.TargetBytes(), builder.QuadraticConstraints(), TranscriptSeed,
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), TranscriptSeed,
             add, subtract, multiply, invert, reduce,
             Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
             CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
     public static int Wire(LigeroConstraintSystemBuilder builder, BigInteger value)

@@ -139,7 +139,8 @@ internal static class LongfellowMdocProver
         Span<byte> macs = macsOwner.Memory.Span[..(MacCount * ScalarSize)];
         Span<byte> avLittleEndian = stackalloc byte[MacKeyBytes];
         Span<byte> av = stackalloc byte[ScalarSize];
-        byte[] macsBytes = new byte[LongfellowMdocEnvelope.MacRegionBytes];
+        using IMemoryOwner<byte> macsBytesOwner = pool.Rent(LongfellowMdocEnvelope.MacRegionBytes);
+        Span<byte> macsBytes = macsBytesOwner.Memory.Span[..LongfellowMdocEnvelope.MacRegionBytes];
         try
         {
             //commit(hash) then commit(sig): each over its private witness + the proof pad (the public mac/av
