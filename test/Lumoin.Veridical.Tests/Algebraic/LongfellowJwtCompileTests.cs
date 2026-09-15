@@ -36,8 +36,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowJwtCompileTests
+internal sealed class LongfellowJwtCompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     /// <summary>The field element width in bytes used for every witness column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -195,7 +213,7 @@ internal sealed class LongfellowJwtCompileTests
     [TestMethod]
     public void TheBase64DecoderCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        var builder = new LongfellowQuadCircuitBuilder(NewGfBundle().Compiler);
+        var builder = circuitScope.CreateBuilder(NewGfBundle().Compiler);
         var backend = new LongfellowCompileLogicBackend(NewGfBundle(), builder);
         var logic = new LongfellowLogic(backend, NewGfBundle());
         var decoder = new LongfellowBase64Decoder(logic);
@@ -205,7 +223,7 @@ internal sealed class LongfellowJwtCompileTests
         decoder.Decode(input, output);
         logic.OutputVector(output, 0);
 
-        _ = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        _ = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.AreEqual(Base64Depth, builder.DepthUpperBound, "The decoder circuit's depth must match the reference compiler's.");
         Assert.AreEqual(Base64WireCount, builder.WireCount, "The decoder circuit's wire count must match the reference compiler's.");
@@ -294,9 +312,9 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="blocks">The block capacity.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileJwtCircuit(LongfellowLogicFieldOperations field, int blocks, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileJwtCircuit(LongfellowLogicFieldOperations field, int blocks, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowJwtCircuit(logic, Curve, blocks);
@@ -315,7 +333,7 @@ internal sealed class LongfellowJwtCompileTests
 
         circuit.AssertJwtAttributes(pkX, pkY, e2, attributes, witness);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -326,9 +344,9 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="field">The field bundle to compile over.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileEcdsaCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileEcdsaCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowEcdsaVerifyCircuit(logic, Curve);
@@ -340,7 +358,7 @@ internal sealed class LongfellowJwtCompileTests
 
         verify.VerifySignature3(pkX, pkY, e, witness);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 

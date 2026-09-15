@@ -43,8 +43,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowMdocCrownGateTests
+internal sealed class LongfellowMdocCrownGateTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string FixtureRelativePath = "TestMaterial/Longfellow/mdoc-zk-anchor-output.txt";
     private const string RawGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-raw.gz";
 
@@ -214,7 +232,8 @@ internal sealed class LongfellowMdocCrownGateTests
 
 
     //Runs one full dual-field verify over the given envelope with a fresh transcript and fresh bundles.
-    private static LongfellowMdocVerificationResult VerifyOnce(byte[] envelope, byte[] transcriptSeed, byte[] hashTemplate, byte[] sigTemplate)
+    /// <summary>Verify Once, with circuit owners released at test cleanup.</summary>
+    private LongfellowMdocVerificationResult VerifyOnce(byte[] envelope, byte[] transcriptSeed, byte[] hashTemplate, byte[] sigTemplate)
     {
         using Lch14AdditiveFft hashFft = NewGfFft();
         using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
@@ -241,22 +260,36 @@ internal sealed class LongfellowMdocCrownGateTests
 
     //The GF(2^128) hash bundle: the imported hash circuit, the v7 Ligero parameters, the GF encoding and
     //the borrowed field profile and subfield-run codec (both owned and disposed by the caller).
-    private static LongfellowMdocFieldVerifier BuildHashBundle(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec, out int subfieldBoundary)
+    /// <summary>Build Hash Bundle, with circuit owners released at test cleanup.</summary>
+    private LongfellowMdocFieldVerifier BuildHashBundle(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec, out int subfieldBoundary)
     {
-        LongfellowSumcheckCircuit circuit = ParseHashCircuit(out subfieldBoundary);
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
+        LongfellowSumcheckCircuit? circuit = null;
+        try
+        {
+            circuit = ParseHashCircuit(out subfieldBoundary);
+            LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
 
-        LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
+            LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
 
-        return new LongfellowMdocFieldVerifier(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate());
+            var result = new LongfellowMdocFieldVerifier(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate());
+            //The returned bundle borrows the circuit retained by this test's scope.
+            circuit = null;
+
+            return result;
+        }
+        finally
+        {
+            circuit?.Dispose();
+        }
     }
 
 
     //The P-256 base-field signature bundle: the imported signature circuit, the v7 Ligero parameters, the
     //Fp256 encoding and the borrowed field profile and subfield-run codec (both owned and disposed by the caller).
-    private static LongfellowMdocFieldVerifier BuildSigBundle(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
+    /// <summary>Build Sig Bundle, with circuit owners released at test cleanup.</summary>
+    private LongfellowMdocFieldVerifier BuildSigBundle(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
-        LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
+        using LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
 
@@ -265,16 +298,17 @@ internal sealed class LongfellowMdocCrownGateTests
 
         //The circuit's quad-term coefficients are canonical; lift them to Montgomery so the verifier's shared
         //constraint build multiplies a working-domain constant against the working-domain wires (Perf Increment 1).
-        LongfellowSumcheckCircuit montgomeryCircuit = circuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
+        LongfellowSumcheckCircuit montgomeryCircuit = circuitScope.Lift(circuit, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         return new LongfellowMdocFieldVerifier(montgomeryCircuit, parameters, encoderFactory, profile, codec, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, CurveParameterSet.None, Fp256BatchMultiply: Fp256SimdBackend.BatchMultiplyMontgomery());
     }
 
 
     //Imports the P-256 signature circuit (the front of the raw circuit stream).
-    private static LongfellowSumcheckCircuit ParseSignatureCircuit()
+    /// <summary>Parse Signature Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit ParseSignatureCircuit()
     {
-        bool parsed = LongfellowCircuitReader.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out _);
+        bool parsed = circuitScope.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out _);
         Assert.IsTrue(parsed, "The signature circuit must parse.");
         Assert.IsNotNull(signature);
 
@@ -282,17 +316,19 @@ internal sealed class LongfellowMdocCrownGateTests
     }
 
 
-    private static LongfellowSumcheckCircuit ParseHashCircuit() => ParseHashCircuit(out _);
+    /// <summary>Parse Hash Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit ParseHashCircuit() => ParseHashCircuit(out _);
 
 
     //Imports the GF(2^128) hash circuit from the continuation of the raw circuit stream (after the sig
     //circuit), capturing its subfield boundary.
-    private static LongfellowSumcheckCircuit ParseHashCircuit(out int subfieldBoundary)
+    /// <summary>Parse Hash Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit ParseHashCircuit(out int subfieldBoundary)
     {
-        bool signatureParsed = LongfellowCircuitReader.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
+        bool signatureParsed = circuitScope.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
         Assert.IsTrue(signatureParsed, "The signature circuit must parse before the hash circuit.");
 
-        bool hashParsed = LongfellowCircuitReader.TryRead(RawCircuitBytes.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out subfieldBoundary, out _);
+        bool hashParsed = circuitScope.TryRead(RawCircuitBytes.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out subfieldBoundary, out _);
         Assert.IsTrue(hashParsed, "The hash circuit must parse from the continuation span.");
         Assert.IsNotNull(hash);
 

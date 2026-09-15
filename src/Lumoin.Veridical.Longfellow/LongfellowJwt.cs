@@ -70,7 +70,7 @@ public static class LongfellowJwt
             throw new ArgumentException("The token does not produce a witness for the statement: it is malformed, oversized for the block capacity, fails a signature, or lacks a required attribute or the device key.", nameof(token));
         }
 
-        LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, statement.Spec.BlockCapacity, statement.Attributes.Count);
+        using LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, statement.Spec.BlockCapacity, statement.Attributes.Count, pool);
         LongfellowLigeroParameters parameters = LongfellowJwtBundles.DeriveParameters(circuit);
 
         //The column carries the private witness; it is pool-rented and cleared on every exit path.
@@ -164,7 +164,7 @@ public static class LongfellowJwt
         }
 
         LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle();
-        LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, statement.Spec.BlockCapacity, statement.Attributes.Count);
+        using LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, statement.Spec.BlockCapacity, statement.Attributes.Count, pool);
         LongfellowLigeroParameters parameters = LongfellowJwtBundles.DeriveParameters(circuit);
 
         int elementCount = LongfellowJwtBundles.PublicInputElementCount(statement.Attributes.Count);

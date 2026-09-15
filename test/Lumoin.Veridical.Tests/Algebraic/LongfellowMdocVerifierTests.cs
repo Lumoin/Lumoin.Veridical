@@ -23,8 +23,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// is exercised by the Docker dump harness; these are unit-level.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowMdocVerifierTests
+internal sealed class LongfellowMdocVerifierTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const int ScalarSize = Scalar.SizeBytes;
     private const int GfElementBytes = 16;
     private const int Fp256ElementBytes = 32;
@@ -480,12 +498,13 @@ internal sealed class LongfellowMdocVerifierTests
     private static bool InRange(ReadOnlySpan<byte> canonical) => new BigInteger(canonical, isUnsigned: true, isBigEndian: true) < Prime;
 
 
-    private static LongfellowSumcheckCircuit SmallCircuit()
+    /// <summary>Small Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit SmallCircuit()
     {
         LongfellowSumcheckLayer layer = new(inputCount: 4, handRounds: 2, termCount: 0);
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 0, id, [layer]);
     }
@@ -496,7 +515,8 @@ internal sealed class LongfellowMdocVerifierTests
 
 
     //The anchor's small GF(2^128) circuit (the w == (x + y)·(x + z)·x relation), the C.7/C.8 shape.
-    private static LongfellowSumcheckCircuit BuildAnchorCircuit()
+    /// <summary>Build Anchor Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit BuildAnchorCircuit()
     {
         int nl = AnchorInt("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -521,7 +541,7 @@ internal sealed class LongfellowMdocVerifierTests
 
         byte[] id = Convert.FromHexString(Anchors["id"]);
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             AnchorInt("nv"), AnchorInt("logv"), AnchorInt("nc"), AnchorInt("logc"),
             AnchorInt("ninputs"), AnchorInt("npub_in"), id, layers);
     }

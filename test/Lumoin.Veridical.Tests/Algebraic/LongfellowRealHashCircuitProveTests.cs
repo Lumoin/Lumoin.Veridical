@@ -30,8 +30,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowRealHashCircuitProveTests
+internal sealed class LongfellowRealHashCircuitProveTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string CredentialRelativePath = "TestMaterial/Mdoc/mdoc-00.cbor";
     private const string WitnessGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-hash-witness.gz";
     private const string RawGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-raw.gz";
@@ -75,7 +93,7 @@ internal sealed class LongfellowRealHashCircuitProveTests
     [TestCategory(TestCategories.Slow)]
     public void OurProverOverTheImportedHashCircuitProducesAProofOurVerifierAccepts()
     {
-        LongfellowSumcheckCircuit circuit = ParseHashCircuit();
+        using LongfellowSumcheckCircuit circuit = ParseHashCircuit();
         byte[] column = BuildColumn();
 
         Assert.AreEqual(circuit.InputCount, column.Length / ScalarSize, "The column width must equal the imported circuit's input count.");
@@ -148,13 +166,14 @@ internal sealed class LongfellowRealHashCircuitProveTests
     }
 
 
-    private static LongfellowSumcheckCircuit ParseHashCircuit()
+    /// <summary>Parse Hash Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit ParseHashCircuit()
     {
         byte[] raw = DecompressGzip(ReadFixture(RawGzipRelativePath));
-        bool signatureParsed = LongfellowCircuitReader.TryRead(raw, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
+        bool signatureParsed = circuitScope.TryRead(raw, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
         Assert.IsTrue(signatureParsed);
 
-        bool hashParsed = LongfellowCircuitReader.TryRead(raw.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out _, out _);
+        bool hashParsed = circuitScope.TryRead(raw.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out _, out _);
         Assert.IsTrue(hashParsed);
         Assert.IsNotNull(hash);
 

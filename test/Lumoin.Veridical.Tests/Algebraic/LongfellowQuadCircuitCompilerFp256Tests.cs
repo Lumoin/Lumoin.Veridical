@@ -38,8 +38,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowQuadCircuitCompilerFp256Tests
+internal sealed class LongfellowQuadCircuitCompilerFp256Tests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
 
     private const int Fp256BitCount = 256;
@@ -141,6 +159,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Merge Cancellation Of Distinct Values Yields The Zero Node, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void MergeCancellationOfDistinctValuesYieldsTheZeroNode()
     {
@@ -152,7 +171,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
             Fp256ElementBytes,
             Fp256BitCount);
 
-        var builder = new LongfellowQuadCircuitBuilder(field);
+        var builder = circuitScope.CreateBuilder(field);
 
         int x = builder.InputWire();
 
@@ -169,7 +188,8 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
 
     //Builds w == (x+y)·(x+z)·x through the kernel over the P-256 base field: x public; y, z, w
     //private. Sub is genuine over a prime field, so the compiled output asserts w − x·(x+y)(x+z) = 0.
-    private static LongfellowQuadCircuitBuilder BuildFp256Statement(out LongfellowSumcheckCircuit circuit)
+    /// <summary>Build Fp256 Statement, with circuit owners released at test cleanup.</summary>
+    private LongfellowQuadCircuitBuilder BuildFp256Statement(out LongfellowSumcheckCircuit circuit)
     {
         LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreatePrime(
             Fp256Add,
@@ -179,7 +199,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
             Fp256ElementBytes,
             Fp256BitCount);
 
-        var builder = new LongfellowQuadCircuitBuilder(field);
+        var builder = circuitScope.CreateBuilder(field);
 
         int x = builder.InputWire();
         builder.PrivateInput();
@@ -192,7 +212,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
         int u = builder.Mul(t, x);
         _ = builder.AssertZero(builder.Sub(w, u));
 
-        circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        circuit = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         return builder;
     }

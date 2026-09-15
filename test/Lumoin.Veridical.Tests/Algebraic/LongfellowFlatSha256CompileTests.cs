@@ -40,8 +40,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowFlatSha256CompileTests
+internal sealed class LongfellowFlatSha256CompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     /// <summary>The number of 32-bit message words in one SHA-256 block.</summary>
     private const int InputWordCount = 16;
 
@@ -169,7 +187,7 @@ internal sealed class LongfellowFlatSha256CompileTests
     public void ThePackedBlockWitnessDeclaresItsWiresInTheReferenceOrder()
     {
         LongfellowLogicFieldOperations field = NewGfBundle();
-        var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
@@ -270,9 +288,9 @@ internal sealed class LongfellowFlatSha256CompileTests
     /// <param name="privateWitness">Whether the witness inputs after the message words are declared private.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileUnpackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileUnpackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, UnpackedPluckerLogPointCount);
@@ -313,7 +331,7 @@ internal sealed class LongfellowFlatSha256CompileTests
 
         sha.AssertTransformBlock(blockWords, initialState, scheduleExtension, registerEWitness, registerAWitness, finalState);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -326,9 +344,9 @@ internal sealed class LongfellowFlatSha256CompileTests
     /// <param name="privateWitness">Whether the witness inputs after the message words are declared private.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileAllPackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileAllPackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
@@ -369,7 +387,7 @@ internal sealed class LongfellowFlatSha256CompileTests
 
         sha.AssertTransformBlock(blockWords, packedInitialState, packedSchedule, packedRegisterE, packedRegisterA, packedFinalState);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 

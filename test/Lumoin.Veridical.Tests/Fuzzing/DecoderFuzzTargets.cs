@@ -188,9 +188,11 @@ internal static class DecoderFuzzTargets
     }
 
 
+    /// <summary>Exercises circuit parsing and releases successful output within an independent pool lifetime.</summary>
     private static void InvokeLongfellowCircuit(ReadOnlySpan<byte> input)
     {
-        LongfellowCircuitReader.TryRead(
+        using var circuitScope = new LongfellowCircuitTestScope();
+        circuitScope.TryRead(
             input,
             LongfellowFieldId,
             LongfellowElementBytes,

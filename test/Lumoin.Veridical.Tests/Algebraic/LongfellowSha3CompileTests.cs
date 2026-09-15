@@ -36,8 +36,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowSha3CompileTests
+internal sealed class LongfellowSha3CompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     /// <summary>The field element width in bytes used for every witness column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -332,9 +350,9 @@ internal sealed class LongfellowSha3CompileTests
     /// <param name="witnessed">Whether the witnessed permutation is compiled.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileKeccakCircuit(LongfellowLogicFieldOperations field, bool witnessed, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileKeccakCircuit(LongfellowLogicFieldOperations field, bool witnessed, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
@@ -368,7 +386,7 @@ internal sealed class LongfellowSha3CompileTests
             }
         }
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -384,7 +402,7 @@ internal sealed class LongfellowSha3CompileTests
     /// <param name="privateWitness">Whether the block witness is declared private (the end-to-end gates) or public (the reference's all-public telemetry shape).</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileShakeCircuit(
+    private LongfellowSumcheckCircuit CompileShakeCircuit(
         LongfellowLogicFieldOperations field,
         int subfieldBits,
         int seedLength,
@@ -392,7 +410,7 @@ internal sealed class LongfellowSha3CompileTests
         bool privateWitness,
         out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, subfieldBits);
@@ -426,7 +444,7 @@ internal sealed class LongfellowSha3CompileTests
             logic.AssertEqual(want[i], output[i]);
         }
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 

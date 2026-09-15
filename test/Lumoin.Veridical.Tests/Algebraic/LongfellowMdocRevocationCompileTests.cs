@@ -35,8 +35,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowMdocRevocationCompileTests
+internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     /// <summary>The field element width in bytes used for every witness column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -260,9 +278,9 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="listLength">The list element count.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileListCircuit(LongfellowLogicFieldOperations field, int listLength, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileListCircuit(LongfellowLogicFieldOperations field, int listLength, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowMdocRevocationListCircuit(logic);
@@ -279,7 +297,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
 
         circuit.AssertNotOnList(list, id, inverse);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -290,9 +308,9 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="field">The field bundle to compile over.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileSpanCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileSpanCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowMdocRevocationSpanCircuit(logic, Curve);
@@ -306,7 +324,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
 
         circuit.AssertNotOnList(craPkX, craPkY, id, witness);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 

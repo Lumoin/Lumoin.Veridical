@@ -50,8 +50,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowCircuitReaderTests
+internal sealed class LongfellowCircuitReaderTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string AnchorRelativePath = "TestMaterial/Longfellow/mdoc-circuit-anchor-output.txt";
     private const string CompressedRelativePath = "TestMaterial/Longfellow/mdoc-circuit-compressed.zst";
     private const string RawGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-raw.gz";
@@ -89,6 +107,7 @@ internal sealed class LongfellowCircuitReaderTests
     private static byte[] RawCircuitBytes { get; } = DecompressGzip(ReadFixture(RawGzipRelativePath));
 
 
+    /// <summary>The Real Mdoc Bundle Parses Into Two Circuits With No Trailing Bytes, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void TheRealMdocBundleParsesIntoTwoCircuitsWithNoTrailingBytes()
     {
@@ -96,11 +115,13 @@ internal sealed class LongfellowCircuitReaderTests
 
         Assert.HasCount(Anchor("raw_len"), raw, "The decompressed length must match the reference's raw_len.");
 
-        bool signatureParsed = LongfellowCircuitReader.TryRead(raw, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out int signatureBytes);
+        bool signatureParsed = circuitScope.TryRead(raw, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out int signatureBytes);
+        using LongfellowSumcheckCircuit? signatureOwner = signature;
         Assert.IsTrue(signatureParsed, "The signature circuit must parse.");
         Assert.IsNotNull(signature);
 
-        bool hashParsed = LongfellowCircuitReader.TryRead(raw.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out _, out int hashBytes);
+        bool hashParsed = circuitScope.TryRead(raw.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out _, out int hashBytes);
+        using LongfellowSumcheckCircuit? hashOwner = hash;
         Assert.IsTrue(hashParsed, "The hash circuit must parse from the continuation of the stream.");
         Assert.IsNotNull(hash);
 
@@ -111,7 +132,7 @@ internal sealed class LongfellowCircuitReaderTests
     [TestMethod]
     public void TheSignatureCircuitShapeMatchesTheReference()
     {
-        LongfellowSumcheckCircuit signature = ParseSignatureCircuit(out int subfieldBoundary);
+        using LongfellowSumcheckCircuit signature = ParseSignatureCircuit(out int subfieldBoundary);
 
         AssertShapeMatches("sig", signature);
         Assert.AreEqual(Anchor("sig_subfield_boundary"), subfieldBoundary, "sig subfield_boundary");
@@ -121,7 +142,7 @@ internal sealed class LongfellowCircuitReaderTests
     [TestMethod]
     public void TheHashCircuitShapeMatchesTheReferenceAndHasNoCopies()
     {
-        LongfellowSumcheckCircuit hash = ParseHashCircuit(out int subfieldBoundary);
+        using LongfellowSumcheckCircuit hash = ParseHashCircuit(out int subfieldBoundary);
 
         AssertShapeMatches("hash", hash);
         Assert.AreEqual(Anchor("hash_subfield_boundary"), subfieldBoundary, "hash subfield_boundary");
@@ -129,7 +150,7 @@ internal sealed class LongfellowCircuitReaderTests
         //logc == 0 is the precondition the whole sumcheck wire layer asserts (no copies).
         Assert.AreEqual(0, hash.CopyRounds, "The hash circuit must have logc == 0.");
 
-        LongfellowSumcheckCircuit signature = ParseSignatureCircuit(out _);
+        using LongfellowSumcheckCircuit signature = ParseSignatureCircuit(out _);
         Assert.AreEqual(0, signature.CopyRounds, "The signature circuit must have logc == 0.");
     }
 
@@ -137,7 +158,7 @@ internal sealed class LongfellowCircuitReaderTests
     [TestMethod]
     public void TheHashCircuitSampleQuadTermsMatchTheReference()
     {
-        LongfellowSumcheckCircuit hash = ParseHashCircuit(out _);
+        using LongfellowSumcheckCircuit hash = ParseHashCircuit(out _);
 
         AssertLayerSampleTerms(hash, 0, "hash", 0);
         AssertLayerSampleTerms(hash, hash.LayerCount - 1, "hash", 16);
@@ -149,7 +170,7 @@ internal sealed class LongfellowCircuitReaderTests
     {
         const string witnessGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-hash-witness.gz";
 
-        LongfellowSumcheckCircuit hash = ParseHashCircuit(out _);
+        using LongfellowSumcheckCircuit hash = ParseHashCircuit(out _);
         byte[] witnessColumn = DecompressGzip(ReadFixture(witnessGzipRelativePath));
 
         //The reference's fill_witness + post-commit update_macs produce one GF(2^128) element per input
@@ -187,12 +208,14 @@ internal sealed class LongfellowCircuitReaderTests
     }
 
 
+    /// <summary>The Imported Small Circuit Drives The Prover And Verifier, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void TheImportedSmallCircuitDrivesTheProverAndVerifier()
     {
         byte[] serialized = Convert.FromHexString(Anchors["small_serialized"]);
 
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out int subfieldBoundary, out int consumed);
+        bool parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out int subfieldBoundary, out int consumed);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
         Assert.IsTrue(parsed, "The small circuit must parse.");
         Assert.IsNotNull(circuit);
         Assert.AreEqual(serialized.Length, consumed, "The small circuit must consume its whole serialization.");
@@ -215,6 +238,7 @@ internal sealed class LongfellowCircuitReaderTests
     }
 
 
+    /// <summary>Truncated Input Returns Failure, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void TruncatedInputReturnsFailure()
     {
@@ -222,7 +246,8 @@ internal sealed class LongfellowCircuitReaderTests
 
         for(int length = 0; length < serialized.Length; length += 7)
         {
-            bool parsed = LongfellowCircuitReader.TryRead(serialized.AsSpan(0, length), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out int consumed);
+            bool parsed = circuitScope.TryRead(serialized.AsSpan(0, length), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out int consumed);
+            using LongfellowSumcheckCircuit? circuitOwner = circuit;
 
             Assert.IsFalse(parsed, $"A {length}-byte prefix must not parse.");
             Assert.IsNull(circuit);
@@ -231,18 +256,81 @@ internal sealed class LongfellowCircuitReaderTests
     }
 
 
+    /// <summary>Wrong Version Returns Failure, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void WrongVersionReturnsFailure()
     {
         byte[] serialized = Convert.FromHexString(Anchors["small_serialized"]);
         serialized[0] = 0x02;
 
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out _, out _, out _);
+        bool parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out _, out _, out _);
 
         Assert.IsFalse(parsed, "A wrong version byte must not parse.");
     }
 
 
+    /// <summary>Checks rejection after all constants and terms have been parsed releases the only coefficient slab.</summary>
+    [TestMethod]
+    public void ATruncatedIdentifierReleasesParsedConstantStorage()
+    {
+        using BaseMemoryPool pool = new();
+        byte[] serialized = Convert.FromHexString(Anchors["small_serialized"]);
+        bool parsed = LongfellowCircuitReader.TryRead(serialized.AsSpan(0, serialized.Length - 1), Gf2128FieldId, Gf2128ElementBytes, pool, out LongfellowSumcheckCircuit? circuit, out int boundary, out int consumed);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(circuit);
+        Assert.AreEqual(0, boundary);
+        Assert.AreEqual(0, consumed);
+        Assert.AreEqual(1, pool.TrimExcess(), "The small fixture's single coefficient slab must have no active rentals after rejection.");
+    }
+
+
+    /// <summary>Checks a throwing range callback releases parser storage and propagates the original exception.</summary>
+    [TestMethod]
+    public void AThrowingConstantRangeReleasesParsedStorage()
+    {
+        using BaseMemoryPool pool = new();
+        byte[] serialized = Convert.FromHexString(Anchors["small_serialized"]);
+        var expected = new InvalidOperationException("The constant range callback failed.");
+        LongfellowSumcheckCircuit? circuit = null;
+        try
+        {
+            InvalidOperationException actual = Assert.ThrowsExactly<InvalidOperationException>(() =>
+                LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, pool, out circuit, out _, out _, canonical => throw expected));
+
+            Assert.AreSame(expected, actual);
+            Assert.IsNull(circuit);
+            Assert.AreEqual(1, pool.TrimExcess(), "The range callback's exception must release the parser's coefficient slab.");
+        }
+        finally
+        {
+            circuit?.Dispose();
+        }
+    }
+
+
+    /// <summary>Checks an empty constant table reaches term-index rejection without renting storage.</summary>
+    [TestMethod]
+    public void AnEmptyConstantTableRejectsWithoutARental()
+    {
+        using BaseMemoryPool pool = new();
+        byte[] serialized = Convert.FromHexString(Anchors["small_serialized"]);
+        int constantsOffset = 1 + (8 * BytesPerSizeT);
+        int layersOffset = FirstLayerOffset(serialized);
+        serialized.AsSpan(layersOffset).CopyTo(serialized.AsSpan(constantsOffset));
+        serialized.AsSpan(constantsOffset - BytesPerSizeT, BytesPerSizeT).Clear();
+        int length = serialized.Length - (layersOffset - constantsOffset);
+        bool parsed = LongfellowCircuitReader.TryRead(serialized.AsSpan(0, length), Gf2128FieldId, Gf2128ElementBytes, pool, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
+
+        Assert.IsFalse(parsed);
+        Assert.IsNull(circuit);
+        Assert.AreEqual(0, pool.TrimExcess(), "The empty table must reach rejection without allocating a coefficient slab.");
+    }
+
+
+    /// <summary>AZero Layer Count Returns Failure, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void AZeroLayerCountReturnsFailure()
     {
@@ -252,13 +340,15 @@ internal sealed class LongfellowCircuitReaderTests
         int layerCountOffset = 1 + (6 * BytesPerSizeT);
         serialized.AsSpan(layerCountOffset, BytesPerSizeT).Clear();
 
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        bool parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
 
         Assert.IsFalse(parsed, "A zero layer count must not parse.");
         Assert.IsNull(circuit);
     }
 
 
+    /// <summary>AZero Hand Round Layer Returns Failure, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void AZeroHandRoundLayerReturnsFailure()
     {
@@ -267,13 +357,15 @@ internal sealed class LongfellowCircuitReaderTests
         byte[] serialized = Convert.FromHexString(Anchors["small_serialized"]);
         serialized.AsSpan(FirstLayerOffset(serialized), BytesPerSizeT).Clear();
 
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        bool parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
 
         Assert.IsFalse(parsed, "A zero-hand-round layer must not parse.");
         Assert.IsNull(circuit);
     }
 
 
+    /// <summary>An Oversized Declared Count Returns Failure, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void AnOversizedDeclaredCountReturnsFailure()
     {
@@ -284,7 +376,8 @@ internal sealed class LongfellowCircuitReaderTests
         int constantCountOffset = 1 + (7 * BytesPerSizeT);
         serialized.AsSpan(constantCountOffset, BytesPerSizeT).Fill(0xFF);
 
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        bool parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
 
         Assert.IsFalse(parsed, "An oversized constant count must not parse.");
         Assert.IsNull(circuit);
@@ -293,13 +386,15 @@ internal sealed class LongfellowCircuitReaderTests
         int termCountOffset = FirstLayerOffset(serialized) + (2 * BytesPerSizeT);
         serialized.AsSpan(termCountOffset, BytesPerSizeT).Fill(0xFF);
 
-        parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out circuit, out _, out _);
+        parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitUpdatedOwner = circuit;
 
         Assert.IsFalse(parsed, "An oversized term count must not parse.");
         Assert.IsNull(circuit);
     }
 
 
+    /// <summary>An Out Of Range Constant Index Returns Failure, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void AnOutOfRangeConstantIndexReturnsFailure()
     {
@@ -309,13 +404,15 @@ internal sealed class LongfellowCircuitReaderTests
         int valueIndexOffset = FirstLayerOffset(serialized) + (3 * BytesPerSizeT) + (3 * BytesPerSizeT);
         serialized.AsSpan(valueIndexOffset, BytesPerSizeT).Fill(0xFF);
 
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        bool parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
 
         Assert.IsFalse(parsed, "An out-of-range constant index must not parse.");
         Assert.IsNull(circuit);
     }
 
 
+    /// <summary>An Out Of Range Index Delta Returns Failure, with parsed circuits disposed before the test completes.</summary>
     [TestMethod]
     public void AnOutOfRangeIndexDeltaReturnsFailure()
     {
@@ -327,7 +424,8 @@ internal sealed class LongfellowCircuitReaderTests
         serialized.AsSpan(gateDeltaOffset, BytesPerSizeT).Clear();
         serialized[gateDeltaOffset] = 0x03;
 
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        bool parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitOwner = circuit;
 
         Assert.IsFalse(parsed, "An underflowing gate delta must not parse.");
         Assert.IsNull(circuit);
@@ -336,20 +434,22 @@ internal sealed class LongfellowCircuitReaderTests
         serialized.AsSpan(gateDeltaOffset, BytesPerSizeT).Clear();
         serialized[gateDeltaOffset] = 0x02;
 
-        parsed = LongfellowCircuitReader.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out circuit, out _, out _);
+        parsed = circuitScope.TryRead(serialized, Gf2128FieldId, Gf2128ElementBytes, out circuit, out _, out _);
+        using LongfellowSumcheckCircuit? circuitUpdatedOwner = circuit;
 
         Assert.IsFalse(parsed, "A gate delta past max_g must not parse.");
         Assert.IsNull(circuit);
     }
 
 
+    /// <summary>Wrong Field Id Returns Failure, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void WrongFieldIdReturnsFailure()
     {
         byte[] serialized = Convert.FromHexString(Anchors["small_serialized"]);
 
         //The serialization carries GF2_128_ID (4); parsing it as P256 (1) must fail the field-id check.
-        bool parsed = LongfellowCircuitReader.TryRead(serialized, Point256FieldId, Point256ElementBytes, out _, out _, out _);
+        bool parsed = circuitScope.TryRead(serialized, Point256FieldId, Point256ElementBytes, out _, out _, out _);
 
         Assert.IsFalse(parsed, "A field-id mismatch must not parse.");
     }
@@ -366,9 +466,10 @@ internal sealed class LongfellowCircuitReaderTests
     }
 
 
-    private static LongfellowSumcheckCircuit ParseSignatureCircuit(out int subfieldBoundary)
+    /// <summary>Parse Signature Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit ParseSignatureCircuit(out int subfieldBoundary)
     {
-        bool parsed = LongfellowCircuitReader.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out subfieldBoundary, out _);
+        bool parsed = circuitScope.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out subfieldBoundary, out _);
         Assert.IsTrue(parsed);
         Assert.IsNotNull(signature);
 
@@ -376,12 +477,13 @@ internal sealed class LongfellowCircuitReaderTests
     }
 
 
-    private static LongfellowSumcheckCircuit ParseHashCircuit(out int subfieldBoundary)
+    /// <summary>Parse Hash Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit ParseHashCircuit(out int subfieldBoundary)
     {
-        bool signatureParsed = LongfellowCircuitReader.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
+        bool signatureParsed = circuitScope.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
         Assert.IsTrue(signatureParsed);
 
-        bool hashParsed = LongfellowCircuitReader.TryRead(RawCircuitBytes.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out subfieldBoundary, out _);
+        bool hashParsed = circuitScope.TryRead(RawCircuitBytes.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out subfieldBoundary, out _);
         Assert.IsTrue(hashParsed);
         Assert.IsNotNull(hash);
 

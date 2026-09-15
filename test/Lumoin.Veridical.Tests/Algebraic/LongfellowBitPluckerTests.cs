@@ -31,8 +31,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowBitPluckerTests
+internal sealed class LongfellowBitPluckerTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     /// <summary>
     /// The reference sweeps LOGN = 1..5; each output bit's polynomial is interpolated and evaluated by
     /// the same fixed procedure regardless of LOGN, so 1..4 still exercises every point count from a
@@ -232,7 +250,7 @@ internal sealed class LongfellowBitPluckerTests
 
         for(int logPointCount = MinLogPointCount; logPointCount <= MaxLogPointCount; logPointCount++)
         {
-            var builder = new LongfellowQuadCircuitBuilder(Fp256Field.Compiler);
+            var builder = circuitScope.CreateBuilder(Fp256Field.Compiler);
             var backend = new LongfellowCompileLogicBackend(Fp256Field, builder);
             var logic = new LongfellowLogic(backend, Fp256Field);
             var plucker = new LongfellowBitPlucker(logic, logPointCount);
@@ -244,7 +262,7 @@ internal sealed class LongfellowBitPluckerTests
                 logic.Output(bits[k], k);
             }
 
-            _ = builder.MakeCircuit(SingleCopy, Sha256FiatShamirBackend.GetIncrementalFactory());
+            _ = circuitScope.Compile(builder, SingleCopy, Sha256FiatShamirBackend.GetIncrementalFactory());
 
             int[] pins = expected[logPointCount - MinLogPointCount];
             Assert.AreEqual(pins[0], builder.DepthUpperBound, $"pluck[{logPointCount}]'s depth must match the reference compiler's.");

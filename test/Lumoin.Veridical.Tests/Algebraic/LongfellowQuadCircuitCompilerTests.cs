@@ -37,8 +37,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowQuadCircuitCompilerTests
+internal sealed class LongfellowQuadCircuitCompilerTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
 
     private const int ElementBytes = 16;
@@ -103,6 +121,50 @@ internal sealed class LongfellowQuadCircuitCompilerTests
 
         byte[] expected = Convert.FromHexString(Anchors["id"]);
         Assert.IsTrue(circuit.Id.Span.SequenceEqual(expected), "The structural circuit id must match the reference compiler's id byte for byte.");
+    }
+
+
+    /// <summary>Checks that compilation and lifting retain independent bytes after both source owners are released.</summary>
+    [TestMethod]
+    public void CompiledAndLiftedCircuitsOwnTheirBytesAfterProducerDisposal()
+    {
+        LongfellowQuadCircuitBuilder builder = BuildAnchorStatement(out LongfellowSumcheckCircuit circuit);
+        builder.Dispose();
+        Assert.IsTrue(circuit.Id.Span.SequenceEqual(Convert.FromHexString(Anchors["id"])));
+
+        LongfellowSumcheckCircuit lifted = circuitScope.Lift(circuit, static (source, destination) => source.CopyTo(destination));
+        circuit.Dispose();
+
+        Assert.IsTrue(lifted.Id.Span.SequenceEqual(Convert.FromHexString(Anchors["id"])));
+        for(int l = 0; l < lifted.LayerCount; l++)
+        {
+            LongfellowSumcheckQuadTerm[] terms = lifted.Layers[l].QuadTerms;
+            for(int t = 0; t < terms.Length; t++)
+            {
+                Assert.IsTrue(terms[t].Coefficient.Span.SequenceEqual(ParseElement(Anchors[$"L{l}_t{t}_v"])));
+            }
+        }
+    }
+
+
+    /// <summary>Preserves the empty-coefficient converter call without renting a zero-length buffer or borrowing the source identifier.</summary>
+    [TestMethod]
+    public void AnEmptyCoefficientIsLiftedWithoutAZeroLengthRental()
+    {
+        var layer = new LongfellowSumcheckLayer(2, 1, 1, [new LongfellowSumcheckQuadTerm(0, 0, 1, ReadOnlyMemory<byte>.Empty)]);
+        LongfellowSumcheckCircuit source = circuitScope.CreateCircuit(1, 0, 1, 0, 2, 0, Convert.FromHexString(Anchors["id"]), [layer]);
+        int conversions = 0;
+        LongfellowSumcheckCircuit lifted = circuitScope.Lift(source, (coefficient, destination) =>
+        {
+            Assert.IsTrue(coefficient.IsEmpty);
+            Assert.IsTrue(destination.IsEmpty);
+            conversions++;
+        });
+        source.Dispose();
+
+        Assert.AreEqual(1, conversions);
+        Assert.IsTrue(lifted.Layers[0].QuadTerms[0].Coefficient.IsEmpty);
+        Assert.IsTrue(lifted.Id.Span.SequenceEqual(Convert.FromHexString(Anchors["id"])));
     }
 
 
@@ -301,6 +363,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>ACircuit Without Outputs Or Assertions Is Rejected, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void ACircuitWithoutOutputsOrAssertionsIsRejected()
     {
@@ -309,17 +372,18 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int y = builder.InputWire();
         _ = builder.Mul(x, y);
 
-        Assert.ThrowsExactly<InvalidOperationException>(() => builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory()));
+        Assert.ThrowsExactly<InvalidOperationException>(() => circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory()));
     }
 
 
+    /// <summary>The Builder Rejects Construction After Compilation, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void TheBuilderRejectsConstructionAfterCompilation()
     {
         LongfellowQuadCircuitBuilder builder = BuildAnchorStatement(out _);
 
         Assert.ThrowsExactly<InvalidOperationException>(() => builder.InputWire());
-        Assert.ThrowsExactly<InvalidOperationException>(() => builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory()));
+        Assert.ThrowsExactly<InvalidOperationException>(() => circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory()));
     }
 
 
@@ -410,6 +474,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>The Canonical Wire Order Is Decided By The Little Endian Coefficient Comparison, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void TheCanonicalWireOrderIsDecidedByTheLittleEndianCoefficientComparison()
     {
@@ -429,7 +494,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int q = builder.Mul(twoHundredFiftyFive, x, y);
         builder.OutputWire(builder.Mul(p, q), 0);
 
-        LongfellowSumcheckCircuit circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        LongfellowSumcheckCircuit circuit = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.AreEqual(2, circuit.LayerCount, "The product of the two gates adds one layer above them.");
         LongfellowSumcheckQuadTerm[] corners = circuit.Layers[1].QuadTerms;
@@ -441,6 +506,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>The Single Wire Layer Shape Is Rejected As ADocumented Divergence, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void TheSingleWireLayerShapeIsRejectedAsADocumentedDivergence()
     {
@@ -453,7 +519,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int c = builder.Add(a, b);
         builder.OutputWire(builder.Mul(c, c), 0);
 
-        Assert.ThrowsExactly<InvalidOperationException>(() => builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory()));
+        Assert.ThrowsExactly<InvalidOperationException>(() => circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory()));
     }
 
 
@@ -490,6 +556,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>ALong Copy Wire Chain Bridges Every Intermediate Layer, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void ALongCopyWireChainBridgesEveryIntermediateLayer()
     {
@@ -504,7 +571,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int p3 = builder.Mul(p2, p2);
         builder.OutputWire(builder.Mul(p3, x), 0);
 
-        LongfellowSumcheckCircuit circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        LongfellowSumcheckCircuit circuit = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.AreEqual(4, circuit.LayerCount, "Depth five yields four layers.");
         Assert.AreEqual(2, circuit.Layers[0].InputCount, "The output layer reads the x copy and the cube.");
@@ -519,6 +586,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>Explicit Output Wires Claim Their Positions In The Canonical Order, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void ExplicitOutputWiresClaimTheirPositionsInTheCanonicalOrder()
     {
@@ -530,7 +598,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         builder.OutputWire(builder.Mul(x, y), 0);
         builder.OutputWire(builder.Add(x, y), 1);
 
-        LongfellowSumcheckCircuit circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        LongfellowSumcheckCircuit circuit = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.AreEqual(2, circuit.OutputCount, "Both explicit outputs must be counted.");
         Assert.AreEqual(1, circuit.LayerCount, "Both outputs sit at depth one, a single layer.");
@@ -562,6 +630,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>Konst Axpy And Apy Fold Into The Compiled Layer, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void KonstAxpyAndApyFoldIntoTheCompiledLayer()
     {
@@ -578,7 +647,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int accumulated = builder.Apy(builder.Axpy(builder.Mul(x, y), two, x), three);
         builder.OutputWire(accumulated, 0);
 
-        LongfellowSumcheckCircuit circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        LongfellowSumcheckCircuit circuit = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.AreEqual(1, circuit.LayerCount, "The accumulated node compiles into one layer.");
         LongfellowSumcheckQuadTerm[] corners = circuit.Layers[0].QuadTerms;
@@ -605,6 +674,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
     }
 
 
+    /// <summary>ACopy Count Above One Enters The Shape And The Id, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void ACopyCountAboveOneEntersTheShapeAndTheId()
     {
@@ -614,7 +684,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         builder.OutputWire(builder.Mul(x, y), 0);
 
         const int TwoCopies = 2;
-        LongfellowSumcheckCircuit twoCopyCircuit = builder.MakeCircuit(TwoCopies, Sha256FiatShamirBackend.GetIncrementalFactory());
+        LongfellowSumcheckCircuit twoCopyCircuit = circuitScope.Compile(builder, TwoCopies, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.AreEqual(TwoCopies, twoCopyCircuit.CopyCount, "The copy count must be carried.");
         Assert.AreEqual(1, twoCopyCircuit.CopyRounds, "Two copies bind one copy variable.");
@@ -623,7 +693,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int sx = singleBuilder.InputWire();
         int sy = singleBuilder.InputWire();
         singleBuilder.OutputWire(singleBuilder.Mul(sx, sy), 0);
-        LongfellowSumcheckCircuit singleCopyCircuit = singleBuilder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        LongfellowSumcheckCircuit singleCopyCircuit = circuitScope.Compile(singleBuilder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.IsFalse(twoCopyCircuit.Id.Span.SequenceEqual(singleCopyCircuit.Id.Span), "The copy count must enter the structural id.");
     }
@@ -631,7 +701,8 @@ internal sealed class LongfellowQuadCircuitCompilerTests
 
     //Builds the anchor statement w == (x+y)·(x+z)·x through the kernel: x public; y, z, w private;
     //the last-layer assertion becomes the single zero output, exactly the reference harness's build.
-    private static LongfellowQuadCircuitBuilder BuildAnchorStatement(out LongfellowSumcheckCircuit circuit)
+    /// <summary>Build Anchor Statement, with circuit owners released at test cleanup.</summary>
+    private LongfellowQuadCircuitBuilder BuildAnchorStatement(out LongfellowSumcheckCircuit circuit)
     {
         LongfellowQuadCircuitBuilder builder = NewBuilder();
 
@@ -646,7 +717,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int u = builder.Mul(t, x);
         _ = builder.AssertZero(builder.Sub(w, u));
 
-        circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        circuit = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         return builder;
     }
@@ -654,7 +725,8 @@ internal sealed class LongfellowQuadCircuitCompilerTests
 
     //The anchor statement with a subfield/full-field split: y and z stay subfield inputs and w is
     //declared past the BeginFullField watermark, so the boundary records four declared inputs.
-    private static LongfellowQuadCircuitBuilder BuildAnchorStatementWithFullFieldTail(out LongfellowSumcheckCircuit circuit)
+    /// <summary>Build Anchor Statement With Full Field Tail, with circuit owners released at test cleanup.</summary>
+    private LongfellowQuadCircuitBuilder BuildAnchorStatementWithFullFieldTail(out LongfellowSumcheckCircuit circuit)
     {
         LongfellowQuadCircuitBuilder builder = NewBuilder();
 
@@ -671,13 +743,14 @@ internal sealed class LongfellowQuadCircuitCompilerTests
         int u = builder.Mul(t, x);
         _ = builder.AssertZero(builder.Sub(w, u));
 
-        circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        circuit = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         return builder;
     }
 
 
-    private static LongfellowQuadCircuitBuilder NewBuilder()
+    /// <summary>New Builder, with circuit owners released at test cleanup.</summary>
+    private LongfellowQuadCircuitBuilder NewBuilder()
     {
         LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreateCharacteristicTwo(
             Add,
@@ -685,13 +758,14 @@ internal sealed class LongfellowQuadCircuitCompilerTests
             CurveParameterSet.None,
             ElementBytes);
 
-        return new LongfellowQuadCircuitBuilder(field);
+        return circuitScope.CreateBuilder(field);
     }
 
 
     //Reconstructs the circuit from the anchor's dumped parameters, the same construction the C.9
     //prover gate uses; the cross-verification gate pits it against the kernel-compiled circuit.
-    private static LongfellowSumcheckCircuit BuildAnchorCircuit()
+    /// <summary>Build Anchor Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit BuildAnchorCircuit()
     {
         int nl = Anchor("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -714,7 +788,7 @@ internal sealed class LongfellowQuadCircuitCompilerTests
             layers[i] = new LongfellowSumcheckLayer(nw, logw, nterms, quadTerms);
         }
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             Anchor("nv"),
             Anchor("logv"),
             Anchor("nc"),

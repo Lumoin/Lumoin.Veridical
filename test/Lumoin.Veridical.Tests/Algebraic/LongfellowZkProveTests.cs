@@ -47,8 +47,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowZkProveTests
+internal sealed class LongfellowZkProveTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
 
     private const int ElementBytes = 16;
@@ -238,7 +256,8 @@ internal sealed class LongfellowZkProveTests
 
 
     //Reconstructs the circuit shape with its per-layer Quad terms from the anchor's dumped parameters.
-    private static LongfellowSumcheckCircuit BuildCircuit()
+    /// <summary>Build Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit BuildCircuit()
     {
         int nl = Anchor("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -263,7 +282,7 @@ internal sealed class LongfellowZkProveTests
 
         byte[] id = Convert.FromHexString(Anchors["id"]);
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             Anchor("nv"),
             Anchor("logv"),
             Anchor("nc"),

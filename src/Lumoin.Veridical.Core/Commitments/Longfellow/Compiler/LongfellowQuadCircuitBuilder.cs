@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Lumoin.Veridical.Core.Algebraic;
 
@@ -30,10 +31,22 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 /// so the hash functions themselves do not shape the output.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowQuadCircuitBuilder
+internal sealed class LongfellowQuadCircuitBuilder: IDisposable
 {
     private readonly LongfellowCompilerFieldOperations field;
-    private readonly List<byte[]> constants = [];
+
+    /// <summary>The caller's pool for arithmetic staging and compiled output.</summary>
+    private readonly BaseMemoryPool pool;
+
+    /// <summary>The sensitive owner of interned constant slices.</summary>
+    private readonly LongfellowCircuitStorage storage;
+
+    /// <summary>The interned constants, borrowed from this builder's storage.</summary>
+    private readonly List<ReadOnlyMemory<byte>> constants = [];
+
+    /// <summary>Whether this builder's constant storage has been released.</summary>
+    private bool isDisposed;
+
     private readonly Dictionary<ulong, List<int>> constantTable = [];
     private readonly List<LongfellowCircuitNode> nodes = [];
     private readonly Dictionary<ulong, List<int>> subexpressionTable = [];
@@ -75,21 +88,33 @@ internal sealed class LongfellowQuadCircuitBuilder
     /// the implicit constant-one input wire as node 0.
     /// </summary>
     /// <param name="field">The field-operation bundle.</param>
-    /// <exception cref="ArgumentNullException">When <paramref name="field"/> is <see langword="null"/>.</exception>
-    public LongfellowQuadCircuitBuilder(LongfellowCompilerFieldOperations field)
+    /// <param name="pool">The pool supplying staging, retained constants and compiled output.</param>
+    /// <exception cref="ArgumentNullException">When <paramref name="field"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
+    public LongfellowQuadCircuitBuilder(LongfellowCompilerFieldOperations field, BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(field);
+        ArgumentNullException.ThrowIfNull(pool);
 
         this.field = field;
+        this.pool = pool;
+        storage = new LongfellowCircuitStorage(pool);
 
-        int zeroIndex = StoreConstant(field.Zero.Span);
-        int oneIndex = StoreConstant(field.One.Span);
-        if(zeroIndex != 0 || oneIndex != 1)
+        try
         {
-            throw new InvalidOperationException("The constant table pins zero at index 0 and one at index 1.");
-        }
+            int zeroIndex = StoreConstant(field.Zero.Span);
+            int oneIndex = StoreConstant(field.One.Span);
+            if(zeroIndex != 0 || oneIndex != 1)
+            {
+                throw new InvalidOperationException("The constant table pins zero at index 0 and one at index 1.");
+            }
 
-        _ = InputWire();
+            InputWire();
+        }
+        catch
+        {
+            storage.Dispose();
+            throw;
+        }
     }
 
 
@@ -217,7 +242,9 @@ internal sealed class LongfellowQuadCircuitBuilder
     {
         ThrowIfCompiled();
 
-        var coefficient = new byte[Scalar.SizeBytes];
+        using IMemoryOwner<byte> coefficientOwner = pool.Rent(Scalar.SizeBytes);
+        Span<byte> coefficient = coefficientOwner.Memory.Span[..Scalar.SizeBytes];
+        coefficient.Clear();
         k.CopyTo(coefficient);
 
         //The reference recurses through the fold arms; each pass either folds a constant or linear
@@ -234,14 +261,14 @@ internal sealed class LongfellowQuadCircuitBuilder
 
             if(n0.IsConstant)
             {
-                MultiplyInto(coefficient, constants[n0.Terms[0].Ki]);
+                MultiplyInto(coefficient, constants[n0.Terms[0].Ki].Span);
 
                 return Mul(coefficient, op1);
             }
 
             if(n0.IsLinear)
             {
-                MultiplyInto(coefficient, constants[n0.Terms[0].Ki]);
+                MultiplyInto(coefficient, constants[n0.Terms[0].Ki].Span);
                 op0 = n0.Terms[0].Op1;
 
                 continue;
@@ -417,7 +444,7 @@ internal sealed class LongfellowQuadCircuitBuilder
     /// </summary>
     /// <param name="copyCount">The number of circuit copies (<c>nc</c>); the sc wire segment requires one.</param>
     /// <param name="hashFactory">The incremental SHA-256 factory the structural id streams through.</param>
-    /// <returns>The compiled circuit.</returns>
+    /// <returns>The disposable compiled circuit, owning bytes independently of this builder and its scheduler.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="hashFactory"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="copyCount"/> is not positive.</exception>
     /// <exception cref="InvalidOperationException">When called twice, when no output or assertion exists, or when a scheduled layer degenerates.</exception>
@@ -438,7 +465,7 @@ internal sealed class LongfellowQuadCircuitBuilder
         FixupLastLayerAssertions(depthUpperBound);
         ComputeNeeded(depthUpperBound);
 
-        var scheduler = new LongfellowCircuitScheduler(nodes, constants, field);
+        using var scheduler = new LongfellowCircuitScheduler(nodes, constants, field, pool);
         LongfellowSumcheckLayer[] layers = scheduler.Schedule(depthUpperBound, out int outputWireCount);
 
         WireCount = scheduler.WireCount;
@@ -448,27 +475,43 @@ internal sealed class LongfellowQuadCircuitBuilder
         int outputLogCount = LongfellowMortonOrder.Lg(outputWireCount);
         int copyRounds = LongfellowMortonOrder.Lg(copyCount);
 
-        byte[] id = LongfellowCircuitIdentifier.Compute(
-            field,
-            outputWireCount,
-            outputLogCount,
-            copyCount,
-            copyRounds,
-            InputCount,
-            PublicInputCount,
-            SubfieldBoundary,
-            layers,
-            hashFactory);
+        LongfellowCircuitStorage? circuitStorage = new(pool);
+        try
+        {
+            LongfellowSumcheckLayer[] ownedLayers = LongfellowSumcheckCircuit.CopyLayers(layers, circuitStorage);
+            Memory<byte> id = circuitStorage.Allocate(LongfellowSumcheckCircuit.IdLength);
+            LongfellowCircuitIdentifier.Compute(
+                field,
+                outputWireCount,
+                outputLogCount,
+                copyCount,
+                copyRounds,
+                InputCount,
+                PublicInputCount,
+                SubfieldBoundary,
+                ownedLayers,
+                hashFactory,
+                id.Span);
 
-        return new LongfellowSumcheckCircuit(
-            outputWireCount,
-            outputLogCount,
-            copyCount,
-            copyRounds,
-            InputCount,
-            PublicInputCount,
-            id,
-            layers);
+            var circuit = new LongfellowSumcheckCircuit(
+                outputWireCount,
+                outputLogCount,
+                copyCount,
+                copyRounds,
+                InputCount,
+                PublicInputCount,
+                id,
+                ownedLayers,
+                pool,
+                circuitStorage);
+            circuitStorage = null;
+
+            return circuit;
+        }
+        finally
+        {
+            circuitStorage?.Dispose();
+        }
     }
 
 
@@ -579,10 +622,12 @@ internal sealed class LongfellowQuadCircuitBuilder
     {
         LongfellowCompilerTerm[] source = MaterializeTerms(op);
         var scaled = new LongfellowCompilerTerm[source.Length];
-        var product = new byte[Scalar.SizeBytes];
+        using IMemoryOwner<byte> productOwner = pool.Rent(Scalar.SizeBytes);
+        Span<byte> product = productOwner.Memory.Span[..Scalar.SizeBytes];
+        product.Clear();
         for(int i = 0; i < source.Length; i++)
         {
-            field.Multiply(constants[source[i].Ki], k, product, field.Curve);
+            field.Multiply(constants[source[i].Ki].Span, k, product, field.Curve);
             scaled[i] = source[i].WithCoefficientIndex(StoreConstant(product));
         }
 
@@ -602,7 +647,9 @@ internal sealed class LongfellowQuadCircuitBuilder
         LongfellowCompilerTerm[] t0 = MaterializeTerms(op0);
         LongfellowCompilerTerm[] t1 = MaterializeTerms(op1);
         var merged = new List<LongfellowCompilerTerm>(t0.Length + t1.Length);
-        var sum = new byte[Scalar.SizeBytes];
+        using IMemoryOwner<byte> sumOwner = pool.Rent(Scalar.SizeBytes);
+        Span<byte> sum = sumOwner.Memory.Span[..Scalar.SizeBytes];
+        sum.Clear();
 
         int i0 = 0;
         int i1 = 0;
@@ -611,7 +658,7 @@ internal sealed class LongfellowQuadCircuitBuilder
             LongfellowCompilerTerm term;
             if(t0[i0].SameIndex(t1[i1]))
             {
-                field.Add(constants[t0[i0].Ki], constants[t1[i1].Ki], sum, field.Curve);
+                field.Add(constants[t0[i0].Ki].Span, constants[t1[i1].Ki].Span, sum, field.Curve);
                 term = t0[i0].WithCoefficientIndex(StoreConstant(sum));
                 i0++;
                 i1++;
@@ -673,7 +720,7 @@ internal sealed class LongfellowQuadCircuitBuilder
         {
             foreach(int existing in bucket)
             {
-                if(LongfellowCompilerFieldOperations.ElementsEqual(k, constants[existing]))
+                if(LongfellowCompilerFieldOperations.ElementsEqual(k, constants[existing].Span))
                 {
                     return existing;
                 }
@@ -681,7 +728,7 @@ internal sealed class LongfellowQuadCircuitBuilder
         }
 
         int index = constants.Count;
-        constants.Add(k.ToArray());
+        constants.Add(storage.Copy(k));
 
         if(bucket is null)
         {
@@ -720,11 +767,13 @@ internal sealed class LongfellowQuadCircuitBuilder
     /// </summary>
     /// <param name="coefficient">The coefficient, canonical big-endian; receives the product.</param>
     /// <param name="k">The constant to fold in.</param>
-    private void MultiplyInto(byte[] coefficient, byte[] k)
+    private void MultiplyInto(Span<byte> coefficient, ReadOnlySpan<byte> k)
     {
-        var product = new byte[Scalar.SizeBytes];
+        using IMemoryOwner<byte> productOwner = pool.Rent(Scalar.SizeBytes);
+        Span<byte> product = productOwner.Memory.Span[..Scalar.SizeBytes];
+        product.Clear();
         field.Multiply(coefficient, k, product, field.Curve);
-        product.CopyTo(coefficient, 0);
+        product.CopyTo(coefficient);
     }
 
 
@@ -846,14 +895,30 @@ internal sealed class LongfellowQuadCircuitBuilder
 
 
     /// <summary>
-    /// Rejects construction after <see cref="MakeCircuit"/> has consumed the DAG.
+    /// Rejects construction after compilation or disposal.
     /// </summary>
     /// <exception cref="InvalidOperationException">When the builder is already compiled.</exception>
+    /// <exception cref="ObjectDisposedException">When its constant storage has been released.</exception>
     private void ThrowIfCompiled()
     {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
         if(isCompiled)
         {
             throw new InvalidOperationException("The builder has already been compiled; construct a new one for another circuit.");
         }
+    }
+
+
+    /// <summary>Clears and releases interned constants. Compiled circuits retain their independent bytes.</summary>
+    public void Dispose()
+    {
+        if(isDisposed)
+        {
+            return;
+        }
+
+        isDisposed = true;
+        constants.Clear();
+        storage.Dispose();
     }
 }

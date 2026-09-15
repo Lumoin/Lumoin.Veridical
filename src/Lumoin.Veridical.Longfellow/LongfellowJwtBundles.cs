@@ -92,10 +92,11 @@ internal static class LongfellowJwtBundles
     /// <param name="field">The field bundle to compile over.</param>
     /// <param name="blockCapacity">The block capacity.</param>
     /// <param name="attributeCount">The disclosed attribute count.</param>
-    /// <returns>The compiled circuit.</returns>
-    internal static LongfellowSumcheckCircuit CompileStatement(LongfellowLogicFieldOperations field, int blockCapacity, int attributeCount)
+    /// <param name="pool">The pool supplying compiler staging and circuit-owned bytes.</param>
+    /// <returns>The disposable compiled circuit owning its bytes independently of the compiler.</returns>
+    internal static LongfellowSumcheckCircuit CompileStatement(LongfellowLogicFieldOperations field, int blockCapacity, int attributeCount, BaseMemoryPool pool)
     {
-        var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        using var builder = new LongfellowQuadCircuitBuilder(field.Compiler, pool);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowJwtCircuit(logic, Curve, blockCapacity);

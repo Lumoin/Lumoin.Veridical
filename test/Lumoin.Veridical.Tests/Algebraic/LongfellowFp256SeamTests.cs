@@ -27,8 +27,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// every reference caller in this stack <c>check()</c>s), so the Fp256 profile rejects out-of-range draws.
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowFp256SeamTests
+internal sealed class LongfellowFp256SeamTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const int ScalarSize = Scalar.SizeBytes;
     private const int Fp256ElementBytes = 32;
     private const int GfElementBytes = 16;
@@ -218,6 +236,7 @@ internal sealed class LongfellowFp256SeamTests
     }
 
 
+    /// <summary>Checks the sumcheck segment width using a circuit owned until test cleanup.</summary>
     [TestMethod]
     public void TheSumcheckSegmentSizesAtThirtyTwoByteElements()
     {
@@ -226,7 +245,7 @@ internal sealed class LongfellowFp256SeamTests
         //element width, so the Fp256 width (32) doubles the GF(2^128) width (16) byte-for-byte.
         LongfellowSumcheckLayer layer = new(inputCount: 4, handRounds: 2, termCount: 0);
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
-        LongfellowSumcheckCircuit circuit = new(
+        LongfellowSumcheckCircuit circuit = circuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 0, id, [layer]);
 
@@ -237,6 +256,7 @@ internal sealed class LongfellowFp256SeamTests
     }
 
 
+    /// <summary>Checks proof-pad draws using a circuit owned until test cleanup.</summary>
     [TestMethod]
     public void TheProofPadDrawsAtThirtyTwoByteElements()
     {
@@ -245,7 +265,7 @@ internal sealed class LongfellowFp256SeamTests
         //bytes from the entropy source; the GF width (16) would leave half of every draw unread.
         LongfellowSumcheckLayer layer = new(inputCount: 4, handRounds: 2, termCount: 0);
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
-        LongfellowSumcheckCircuit circuit = new(
+        LongfellowSumcheckCircuit circuit = circuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 0, id, [layer]);
 
@@ -324,12 +344,13 @@ internal sealed class LongfellowFp256SeamTests
     //A minimal Fp256 sumcheck circuit (logc == 0): one layer, two public inputs, four inputs. The shape
     //exercises every absorb the replay drives — the public-input field elements, the input-column array, and
     //the per-round and wc absorbs — at the 32-byte Fp256 width.
-    private static LongfellowSumcheckCircuit Fp256SumcheckCircuit()
+    /// <summary>Fp256 Sumcheck Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit Fp256SumcheckCircuit()
     {
         LongfellowSumcheckLayer layer = new(inputCount: 4, handRounds: 2, termCount: 0);
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 2, id, [layer]);
     }
@@ -341,7 +362,8 @@ internal sealed class LongfellowFp256SeamTests
     //layer with no quad terms, so the sumcheck-only seam circuit cannot drive the real driver path. The
     //shape exercises all three driver-path absorb groups: the FS-setup public-input absorbs, the constraint
     //build's per-round and wc absorbs, and the Ligero response absorbs.
-    private static LongfellowSumcheckCircuit Fp256DriverCircuit()
+    /// <summary>Fp256 Driver Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit Fp256DriverCircuit()
     {
         const int HandRounds = 2;
         byte[] one = Canonical(1);
@@ -355,7 +377,7 @@ internal sealed class LongfellowFp256SeamTests
 
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 2, id, layers);
     }

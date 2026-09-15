@@ -55,8 +55,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowFp256ZkProveTests
+internal sealed class LongfellowFp256ZkProveTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
 
     private const int ScalarSize = Scalar.SizeBytes;
@@ -270,7 +288,8 @@ internal sealed class LongfellowFp256ZkProveTests
     //Reconstructs the circuit shape with its per-layer Quad terms from the anchor's dumped parameters. The
     //wiring is shared between GF and Fp256 because every coefficient v is the field ONE (01000...), which is
     //the same canonical value in both fields, and the gate indices are field-independent.
-    private static LongfellowSumcheckCircuit BuildCircuit()
+    /// <summary>Build Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit BuildCircuit()
     {
         int nl = Anchor("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -295,7 +314,7 @@ internal sealed class LongfellowFp256ZkProveTests
 
         byte[] id = Convert.FromHexString(Anchors["id"]);
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             Anchor("nv"),
             Anchor("logv"),
             Anchor("nc"),

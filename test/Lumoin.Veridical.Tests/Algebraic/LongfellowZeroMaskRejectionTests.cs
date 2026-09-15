@@ -22,8 +22,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// that reaches them.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowZeroMaskRejectionTests
+internal sealed class LongfellowZeroMaskRejectionTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const int ScalarSize = Scalar.SizeBytes;
     private const int DigestSize = 32;
 
@@ -112,12 +130,13 @@ internal sealed class LongfellowZeroMaskRejectionTests
 
 
     //A minimal logc == 0 circuit shape: one layer with two hand rounds.
-    private static LongfellowSumcheckCircuit SmallCircuit()
+    /// <summary>Small Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit SmallCircuit()
     {
         LongfellowSumcheckLayer layer = new(inputCount: 4, handRounds: 2, termCount: 0);
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 0, id, [layer]);
     }

@@ -32,8 +32,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowMlDsaCompileTests
+internal sealed class LongfellowMlDsaCompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     /// <summary>One shape's reference compiler telemetry, as the Docker oracle's <c>dump_info</c> reports it.</summary>
     /// <param name="Depth">The depth upper bound.</param>
     /// <param name="WireCount">The wire count.</param>
@@ -208,7 +226,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <param name="example">The signature example to prove.</param>
     /// <param name="probeRejections">Whether to run the tamper-rejection and corrupted-witness probes.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertStatementRoundTrips(LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example, bool probeRejections, string setName)
+    private void AssertStatementRoundTrips(LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example, bool probeRejections, string setName)
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle();
         LongfellowSumcheckCircuit circuit = CompileValidSignatureStatement(parameters, field);
@@ -361,7 +379,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_use_hint_single_circuit</c> shape.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileUseHintSingle(LongfellowMlDsaParameters parameters)
+    private LongfellowQuadCircuitBuilder CompileUseHintSingle(LongfellowMlDsaParameters parameters)
     {
         return Compile(parameters, (logic, builder, verify) =>
         {
@@ -382,7 +400,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_infty_norm_circuit</c> shape.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileInfinityNorm(LongfellowMlDsaParameters parameters)
+    private LongfellowQuadCircuitBuilder CompileInfinityNorm(LongfellowMlDsaParameters parameters)
     {
         return Compile(parameters, (logic, builder, verify) =>
         {
@@ -412,7 +430,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_w_prime_approx_circuit</c> shape.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileWPrimeApprox(LongfellowMlDsaParameters parameters)
+    private LongfellowQuadCircuitBuilder CompileWPrimeApprox(LongfellowMlDsaParameters parameters)
     {
         return Compile(parameters, (logic, builder, verify) =>
         {
@@ -434,7 +452,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_use_hint_circuit</c> shape, whose witness bundle carries no commitment sponge witnesses.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileUseHint(LongfellowMlDsaParameters parameters)
+    private LongfellowQuadCircuitBuilder CompileUseHint(LongfellowMlDsaParameters parameters)
     {
         return Compile(parameters, (logic, builder, verify) =>
         {
@@ -461,7 +479,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_sampleinball_circuit</c> shape.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileSampleInBall(LongfellowMlDsaParameters parameters)
+    private LongfellowQuadCircuitBuilder CompileSampleInBall(LongfellowMlDsaParameters parameters)
     {
         return Compile(parameters, (logic, builder, verify) =>
         {
@@ -486,7 +504,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_ctilde_circuit</c> shape.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileCtilde(LongfellowMlDsaParameters parameters)
+    private LongfellowQuadCircuitBuilder CompileCtilde(LongfellowMlDsaParameters parameters)
     {
         return Compile(parameters, (logic, builder, verify) =>
         {
@@ -511,7 +529,7 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <summary>Compiles the reference's <c>make_ml_dsa_circuit</c> statement shape.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder CompileValidSignature(LongfellowMlDsaParameters parameters) =>
+    private LongfellowQuadCircuitBuilder CompileValidSignature(LongfellowMlDsaParameters parameters) =>
         Compile(parameters, DefineValidSignature(parameters));
 
 
@@ -545,15 +563,15 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <param name="parameters">The parameter set.</param>
     /// <param name="field">The field bundle to compile over.</param>
     /// <returns>The compiled statement circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileValidSignatureStatement(LongfellowMlDsaParameters parameters, LongfellowLogicFieldOperations field)
+    private LongfellowSumcheckCircuit CompileValidSignatureStatement(LongfellowMlDsaParameters parameters, LongfellowLogicFieldOperations field)
     {
-        var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
         DefineValidSignature(parameters)(logic, builder, verify);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -561,19 +579,19 @@ internal sealed class LongfellowMlDsaCompileTests
     /// <param name="parameters">The parameter set.</param>
     /// <param name="define">The shape definition: inputs, the private boundary, and the assertion.</param>
     /// <returns>The builder, for telemetry assertions.</returns>
-    private static LongfellowQuadCircuitBuilder Compile(
+    private LongfellowQuadCircuitBuilder Compile(
         LongfellowMlDsaParameters parameters,
         Action<LongfellowLogic, LongfellowQuadCircuitBuilder, LongfellowMlDsaVerifyCircuit> define)
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         define(logic, builder, verify);
 
-        _ = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        _ = circuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         return builder;
     }

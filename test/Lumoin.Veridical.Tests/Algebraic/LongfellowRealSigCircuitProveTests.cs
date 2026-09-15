@@ -58,8 +58,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowRealSigCircuitProveTests
+internal sealed class LongfellowRealSigCircuitProveTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string RawGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-raw.gz";
 
     private const string CredentialRelativePath = "TestMaterial/Mdoc/mdoc-00.cbor";
@@ -123,7 +141,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
         //SATISFIES the circuit's constraints (A.w == b at every layer) WITHOUT paying for the full Ligero
         //prove. A filler bug or an Fp256 sign bug surfaces here as a thrown InvalidOperationException naming
         //the divergent layer/gate, cheaply.
-        LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
+        using LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         byte[] witnessColumn = BuildWitnessColumn();
 
         Assert.HasCount(circuit.InputCount * ScalarSize, witnessColumn, "The witness column must be ninputs * 32 canonical bytes.");
@@ -145,7 +163,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
     [TestCategory(TestCategories.Slow)]
     public void OurVerifierAcceptsOurRealSigProofAndRejectsATamper()
     {
-        LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
+        using LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
 
@@ -201,7 +219,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
         //is achievable because, within a single invocation with identical entropy, the only difference between
         //the two proves is the working domain — which the wire format erases. (Run-to-run the prove is
         //non-deterministic, so no hardcoded golden exists; the two-leg equality is the byte-identity claim.)
-        LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
+        using LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
 
@@ -269,7 +287,8 @@ internal sealed class LongfellowRealSigCircuitProveTests
     //Proves the real-credential witness column (a MONTGOMERY-domain column) through the field-generic prover
     //with the Montgomery Fp256 encoding (the 1-CIOS path), the v7 rate/nreq and the pinned block_enc carried by
     //the supplied parameters. Returns the pooled proof envelope; the caller disposes it.
-    private static LongfellowZkProofEnvelope ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
+    /// <summary>Prove Fp256, with circuit owners released at test cleanup.</summary>
+    private LongfellowZkProofEnvelope ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
     {
         using LongfellowFieldProfile profile = NewMontgomeryProfile();
         Fp256RealFft fft = NewMontgomeryFp256Fft();
@@ -279,7 +298,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
         //The circuit's quad-term coefficients are canonical; lift them to Montgomery so the shared sumcheck
         //multiplies a working-domain constant against the working-domain wires.
-        LongfellowSumcheckCircuit montgomeryCircuit = circuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
+        LongfellowSumcheckCircuit montgomeryCircuit = circuitScope.Lift(circuit, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         using LongfellowTranscript transcript = NewTranscript();
         LongfellowRandomByteSource random = NewBelowModulusSource();
@@ -345,7 +364,8 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
     //Verifies an Fp256 envelope through the field-generic verifier: parse com || sc || com_proof, absorb the
     //root, then drive VerifyFromAbsorbedRoot with the Fp256 encoder factory and profile.
-    private static void AssertVerifies(
+    /// <summary>Assert Verifies, with circuit owners released at test cleanup.</summary>
+    private void AssertVerifies(
         LongfellowSumcheckCircuit circuit,
         LongfellowLigeroParameters parameters,
         ReadOnlySpan<byte> proof,
@@ -360,7 +380,7 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
         //The circuit's quad-term coefficients are canonical; lift them to Montgomery so the verifier's shared
         //constraint build multiplies a working-domain constant against the working-domain wires.
-        LongfellowSumcheckCircuit montgomeryCircuit = circuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
+        LongfellowSumcheckCircuit montgomeryCircuit = circuitScope.Lift(circuit, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         ReadOnlySpan<byte> proofSpan = proof;
         ReadOnlySpan<byte> root = proofSpan[..DigestSize];
@@ -453,9 +473,10 @@ internal sealed class LongfellowRealSigCircuitProveTests
 
 
     //Imports the P-256 signature circuit (the front of the raw circuit stream).
-    private static LongfellowSumcheckCircuit ParseSignatureCircuit()
+    /// <summary>Parse Signature Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit ParseSignatureCircuit()
     {
-        bool parsed = LongfellowCircuitReader.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out _);
+        bool parsed = circuitScope.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out _);
         Assert.IsTrue(parsed, "The signature circuit must parse.");
         Assert.IsNotNull(signature);
 

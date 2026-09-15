@@ -224,6 +224,7 @@ internal static class LongfellowMdocBundles
     /// <param name="fft">The Montgomery-domain real-FFT engine.</param>
     /// <param name="codec">The sig subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
+    /// <returns>A bundle whose lifted circuit must be disposed by the caller after all bundle consumers finish.</returns>
     internal static LongfellowMdocFieldProver BuildSigProver(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, spec.SignatureBlockEncoded);
@@ -232,10 +233,18 @@ internal static class LongfellowMdocBundles
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, pool, batchMultiply);
         LongfellowSumcheckCircuit montgomeryCircuit = canonicalCircuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
 
-        return new LongfellowMdocFieldProver(
-            montgomeryCircuit, parameters, encoderFactory, profile, codec,
-            Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, LongfellowFp256Encoding.SignatureSubfieldBoundary, CurveParameterSet.None,
-            Fp256BatchMultiply: batchMultiply);
+        try
+        {
+            return new LongfellowMdocFieldProver(
+                montgomeryCircuit, parameters, encoderFactory, profile, codec,
+                Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, LongfellowFp256Encoding.SignatureSubfieldBoundary, CurveParameterSet.None,
+                Fp256BatchMultiply: batchMultiply);
+        }
+        catch
+        {
+            montgomeryCircuit.Dispose();
+            throw;
+        }
     }
 
 
@@ -266,6 +275,7 @@ internal static class LongfellowMdocBundles
     /// <param name="fft">The Montgomery-domain real-FFT engine.</param>
     /// <param name="codec">The sig subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
+    /// <returns>A bundle whose lifted circuit must be disposed by the caller after all bundle consumers finish.</returns>
     internal static LongfellowMdocFieldVerifier BuildSigVerifier(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, spec.SignatureBlockEncoded);
@@ -274,9 +284,17 @@ internal static class LongfellowMdocBundles
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, pool, batchMultiply);
         LongfellowSumcheckCircuit montgomeryCircuit = canonicalCircuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
 
-        return new LongfellowMdocFieldVerifier(
-            montgomeryCircuit, parameters, encoderFactory, profile, codec,
-            Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None,
-            Fp256BatchMultiply: batchMultiply);
+        try
+        {
+            return new LongfellowMdocFieldVerifier(
+                montgomeryCircuit, parameters, encoderFactory, profile, codec,
+                Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None,
+                Fp256BatchMultiply: batchMultiply);
+        }
+        catch
+        {
+            montgomeryCircuit.Dispose();
+            throw;
+        }
     }
 }

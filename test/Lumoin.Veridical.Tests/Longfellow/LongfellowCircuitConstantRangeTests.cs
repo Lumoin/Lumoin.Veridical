@@ -22,8 +22,26 @@ namespace Lumoin.Veridical.Tests.Longfellow;
 /// for the P-256 signature circuit.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowCircuitConstantRangeTests
+internal sealed class LongfellowCircuitConstantRangeTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     //Relative path from the test binary output directory to the gzipped circuit
     //definition, matching the convention in LongfellowMdocFacadeTests.
     private const string RawGzipRelativePath = "../../../TestMaterial/Longfellow/mdoc-circuit-raw.gz";
@@ -51,6 +69,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
         NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 
 
+    /// <summary>Real Signature Circuit Parses Successfully With Range Guard, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void RealSignatureCircuitParsesSuccessfullyWithRangeGuard()
     {
@@ -59,7 +78,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
         //are below the P-256 base field prime by construction.
         byte[] rawBytes = LoadCircuitBytesOrSkip();
 
-        bool ok = LongfellowCircuitReader.TryRead(
+        bool ok = circuitScope.TryRead(
             rawBytes,
             LongfellowMdocBundles.Point256FieldId,
             LongfellowMdocBundles.Point256ElementBytes,
@@ -72,6 +91,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     }
 
 
+    /// <summary>Constant At Base Field Prime Is Rejected By Range Guard, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void ConstantAtBaseFieldPrimeIsRejectedByRangeGuard()
     {
@@ -82,7 +102,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
         byte[] mutated = LoadCircuitBytesOrSkip();
         WriteFirstConstantAsPrimeLittleEndian(mutated);
 
-        bool parsed = LongfellowCircuitReader.TryRead(
+        bool parsed = circuitScope.TryRead(
             mutated,
             LongfellowMdocBundles.Point256FieldId,
             LongfellowMdocBundles.Point256ElementBytes,
@@ -96,6 +116,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     }
 
 
+    /// <summary>Constant At Base Field Prime Passes Without Range Guard, with circuit owners released at test cleanup.</summary>
     [TestMethod]
     public void ConstantAtBaseFieldPrimePassesWithoutRangeGuard()
     {
@@ -108,7 +129,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
         WriteFirstConstantAsPrimeLittleEndian(mutated);
 
         //No range delegate — the default null argument.
-        bool parsed = LongfellowCircuitReader.TryRead(
+        bool parsed = circuitScope.TryRead(
             mutated,
             LongfellowMdocBundles.Point256FieldId,
             LongfellowMdocBundles.Point256ElementBytes,

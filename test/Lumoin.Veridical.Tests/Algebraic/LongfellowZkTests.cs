@@ -43,8 +43,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </list>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowZkTests
+internal sealed class LongfellowZkTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
+
     private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
 
     private const int ElementBytes = 16;
@@ -236,7 +254,8 @@ internal sealed class LongfellowZkTests
     }
 
 
-    private static void AssertVerdict(byte[] proofBytes, byte[] publicInputs, bool expectedAccept, LongfellowZkVerificationResult expectedResult)
+    /// <summary>Assert Verdict, with circuit owners released at test cleanup.</summary>
+    private void AssertVerdict(byte[] proofBytes, byte[] publicInputs, bool expectedAccept, LongfellowZkVerificationResult expectedResult)
     {
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
@@ -292,7 +311,8 @@ internal sealed class LongfellowZkTests
 
 
     //Reconstructs the circuit shape with its per-layer Quad terms from the anchor's dumped parameters.
-    private static LongfellowSumcheckCircuit BuildCircuit()
+    /// <summary>Build Circuit, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit BuildCircuit()
     {
         int nl = Anchor("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -317,7 +337,7 @@ internal sealed class LongfellowZkTests
 
         byte[] id = Convert.FromHexString(Anchors["id"]);
 
-        return new LongfellowSumcheckCircuit(
+        return circuitScope.CreateCircuit(
             Anchor("nv"),
             Anchor("logv"),
             Anchor("nc"),
