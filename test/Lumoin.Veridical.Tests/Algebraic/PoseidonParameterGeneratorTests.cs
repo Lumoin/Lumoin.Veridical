@@ -8,14 +8,11 @@ using System.Collections.Generic;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The argument surface and the draw sequence of <see cref="PoseidonParameterGenerator.Generate"/>. A null
-/// delegate, a state width below two, a non-positive or odd round count, a field size outside one scalar, a modulus
-/// that is not one scalar wide and a modulus whose bit length is not the field size are each rejected with the
-/// documented exception and parameter name before the Grain stream is seeded and before the caller-supplied add and
-/// invert backends run; a field size of exactly
-/// one scalar is accepted; and over fields narrow enough to follow draw by draw, the round constants the stream
-/// yields, the rejection sampling that keeps them below the modulus, and the one-step reduction of the raw Cauchy
-/// points are pinned to values derived from the Grain procedure rather than from this implementation.
+/// The argument surface of <see cref="PoseidonParameterGenerator.Generate"/> and the draw sequence of
+/// <see cref="PoseidonParameterGenerator.GenerateOverModulus"/>. Invalid arguments and curves without wired scalar-field
+/// orders are rejected before either backend runs; the BN254 and BLS12-381 curves are accepted. Over narrow
+/// moduli, the internal entry's round constants, rejection sampling and one-step Cauchy reduction are pinned to
+/// values derived from the Grain procedure, with the descriptor and draw width determined by the modulus.
 /// </summary>
 [TestClass]
 internal sealed class PoseidonParameterGeneratorTests
@@ -23,14 +20,8 @@ internal sealed class PoseidonParameterGeneratorTests
     /// <summary>The canonical byte width of one scalar, which is also the width the modulus must have.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    /// <summary>The number of bits in one byte, used to express the widest field size one scalar carries.</summary>
-    private const int BitsPerByte = 8;
-
     /// <summary>The BN254 scalar-field order, canonical big-endian, one scalar wide.</summary>
     private const string Bn254ScalarOrderHex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-
-    /// <summary>The bit length of the BN254 scalar-field order.</summary>
-    private const int Bn254FieldSizeBits = 254;
 
     /// <summary>The smallest state width the generator accepts.</summary>
     private const int ValidStateWidth = 2;
@@ -44,23 +35,8 @@ internal sealed class PoseidonParameterGeneratorTests
     /// <summary>A positive partial-round count that passes the partial-round check.</summary>
     private const int ValidPartialRounds = 1;
 
-    /// <summary>A field size of zero bits, below the accepted range.</summary>
-    private const int ZeroFieldSizeBits = 0;
-
-    /// <summary>A field size one bit wider than a single scalar carries, above the accepted range.</summary>
-    private const int FieldSizeBitsBeyondOneScalar = (BitsPerByte * ScalarSize) + 1;
-
-    /// <summary>A field size one bit shorter than the bit length of the BN254 order.</summary>
-    private const int FieldSizeBitsBelowTheBn254Order = Bn254FieldSizeBits - 1;
-
-    /// <summary>A field size one bit longer than the bit length of the BN254 order.</summary>
-    private const int FieldSizeBitsAboveTheBn254Order = Bn254FieldSizeBits + 1;
-
-    /// <summary>A modulus of zero, one scalar wide, whose bit length of zero matches no accepted field size.</summary>
+    /// <summary>A modulus of zero, one scalar wide, below which rejection sampling cannot accept any draw.</summary>
     private const string ZeroModulusHex = "0000000000000000000000000000000000000000000000000000000000000000";
-
-    /// <summary>The bit length of the zero modulus.</summary>
-    private const int ZeroModulusBitLength = 0;
 
     /// <summary>A modulus length one byte short of one scalar.</summary>
     private const int NarrowModulusLength = ScalarSize - 1;
@@ -74,11 +50,11 @@ internal sealed class PoseidonParameterGeneratorTests
     /// <summary>The parameter name the full-round parity guard reports.</summary>
     private const string FullRoundsParameterName = "fullRounds";
 
-    /// <summary>The parameter name the field-size range guard reports.</summary>
-    private const string FieldSizeBitsParameterName = "fieldSizeBits";
-
-    /// <summary>The parameter name the modulus width guard reports.</summary>
+    /// <summary>The parameter name the modulus width and zero guards report.</summary>
     private const string ModulusParameterName = "modulus";
+
+    /// <summary>The parameter name the scalar-field order lookup reports for an unwired curve.</summary>
+    private const string CurveParameterName = "curve";
 
     /// <summary>The parity guard's message; the framework range checks on the round counts do not produce this text.</summary>
     private const string OddFullRoundsMessage = "The full rounds split evenly around the partial rounds; the count must be even.";
@@ -107,9 +83,6 @@ internal sealed class PoseidonParameterGeneratorTests
     /// <summary>A partial-round count of zero, below the accepted range.</summary>
     private const int ZeroPartialRounds = 0;
 
-    /// <summary>The widest field size one scalar carries, which is the largest the generator accepts.</summary>
-    private const int FieldSizeBitsOfOneScalar = BitsPerByte * ScalarSize;
-
     /// <summary>
     /// The number of entries a two-lane MDS matrix has, which is also the number of additions and the number of
     /// inversions a generation that runs to completion at that width asks for.
@@ -126,15 +99,6 @@ internal sealed class PoseidonParameterGeneratorTests
     private const int SmallShapeConstantCount = SmallShapeRoundCount * ValidStateWidth;
 
     /// <summary>
-    /// A modulus of <c>2^256 - 1</c>: one scalar wide with a bit length of exactly 256, so it is the widest modulus
-    /// whose raw Cauchy draws still stay below twice the modulus and the one-step reduction stays correct.
-    /// </summary>
-    private const string WidestModulusHex = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
-
-    /// <summary>An eight-bit field size, matching the bit length of the eight-bit modulus.</summary>
-    private const int EightBitFieldSize = 8;
-
-    /// <summary>
     /// A modulus of <c>0xFB</c>, exactly eight bits wide like the field it samples, and above each of the six round
     /// constants the stream yields for the two-lane shape, so none of those draws is rejected.
     /// </summary>
@@ -147,9 +111,6 @@ internal sealed class PoseidonParameterGeneratorTests
     /// </summary>
     private const string ExpectedEightBitRoundConstantsHex = "2FDB8CF3C585";
 
-    /// <summary>A sixteen-bit field size, matching the bit length of the narrow modulus so a raw Cauchy draw can land above it.</summary>
-    private const int SixteenBitFieldSize = 16;
-
     /// <summary>
     /// A modulus of <c>0x80FF</c>, exactly sixteen bits wide, so roughly half of the sixteen-bit raw Cauchy draws
     /// land above it and take the one-step reduction, and the reduced values stay small enough to follow by hand.
@@ -159,7 +120,7 @@ internal sealed class PoseidonParameterGeneratorTests
     /// <summary>
     /// The four entries of the Cauchy MDS matrix the two-lane shape builds over the narrow modulus, row-major.
     /// Each entry inverts the sum of one reduced Cauchy point pair; the sums and inverses are taken in the BN254
-    /// scalar field, because the modulus argument governs only the Grain sampling while the backends stay BN254.
+    /// scalar field, because the internal entry's modulus governs only Grain sampling while the backends stay BN254.
     /// Two of the four points come from raw draws above the narrow modulus, so these entries also pin the borrow
     /// chain of the one-step reduction.
     /// </summary>
@@ -171,9 +132,6 @@ internal sealed class PoseidonParameterGeneratorTests
 
     /// <summary>A modulus of one, below which zero is the only field element.</summary>
     private const string UnitModulusHex = "0000000000000000000000000000000000000000000000000000000000000001";
-
-    /// <summary>A field size of one bit, matching the bit length of the unit modulus, so every draw is a single filtered bit.</summary>
-    private const int UnitFieldSizeBits = 1;
 
     /// <summary>A sixteen-lane state, whose thirty-two raw Cauchy draws give the single filtered bit many chances to land on the modulus.</summary>
     private const int WideStateWidth = 16;
@@ -224,17 +182,16 @@ internal sealed class PoseidonParameterGeneratorTests
     /// <see cref="PoseidonParameters"/> constructor repeats the parity check with the same exception, parameter
     /// name and message, so the zero add and invert counts are what show the generator refuses the count itself
     /// instead of leaving it to the constructor after a full Grain generation. Both delegates are non-null, the
-    /// state width is at least two, both round counts are positive, the field size fits one scalar and the
-    /// modulus is one scalar wide, so no sibling guard answers first.
+    /// state width is at least two, both round counts are positive and the curve has a wired scalar-field order,
+    /// so no sibling guard answers first.
     /// </summary>
     [TestMethod]
     public void GenerateRejectsOddFullRoundsBeforeAnyBackendCall()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, OddFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, OddFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
             "An odd full-round count must be rejected.");
 
         Assert.AreEqual(FullRoundsParameterName, exception.ParamName, "The rejection must name the fullRounds parameter.");
@@ -245,53 +202,21 @@ internal sealed class PoseidonParameterGeneratorTests
 
 
     /// <summary>
-    /// Pins that <see cref="PoseidonParameterGenerator.Generate"/> rejects a field size outside <c>(0, 256]</c>
-    /// bits with an <see cref="ArgumentOutOfRangeException"/> that names <c>fieldSizeBits</c>, before any backend
-    /// delegate is called. The field size is not passed on to <see cref="PoseidonParameters"/>, so this guard is
-    /// the only check that keeps an unusable bit length out of the Grain descriptor and the field-element
-    /// sampling. Both delegates are non-null, the state width and round counts are valid and the modulus is one
-    /// scalar wide, so no sibling guard answers first, and no other guard reports this parameter name.
-    /// </summary>
-    /// <param name="fieldSizeBits">A field size below or above the accepted range.</param>
-    [TestMethod]
-    [DataRow(ZeroFieldSizeBits)]
-    [DataRow(FieldSizeBitsBeyondOneScalar)]
-    public void GenerateRejectsAFieldSizeOutsideOneScalar(int fieldSizeBits)
-    {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
-        var backend = new CountingBn254ScalarBackend();
-
-        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, fieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
-            "A field size outside one scalar must be rejected.");
-
-        Assert.AreEqual(FieldSizeBitsParameterName, exception.ParamName, "The rejection must name the fieldSizeBits parameter.");
-        Assert.AreEqual(NoBackendCalls, backend.AddCalls, "A field size outside one scalar must be rejected before any scalar addition.");
-        Assert.AreEqual(NoBackendCalls, backend.InvertCalls, "A field size outside one scalar must be rejected before any scalar inversion.");
-    }
-
-
-    /// <summary>
-    /// Pins that <see cref="PoseidonParameterGenerator.Generate"/> rejects a modulus one byte narrower or one byte
-    /// wider than one scalar with an <see cref="ArgumentException"/> that names <c>modulus</c> and states both the
-    /// required width and the received length, before any backend delegate is called. The modulus is not passed on
-    /// to <see cref="PoseidonParameters"/>, so this guard is the only width check ahead of the rejection sampling
-    /// and the one-step reduction, both of which read the modulus as one canonical scalar. Every numeric argument
-    /// is valid and both delegates are non-null, so no sibling guard answers first, and the exact exception type
-    /// excludes the <see cref="ArgumentOutOfRangeException"/> the numeric range checks raise.
+    /// Pins that the internal sampling entry rejects a modulus one byte narrower or wider than one scalar before
+    /// either backend runs. Its callers bypass the public curve binding, so it enforces the canonical width itself.
     /// </summary>
     /// <param name="modulusLength">The byte length of the rejected modulus, whose leading bytes are the BN254 order.</param>
     [TestMethod]
     [DataRow(NarrowModulusLength)]
     [DataRow(WideModulusLength)]
-    public void GenerateRejectsAModulusThatIsNotOneScalarWide(int modulusLength)
+    public void GenerateOverModulusRejectsAModulusThatIsNotOneScalarWide(int modulusLength)
     {
         Memory<byte> modulus = RentBn254Modulus(modulusLength);
         var backend = new CountingBn254ScalarBackend();
         string expectedMessage = $"The modulus must be exactly {ScalarSize} canonical bytes; received {modulusLength}.";
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.GenerateOverModulus(ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
             "A modulus that is not one scalar wide must be rejected.");
 
         Assert.AreEqual(ModulusParameterName, exception.ParamName, "The rejection must name the modulus parameter.");
@@ -302,56 +227,42 @@ internal sealed class PoseidonParameterGeneratorTests
 
 
     /// <summary>
-    /// Pins that <see cref="PoseidonParameterGenerator.Generate"/> rejects a modulus whose bit length is not
-    /// <c>fieldSizeBits</c> with an <see cref="ArgumentException"/> that names <c>modulus</c> and states both bit
-    /// lengths, before any backend delegate is called. The field size is the bit length the Grain descriptor
-    /// encodes, the width of every draw, and the bound the one-step Cauchy reduction relies on: with a shorter
-    /// modulus a raw draw can exceed twice the modulus and leave the reduction non-canonical, and with a longer one
-    /// the constants belong to a different parameter set. The BN254 order is 254 bits, so a field size one bit either
-    /// side of it is the smallest mismatch. Every other argument is valid and the modulus is one scalar wide, so no
-    /// sibling guard answers first, and the exact exception type excludes the
-    /// <see cref="ArgumentOutOfRangeException"/> the range checks raise.
+    /// Pins that the public entry rejects Pallas, which has no wired scalar-field order, before either backend
+    /// runs. Every numeric argument is valid and both delegates are non-null, so the order lookup must answer.
     /// </summary>
-    /// <param name="fieldSizeBits">A field size one bit shorter or longer than the BN254 order.</param>
     [TestMethod]
-    [DataRow(FieldSizeBitsBelowTheBn254Order)]
-    [DataRow(FieldSizeBitsAboveTheBn254Order)]
-    public void GenerateRejectsAModulusWhoseBitLengthIsNotTheFieldSize(int fieldSizeBits)
+    public void GenerateRejectsAnUnwiredCurveBeforeAnyBackendCall()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
         var backend = new CountingBn254ScalarBackend();
-        string expectedMessage = $"The modulus bit length must equal fieldSizeBits ({fieldSizeBits}); received a modulus of {Bn254FieldSizeBits} bits.";
+        string expectedMessage = $"No scalar field order known for {CurveParameterSet.Pallas}; add a WellKnownCurves entry when wiring this curve.";
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, fieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
-            "A modulus whose bit length is not the field size must be rejected.");
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Pallas, backend.Add, backend.Invert),
+            "A curve without a wired scalar-field order must be rejected.");
 
-        Assert.AreEqual(ModulusParameterName, exception.ParamName, "The rejection must name the modulus parameter.");
+        Assert.AreEqual(CurveParameterName, exception.ParamName, "The rejection must name the curve parameter.");
         Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
-        Assert.AreEqual(NoBackendCalls, backend.AddCalls, "A modulus of the wrong bit length must be rejected before any scalar addition.");
-        Assert.AreEqual(NoBackendCalls, backend.InvertCalls, "A modulus of the wrong bit length must be rejected before any scalar inversion.");
+        Assert.AreEqual(NoBackendCalls, backend.AddCalls, "An unwired curve must be rejected before any scalar addition.");
+        Assert.AreEqual(NoBackendCalls, backend.InvertCalls, "An unwired curve must be rejected before any scalar inversion.");
     }
 
 
     /// <summary>
-    /// Pins that <see cref="PoseidonParameterGenerator.Generate"/> rejects a modulus of zero with an
-    /// <see cref="ArgumentException"/> that names <c>modulus</c>, instead of entering rejection sampling, where no
-    /// draw can ever fall below zero. Every accepted field size is at least one bit, so the zero modulus's bit length
-    /// of zero never matches; every other argument is valid, so no sibling guard answers first.
+    /// Pins that the internal sampling entry rejects a zero modulus before either backend runs. A bit length of
+    /// zero cannot seed useful rejection sampling because no draw falls below zero; every other argument is valid.
     /// </summary>
     [TestMethod]
-    public void GenerateRejectsAZeroModulus()
+    public void GenerateOverModulusRejectsAZeroModulusBeforeAnyBackendCall()
     {
         Memory<byte> modulus = RentModulus(ZeroModulusHex);
         var backend = new CountingBn254ScalarBackend();
-        string expectedMessage = $"The modulus bit length must equal fieldSizeBits ({Bn254FieldSizeBits}); received a modulus of {ZeroModulusBitLength} bits.";
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.GenerateOverModulus(ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
             "A zero modulus must be rejected.");
 
         Assert.AreEqual(ModulusParameterName, exception.ParamName, "The rejection must name the modulus parameter.");
-        Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("The modulus must be nonzero.", exception.Message, StringComparison.Ordinal);
         Assert.AreEqual(NoBackendCalls, backend.AddCalls, "A zero modulus must be rejected before any scalar addition.");
         Assert.AreEqual(NoBackendCalls, backend.InvertCalls, "A zero modulus must be rejected before any scalar inversion.");
     }
@@ -363,17 +274,16 @@ internal sealed class PoseidonParameterGeneratorTests
     /// every round constant and every Cauchy point, and only then faulting with a
     /// <see cref="NullReferenceException"/> at the first Cauchy sum. Nothing downstream repeats the check: the
     /// generator holds the delegate until the MDS matrix is built, and <see cref="PoseidonParameters"/> never sees
-    /// it. The inversion backend is non-null and every numeric and span argument is valid, so no sibling guard
-    /// answers first, and the inversion guard reports <c>invert</c> rather than this name.
+    /// it. The inversion backend is non-null, every numeric argument is valid and the curve has a wired order,
+    /// so no sibling guard answers first, and the inversion guard reports <c>invert</c> rather than this name.
     /// </summary>
     [TestMethod]
     public void GenerateRejectsANullAddBackendBeforeAnyInversion()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, null!, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, null!, backend.Invert),
             "A null addition backend must be rejected.");
 
         Assert.AreEqual(AddParameterName, exception.ParamName, "The rejection must name the add parameter.");
@@ -387,16 +297,15 @@ internal sealed class PoseidonParameterGeneratorTests
     /// the first Cauchy pair through the live addition backend, and only then faulting with a
     /// <see cref="NullReferenceException"/>. The zero addition count is what shows the refusal comes from the
     /// guard rather than from the delegate invocation that follows the first sum. The addition backend is non-null
-    /// and every numeric and span argument is valid, so no sibling guard answers first.
+    /// and every numeric argument is valid and the curve has a wired order, so no sibling guard answers first.
     /// </summary>
     [TestMethod]
     public void GenerateRejectsANullInvertBackendBeforeAnyAddition()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, null!),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, null!),
             "A null inversion backend must be rejected.");
 
         Assert.AreEqual(InvertParameterName, exception.ParamName, "The rejection must name the invert parameter.");
@@ -411,17 +320,16 @@ internal sealed class PoseidonParameterGeneratorTests
     /// with the same exception, parameter name and message, so the zero add and invert counts are the only thing
     /// that distinguishes a generator which refuses the width outright from one that draws a single lane's
     /// constants and Cauchy points first and leaves the refusal to the constructor. Both delegates are non-null,
-    /// both round counts are positive with an even full-round count, the field size fits one scalar and the
-    /// modulus is one scalar wide, so no sibling guard answers first and no other guard reports this name.
+    /// both round counts are positive with an even full-round count and the curve has a wired scalar-field order,
+    /// so no sibling guard answers first and no other guard reports this name.
     /// </summary>
     [TestMethod]
     public void GenerateRejectsAStateWidthBelowTwoBeforeAnyBackendCall()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(SingleLaneStateWidth, EvenFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(SingleLaneStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
             "A state width below two must be rejected.");
 
         Assert.AreEqual(StateWidthParameterName, exception.ParamName, "The rejection must name the stateWidth parameter.");
@@ -443,11 +351,10 @@ internal sealed class PoseidonParameterGeneratorTests
     [TestMethod]
     public void GenerateRejectsZeroFullRoundsBeforeAnyBackendCall()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, ZeroFullRounds, ValidPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, ZeroFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
             "A full-round count of zero must be rejected.");
 
         Assert.AreEqual(FullRoundsParameterName, exception.ParamName, "The rejection must name the fullRounds parameter.");
@@ -468,11 +375,10 @@ internal sealed class PoseidonParameterGeneratorTests
     [TestMethod]
     public void GenerateRejectsZeroPartialRoundsBeforeAnyBackendCall()
     {
-        Memory<byte> modulus = RentBn254Modulus(ScalarSize);
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ZeroPartialRounds, Bn254FieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ZeroPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
             "A partial-round count of zero must be rejected.");
 
         Assert.AreEqual(PartialRoundsParameterName, exception.ParamName, "The rejection must name the partialRounds parameter.");
@@ -482,26 +388,41 @@ internal sealed class PoseidonParameterGeneratorTests
 
 
     /// <summary>
-    /// Pins that a field size of exactly one scalar is inside the accepted range: 256 bits is the widest modulus
-    /// bit length a canonical scalar carries, every value bit of such a draw lands inside the destination, and a
-    /// modulus of that bit length keeps the one-step Cauchy reduction correct. The generation therefore runs to
-    /// completion and asks the backends for one addition and one inversion per MDS entry, which is what separates
-    /// the accepted boundary from the first rejected width one bit above it.
+    /// Pins that the public entry obtains the BN254 scalar-field order, derives its bit length, and completes
+    /// generation with the requested shape and curve tag, asking for one addition and inversion per MDS entry.
     /// </summary>
     [TestMethod]
-    public void GenerateAcceptsAFieldSizeOfExactlyOneScalar()
+    public void GenerateAcceptsTheBn254ScalarOrder()
     {
-        Memory<byte> modulus = RentModulus(WidestModulusHex);
         var backend = new CountingBn254ScalarBackend();
 
         PoseidonParameters parameters = PoseidonParameterGenerator.Generate(
-            ValidStateWidth, EvenFullRounds, ValidPartialRounds, FieldSizeBitsOfOneScalar, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+            ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert);
 
+        Assert.AreEqual(CurveParameterSet.Bn254, parameters.Curve, "The accepted generation must carry the requested curve tag.");
         Assert.AreEqual(ValidStateWidth, parameters.StateWidth, "The accepted generation must carry the requested state width.");
         Assert.AreEqual(EvenFullRounds, parameters.FullRounds, "The accepted generation must carry the requested full-round count.");
         Assert.AreEqual(ValidPartialRounds, parameters.PartialRounds, "The accepted generation must carry the requested partial-round count.");
         Assert.AreEqual(MdsEntryCount, backend.AddCalls, "A completed generation must ask for one addition per MDS entry.");
         Assert.AreEqual(MdsEntryCount, backend.InvertCalls, "A completed generation must ask for one inversion per MDS entry.");
+    }
+
+
+    /// <summary>
+    /// Pins that the public entry obtains the BLS12-381 scalar-field order from its curve tag and completes
+    /// generation through the BLS12-381 reference backends with the requested shape.
+    /// </summary>
+    [TestMethod]
+    public void GenerateAcceptsTheBls12Curve381ScalarOrder()
+    {
+        PoseidonParameters parameters = PoseidonParameterGenerator.Generate(
+            ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bls12Curve381,
+            Bls12Curve381BigIntegerScalarReference.GetAdd(), Bls12Curve381BigIntegerScalarReference.GetInvert());
+
+        Assert.AreEqual(CurveParameterSet.Bls12Curve381, parameters.Curve, "The accepted generation must carry the requested curve tag.");
+        Assert.AreEqual(ValidStateWidth, parameters.StateWidth, "The accepted generation must carry the requested state width.");
+        Assert.AreEqual(EvenFullRounds, parameters.FullRounds, "The accepted generation must carry the requested full-round count.");
+        Assert.AreEqual(ValidPartialRounds, parameters.PartialRounds, "The accepted generation must carry the requested partial-round count.");
     }
 
 
@@ -514,13 +435,13 @@ internal sealed class PoseidonParameterGeneratorTests
     /// seeding, its stepping and the discarded prefix — observable in six bytes.
     /// </summary>
     [TestMethod]
-    public void GenerateDrawsTheGrainRoundConstantsOverAnEightBitField()
+    public void GenerateOverModulusDrawsTheGrainRoundConstantsOverAnEightBitField()
     {
         Memory<byte> modulus = RentModulus(EightBitModulusHex);
         var backend = new CountingBn254ScalarBackend();
 
-        PoseidonParameters parameters = PoseidonParameterGenerator.Generate(
-            ValidStateWidth, EvenFullRounds, ValidPartialRounds, EightBitFieldSize, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+        PoseidonParameters parameters = PoseidonParameterGenerator.GenerateOverModulus(
+            ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
 
         Span<byte> expectedLowBytes = stackalloc byte[SmallShapeConstantCount];
         _ = Convert.FromHexString(ExpectedEightBitRoundConstantsHex, expectedLowBytes, out _, out _);
@@ -550,13 +471,13 @@ internal sealed class PoseidonParameterGeneratorTests
     /// so each entry is the inverse in the BN254 scalar field of one reduced point pair's sum.
     /// </summary>
     [TestMethod]
-    public void GenerateReducesARawCauchyDrawOnceBelowANarrowModulus()
+    public void GenerateOverModulusReducesARawCauchyDrawOnceBelowANarrowModulus()
     {
         Memory<byte> modulus = RentModulus(NarrowModulusHex);
         var backend = new CountingBn254ScalarBackend();
 
-        PoseidonParameters parameters = PoseidonParameterGenerator.Generate(
-            ValidStateWidth, EvenFullRounds, ValidPartialRounds, SixteenBitFieldSize, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+        PoseidonParameters parameters = PoseidonParameterGenerator.GenerateOverModulus(
+            ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
 
         Span<byte> expected = stackalloc byte[MdsByteCount];
         _ = Convert.FromHexString(ExpectedNarrowMdsHex, expected, out _, out _);
@@ -582,17 +503,17 @@ internal sealed class PoseidonParameterGeneratorTests
     /// Pins that every round constant the generator keeps is strictly below the modulus. A modulus of one makes
     /// that boundary testable: zero is the only field element below it, so a draw equal to the modulus must be
     /// rejected and redrawn, and the expected value follows from the modulus alone rather than from the stream. A
-    /// one-bit field size matches the modulus bit length, so each attempt is a single filtered bit and the
+    /// one-bit draw width follows from the modulus bit length, so each attempt is a single filtered bit and the
     /// rejection loop ends at the first zero bit it draws.
     /// </summary>
     [TestMethod]
-    public void GenerateDrawsEveryRoundConstantBelowTheModulus()
+    public void GenerateOverModulusDrawsEveryRoundConstantBelowTheModulus()
     {
         Memory<byte> modulus = RentModulus(UnitModulusHex);
         var backend = new UnitSumRecordingBackend(RentScalarBuffer());
 
-        PoseidonParameters parameters = PoseidonParameterGenerator.Generate(
-            WideStateWidth, EvenFullRounds, WidePartialRounds, UnitFieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+        PoseidonParameters parameters = PoseidonParameterGenerator.GenerateOverModulus(
+            WideStateWidth, EvenFullRounds, WidePartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
 
         Span<byte> zero = stackalloc byte[ScalarSize];
         zero.Clear();
@@ -619,14 +540,14 @@ internal sealed class PoseidonParameterGeneratorTests
     /// needed reducing was reduced.
     /// </summary>
     [TestMethod]
-    public void GenerateReducesEveryCauchyPointBelowTheModulus()
+    public void GenerateOverModulusReducesEveryCauchyPointBelowTheModulus()
     {
         Memory<byte> modulus = RentModulus(UnitModulusHex);
         Memory<byte> operandUnion = RentScalarBuffer();
         var backend = new UnitSumRecordingBackend(operandUnion);
 
-        _ = PoseidonParameterGenerator.Generate(
-            WideStateWidth, EvenFullRounds, WidePartialRounds, UnitFieldSizeBits, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+        _ = PoseidonParameterGenerator.GenerateOverModulus(
+            WideStateWidth, EvenFullRounds, WidePartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
 
         Span<byte> zero = stackalloc byte[ScalarSize];
         zero.Clear();

@@ -73,27 +73,60 @@ public static class PoseidonParameterGenerator
 
     /// <summary>
     /// Generates the parameter set for a <paramref name="stateWidth"/>-wide
-    /// Poseidon over the scalar field described by
-    /// <paramref name="modulus"/> (canonical big-endian) of
-    /// <paramref name="fieldSizeBits"/> bits.
+    /// Poseidon over <paramref name="curve"/>'s scalar field. The Grain descriptor and samplers use the bit
+    /// length derived from the scalar-field order supplied by <see cref="WellKnownCurves"/>.
     /// </summary>
+    /// <remarks>
+    /// The curve supplies the scalar-field order for the round constants and Cauchy MDS entries, and the
+    /// addition and inversion backends operate over that same curve.
+    /// </remarks>
     /// <param name="stateWidth">The state width <c>t</c>; at least 2.</param>
     /// <param name="fullRounds">The full round count <c>R_F</c>; positive and even.</param>
     /// <param name="partialRounds">The partial round count <c>R_P</c>; positive.</param>
-    /// <param name="fieldSizeBits">The modulus bit length <c>n</c> (254 for BN254, 255 for BLS12-381); it must equal the bit length of <paramref name="modulus"/>.</param>
-    /// <param name="modulus">The scalar-field modulus, canonical big-endian, one scalar wide, of bit length <paramref name="fieldSizeBits"/>.</param>
     /// <param name="curve">The curve the parameters are for.</param>
     /// <param name="add">Scalar-addition backend (sums the Cauchy points).</param>
     /// <param name="invert">Scalar-inversion backend (builds the Cauchy MDS entries).</param>
     /// <returns>The generated parameters.</returns>
     /// <exception cref="ArgumentNullException">When a delegate argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range.</exception>
-    /// <exception cref="ArgumentException">When the modulus is not one scalar wide, or its bit length is not <paramref name="fieldSizeBits"/>.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="curve"/> has no wired scalar-field order in <see cref="WellKnownCurves"/>.</exception>
     public static PoseidonParameters Generate(
         int stateWidth,
         int fullRounds,
         int partialRounds,
-        int fieldSizeBits,
+        CurveParameterSet curve,
+        ScalarAddDelegate add,
+        ScalarInvertDelegate invert)
+    {
+        ReadOnlySpan<byte> modulus = WellKnownCurves.GetScalarFieldOrderBytes(curve);
+
+        return GenerateOverModulus(stateWidth, fullRounds, partialRounds, modulus, curve, add, invert);
+    }
+
+
+    /// <summary>
+    /// Generates parameters with Grain sampling over a nonzero modulus whose bit length supplies the descriptor
+    /// and draw width, independently of the curve's scalar-field order.
+    /// </summary>
+    /// <remarks>
+    /// This entry supports draw-by-draw checks over narrow moduli. The modulus governs sampling and reduction;
+    /// the caller supplies the addition and inversion behavior, and the result carries the requested curve tag.
+    /// </remarks>
+    /// <param name="stateWidth">The state width <c>t</c>; at least 2.</param>
+    /// <param name="fullRounds">The full round count <c>R_F</c>; positive and even.</param>
+    /// <param name="partialRounds">The partial round count <c>R_P</c>; positive.</param>
+    /// <param name="modulus">The nonzero sampling modulus, canonical big-endian and one scalar wide.</param>
+    /// <param name="curve">The curve tag passed to the backends and carried by the parameters.</param>
+    /// <param name="add">Scalar-addition backend (sums the Cauchy points).</param>
+    /// <param name="invert">Scalar-inversion backend (builds the Cauchy MDS entries).</param>
+    /// <returns>The generated parameters.</returns>
+    /// <exception cref="ArgumentNullException">When a delegate argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range.</exception>
+    /// <exception cref="ArgumentException">When the modulus is not one scalar wide or is zero.</exception>
+    internal static PoseidonParameters GenerateOverModulus(
+        int stateWidth,
+        int fullRounds,
+        int partialRounds,
         ReadOnlySpan<byte> modulus,
         CurveParameterSet curve,
         ScalarAddDelegate add,
@@ -109,24 +142,17 @@ public static class PoseidonParameterGenerator
             throw new ArgumentOutOfRangeException(nameof(fullRounds), "The full rounds split evenly around the partial rounds; the count must be even.");
         }
 
-        if(fieldSizeBits <= 0 || fieldSizeBits > 8 * ScalarSize)
-        {
-            throw new ArgumentOutOfRangeException(nameof(fieldSizeBits));
-        }
-
         if(modulus.Length != ScalarSize)
         {
             throw new ArgumentException($"The modulus must be exactly {ScalarSize} canonical bytes; received {modulus.Length}.", nameof(modulus));
         }
 
-        //The Grain descriptor encodes n as the modulus bit length and the sampler draws n bits, so exact equality
-        //keeps the descriptor and sampler consistent. The one-step Cauchy reduction needs only a modulus of at
-        //least 2^(n-1), which keeps each raw n-bit draw below twice the modulus. The equality also excludes a zero
-        //modulus, which would leave rejection sampling unable to accept any draw.
-        int modulusBitLength = BitLength(modulus);
-        if(modulusBitLength != fieldSizeBits)
+        //The derived bit length keeps each raw n-bit draw below twice the modulus, so one Cauchy subtraction
+        //suffices. A zero modulus leaves rejection sampling unable to accept any draw.
+        int fieldSizeBits = BitLength(modulus);
+        if(fieldSizeBits is 0)
         {
-            throw new ArgumentException($"The modulus bit length must equal fieldSizeBits ({fieldSizeBits}); received a modulus of {modulusBitLength} bits.", nameof(modulus));
+            throw new ArgumentException("The modulus must be nonzero.", nameof(modulus));
         }
 
         Span<byte> lfsr = stackalloc byte[LfsrStateBits];

@@ -508,6 +508,7 @@ public static class WellKnownCurves
     //isBigEndian: true) at that curve's scalar width. The canonicity gates in the
     //rejection tests pin these against GetScalarFieldOrder, so drift fails loudly.
 
+    /// <summary>The BLS12-381 scalar-field order in canonical big-endian bytes, one scalar wide.</summary>
     private static byte[] Bls12Curve381ScalarFieldOrderBytes { get; } =
     [
         0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48,
@@ -516,6 +517,7 @@ public static class WellKnownCurves
         0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01
     ];
 
+    /// <summary>The BN254 scalar-field order in canonical big-endian bytes, one scalar wide.</summary>
     private static byte[] Bn254ScalarFieldOrderBytes { get; } =
     [
         0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
@@ -524,6 +526,7 @@ public static class WellKnownCurves
         0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01
     ];
 
+    /// <summary>The P-256 scalar-field order in canonical big-endian bytes, one scalar wide.</summary>
     private static byte[] P256ScalarFieldOrderBytes { get; } =
     [
         0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
@@ -551,6 +554,22 @@ public static class WellKnownCurves
 
 
     /// <summary>
+    /// Returns the scalar-field order in canonical big-endian bytes, one scalar wide, for the specified curve.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar-field order is requested.</param>
+    /// <returns>The canonical big-endian scalar-field order, one scalar wide.</returns>
+    /// <exception cref="ArgumentException">When <paramref name="curve"/> has no wired scalar-field order.</exception>
+    internal static ReadOnlySpan<byte> GetScalarFieldOrderBytes(CurveParameterSet curve) =>
+        curve.Code == CurveParameterSet.Bls12Curve381.Code
+            ? Bls12Curve381ScalarFieldOrderBytes
+            : curve.Code == CurveParameterSet.Bn254.Code
+                ? Bn254ScalarFieldOrderBytes
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256ScalarFieldOrderBytes
+                    : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+
+
+    /// <summary>
     /// Returns <see langword="true"/> when <paramref name="canonicalBytes"/> is a
     /// canonical scalar encoding for <paramref name="curve"/>: exactly the scalar
     /// size in canonical big-endian layout and strictly less than the scalar field
@@ -565,13 +584,7 @@ public static class WellKnownCurves
     /// <exception cref="ArgumentException">When the curve has no scalar field order entry.</exception>
     public static bool IsCanonicalScalar(ReadOnlySpan<byte> canonicalBytes, CurveParameterSet curve)
     {
-        ReadOnlySpan<byte> order = curve.Code == CurveParameterSet.Bls12Curve381.Code
-            ? Bls12Curve381ScalarFieldOrderBytes
-            : curve.Code == CurveParameterSet.Bn254.Code
-                ? Bn254ScalarFieldOrderBytes
-                : curve.Code == CurveParameterSet.P256.Code
-                    ? P256ScalarFieldOrderBytes
-                    : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+        ReadOnlySpan<byte> order = GetScalarFieldOrderBytes(curve);
 
         if(canonicalBytes.Length != order.Length)
         {

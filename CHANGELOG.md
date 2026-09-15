@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `PoseidonParameterGenerator.Generate` no longer takes `fieldSizeBits` or `modulus`; the scalar-field order comes from the curve, and a curve without a wired order is rejected.
+
 ## [0.0.6] - 2026-08-12
 
 ### Added
