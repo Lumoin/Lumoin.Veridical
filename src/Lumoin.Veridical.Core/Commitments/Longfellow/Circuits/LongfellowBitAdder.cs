@@ -1,3 +1,4 @@
+using System.Buffers;
 using System;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
@@ -180,10 +181,13 @@ internal sealed class LongfellowBitAdder
     /// <returns>The wire holding the weighted sum.</returns>
     private int AsFieldElementAdditive(LongfellowBitWire[] bits)
     {
+        using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> coefficient = owner.Memory.Span[..Scalar.SizeBytes];
         int r = backend.Constant(field.Compiler.Zero.Span);
         for(int i = 0; i < Width; i++)
         {
-            r = backend.Axpy(r, field.OfScalar(1UL << i).Span, logic.Eval(bits[i]));
+            field.OfScalar(1UL << i, coefficient);
+            r = backend.Axpy(r, coefficient, logic.Eval(bits[i]));
         }
 
         return r;
@@ -212,7 +216,7 @@ internal sealed class LongfellowBitAdder
     private void AssertEqualModuloAdditive(LongfellowBitWire[] bits, int claimedSum, int candidateCarryCount)
     {
         int difference = backend.Sub(claimedSum, AsFieldElement(bits));
-        int product = logic.Multiply(0, candidateCarryCount, i => backend.Sub(difference, backend.Constant(field.OfScalar((1UL << Width) * (ulong)i).Span)));
+        int product = logic.Multiply(0, candidateCarryCount, i => backend.Sub(difference, backend.ScalarConstant((1UL << Width) * (ulong)i)));
 
         _ = logic.AssertZero(product);
     }

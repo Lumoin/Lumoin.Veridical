@@ -228,7 +228,7 @@ internal sealed class LongfellowMlDsaCompileTests: IDisposable
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
     private void AssertStatementRoundTrips(LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example, bool probeRejections, string setName)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         LongfellowSumcheckCircuit circuit = CompileValidSignatureStatement(parameters, field);
 
         int columnBytes = circuit.InputCount * Scalar.SizeBytes;
@@ -325,9 +325,9 @@ internal sealed class LongfellowMlDsaCompileTests: IDisposable
     /// <param name="pin">The statement's reference telemetry carrying the declared input count.</param>
     /// <param name="example">The signature example to compute the witness from.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertColumnCovers(LongfellowMlDsaParameters parameters, CounterPin pin, LongfellowMlDsaSignatureExample example, string setName)
+    private void AssertColumnCovers(LongfellowMlDsaParameters parameters, CounterPin pin, LongfellowMlDsaSignatureExample example, string setName)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(
             parameters,
             Convert.FromHexString(example.PublicKey),
@@ -583,7 +583,7 @@ internal sealed class LongfellowMlDsaCompileTests: IDisposable
         LongfellowMlDsaParameters parameters,
         Action<LongfellowLogic, LongfellowQuadCircuitBuilder, LongfellowMlDsaVerifyCircuit> define)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);

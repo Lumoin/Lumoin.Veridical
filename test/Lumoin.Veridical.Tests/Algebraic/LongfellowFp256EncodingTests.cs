@@ -99,6 +99,7 @@ internal sealed class LongfellowFp256EncodingTests
         profile.CopyThirdEvaluationPoint(third);
         Assert.AreEqual(new BigInteger(2), ReadCanonicalBigEndian(third), "The Fp256 third evaluation point is 2.");
     }
+    /// <summary>The factory encoder agrees with direct fp256 reed solomon.</summary>
 
 
     [TestMethod]
@@ -112,7 +113,8 @@ internal sealed class LongfellowFp256EncodingTests
         byte[] sampleRow = BuildSampleRow(Dimension, BlockLength);
 
         byte[] viaFactory = (byte[])sampleRow.Clone();
-        Fp256RealFft factoryFft = NewFft();
+        using BaseMemoryPool factoryFftPool = new();
+        using Fp256RealFft factoryFft = NewFft(factoryFftPool);
         LongfellowRowEncoderFactory factory = LongfellowFp256Encoding.CreateEncoderFactory(
             factoryFft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
         using(LongfellowRowEncoder encoder = factory(Dimension, BlockLength))
@@ -121,7 +123,8 @@ internal sealed class LongfellowFp256EncodingTests
         }
 
         byte[] viaDirect = (byte[])sampleRow.Clone();
-        Fp256RealFft directFft = NewFft();
+        using BaseMemoryPool directFftPool = new();
+        using Fp256RealFft directFft = NewFft(directFftPool);
         using(Fp256ReedSolomon rs = new(Dimension, BlockLength, directFft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared))
         {
             rs.Interpolate(viaDirect);
@@ -129,6 +132,7 @@ internal sealed class LongfellowFp256EncodingTests
 
         Assert.IsTrue(viaFactory.AsSpan().SequenceEqual(viaDirect), "The factory encoder must extend the row byte-for-byte as the direct Fp256ReedSolomon.");
     }
+    /// <summary>The factory encoder disposes its state.</summary>
 
 
     [TestMethod]
@@ -140,7 +144,9 @@ internal sealed class LongfellowFp256EncodingTests
         const int Dimension = 5;
         const int BlockLength = 16;
 
-        Fp256RealFft fft = NewFft();
+        using BaseMemoryPool fftPool = new();
+
+        using Fp256RealFft fft = NewFft(fftPool);
         LongfellowRowEncoderFactory factory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
 
@@ -264,6 +270,7 @@ internal sealed class LongfellowFp256EncodingTests
 
         AssertProofFieldsEqual(proof, parsed, parameters, OpenedColumnCount);
     }
+    /// <summary>Commits a sample row while retaining the FFT through every encoder callback.</summary>
 
 
     //Commits a small Fp256 witness set (8 witnesses, one quadratic triple W[2] = W[0]·W[1]) with an
@@ -284,7 +291,9 @@ internal sealed class LongfellowFp256EncodingTests
 
         LigeroQuadraticConstraint[] quadraticConstraints = [new LigeroQuadraticConstraint(0, 1, 2)];
 
-        Fp256RealFft fft = NewFft();
+        using BaseMemoryPool fftPool = new();
+
+        using Fp256RealFft fft = NewFft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
@@ -409,12 +418,14 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
-    private static Fp256RealFft NewFft()
+    /// <summary>Creates a caller-owned FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, pool);
     }
 
 

@@ -52,7 +52,8 @@ internal sealed class LongfellowJwtFacadeTests
     {
         LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
         LongfellowJwtStatement statement = NewErikaStatement();
-        LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle();
+        using BaseMemoryPool fieldPool = new();
+        using LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle(fieldPool);
 
         byte[] token = Encoding.ASCII.GetBytes(vector.Token);
         Assert.IsTrue(LongfellowJwsCompact.TrySplitPresentation(token, out _, out Range keyBindingRange), "The reference token must split.");

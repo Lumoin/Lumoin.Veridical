@@ -175,6 +175,7 @@ internal sealed class LongfellowEcdsaVerifyCircuit
     private readonly LongfellowLogicBackend backend;
     private readonly LongfellowLogicFieldOperations field;
     private readonly LongfellowEllipticCurveParameters curve;
+    /// <summary>The embedding of scalar two, borrowed from the field for this gadget's lifetime.</summary>
     private readonly ReadOnlyMemory<byte> two;
     private readonly LongfellowBitWire[] orderBits;
 
@@ -196,7 +197,7 @@ internal sealed class LongfellowEcdsaVerifyCircuit
         this.curve = curve;
         backend = logic.Backend;
         field = logic.Field;
-        two = field.OfScalar(2);
+        two = field.Compiler.IsCharacteristicTwo ? field.Beta(1) : field.Two;
 
         orderBits = new LongfellowBitWire[curve.ScalarBitCount];
         for(int i = 0; i < curve.ScalarBitCount; i++)

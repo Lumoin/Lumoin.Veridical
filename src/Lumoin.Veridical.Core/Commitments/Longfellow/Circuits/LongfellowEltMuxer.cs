@@ -79,7 +79,7 @@ internal sealed class LongfellowEltMuxer
             var values = new ReadOnlyMemory<byte>[ElementCount];
             for(int j = 0; j < ElementCount; j++)
             {
-                values[j] = field.OfScalar(j == i ? 1UL : 0UL);
+                values[j] = j == i ? field.Compiler.One : field.Compiler.Zero;
             }
 
             ReadOnlyMemory<byte>[] basis = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points);

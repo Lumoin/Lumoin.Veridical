@@ -361,7 +361,8 @@ internal sealed class LongfellowMdocProveDriverTests: IDisposable
         using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
             hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
-        Fp256RealFft sigFft = NewFp256Fft();
+        using BaseMemoryPool sigFftPool = new();
+        using Fp256RealFft sigFft = NewFp256Fft(sigFftPool);
         using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
         using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
@@ -424,7 +425,8 @@ internal sealed class LongfellowMdocProveDriverTests: IDisposable
         using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
             hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
-        Fp256RealFft sigFft = NewFp256Fft();
+        using BaseMemoryPool sigFftPool = new();
+        using Fp256RealFft sigFft = NewFp256Fft(sigFftPool);
         using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
         using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
@@ -812,14 +814,16 @@ internal sealed class LongfellowMdocProveDriverTests: IDisposable
 
     //The Montgomery-domain real-FFT: the production root is lifted per coordinate to its Montgomery residue and
     //the multiply/invert are the Montgomery-domain delegates, so the twiddle multiplies stay 1-CIOS in domain.
-    private static Fp256RealFft NewFp256Fft()
+    /// <summary>Creates a caller-owned P-256 FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFp256Fft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnityWorking(root, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         using LongfellowFieldProfile profile = NewMontgomerySigProfile();
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, pool);
     }
 
 

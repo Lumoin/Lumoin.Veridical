@@ -49,8 +49,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowFlatSha256CircuitTests
+internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
     /// <summary>The reference's <c>outw[48]</c>: the witnessed schedule extension <c>w[16..63]</c>.</summary>
     private const int ScheduleWordCount = 48;
 
@@ -133,20 +149,26 @@ internal sealed class LongfellowFlatSha256CircuitTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Gf2128Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? gf2128Field;
+
     /// <summary>The GF(2^128) field bundle gated over by the GF(2^128) tests.</summary>
-    private static LongfellowLogicFieldOperations Gf2128Field { get; } = LongfellowLogicFieldOperations.CreateGf2128(
+    private LongfellowLogicFieldOperations Gf2128Field => gf2128Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(
         Gf2k128Backend.GetAdd(),
         Gf2k128Backend.GetSubtract(),
         Gf2k128Backend.GetMultiply(),
-        Gf2k128Backend.GetInvert());
+        Gf2k128Backend.GetInvert(), circuitScope.Pool));
+
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
 
     /// <summary>The P-256 base field bundle gated over by the Fp256 tests.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, circuitScope.Pool));
 
 
     /// <summary>Pins that TransformAndWitnessBlock reproduces the reference's kSha_bt_ block-transform vectors' final state.</summary>

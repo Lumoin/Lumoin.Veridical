@@ -1,3 +1,4 @@
+using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
@@ -18,12 +19,31 @@ internal sealed class LongfellowCircuitTestScope: IDisposable
     /// <summary>Whether this scope's owners and pool have been released.</summary>
     private bool isDisposed;
 
+    /// <summary>The test's independent pool, valid until scope disposal.</summary>
+    public BaseMemoryPool Pool => pool;
+
+    /// <summary>The lazily allocated owner of scalar expectations retained by this test.</summary>
+    private LongfellowCircuitStorage? scalarStorage;
+
+    /// <summary>Embeds a scalar into test-owned storage, including values retained by coefficient arrays.</summary>
+    /// <param name="field">The live field defining the scalar embedding.</param>
+    /// <param name="scalar">The scalar to embed.</param>
+    /// <returns>The canonical scalar borrowed until scope disposal.</returns>
+    public ReadOnlyMemory<byte> OfScalar(LongfellowLogicFieldOperations field, ulong scalar)
+    {
+        scalarStorage ??= Track(new LongfellowCircuitStorage(pool));
+        Memory<byte> value = scalarStorage.Allocate(Scalar.SizeBytes);
+        field.OfScalar(scalar, value.Span);
+
+        return value;
+    }
+
     /// <summary>Constructs and retains a compiler using this test's pool.</summary>
     /// <param name="field">The compiler field operations.</param>
     /// <returns>The compiler, disposed with this scope.</returns>
     public LongfellowQuadCircuitBuilder CreateBuilder(LongfellowCompilerFieldOperations field)
     {
-        return Track(new LongfellowQuadCircuitBuilder(field, pool));
+        return Track(new LongfellowQuadCircuitBuilder(field));
     }
 
     /// <summary>Compiles and retains a circuit independently of the builder's lifetime.</summary>
@@ -84,10 +104,11 @@ internal sealed class LongfellowCircuitTestScope: IDisposable
     /// <typeparam name="T">The disposable owner type.</typeparam>
     /// <param name="owner">The owner to register.</param>
     /// <returns>The registered owner.</returns>
-    private T Track<T>(T owner) where T: IDisposable
+    public T Track<T>(T owner) where T: IDisposable
     {
         try
         {
+            ObjectDisposedException.ThrowIf(isDisposed, this);
             owners.Add(owner);
 
             return owner;

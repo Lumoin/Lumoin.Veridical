@@ -127,7 +127,7 @@ internal sealed class LongfellowLogicCircuitTests: IDisposable
         LongfellowSumcheckCircuit circuit = CompileMultiplierCircuit(MultiplierWidth);
         int productWidth = 2 * MultiplierWidth;
 
-        LongfellowLogicFieldOperations evaluationField = LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert);
+        LongfellowLogicFieldOperations evaluationField = circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert, circuitScope.Pool));
         var evaluationBackend = new LongfellowEvaluationLogicBackend(evaluationField);
         var evaluationLogic = new LongfellowLogic(evaluationBackend, evaluationField);
 
@@ -235,7 +235,7 @@ internal sealed class LongfellowLogicCircuitTests: IDisposable
     /// <returns>The gadget layer.</returns>
     private LongfellowLogic NewCompileLogic(out LongfellowQuadCircuitBuilder builder)
     {
-        LongfellowLogicFieldOperations field = LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert);
+        LongfellowLogicFieldOperations field = circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert, circuitScope.Pool));
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
 

@@ -35,8 +35,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowBitAdderTests
+internal sealed class LongfellowBitAdderTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
     /// <summary>
     /// The reference's w = 4; assert_eqmod's carry-check is a single fixed-shape formula per width
     /// (the weighted-sum difference over the odd-prime field, the alpha-power table over
@@ -61,20 +77,26 @@ internal sealed class LongfellowBitAdderTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Gf2128Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? gf2128Field;
+
     /// <summary>The GF(2^128) field bundle gated over by the GF(2^128) tests.</summary>
-    private static LongfellowLogicFieldOperations Gf2128Field { get; } = LongfellowLogicFieldOperations.CreateGf2128(
+    private LongfellowLogicFieldOperations Gf2128Field => gf2128Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(
         Gf2k128Backend.GetAdd(),
         Gf2k128Backend.GetSubtract(),
         Gf2k128Backend.GetMultiply(),
-        Gf2k128Backend.GetInvert());
+        Gf2k128Backend.GetInvert(), circuitScope.Pool));
+
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
 
     /// <summary>The P-256 base field bundle gated over by the Fp256 tests.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, circuitScope.Pool));
 
     /// <summary>The raw GF(2^128) field multiplication delegate, used as an independent oracle rather than the gadget's own cached power table.</summary>
     private static ScalarMultiplyDelegate Gf2128Multiply { get; } = Gf2k128Backend.GetMultiply();
@@ -111,7 +133,7 @@ internal sealed class LongfellowBitAdderTests
             LongfellowBitWire[] bits = logic.BitVector(EncodedElementWidth, (ulong)value);
             int wire = adder.AsFieldElement(bits);
 
-            byte[] expected = Fp256Field.OfScalar((ulong)value).ToArray();
+            byte[] expected = circuitScope.OfScalar(Fp256Field, (ulong)value).ToArray();
             Assert.IsTrue(EvaluatedBytes(logic, wire).AsSpan().SequenceEqual(expected), $"AsFieldElement must match OfScalar for value={value}.");
         }
     }
@@ -151,7 +173,7 @@ internal sealed class LongfellowBitAdderTests
                 int combined = adder.Add(ea, eb);
 
                 var expected = new byte[Scalar.SizeBytes];
-                Fp256Add(Fp256Field.OfScalar((ulong)a).Span, Fp256Field.OfScalar((ulong)b).Span, expected, Fp256Field.Compiler.Curve);
+                Fp256Add(circuitScope.OfScalar(Fp256Field, (ulong)a).Span, circuitScope.OfScalar(Fp256Field, (ulong)b).Span, expected, Fp256Field.Compiler.Curve);
 
                 Assert.IsTrue(EvaluatedBytes(logic, combined).AsSpan().SequenceEqual(expected), $"Add(int, int) must be field addition over Fp256 for a={a}, b={b}.");
             }
@@ -225,7 +247,7 @@ internal sealed class LongfellowBitAdderTests
     /// </summary>
     /// <param name="value">The packed bit pattern; only its low <see cref="EncodedElementWidth"/> bits are read.</param>
     /// <returns>The product, canonical big-endian.</returns>
-    private static byte[] AlphaPowerProduct(int value)
+    private byte[] AlphaPowerProduct(int value)
     {
         byte[] product = Gf2128Field.Compiler.One.ToArray();
         byte[] alpha = Gf2128Field.X.ToArray();

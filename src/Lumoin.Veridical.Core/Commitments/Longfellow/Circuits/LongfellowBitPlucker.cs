@@ -1,3 +1,4 @@
+using System.Buffers;
 using System;
 using Lumoin.Veridical.Core.Algebraic;
 
@@ -90,7 +91,7 @@ internal sealed class LongfellowBitPlucker
             var values = new ReadOnlyMemory<byte>[PointCount];
             for(int i = 0; i < PointCount; i++)
             {
-                values[i] = field.OfScalar((ulong)((i >> k) & 1));
+                values[i] = ((i >> k) & 1) == 0 ? field.Compiler.Zero : field.Compiler.One;
             }
 
             pluckerPolynomials[k] = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points);
@@ -114,11 +115,17 @@ internal sealed class LongfellowBitPlucker
     {
         ArgumentNullException.ThrowIfNull(field);
 
-        ReadOnlyMemory<byte> doubled = field.OfScalar(2UL * (ulong)bits);
-        ReadOnlyMemory<byte> offset = field.OfScalar((ulong)(pointCount - 1));
+        //The two operands remain separate until subtraction consumes both.
+        const int OperandCount = 2;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(OperandCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(OperandCount * Scalar.SizeBytes)];
+        Span<byte> doubled = buffer[..Scalar.SizeBytes];
+        Span<byte> offset = buffer[Scalar.SizeBytes..];
+        field.OfScalar(2UL * (ulong)bits, doubled);
+        field.OfScalar((ulong)(pointCount - 1), offset);
 
         var difference = new byte[Scalar.SizeBytes];
-        field.Subtract(doubled.Span, offset.Span, difference, field.Compiler.Curve);
+        field.Subtract(doubled, offset, difference, field.Compiler.Curve);
 
         return difference;
     }

@@ -190,7 +190,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     [TestMethod]
     public void TheKeccakCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileKeccakCircuit(NewFp24SexticBundle(), witnessed: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileKeccakCircuit(NewFp24SexticBundle(circuitScope), witnessed: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(KeccakDepth, builder.DepthUpperBound, "The Keccak circuit's depth must match the reference compiler's.");
         Assert.AreEqual(KeccakWireCount, builder.WireCount, "The Keccak circuit's wire count must match the reference compiler's.");
@@ -207,7 +207,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     [TestMethod]
     public void TheWitnessedKeccakCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileKeccakCircuit(NewFp24SexticBundle(), witnessed: true, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileKeccakCircuit(NewFp24SexticBundle(circuitScope), witnessed: true, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(WitnessedKeccakDepth, builder.DepthUpperBound, "The witnessed Keccak circuit's depth must match the reference compiler's.");
         Assert.AreEqual(WitnessedKeccakWireCount, builder.WireCount, "The witnessed Keccak circuit's wire count must match the reference compiler's.");
@@ -224,7 +224,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     [TestMethod]
     public void TheShakeCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileShakeCircuit(NewFp24SexticBundle(), SexticSubfieldBits, PinnedSeedLength, PinnedOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileShakeCircuit(NewFp24SexticBundle(circuitScope), SexticSubfieldBits, PinnedSeedLength, PinnedOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(ShakeDepth, builder.DepthUpperBound, "The SHAKE circuit's depth must match the reference compiler's.");
         Assert.AreEqual(ShakeWireCount, builder.WireCount, "The SHAKE circuit's wire count must match the reference compiler's.");
@@ -241,7 +241,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     [TestMethod]
     public void TheGfShakeCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileShakeCircuit(NewGfBundle(), GfSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileShakeCircuit(NewGfBundle(circuitScope), GfSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(GfShakeDepth, builder.DepthUpperBound, "The GF SHAKE circuit's depth must match the reference compiler's.");
         Assert.AreEqual(GfShakeWireCount, builder.WireCount, "The GF SHAKE circuit's wire count must match the reference compiler's.");
@@ -258,7 +258,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     [TestMethod]
     public void TheGfShakeStatementProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
+        LongfellowLogicFieldOperations field = NewGfBundle(circuitScope);
         LongfellowSumcheckCircuit circuit = CompileShakeCircuit(field, GfSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: true, out _);
 
         int columnBytes = circuit.InputCount * ScalarSize;
@@ -299,7 +299,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     [TestMethod]
     public void TheSexticShakeStatementProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         LongfellowSumcheckCircuit circuit = CompileShakeCircuit(field, SexticSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: true, out _);
 
         int columnBytes = circuit.InputCount * ScalarSize;

@@ -49,13 +49,15 @@ internal sealed class Fp256LigeroRowExtenderTests
         (64, 383),
         (127, 383),
     ];
+    /// <summary>The convolution extender matches the barycentric encoder byte for byte.</summary>
 
 
     [TestMethod]
     public void TheConvolutionExtenderMatchesTheBarycentricEncoderByteForByte()
     {
-        BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using Fp256LigeroRowExtenders extenders = NewExtenders(pool);
+        using BaseMemoryPool pool = new();
+        using Fp256RealFft fft = NewFft(pool);
+        using Fp256LigeroRowExtenders extenders = NewExtenders(fft, pool);
 
         foreach((int messageLength, int codewordLength) in Shapes)
         {
@@ -77,13 +79,15 @@ internal sealed class Fp256LigeroRowExtenderTests
             Assert.IsTrue(convolved.SequenceEqual(barycentric), $"The convolution codeword must be byte-identical to the barycentric codeword at shape ({messageLength}, {codewordLength}).");
         }
     }
+    /// <summary>The extender leaves the systematic prefix untouched.</summary>
 
 
     [TestMethod]
     public void TheExtenderLeavesTheSystematicPrefixUntouched()
     {
-        BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using Fp256LigeroRowExtenders extenders = NewExtenders(pool);
+        using BaseMemoryPool pool = new();
+        using Fp256RealFft fft = NewFft(pool);
+        using Fp256LigeroRowExtenders extenders = NewExtenders(fft, pool);
 
         const int MessageLength = 9;
         const int CodewordLength = 23;
@@ -102,13 +106,25 @@ internal sealed class Fp256LigeroRowExtenderTests
     }
 
 
-    private static Fp256LigeroRowExtenders NewExtenders(BaseMemoryPool pool)
+    /// <summary>Creates row extenders borrowing the caller-owned FFT.</summary>
+    /// <param name="fft">The FFT, alive until the extenders and their callbacks finish.</param>
+    /// <param name="pool">The caller pool supplying encoder storage.</param>
+    /// <returns>The disposable row extenders.</returns>
+    private static Fp256LigeroRowExtenders NewExtenders(Fp256RealFft fft, BaseMemoryPool pool)
+    {
+        return new Fp256LigeroRowExtenders(fft, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
+    }
+
+
+    /// <summary>Creates an FFT whose root belongs to the supplied pool.</summary>
+    /// <param name="pool">The pool, alive until the caller disposes the FFT.</param>
+    /// <returns>The owned FFT.</returns>
+    private static Fp256RealFft NewFft(BaseMemoryPool pool)
     {
         Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
-        var fft = new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
 
-        return new Fp256LigeroRowExtenders(fft, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
     }
 
 

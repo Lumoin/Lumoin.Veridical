@@ -74,20 +74,26 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Gf2128Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? gf2128Field;
+
     /// <summary>The GF(2^128) field bundle gated over by the GF(2^128) tests.</summary>
-    private static LongfellowLogicFieldOperations Gf2128Field { get; } = LongfellowLogicFieldOperations.CreateGf2128(
+    private LongfellowLogicFieldOperations Gf2128Field => gf2128Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(
         Gf2k128Backend.GetAdd(),
         Gf2k128Backend.GetSubtract(),
         Gf2k128Backend.GetMultiply(),
-        Gf2k128Backend.GetInvert());
+        Gf2k128Backend.GetInvert(), circuitScope.Pool));
+
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
 
     /// <summary>The P-256 base field bundle gated over by the Fp256 tests.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, circuitScope.Pool));
 
 
     /// <summary>Pins that encode-then-pluck round-trips to the original bits across every swept LOGN over GF(2^128).</summary>
@@ -196,16 +202,16 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         //coefficients exercise the parallel Horner's ceiling halving over an odd count.
         ReadOnlyMemory<byte>[] coefficients =
         [
-            Fp256Field.OfScalar(3), Fp256Field.OfScalar(1), Fp256Field.OfScalar(4), Fp256Field.OfScalar(1), Fp256Field.OfScalar(5),
+            circuitScope.OfScalar(Fp256Field, 3), circuitScope.OfScalar(Fp256Field, 1), circuitScope.OfScalar(Fp256Field, 4), circuitScope.OfScalar(Fp256Field, 1), circuitScope.OfScalar(Fp256Field, 5),
         ];
         const ulong EvaluationPoint = 7;
         const ulong ExpectedValue = 12554;
 
-        int x = backend.Constant(Fp256Field.OfScalar(EvaluationPoint).Span);
+        int x = backend.ScalarConstant(EvaluationPoint);
         int dotProduct = polynomial.Evaluate(coefficients, x);
         int horner = polynomial.EvaluateHorner(coefficients, x);
 
-        byte[] expected = Fp256Field.OfScalar(ExpectedValue).ToArray();
+        byte[] expected = circuitScope.OfScalar(Fp256Field, ExpectedValue).ToArray();
         Assert.IsTrue(backend.ElementAt(dotProduct).Span.SequenceEqual(expected), "The powers-and-dot-product evaluation must match the closed-form value.");
         Assert.IsTrue(backend.ElementAt(horner).Span.SequenceEqual(expected), "The parallel Horner evaluation must match the closed-form value.");
     }
@@ -319,7 +325,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         //OfScalar(pointCount) is not one of the plucker's pointCount interpolation points (those
         //encode 2*i - (pointCount - 1) for i < pointCount), so pluck's per-bit bitness assertion must
         //latch a failure on at least one output bit.
-        int wire = backend.Constant(field.OfScalar((ulong)pointCount).Span);
+        int wire = backend.ScalarConstant((ulong)pointCount);
         _ = plucker.Pluck(wire);
 
         Assert.IsTrue(backend.AssertionFailed, "Plucking a non-plucker-point value must latch a bitness assertion failure.");

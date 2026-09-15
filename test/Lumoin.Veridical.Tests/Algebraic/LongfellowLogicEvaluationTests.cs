@@ -38,8 +38,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowLogicEvaluationTests
+internal sealed class LongfellowLogicEvaluationTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
     /// <summary>Every simple-gate truth table is exhaustive over single bits; no reduction applies here.</summary>
     private const int BitValues = 2;
 
@@ -95,20 +111,26 @@ internal sealed class LongfellowLogicEvaluationTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Gf2128Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? gf2128Field;
+
     /// <summary>The GF(2^128) field bundle gated over by every GF(2^128) test.</summary>
-    private static LongfellowLogicFieldOperations Gf2128Field { get; } = LongfellowLogicFieldOperations.CreateGf2128(
+    private LongfellowLogicFieldOperations Gf2128Field => gf2128Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(
         Gf2k128Backend.GetAdd(),
         Gf2k128Backend.GetSubtract(),
         Gf2k128Backend.GetMultiply(),
-        Gf2k128Backend.GetInvert());
+        Gf2k128Backend.GetInvert(), circuitScope.Pool));
+
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
 
     /// <summary>The P-256 base field bundle gated over by every Fp256 test.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, circuitScope.Pool));
 
     /// <summary>
     /// The eight sage-generated GF(2^128) test vectors from the reference's <c>Logic.GF2_128Multiplier</c>
@@ -327,7 +349,7 @@ internal sealed class LongfellowLogicEvaluationTests
     {
         //of_scalar over GF(2^128) covers only the 16-bit subfield basis.
         const ulong BeyondSubfieldScalar = 1UL << 16;
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Gf2128Field.OfScalar(BeyondSubfieldScalar), "of_scalar beyond the subfield basis must throw over GF(2^128).");
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => circuitScope.OfScalar(Gf2128Field, BeyondSubfieldScalar), "of_scalar beyond the subfield basis must throw over GF(2^128).");
 
         //The basis index bounds: 16 over GF(2^128), 64 over the odd-prime field.
         const int SubfieldBasisBound = 16;
@@ -475,7 +497,7 @@ internal sealed class LongfellowLogicEvaluationTests
             AssertVectorEqualsImmediate(logic, notEa, ~(ulong)a, $"Not must complement every bit of a={a}.");
 
             int scalarWire = logic.AsScalar(ea);
-            byte[] expected = Gf2128Field.OfScalar((ulong)a).ToArray();
+            byte[] expected = circuitScope.OfScalar(Gf2128Field, (ulong)a).ToArray();
             Assert.IsTrue(EvaluatedBytes(logic, scalarWire).AsSpan().SequenceEqual(expected), $"AsScalar must match OfScalar for a={a}.");
         }
     }
@@ -603,7 +625,7 @@ internal sealed class LongfellowLogicEvaluationTests
             LongfellowBitWire[] ea = logic.BitVector(BitvecWidth, (ulong)a);
             int scalarWire = logic.AsScalar(ea);
 
-            byte[] expected = Fp256Field.OfScalar((ulong)a).ToArray();
+            byte[] expected = circuitScope.OfScalar(Fp256Field, (ulong)a).ToArray();
             Assert.IsTrue(EvaluatedBytes(logic, scalarWire).AsSpan().SequenceEqual(expected), $"AsScalar must match OfScalar over Fp256 for a={a}.");
         }
     }
@@ -800,12 +822,12 @@ internal sealed class LongfellowLogicEvaluationTests
 
     /// <summary>Constructs a fresh evaluating <see cref="LongfellowLogic"/> over <see cref="Gf2128Field"/>, panicking on a failed assertion.</summary>
     /// <returns>The gadget layer.</returns>
-    private static LongfellowLogic NewGf2128Logic() => new(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+    private LongfellowLogic NewGf2128Logic() => new(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
 
 
     /// <summary>Constructs a fresh evaluating <see cref="LongfellowLogic"/> over <see cref="Fp256Field"/>, panicking on a failed assertion.</summary>
     /// <returns>The gadget layer.</returns>
-    private static LongfellowLogic NewFp256Logic() => new(new LongfellowEvaluationLogicBackend(Fp256Field), Fp256Field);
+    private LongfellowLogic NewFp256Logic() => new(new LongfellowEvaluationLogicBackend(Fp256Field), Fp256Field);
 
 
     /// <summary>Reads a bit's evaluated canonical bytes off its backend.</summary>

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using Lumoin.Veridical.Core.Algebraic;
@@ -332,7 +333,9 @@ internal sealed class LongfellowLogic
             allOnes += 1UL << i;
         }
 
-        _ = field.OfScalar(allOnes);
+        using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> scalar = owner.Memory.Span[..Scalar.SizeBytes];
+        field.OfScalar(allOnes, scalar);
 
         return r;
     }
@@ -511,15 +514,21 @@ internal sealed class LongfellowLogic
             return Addv(a, b);
         }
 
-        ReadOnlyMemory<byte> minusTwo = field.Negate(field.Two.Span);
+        //Both basis-change coefficients are consumed before this operation returns.
+        const int CoefficientCount = 2;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(CoefficientCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(CoefficientCount * Scalar.SizeBytes)];
+        Span<byte> minusTwo = buffer[..Scalar.SizeBytes];
+        Span<byte> minusHalf = buffer[Scalar.SizeBytes..];
         ReadOnlyMemory<byte> half = field.Half;
-        ReadOnlyMemory<byte> minusHalf = field.Negate(half.Span);
+        field.Negate(field.Two.Span, minusTwo);
+        field.Negate(half.Span, minusHalf);
 
-        LongfellowBitWire a1 = Rebase(field.Compiler.One.Span, minusTwo.Span, a);
-        LongfellowBitWire b1 = Rebase(field.Compiler.One.Span, minusTwo.Span, b);
+        LongfellowBitWire a1 = Rebase(field.Compiler.One.Span, minusTwo, a);
+        LongfellowBitWire b1 = Rebase(field.Compiler.One.Span, minusTwo, b);
         LongfellowBitWire p = Mulv(a1, b1);
 
-        return Rebase(half.Span, minusHalf.Span, p);
+        return Rebase(half.Span, minusHalf, p);
     }
 
 

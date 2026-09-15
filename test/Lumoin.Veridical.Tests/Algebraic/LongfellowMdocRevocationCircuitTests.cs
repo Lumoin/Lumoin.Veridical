@@ -18,8 +18,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// identifiers off the list.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowMdocRevocationCircuitTests
+internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
     /// <summary>The field element width in bytes used for every column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -44,8 +60,11 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     /// <summary>The P-256 base field's modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The cached Curve owner for this test instance.</summary>
+    private LongfellowEllipticCurveParameters? curve;
+
     /// <summary>The curve constants shared by the circuit and the witness generator.</summary>
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
+    private LongfellowEllipticCurveParameters Curve => curve ??= circuitScope.Track(LongfellowEllipticCurveParameters.CreateP256(circuitScope.Pool));
 
     /// <summary>The order-field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate OrderMultiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
@@ -227,7 +246,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     /// <param name="circuitPkY">The y coordinate handed to the circuit, defaulting to the reference authority key's.</param>
     /// <param name="corruptColumn">An optional column mutation applied before interning.</param>
     /// <returns>Whether the evaluation latched an assertion failure.</returns>
-    private static bool SpanEvaluationFails(byte[] id, ulong? epoch = null, byte[]? circuitPkX = null, byte[]? circuitPkY = null, Action<byte[]>? corruptColumn = null)
+    private bool SpanEvaluationFails(byte[] id, ulong? epoch = null, byte[]? circuitPkX = null, byte[]? circuitPkY = null, Action<byte[]>? corruptColumn = null)
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
@@ -284,7 +303,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     /// <summary>Builds the witness generator over the production Montgomery field backends.</summary>
     /// <param name="field">The base-field bundle.</param>
     /// <returns>The generator.</returns>
-    private static LongfellowMdocRevocationSpanWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
+    private LongfellowMdocRevocationSpanWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
     {
         return new LongfellowMdocRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
     }
@@ -292,7 +311,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests
 
     /// <summary>The digest-bit region's first element offset inside the generator's column: after the three scalars, the advice, the preimage bits and the identifier bits.</summary>
     /// <returns>The element offset.</returns>
-    private static int EBitsElementOffset()
+    private int EBitsElementOffset()
     {
         var probe = new LongfellowEcdsaVerifyWitness(NewFp256Bundle(), OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
 
@@ -489,14 +508,14 @@ internal sealed class LongfellowMdocRevocationCircuitTests
 
     /// <summary>Builds the P-256 base field bundle over the production Montgomery backend delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp256Bundle()
+    private LongfellowLogicFieldOperations NewFp256Bundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp256(
+        return circuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
             P256BaseFieldMontgomeryBackend.GetAdd(),
             P256BaseFieldMontgomeryBackend.GetSubtract(),
             P256BaseFieldMontgomeryBackend.GetMultiply(),
             P256BaseFieldMontgomeryBackend.GetInvert(),
-            Canonical(Prime - 1));
+            Canonical(Prime - 1), circuitScope.Pool));
     }
 
 

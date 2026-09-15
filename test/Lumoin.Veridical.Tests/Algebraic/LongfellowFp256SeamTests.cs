@@ -179,6 +179,7 @@ internal sealed class LongfellowFp256SeamTests: IDisposable
         Assert.IsGreaterThan(width16Bytes, width32Bytes, "The width-32 framing absorbs more field-element bytes than width-16.");
         Assert.IsGreaterThanOrEqualTo(width32Bytes, absorbed, "The transcript absorbed at least the width-32 field-element framing (plus the non-element byte-string writes).");
     }
+    /// <summary>The width thirty two driver path does not throw on awidth sixteen baked transcript.</summary>
 
 
     [TestMethod]
@@ -213,7 +214,9 @@ internal sealed class LongfellowFp256SeamTests: IDisposable
         byte[] root = new byte[DigestSize];
         root.AsSpan().Fill(0x5A);
 
-        Fp256RealFft fft = NewFft();
+        using BaseMemoryPool fftPool = new();
+
+        using Fp256RealFft fft = NewFft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
 
@@ -436,12 +439,14 @@ internal sealed class LongfellowFp256SeamTests: IDisposable
     }
 
 
-    private static Fp256RealFft NewFft()
+    /// <summary>Creates a caller-owned FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, pool);
     }
 
 

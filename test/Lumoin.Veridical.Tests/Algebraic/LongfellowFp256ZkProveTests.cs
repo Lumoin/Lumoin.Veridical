@@ -184,13 +184,15 @@ internal sealed class LongfellowFp256ZkProveTests: IDisposable
         byte[] expected = Convert.FromHexString(Anchors["proof_bytes"]);
         Assert.IsTrue(viaFieldGeneric.Bytes.SequenceEqual(expected), "The field-generic GF envelope must equal the reference's pinned proof bytes.");
     }
+    /// <summary>Produces a proof while retaining the FFT through every encoder callback.</summary>
 
 
     //Proves a satisfying Fp256 witness column through the field-generic prover with the Fp256 encoding.
     //Returns the pooled proof envelope; the caller disposes it.
     private static LongfellowZkProofEnvelope ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
     {
-        Fp256RealFft fft = NewFp256Fft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFp256Fft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -486,12 +488,14 @@ internal sealed class LongfellowFp256ZkProveTests: IDisposable
         new(seed, TranscriptVersion, elementBytes, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
-    private static Fp256RealFft NewFp256Fft()
+    /// <summary>Creates a caller-owned P-256 FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFp256Fft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, pool);
     }
 
 

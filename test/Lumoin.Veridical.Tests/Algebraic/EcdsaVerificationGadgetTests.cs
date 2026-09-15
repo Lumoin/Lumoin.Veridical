@@ -622,11 +622,12 @@ internal sealed class EcdsaVerificationGadgetTests
     {
         Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
-        var fft = new Fp256RealFft(
+        using BaseMemoryPool fftPool = new();
+        using var fft = new Fp256RealFft(
             root, LongfellowFp256Encoding.OmegaOrder,
             P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),
             P256BaseFieldMontgomeryBackend.GetMultiply(), P256BaseFieldMontgomeryBackend.GetInvert(),
-            WriteCanonicalUInt, CurveParameterSet.None, BaseMemoryPool.Shared);
+            WriteCanonicalUInt, CurveParameterSet.None, fftPool);
         using var extenders = new Fp256LigeroRowExtenders(
             fft,
             P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),

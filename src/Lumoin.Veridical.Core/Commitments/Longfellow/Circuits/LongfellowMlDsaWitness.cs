@@ -552,7 +552,7 @@ internal sealed class LongfellowMlDsaWitness
     /// <param name="value">The scalar to embed.</param>
     private static void WriteElement(LongfellowLogicFieldOperations field, Span<byte> destination, ref int cursor, ulong value)
     {
-        field.OfScalar(value).Span.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
+        field.OfScalar(value, destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
         cursor++;
     }
 

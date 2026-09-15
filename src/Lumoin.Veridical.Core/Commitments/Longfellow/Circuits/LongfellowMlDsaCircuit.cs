@@ -1,3 +1,5 @@
+using System.Buffers;
+using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Collections.Generic;
 
@@ -538,6 +540,13 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(c);
         ArgumentNullException.ThrowIfNull(cPrime);
 
+        //Positive and negative twiddles require separate delegate inputs and outputs.
+        const int TwiddleScalarCount = 2;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(TwiddleScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(TwiddleScalarCount * Scalar.SizeBytes)];
+        Span<byte> zeta = buffer[..Scalar.SizeBytes];
+        Span<byte> negatedZeta = buffer[Scalar.SizeBytes..];
+
         var p = new int[LongfellowMlDsaParameters.CoefficientCount];
         c.Coefficients.CopyTo(p, 0);
 
@@ -547,13 +556,13 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         {
             for(int start = 0; start < LongfellowMlDsaParameters.CoefficientCount; start += 2 * length)
             {
-                ReadOnlyMemory<byte> zeta = field.OfScalar(LongfellowMlDsaConstants.NttZetas[k]);
-                ReadOnlyMemory<byte> negatedZeta = field.Negate(zeta.Span);
+                field.OfScalar(LongfellowMlDsaConstants.NttZetas[k], zeta);
+                field.Negate(zeta, negatedZeta);
                 k++;
                 for(int j = start; j < start + length; j++)
                 {
-                    int t = backend.Axpy(p[j], zeta.Span, p[j + length]);
-                    p[j + length] = backend.Axpy(p[j], negatedZeta.Span, p[j + length]);
+                    int t = backend.Axpy(p[j], zeta, p[j + length]);
+                    p[j + length] = backend.Axpy(p[j], negatedZeta, p[j + length]);
                     p[j] = t;
                 }
             }
@@ -581,6 +590,13 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(c);
         ArgumentNullException.ThrowIfNull(cPrime);
 
+        //Positive and negative twiddles require separate delegate inputs and outputs.
+        const int TwiddleScalarCount = 2;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(TwiddleScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(TwiddleScalarCount * Scalar.SizeBytes)];
+        Span<byte> zeta = buffer[..Scalar.SizeBytes];
+        Span<byte> negatedZeta = buffer[Scalar.SizeBytes..];
+
         var p = new int[LongfellowMlDsaParameters.CoefficientCount];
         c.Coefficients.CopyTo(p, 0);
 
@@ -591,20 +607,21 @@ internal sealed class LongfellowMlDsaVerifyCircuit
             for(int start = 0; start < LongfellowMlDsaParameters.CoefficientCount; start += 2 * length)
             {
                 k--;
-                ReadOnlyMemory<byte> negatedZeta = field.Negate(field.OfScalar(LongfellowMlDsaConstants.NttZetas[k]).Span);
+                field.OfScalar(LongfellowMlDsaConstants.NttZetas[k], zeta);
+                field.Negate(zeta, negatedZeta);
                 for(int j = start; j < start + length; j++)
                 {
                     int t = p[j];
                     p[j] = backend.Add(t, p[j + length]);
                     int difference = backend.Sub(t, p[j + length]);
-                    p[j + length] = backend.MultiplyScaled(negatedZeta.Span, difference);
+                    p[j + length] = backend.MultiplyScaled(negatedZeta, difference);
                 }
             }
 
             length *= 2;
         }
 
-        int scale = backend.Constant(field.OfScalar(LongfellowMlDsaParameters.InverseTransformScale).Span);
+        int scale = backend.ScalarConstant(LongfellowMlDsaParameters.InverseTransformScale);
         for(int i = 0; i < LongfellowMlDsaParameters.CoefficientCount; i++)
         {
             p[i] = backend.Mul(scale, p[i]);
@@ -639,8 +656,8 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(hintRemainderBits);
         ArgumentNullException.ThrowIfNull(hintedHighBits);
 
-        int twoGamma2 = backend.Constant(field.OfScalar(2UL * parameters.RoundingRange).Span);
-        int shiftValue = backend.Constant(field.OfScalar(parameters.RoundingRange).Span);
+        int twoGamma2 = backend.ScalarConstant(2UL * parameters.RoundingRange);
+        int shiftValue = backend.ScalarConstant(parameters.RoundingRange);
         int zero = backend.Constant(field.Compiler.Zero.Span);
 
         _ = logic.AssertIsBit(hintWire);
@@ -680,7 +697,7 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         int difference = backend.Sub(rawHighWire, hintedHighWire);
         int shiftDifference = backend.Add(difference, shiftIndicator);
 
-        int hintModulus = backend.Constant(field.OfScalar(parameters.HintModulus).Span);
+        int hintModulus = backend.ScalarConstant(parameters.HintModulus);
         int differenceMinusModulus = backend.Sub(shiftDifference, hintModulus);
         int differencePlusModulus = backend.Add(shiftDifference, hintModulus);
 
@@ -765,7 +782,7 @@ internal sealed class LongfellowMlDsaVerifyCircuit
             {
                 int reconstructed = logic.AsScalar(vectorBits[i][j]);
 
-                int shifted = backend.Add(vector[i].Coefficients[j], backend.Constant(field.OfScalar(bound - 1).Span));
+                int shifted = backend.Add(vector[i].Coefficients[j], backend.ScalarConstant(bound - 1));
                 _ = logic.AssertEqual(shifted, reconstructed);
 
                 LongfellowBitWire isBounded = logic.LessThanOrEqual(vectorBits[i][j], logic.BitVector(vectorBits[i][j].Length, (2 * bound) - 2));

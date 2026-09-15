@@ -63,10 +63,10 @@ public static class LongfellowMdoc
         using LongfellowSubfieldRunCodec hashCodec = LongfellowMdocBundles.NewGfCodec(hashProfile, hashFft, pool);
         LongfellowMdocFieldProver hashBundle = LongfellowMdocBundles.BuildHashProver(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
-        //The sig side runs over the P-256 base field in the Montgomery working domain. The real-FFT owns no
-        //pooled state (it is not disposable); the Fp256 codec owns nothing but is still disposable.
+        //The sig side runs over the P-256 base field in the Montgomery working domain. The real-FFT's
+        //pooled root remains owned through every signature encoder callback.
         using LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile(pool);
-        Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
+        using Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
         LongfellowMdocFieldProver signatureBundle = LongfellowMdocBundles.BuildSigProver(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
         using LongfellowSumcheckCircuit workingSignatureOwner = signatureBundle.Circuit;
@@ -140,7 +140,7 @@ public static class LongfellowMdoc
         LongfellowMdocFieldVerifier hashBundle = LongfellowMdocBundles.BuildHashVerifier(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
         using LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile(pool);
-        Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
+        using Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
         LongfellowMdocFieldVerifier signatureBundle = LongfellowMdocBundles.BuildSigVerifier(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
         using LongfellowSumcheckCircuit workingSignatureOwner = signatureBundle.Circuit;

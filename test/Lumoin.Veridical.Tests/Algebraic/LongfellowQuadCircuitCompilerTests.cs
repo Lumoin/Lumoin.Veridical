@@ -443,16 +443,17 @@ internal sealed class LongfellowQuadCircuitCompilerTests: IDisposable
         Assert.AreEqual(3, LongfellowMortonOrder.Lg(8), "Lg(8) is three.");
         Assert.AreEqual(4, LongfellowMortonOrder.Lg(9), "Lg(9) is four.");
     }
+    /// <summary>The coefficient order is little endian lexicographic.</summary>
 
 
     [TestMethod]
     public void TheCoefficientOrderIsLittleEndianLexicographic()
     {
-        LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreateCharacteristicTwo(
+        LongfellowCompilerFieldOperations field = circuitScope.Track(LongfellowCompilerFieldOperations.CreateCharacteristicTwo(
             Add,
             Multiply,
             CurveParameterSet.None,
-            ElementBytes);
+            ElementBytes, circuitScope.Pool));
 
         //256 precedes 255 in the little-endian order: 256's least significant byte is zero. A
         //big-endian (numeric) comparison would order them the other way, so this pins the
@@ -752,11 +753,11 @@ internal sealed class LongfellowQuadCircuitCompilerTests: IDisposable
     /// <summary>New Builder, with circuit owners released at test cleanup.</summary>
     private LongfellowQuadCircuitBuilder NewBuilder()
     {
-        LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreateCharacteristicTwo(
+        LongfellowCompilerFieldOperations field = circuitScope.Track(LongfellowCompilerFieldOperations.CreateCharacteristicTwo(
             Add,
             Multiply,
             CurveParameterSet.None,
-            ElementBytes);
+            ElementBytes, circuitScope.Pool));
 
         return circuitScope.CreateBuilder(field);
     }

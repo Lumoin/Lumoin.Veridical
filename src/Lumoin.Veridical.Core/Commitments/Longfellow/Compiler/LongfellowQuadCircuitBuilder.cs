@@ -87,16 +87,14 @@ internal sealed class LongfellowQuadCircuitBuilder: IDisposable
     /// Constructs a builder over a field, pinning constant indices 0 (zero) and 1 (one) and creating
     /// the implicit constant-one input wire as node 0.
     /// </summary>
-    /// <param name="field">The field-operation bundle.</param>
-    /// <param name="pool">The pool supplying staging, retained constants and compiled output.</param>
-    /// <exception cref="ArgumentNullException">When <paramref name="field"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
-    public LongfellowQuadCircuitBuilder(LongfellowCompilerFieldOperations field, BaseMemoryPool pool)
+    /// <param name="field">The field-operation bundle supplying the caller pool for staging, retained constants and compiled output.</param>
+    /// <exception cref="ArgumentNullException">When <paramref name="field"/> is <see langword="null"/>.</exception>
+    public LongfellowQuadCircuitBuilder(LongfellowCompilerFieldOperations field)
     {
         ArgumentNullException.ThrowIfNull(field);
-        ArgumentNullException.ThrowIfNull(pool);
 
         this.field = field;
-        this.pool = pool;
+        pool = field.Pool;
         storage = new LongfellowCircuitStorage(pool);
 
         try

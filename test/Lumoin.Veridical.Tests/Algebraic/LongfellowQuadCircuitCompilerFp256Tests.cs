@@ -163,13 +163,13 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests: IDisposable
     [TestMethod]
     public void MergeCancellationOfDistinctValuesYieldsTheZeroNode()
     {
-        LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreatePrime(
+        LongfellowCompilerFieldOperations field = circuitScope.Track(LongfellowCompilerFieldOperations.CreatePrime(
             Fp256Add,
             Fp256Multiply,
             CurveParameterSet.None,
             Canonical(Prime - 1),
             Fp256ElementBytes,
-            Fp256BitCount);
+            Fp256BitCount, circuitScope.Pool));
 
         var builder = circuitScope.CreateBuilder(field);
 
@@ -191,13 +191,13 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests: IDisposable
     /// <summary>Build Fp256 Statement, with circuit owners released at test cleanup.</summary>
     private LongfellowQuadCircuitBuilder BuildFp256Statement(out LongfellowSumcheckCircuit circuit)
     {
-        LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreatePrime(
+        LongfellowCompilerFieldOperations field = circuitScope.Track(LongfellowCompilerFieldOperations.CreatePrime(
             Fp256Add,
             Fp256Multiply,
             CurveParameterSet.None,
             Canonical(Prime - 1),
             Fp256ElementBytes,
-            Fp256BitCount);
+            Fp256BitCount, circuitScope.Pool));
 
         var builder = circuitScope.CreateBuilder(field);
 

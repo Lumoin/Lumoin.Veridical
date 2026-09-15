@@ -112,6 +112,7 @@ internal sealed class Fp256ReedSolomonTests
 
     [TestMethod]
     public void TheSeventeenBySixtyEightCodewordMatchesTheReferenceByteForByte() => AssertCodeword("cw17x68", 17, 68);
+    /// <summary>Forward then backward at length two scales by two.</summary>
 
 
     [TestMethod]
@@ -133,7 +134,8 @@ internal sealed class Fp256ReedSolomonTests
         byte[] noopInput = OfScalar(137);
         byte[] noopData1 = new byte[Length1 * ScalarSize];
         noopInput.CopyTo(noopData1.AsSpan(0, ScalarSize));
-        var fft1 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool fft1Pool = new();
+        using var fft1 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fft1Pool);
         fft1.ForwardRealToHalfComplex(noopData1, Length1);
         Assert.IsTrue(noopData1.AsSpan(0, ScalarSize).SequenceEqual(noopInput), "Length-1 forward must leave input unchanged.");
         fft1.BackwardHalfComplexToReal(noopData1, Length1);
@@ -145,7 +147,8 @@ internal sealed class Fp256ReedSolomonTests
         byte[] data2 = new byte[Length2 * ScalarSize];
         x0.CopyTo(data2.AsSpan(0, ScalarSize));
         x1.CopyTo(data2.AsSpan(ScalarSize, ScalarSize));
-        var fft2 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool fft2Pool = new();
+        using var fft2 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fft2Pool);
         fft2.ForwardRealToHalfComplex(data2, Length2);
         fft2.BackwardHalfComplexToReal(data2, Length2);
         byte[] expected0 = FieldMultiply(x0, two);
@@ -167,6 +170,7 @@ internal sealed class Fp256ReedSolomonTests
             Assert.IsTrue(evaluations.AsSpan(i * ScalarSize, ScalarSize).SequenceEqual(expected), $"Systematic input {i} must be unchanged.");
         }
     }
+    /// <summary>The montgomery domain interpolation drops to the canonical codeword.</summary>
 
 
     [TestMethod]
@@ -197,13 +201,15 @@ internal sealed class Fp256ReedSolomonTests
         P256BaseFieldMontgomeryBackend.ToMontgomery(canonicalRoot.AsSpan(0, ScalarSize), montRoot.AsSpan(0, ScalarSize));
         P256BaseFieldMontgomeryBackend.ToMontgomery(canonicalRoot.AsSpan(ScalarSize, ScalarSize), montRoot.AsSpan(ScalarSize, ScalarSize));
 
-        var cfft = new Fp256RealFft(canonicalRoot, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool cfftPool = new();
+        using var cfft = new Fp256RealFft(canonicalRoot, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, cfftPool);
         using var crs = new Fp256ReedSolomon(N, M, cfft, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
         crs.Interpolate(canonicalEval);
 
         ScalarMultiplyDelegate mMul = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
         ScalarInvertDelegate mInv = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
-        var mfft = new Fp256RealFft(montRoot, OmegaOrder, Add, Subtract, mMul, mInv, MontOfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool mfftPool = new();
+        using var mfft = new Fp256RealFft(montRoot, OmegaOrder, Add, Subtract, mMul, mInv, MontOfScalarInto, CurveParameterSet.None, mfftPool);
         using var mrs = new Fp256ReedSolomon(N, M, mfft, Add, Subtract, mMul, mInv, MontOfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
         mrs.Interpolate(montEval);
 
@@ -214,6 +220,7 @@ internal sealed class Fp256ReedSolomonTests
             Assert.IsTrue(canonicalEval.AsSpan(i * ScalarSize, ScalarSize).SequenceEqual(dropped), $"Montgomery interpolation element {i} must drop to the canonical value (canonical {Convert.ToHexString(canonicalEval.AsSpan(i * ScalarSize, ScalarSize).ToArray())}, dropped {Convert.ToHexString(dropped)}).");
         }
     }
+    /// <summary>Interpolate of boundary seeded messages matches direct evaluation everywhere.</summary>
 
 
     [TestMethod]
@@ -253,7 +260,8 @@ internal sealed class Fp256ReedSolomonTests
             rootX.CopyTo(rootOfUnity.AsSpan(0, ScalarSize));
             rootY.CopyTo(rootOfUnity.AsSpan(ScalarSize, ScalarSize));
 
-            var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+            using BaseMemoryPool fftPool = new();
+            using var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fftPool);
             using var rs = new Fp256ReedSolomon(PropertyMessageDimension, PropertyBlockLength, fft, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
             rs.Interpolate(evaluations);
 
@@ -290,6 +298,7 @@ internal sealed class Fp256ReedSolomonTests
                 $"{label}[{i}] must match the reference (expected {Convert.ToHexString(expected)}, got {Convert.ToHexString(evaluations.AsSpan(i * ScalarSize, ScalarSize).ToArray())}).");
         }
     }
+    /// <summary>Builds a deterministic row and interpolates it while owning the FFT through completion.</summary>
 
 
     //Builds the anchor's polynomial, evaluates it at 0..n-1, and runs our interpolator over the m-length
@@ -309,7 +318,8 @@ internal sealed class Fp256ReedSolomonTests
         ParseElement(Anchors["rootx"]).CopyTo(rootOfUnity.AsSpan(0, ScalarSize));
         ParseElement(Anchors["rooty"]).CopyTo(rootOfUnity.AsSpan(ScalarSize, ScalarSize));
 
-        var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool fftPool = new();
+        using var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fftPool);
         using var rs = new Fp256ReedSolomon(n, m, fft, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
         rs.Interpolate(evaluations);
 

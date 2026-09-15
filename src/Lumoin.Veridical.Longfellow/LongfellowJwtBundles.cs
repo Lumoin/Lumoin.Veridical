@@ -63,25 +63,24 @@ internal static class LongfellowJwtBundles
     private static ScalarSubtractDelegate OrderSubtract { get; } = P256ScalarMontgomeryBackend.GetSubtract();
     private static ScalarInvertDelegate OrderInvert { get; } = P256ScalarMontgomeryBackend.GetInvert();
 
-    //The curve constants shared by the statement circuit and the witness generator.
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
-
     //The canonical big-endian p − 1 the field bundle's negation constant closes over.
     private static byte[] CanonicalPrimeMinusOne { get; } = BuildCanonicalPrimeMinusOne();
 
 
     /// <summary>Builds the canonical-domain P-256 base-field bundle the compiler, witness generator and drivers share.</summary>
-    /// <returns>The field bundle.</returns>
-    internal static LongfellowLogicFieldOperations NewFieldBundle() =>
-        LongfellowLogicFieldOperations.CreateFp256(Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, CanonicalPrimeMinusOne);
+    /// <param name="pool">The caller pool supplying the field constants and compiler storage.</param>
+    /// <returns>The disposable field bundle.</returns>
+    internal static LongfellowLogicFieldOperations NewFieldBundle(BaseMemoryPool pool) =>
+        LongfellowLogicFieldOperations.CreateFp256(Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, CanonicalPrimeMinusOne, pool);
 
 
     /// <summary>Builds the witness generator over the same field bundle and curve the statement circuit uses.</summary>
     /// <param name="field">The field bundle.</param>
+    /// <param name="curve">The curve constants borrowed for the generator's lifetime.</param>
     /// <param name="blockCapacity">The preimage capacity in SHA-256 blocks.</param>
     /// <returns>The generator.</returns>
-    internal static LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field, int blockCapacity) =>
-        new(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, blockCapacity);
+    internal static LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field, LongfellowEllipticCurveParameters curve, int blockCapacity) =>
+        new(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, curve, blockCapacity);
 
 
     /// <summary>
@@ -89,17 +88,17 @@ internal static class LongfellowJwtBundles
     /// statement gadget constructed first, then the public inputs (issuer key, key-binding
     /// digest, the disclosed attributes), the private boundary, and the witness declaration.
     /// </summary>
-    /// <param name="field">The field bundle to compile over.</param>
+    /// <param name="field">The field bundle and originating compiler pool.</param>
+    /// <param name="curve">The live curve constants shared with the witness generator.</param>
     /// <param name="blockCapacity">The block capacity.</param>
     /// <param name="attributeCount">The disclosed attribute count.</param>
-    /// <param name="pool">The pool supplying compiler staging and circuit-owned bytes.</param>
     /// <returns>The disposable compiled circuit owning its bytes independently of the compiler.</returns>
-    internal static LongfellowSumcheckCircuit CompileStatement(LongfellowLogicFieldOperations field, int blockCapacity, int attributeCount, BaseMemoryPool pool)
+    internal static LongfellowSumcheckCircuit CompileStatement(LongfellowLogicFieldOperations field, LongfellowEllipticCurveParameters curve, int blockCapacity, int attributeCount)
     {
-        using var builder = new LongfellowQuadCircuitBuilder(field.Compiler, pool);
+        using var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
-        var circuit = new LongfellowJwtCircuit(logic, Curve, blockCapacity);
+        var circuit = new LongfellowJwtCircuit(logic, curve, blockCapacity);
 
         int pkX = logic.InputElement();
         int pkY = logic.InputElement();

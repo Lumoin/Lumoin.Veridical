@@ -197,6 +197,7 @@ internal sealed class LigeroArgumentRoundtripTests
         Assert.ThrowsExactly<InvalidOperationException>(() =>
             BuildProof(backend, parameters, RandomnessSeed, brokenTargets).Dispose());
     }
+    /// <summary>The proof is byte identical with and without the row extender factory.</summary>
 
 
     [TestMethod]
@@ -212,7 +213,9 @@ internal sealed class LigeroArgumentRoundtripTests
         LigeroParameters parameters = NewParameters();
 
         using LigeroProof reference = BuildProof(backend, parameters);
-        using Fp256LigeroRowExtenders extenders = NewRowExtenders(backend);
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFft(backend, fftPool);
+        using Fp256LigeroRowExtenders extenders = NewRowExtenders(backend, fft, fftPool);
         using LigeroProof accelerated = BuildProof(backend, parameters, RandomnessSeed, LinearTargetValues, extenders.Create);
 
         Assert.IsTrue(accelerated.Root.AsReadOnlySpan().SequenceEqual(reference.Root.AsReadOnlySpan()), "The commitment root must be byte-identical with and without the extender.");
@@ -225,13 +228,27 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
-    private static Fp256LigeroRowExtenders NewRowExtenders(FieldBackend backend)
+    /// <summary>Creates extenders borrowing a caller-owned FFT through proof generation.</summary>
+    /// <param name="backend">The arithmetic delegates.</param>
+    /// <param name="fft">The live FFT.</param>
+    /// <param name="pool">The caller pool.</param>
+    /// <returns>The disposable row extenders.</returns>
+    private static Fp256LigeroRowExtenders NewRowExtenders(FieldBackend backend, Fp256RealFft fft, BaseMemoryPool pool)
+    {
+        return new Fp256LigeroRowExtenders(fft, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, pool);
+    }
+
+
+    /// <summary>Creates an FFT owned through the accelerated proof operation.</summary>
+    /// <param name="backend">The arithmetic delegates.</param>
+    /// <param name="pool">The caller pool retained through FFT disposal.</param>
+    /// <returns>The disposable FFT.</returns>
+    private static Fp256RealFft NewFft(FieldBackend backend, BaseMemoryPool pool)
     {
         Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
-        var fft = new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
 
-        return new Fp256LigeroRowExtenders(fft, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, pool);
     }
 
 

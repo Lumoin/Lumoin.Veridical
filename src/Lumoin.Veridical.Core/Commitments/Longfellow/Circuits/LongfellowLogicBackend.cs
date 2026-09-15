@@ -1,3 +1,5 @@
+using System.Buffers;
+using Lumoin.Veridical.Core.Algebraic;
 using System;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
@@ -112,6 +114,19 @@ internal abstract class LongfellowLogicBackend
     /// <param name="value">The constant, canonical big-endian.</param>
     /// <returns>The constant wire.</returns>
     public abstract int Constant(ReadOnlySpan<byte> value);
+
+
+    /// <summary>Embeds a scalar and interns its value before releasing the temporary bytes.</summary>
+    /// <param name="scalar">The scalar to embed under the field's representability rules.</param>
+    /// <returns>The constant wire.</returns>
+    public int ScalarConstant(ulong scalar)
+    {
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..Scalar.SizeBytes];
+        Field.OfScalar(scalar, buffer);
+
+        return Constant(buffer);
+    }
 
 
     /// <summary>

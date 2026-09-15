@@ -291,7 +291,8 @@ internal sealed class LongfellowRealSigCircuitProveTests: IDisposable
     private LongfellowZkProofEnvelope ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
     {
         using LongfellowFieldProfile profile = NewMontgomeryProfile();
-        Fp256RealFft fft = NewMontgomeryFp256Fft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewMontgomeryFp256Fft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
@@ -324,6 +325,7 @@ internal sealed class LongfellowRealSigCircuitProveTests: IDisposable
             BaseMemoryPool.Shared,
             fp256BatchMultiply: Fp256SimdBackend.BatchMultiplyMontgomery());
     }
+    /// <summary>Produces a canonical-domain proof while retaining the FFT through every encoder callback.</summary>
 
 
     //Proves the same witness CANONICALLY (the 2-CIOS path), the byte-identity gate's canonical leg. The witness
@@ -331,7 +333,8 @@ internal sealed class LongfellowRealSigCircuitProveTests: IDisposable
     //envelope; the caller disposes it.
     private static LongfellowZkProofEnvelope ProveFp256Canonical(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] canonicalColumn)
     {
-        Fp256RealFft fft = NewFp256Fft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFp256Fft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -373,7 +376,8 @@ internal sealed class LongfellowRealSigCircuitProveTests: IDisposable
         bool expectedAccept)
     {
         using LongfellowFieldProfile profile = NewMontgomeryProfile();
-        Fp256RealFft fft = NewMontgomeryFp256Fft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewMontgomeryFp256Fft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
         using LongfellowSubfieldRunCodec codec = LongfellowSubfieldRunCodec.ForFp256(profile);
@@ -529,12 +533,14 @@ internal sealed class LongfellowRealSigCircuitProveTests: IDisposable
         new(TranscriptSeed, TranscriptVersion, Point256ElementBytes, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
-    private static Fp256RealFft NewFp256Fft()
+    /// <summary>Creates a caller-owned P-256 FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFp256Fft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, pool);
     }
 
 
@@ -547,14 +553,16 @@ internal sealed class LongfellowRealSigCircuitProveTests: IDisposable
 
     //The Montgomery-domain real-FFT: the production root is lifted per coordinate to its Montgomery residue, so
     //the twiddle multiplies stay 1-CIOS in domain; the multiply/invert are the Montgomery-domain delegates.
-    private static Fp256RealFft NewMontgomeryFp256Fft()
+    /// <summary>Creates a caller-owned Montgomery FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewMontgomeryFp256Fft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnityWorking(root, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         using LongfellowFieldProfile profile = NewMontgomeryProfile();
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, pool);
     }
 
 

@@ -42,7 +42,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// here; a caller must supply a root satisfying them (the mdoc configuration's root does).
 /// </para>
 /// </remarks>
-internal sealed class Fp256RealFft
+internal sealed class Fp256RealFft: IDisposable
 {
     private const int ScalarSize = Scalar.SizeBytes;
     private const int ExtensionSize = Fp256QuadraticExtension.ElementSize;
@@ -57,7 +57,8 @@ internal sealed class Fp256RealFft
 
     //The root of unity omega (an extension element) and its multiplicative order; the transform reroots
     //it down to the size it needs.
-    private readonly byte[] omega;
+    /// <summary>The owned root, retained until every transform and encoder callback has completed.</summary>
+    private IMemoryOwner<byte>? omega;
     private readonly ulong omegaOrder;
 
 
@@ -72,7 +73,7 @@ internal sealed class Fp256RealFft
     /// <param name="invert">Base-field inversion (the extension's norm divide).</param>
     /// <param name="ofScalar">The base-field <c>of_scalar(u)</c> in the working domain; the twiddle seed (the extension one) is <c>ofScalar(1)</c> in the real coordinate.</param>
     /// <param name="curve">The curve the delegates route over.</param>
-    /// <param name="pool">Pool the twiddle table and scratch rent from.</param>
+    /// <param name="pool">Pool the retained root, twiddle table and scratch rent from; it must outlive this engine.</param>
     /// <exception cref="ArgumentNullException">When a delegate, the root or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="omega"/> is not 64 bytes.</exception>
     public Fp256RealFft(
@@ -105,9 +106,19 @@ internal sealed class Fp256RealFft
         this.curve = curve;
         this.pool = pool;
         extension = new Fp256QuadraticExtension(add, subtract, multiply, invert, curve);
-        this.omega = omega.ToArray();
         omegaOrder = omegaOrder == 0 ? throw new ArgumentOutOfRangeException(nameof(omegaOrder)) : omegaOrder;
         this.omegaOrder = omegaOrder;
+        IMemoryOwner<byte>? owner = pool.Rent(ExtensionSize);
+        try
+        {
+            omega.CopyTo(owner.Memory.Span[..ExtensionSize]);
+            this.omega = owner;
+            owner = null;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
     }
 
 
@@ -474,12 +485,13 @@ internal sealed class Fp256RealFft
 
     //The twiddle precompute and reroot (twiddle.h Twiddle / reroot)
 
-    //Builds the order/2 powers of the (length)-th root of unity, each an extension element. The root is
-    //the engine's omega rerooted from omegaOrder down to length.
+    /// <summary>Builds the order/2 extension powers of the root rerooted to the transform length.</summary>
+    /// <param name="length">The positive transform length.</param>
+    /// <returns>The owned twiddle table.</returns>
     private TwiddleTable BuildTwiddles(int length)
     {
         Span<byte> omegaN = stackalloc byte[ExtensionSize];
-        Reroot(omega, omegaOrder, (ulong)length, omegaN);
+        Reroot((omega ?? throw new ObjectDisposedException(nameof(Fp256RealFft))).Memory.Span[..ExtensionSize], omegaOrder, (ulong)length, omegaN);
 
         var table = new TwiddleTable(length / 2, pool);
         try
@@ -617,6 +629,18 @@ internal sealed class Fp256RealFft
                 local.Memory.Span[..(count * ExtensionSize)].Clear();
                 local.Dispose();
             }
+        }
+    }
+
+    /// <summary>Clears and releases the root after all transforms and encoder callbacks have completed.</summary>
+    public void Dispose()
+    {
+        IMemoryOwner<byte>? owner = omega;
+        if(owner is not null)
+        {
+            omega = null;
+            owner.Memory.Span[..ExtensionSize].Clear();
+            owner.Dispose();
         }
     }
 }

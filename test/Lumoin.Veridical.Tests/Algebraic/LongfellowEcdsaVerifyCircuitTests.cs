@@ -16,8 +16,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// element for element with the independently written BigInteger reference filler.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowEcdsaVerifyCircuitTests
+internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
     /// <summary>The field element width in bytes used for every column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -27,8 +43,11 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
     /// <summary>The P-256 base field's modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The cached Curve owner for this test instance.</summary>
+    private LongfellowEllipticCurveParameters? curve;
+
     /// <summary>The curve constants shared by the circuit and the witness generator.</summary>
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
+    private LongfellowEllipticCurveParameters Curve => curve ??= circuitScope.Track(LongfellowEllipticCurveParameters.CreateP256(circuitScope.Pool));
 
     /// <summary>The order-field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate OrderMultiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
@@ -105,7 +124,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
     /// <param name="tuple">The signature vector.</param>
     /// <param name="computed">Receives the witness walk's verdict.</param>
     /// <param name="backend">Receives the backend for latch inspection.</param>
-    private static void RunVector(LongfellowEcdsaTestVectors.SignatureTuple tuple, out bool computed, out LongfellowEvaluationLogicBackend backend)
+    private void RunVector(LongfellowEcdsaTestVectors.SignatureTuple tuple, out bool computed, out LongfellowEvaluationLogicBackend backend)
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
@@ -182,14 +201,14 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
 
     /// <summary>Builds the P-256 base field bundle over the BigInteger reference delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp256Bundle()
+    private LongfellowLogicFieldOperations NewFp256Bundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp256(
+        return circuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
             P256BaseFieldReference.GetAdd(),
             P256BaseFieldReference.GetSubtract(),
             P256BaseFieldReference.GetMultiply(),
             P256BaseFieldReference.GetInvert(),
-            Canonical(Prime - 1));
+            Canonical(Prime - 1), circuitScope.Pool));
     }
 
 

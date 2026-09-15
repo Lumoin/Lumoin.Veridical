@@ -152,7 +152,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     [TestMethod]
     public void TheUnpackedBlockCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileUnpackedBlockCircuit(NewFp256Bundle(), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileUnpackedBlockCircuit(NewFp256Bundle(circuitScope), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(UnpackedDepth, builder.DepthUpperBound, "The unpacked block circuit's depth must match the reference compiler's.");
         Assert.AreEqual(UnpackedWireCount, builder.WireCount, "The unpacked block circuit's wire count must match the reference compiler's.");
@@ -169,7 +169,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     [TestMethod]
     public void TheAllPackedBlockCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileAllPackedBlockCircuit(NewFp256Bundle(), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileAllPackedBlockCircuit(NewFp256Bundle(circuitScope), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(AllPackedDepth, builder.DepthUpperBound, "The all-packed block circuit's depth must match the reference compiler's.");
         Assert.AreEqual(AllPackedWireCount, builder.WireCount, "The all-packed block circuit's wire count must match the reference compiler's.");
@@ -186,7 +186,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     [TestMethod]
     public void ThePackedBlockWitnessDeclaresItsWiresInTheReferenceOrder()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
+        LongfellowLogicFieldOperations field = NewGfBundle(circuitScope);
         var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
         var logic = new LongfellowLogic(backend, field);
@@ -211,12 +211,13 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
         Assert.AreEqual(finalStateStart, witness.FinalState[0][0], "The final state must follow the interleaved registers.");
         Assert.AreEqual(finalStateStart + (StateWordCount * elementsPerWord), builder.InputCount, "The declaration must cover exactly the packed block witness's wires.");
     }
+    /// <summary>The gf sha block circuit proves and verifies end to end.</summary>
 
 
     [TestMethod]
     public void TheGfShaBlockCircuitProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
+        LongfellowLogicFieldOperations field = NewGfBundle(circuitScope);
         LongfellowSumcheckCircuit circuit = CompileAllPackedBlockCircuit(field, privateWitness: true, out _);
         byte[] witnessColumn = BuildAllPackedWitnessColumn(field, circuit.InputCount);
 
@@ -236,7 +237,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     [TestMethod]
     public void AnUnsatisfyingWitnessIsUnprovableOverTheGfShaBlockCircuit()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
+        LongfellowLogicFieldOperations field = NewGfBundle(circuitScope);
         LongfellowSumcheckCircuit circuit = CompileAllPackedBlockCircuit(field, privateWitness: true, out _);
         byte[] witnessColumn = BuildAllPackedWitnessColumn(field, circuit.InputCount);
 
@@ -257,7 +258,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     [TestMethod]
     public void TheFp256ShaBlockCircuitProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewFp256Bundle();
+        LongfellowLogicFieldOperations field = NewFp256Bundle(circuitScope);
         LongfellowSumcheckCircuit circuit = CompileUnpackedBlockCircuit(field, privateWitness: true, out _);
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, Production16SubFieldBytes);

@@ -22,8 +22,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// wire-valued length's boundary between genuine payload and trailing garbage.
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowBase64DecoderTests
+internal sealed class LongfellowBase64DecoderTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private readonly LongfellowCircuitTestScope circuitScope = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        circuitScope.Dispose();
+    }
+
     /// <summary>The canonical byte width of one scalar, which the P-256 modulus-minus-one buffer must occupy.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -141,13 +157,16 @@ internal sealed class LongfellowBase64DecoderTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne => Fp256MinusOneOwner.Memory[..ScalarSize];
 
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
+
     /// <summary>The P-256 base field bundle gated over by every test in this class.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= circuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, circuitScope.Pool));
 
 
     /// <summary>Returns the modulus rental after every test using the shared field bundle has completed.</summary>
