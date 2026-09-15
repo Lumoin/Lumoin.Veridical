@@ -19,7 +19,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// arm requires both predicates, so a host that reports AVX-512F but not
 /// <see cref="Vector512.IsHardwareAccelerated"/> falls through to AVX2 here and in the facades
 /// alike. The no-backend branch is reachable on an x64 host by starting the runner with
-/// <c>DOTNET_EnableAVX2=0</c> and <c>DOTNET_EnableAVX512F=0</c>.
+/// <c>DOTNET_EnableAVX2=0</c>, which withdraws AVX-512 as well because the runtime's AVX-512
+/// support builds on AVX2; <c>DOTNET_EnableAVX512=0</c> alone leaves the AVX2 arm selected.
 /// </summary>
 [TestClass]
 internal sealed class SimdScalarBackendDispatchTests
