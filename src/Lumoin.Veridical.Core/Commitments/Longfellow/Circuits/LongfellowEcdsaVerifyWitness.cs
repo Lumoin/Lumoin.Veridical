@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 
@@ -36,6 +37,9 @@ internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
 {
     //The packed digit's plucker-point domain: three exponent bits index an eight-entry table.
     private const int DigitTableLength = 8;
+
+    /// <summary>The pretable workspace holds generator x/y, public-key x/y, and their shared affine z coordinate.</summary>
+    private const int PreTableWorkspaceElements = 5;
 
     private readonly LongfellowLogicFieldOperations field;
     private readonly ScalarMultiplyDelegate orderMultiply;
@@ -192,7 +196,7 @@ internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
         //reason for recomputing R instead of decompressing it from r.
         ProjectivePoint generatorTerm = ScalarMultiplyPoint(curve.GeneratorX.Span, curve.GeneratorY.Span, u1);
         ProjectivePoint keyTerm = ScalarMultiplyPoint(pkX, pkY, u2);
-        ProjectivePoint recovered = AddPoints(generatorTerm, keyTerm);
+        ProjectivePoint recovered = AddPoints(generatorTerm.Input, keyTerm.Input);
         Normalize(ref recovered);
 
         //rx is the signature scalar r read in the base field; ry is the recovered point's y.
@@ -241,7 +245,7 @@ internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
                 accumulator = DoublePoint(accumulator);
             }
 
-            accumulator = AddPoints(accumulator, digitTable[digit]);
+            accumulator = AddPoints(accumulator.Input, digitTable[digit].Input);
 
             accumulator.X.Span.CopyTo(intX.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
             accumulator.Y.Span.CopyTo(intY.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
@@ -297,41 +301,38 @@ internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
     /// left-hand/right-hand coordinate sequences, each normalized by its z coordinate when nonzero,
     /// then <c>g+r+pk</c> from the normalized <c>g+r</c> entry.
     /// </summary>
+    /// <remarks>Point inputs borrow one scope-bound workspace rental; normalized results are written into the witness's retained table.</remarks>
     /// <param name="pkX">The public key's x coordinate.</param>
     /// <param name="pkY">The public key's y coordinate.</param>
     private void FillPreTable(ReadOnlySpan<byte> pkX, ReadOnlySpan<byte> pkY)
     {
-        Span<byte> one = stackalloc byte[Scalar.SizeBytes];
+        using IMemoryOwner<byte> owner = field.Pool.Rent(PreTableWorkspaceElements * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(PreTableWorkspaceElements * Scalar.SizeBytes)];
+        buffer.Clear();
+        Span<byte> generatorX = buffer.Slice(0 * Scalar.SizeBytes, Scalar.SizeBytes);
+        Span<byte> generatorY = buffer.Slice(1 * Scalar.SizeBytes, Scalar.SizeBytes);
+        Span<byte> keyX = buffer.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes);
+        Span<byte> keyY = buffer.Slice(3 * Scalar.SizeBytes, Scalar.SizeBytes);
+        Span<byte> one = buffer.Slice(4 * Scalar.SizeBytes, Scalar.SizeBytes);
         field.Compiler.One.Span.CopyTo(one);
+        curve.GeneratorX.Span.CopyTo(generatorX);
+        curve.GeneratorY.Span.CopyTo(generatorY);
+        pkX.CopyTo(keyX);
+        pkY.CopyTo(keyY);
 
-        var leftX = new byte[3][];
-        var leftY = new byte[3][];
-        var rightX = new ReadOnlyMemory<byte>[3];
-        var rightY = new ReadOnlyMemory<byte>[3];
-        leftX[0] = curve.GeneratorX.ToArray();
-        leftY[0] = curve.GeneratorY.ToArray();
-        rightX[0] = pkX.ToArray();
-        rightY[0] = pkY.ToArray();
-        leftX[1] = curve.GeneratorX.ToArray();
-        leftY[1] = curve.GeneratorY.ToArray();
-        rightX[1] = rx;
-        rightY[1] = ry;
-        leftX[2] = pkX.ToArray();
-        leftY[2] = pkY.ToArray();
-        rightX[2] = rx;
-        rightY[2] = ry;
+        var generator = new ProjectivePointInput(generatorX, generatorY, one);
+        var key = new ProjectivePointInput(keyX, keyY, one);
+        var signature = new ProjectivePointInput(rx.Span, ry.Span, one);
 
-        for(int i = 0; i < 3; i++)
-        {
-            ProjectivePoint sum = AddPoints(
-                new ProjectivePoint(leftX[i], leftY[i], one.ToArray()),
-                new ProjectivePoint(rightX[i], rightY[i], one.ToArray()));
-            NormalizeIntoPair(sum, pre.Slice((2 * i) * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(((2 * i) + 1) * Scalar.SizeBytes, Scalar.SizeBytes).Span);
-        }
+        ProjectivePoint sum = AddPoints(generator, key);
+        NormalizeIntoPair(sum, pre.Slice(0 * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(1 * Scalar.SizeBytes, Scalar.SizeBytes).Span);
+        sum = AddPoints(generator, signature);
+        NormalizeIntoPair(sum, pre.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(3 * Scalar.SizeBytes, Scalar.SizeBytes).Span);
+        sum = AddPoints(key, signature);
+        NormalizeIntoPair(sum, pre.Slice(4 * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(5 * Scalar.SizeBytes, Scalar.SizeBytes).Span);
 
-        ProjectivePoint grpk = AddPoints(
-            new ProjectivePoint(pre.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes), pre.Slice(3 * Scalar.SizeBytes, Scalar.SizeBytes), one.ToArray()),
-            new ProjectivePoint(pkX.ToArray(), pkY.ToArray(), one.ToArray()));
+        var gr = new ProjectivePointInput(pre.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(3 * Scalar.SizeBytes, Scalar.SizeBytes).Span, one);
+        ProjectivePoint grpk = AddPoints(gr, key);
         NormalizeIntoPair(grpk, pre.Slice(6 * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(7 * Scalar.SizeBytes, Scalar.SizeBytes).Span);
     }
 
@@ -380,7 +381,28 @@ internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
     /// <param name="X">The x coordinate.</param>
     /// <param name="Y">The y coordinate.</param>
     /// <param name="Z">The z coordinate.</param>
-    private readonly record struct ProjectivePoint(ReadOnlyMemory<byte> X, ReadOnlyMemory<byte> Y, ReadOnlyMemory<byte> Z);
+    private readonly record struct ProjectivePoint(ReadOnlyMemory<byte> X, ReadOnlyMemory<byte> Y, ReadOnlyMemory<byte> Z)
+    {
+        /// <summary>Returns a read-only input view borrowing these coordinates for synchronous arithmetic.</summary>
+        public ProjectivePointInput Input => new(X.Span, Y.Span, Z.Span);
+    }
+
+
+    /// <summary>A read-only point input borrowing caller-owned workspace or live point storage.</summary>
+    /// <param name="x">The borrowed x coordinate.</param>
+    /// <param name="y">The borrowed y coordinate.</param>
+    /// <param name="z">The borrowed z coordinate.</param>
+    private readonly ref struct ProjectivePointInput(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y, ReadOnlySpan<byte> z)
+    {
+        /// <summary>The borrowed x coordinate.</summary>
+        public ReadOnlySpan<byte> X { get; } = x;
+
+        /// <summary>The borrowed y coordinate.</summary>
+        public ReadOnlySpan<byte> Y { get; } = y;
+
+        /// <summary>The borrowed z coordinate.</summary>
+        public ReadOnlySpan<byte> Z { get; } = z;
+    }
 
 
     /// <summary>The projective identity <c>(0 : 1 : 0)</c>.</summary>
@@ -405,7 +427,7 @@ internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
             accumulator = DoublePoint(accumulator);
             if(BitAt(scalar, i) != 0)
             {
-                accumulator = AddPoints(accumulator, basePoint);
+                accumulator = AddPoints(accumulator.Input, basePoint.Input);
             }
         }
 
@@ -414,26 +436,26 @@ internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
 
 
     /// <summary>Renes–Costello–Batina Algorithm 1 over concrete canonical elements, the same complete addition the circuit emits.</summary>
-    /// <param name="p1">The first point.</param>
-    /// <param name="p2">The second point.</param>
-    /// <returns>The sum.</returns>
-    private ProjectivePoint AddPoints(ProjectivePoint p1, ProjectivePoint p2)
+    /// <param name="p1">The first point's borrowed input view, consumed synchronously.</param>
+    /// <param name="p2">The second point's borrowed input view, consumed synchronously.</param>
+    /// <returns>The sum with independent array-backed coordinates.</returns>
+    private ProjectivePoint AddPoints(ProjectivePointInput p1, ProjectivePointInput p2)
     {
-        byte[] t0 = Mul(p1.X.Span, p2.X.Span);
-        byte[] t1 = Mul(p1.Y.Span, p2.Y.Span);
-        byte[] t2 = Mul(p1.Z.Span, p2.Z.Span);
-        byte[] t3 = AddF(p1.X.Span, p1.Y.Span);
-        byte[] t4 = AddF(p2.X.Span, p2.Y.Span);
+        byte[] t0 = Mul(p1.X, p2.X);
+        byte[] t1 = Mul(p1.Y, p2.Y);
+        byte[] t2 = Mul(p1.Z, p2.Z);
+        byte[] t3 = AddF(p1.X, p1.Y);
+        byte[] t4 = AddF(p2.X, p2.Y);
         t3 = Mul(t3, t4);
         t4 = AddF(t0, t1);
         t3 = SubF(t3, t4);
-        t4 = AddF(p1.X.Span, p1.Z.Span);
-        byte[] t5 = AddF(p2.X.Span, p2.Z.Span);
+        t4 = AddF(p1.X, p1.Z);
+        byte[] t5 = AddF(p2.X, p2.Z);
         t4 = Mul(t4, t5);
         t5 = AddF(t0, t2);
         t4 = SubF(t4, t5);
-        t5 = AddF(p1.Y.Span, p1.Z.Span);
-        byte[] x3 = AddF(p2.Y.Span, p2.Z.Span);
+        t5 = AddF(p1.Y, p1.Z);
+        byte[] x3 = AddF(p2.Y, p2.Z);
         t5 = Mul(t5, x3);
         x3 = AddF(t1, t2);
         t5 = SubF(t5, x3);
