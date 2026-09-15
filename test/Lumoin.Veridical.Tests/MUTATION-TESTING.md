@@ -74,7 +74,11 @@ into the assembly under test before the `mutate` list narrows what is tested, so
 whole-suite coverage run executes the BigInteger reference arithmetic with every mutation
 point instrumented and takes hours; the fourteen classes give the same kill power for the
 kernels in minutes. The filter is a config key: Stryker 4.16 has no command-line option for
-it.
+it. That config also sets `coverage-analysis` to `off`: with a test set this small, running every
+filtered test against every mutant costs little, and it removes the per-test coverage attribution
+that otherwise decides which tests a mutant sees — attribution that has been observed to drop a
+mutant's discriminating test when many classes are in the run, so that the same mutant is killed
+in a one-class run and reported as surviving in the full slice.
 
 To try a single file first, copy the config next to it, shorten its `mutate` list (and, if
 useful, its `test-case-filter`), run with `--config-file` naming the copy, and delete the

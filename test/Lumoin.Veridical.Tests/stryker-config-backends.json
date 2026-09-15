@@ -16,7 +16,7 @@
       "**/Bls12Curve381SimdScalarBackend.cs"
     ],
     "mutation-level": "Standard",
-    "coverage-analysis": "perTest",
+    "coverage-analysis": "off",
     "concurrency": 8,
     "thresholds": {
       "high": 80,
