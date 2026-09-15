@@ -5,17 +5,17 @@
     "test-runner": "vstest",
     "test-case-filter": "TestCategory!=Slow",
     "mutate": [
-      "../../src/Lumoin.Veridical.Core/Commitments/BaseFold/MerkleTree.cs",
-      "../../src/Lumoin.Veridical.Core/Commitments/BaseFold/MerkleAuthenticationPath.cs",
-      "../../src/Lumoin.Veridical.Core/Commitments/BaseFold/MerkleSetCommitment.cs",
-      "../../src/Lumoin.Veridical.Core/Algebraic/PoseidonPermutation.cs",
-      "../../src/Lumoin.Veridical.Core/Algebraic/PoseidonParameterGenerator.cs",
-      "../../src/Lumoin.Veridical.Core/Algebraic/FiatShamirTranscript.cs",
-      "../../src/Lumoin.Veridical.Core/Commitments/Ligero/FiatShamirTranscriptLigeroExtensions.cs",
-      "../../src/Lumoin.Veridical.Core/ConstraintSystems/Interop/ZkInterface/ZkInterfaceCursorDecoder.cs",
-      "../../src/Lumoin.Veridical.Core/ConstraintSystems/Interop/Circom/CircomR1csReader.cs",
-      "../../src/Lumoin.Veridical.Core/ConstraintSystems/Interop/Circom/CircomWitnessReader.cs",
-      "../../src/Lumoin.Veridical.Core/Commitments/Longfellow/Circuits/LongfellowBase64Decoder.cs"
+      "Commitments/BaseFold/MerkleTree.cs",
+      "Commitments/BaseFold/MerkleAuthenticationPath.cs",
+      "Commitments/BaseFold/MerkleSetCommitment.cs",
+      "Algebraic/PoseidonPermutation.cs",
+      "Algebraic/PoseidonParameterGenerator.cs",
+      "Algebraic/FiatShamirTranscript.cs",
+      "Commitments/Ligero/FiatShamirTranscriptLigeroExtensions.cs",
+      "ConstraintSystems/Interop/ZkInterface/ZkInterfaceCursorDecoder.cs",
+      "ConstraintSystems/Interop/Circom/CircomR1csReader.cs",
+      "ConstraintSystems/Interop/Circom/CircomWitnessReader.cs",
+      "Commitments/Longfellow/Circuits/LongfellowBase64Decoder.cs"
     ],
     "mutation-level": "Standard",
     "coverage-analysis": "perTest",
@@ -25,7 +25,10 @@
       "low": 60,
       "break": 0
     },
-    "reporters": ["html", "json", "markdown"],
-    "output": "../../StrykerOutput"
+    "reporters": [
+      "html",
+      "json",
+      "markdown"
+    ]
   }
 }

@@ -23,17 +23,45 @@ From `test/Lumoin.Veridical.Tests/`, in PowerShell:
 
 ```powershell
 $env:VERIDICAL_STRYKER_RUN = "true"
-dotnet tool run dotnet-stryker --config-file stryker-config.json --concurrency 1 --reporter progress --log-to-file
+dotnet tool run dotnet-stryker --config-file stryker-config.json --output ../../StrykerOutput --concurrency 1 --reporter progress --log-to-file
 Remove-Item Env:\VERIDICAL_STRYKER_RUN
 ```
 
 `VERIDICAL_STRYKER_RUN` gates the `PropertyGroup` in `Lumoin.Veridical.Tests.csproj`
 that switches the test host Stryker instruments; unset it as soon as the run finishes
 so an ordinary `dotnet build` or `dotnet test` is never affected. The `--concurrency 1`
-override above takes precedence over the `2` in the tracked config — see the
+override above takes precedence over the value in the tracked config — see the
 concurrency caution below for why the first run on a given host should always pass it
-explicitly rather than relying on the tracked default. The switched build restores
-without the package lock file, so a Stryker run leaves `packages.lock.json` untouched.
+explicitly rather than relying on the tracked default. The output folder is given on
+the command line because Stryker 4.16 rejects an `output` key inside the config file.
+The switched build restores without the package lock file in the test project and in
+the Benchmarks project (which references it), so a Stryker run leaves every tracked
+`packages.lock.json` untouched. Stryker builds the whole solution in place and then
+replaces the assembly under test inside the test project's `bin/` with its mutated
+build: never run `dotnet build` or `dotnet test` in the tree while a run is in
+progress, or the run is destroyed.
+
+The `mutate` entries are file paths relative to the directory of the project the
+`project` key names; a path that starts outside that directory matches nothing, and a
+list that matches nothing mutates the entire project.
+
+## Slices over another project
+
+One config file mutates one project. `stryker-config-backends.json` is the slice over
+the per-ISA scalar kernels in `Lumoin.Veridical.Backends.Managed` (the AVX-512, AVX2
+and portable-SIMD backends and the VPCLMULQDQ GF(2^128) kernel). Its mutants are only
+killed on a host whose CPU runs those paths — the agreement tests skip elsewhere and
+leave the mutants uncovered — so that slice runs on an AVX-512 machine:
+
+```powershell
+$env:VERIDICAL_STRYKER_RUN = "true"
+dotnet tool run dotnet-stryker --config-file stryker-config-backends.json --output ../../StrykerOutput --reporter progress --log-to-file
+Remove-Item Env:\VERIDICAL_STRYKER_RUN
+```
+
+To try a single file first, copy the config next to it, shorten its `mutate` list, run
+with `--config-file` naming the copy, and delete the copy afterwards; copies are never
+committed.
 
 **Fallback.** Setting `UseVSTest` alone left the MSTest test host active (the suite
 still started through the Microsoft.Testing.Platform entry point instead of VsTest),
@@ -78,7 +106,7 @@ cleanly on that host.
 
 ## What stays tracked
 
-`.config/dotnet-tools.json` (the `dotnet-stryker` tool-manifest entry) and
-`stryker-config.json` are checked-in configuration. Everything Stryker produces at run
+`.config/dotnet-tools.json` (the `dotnet-stryker` tool-manifest entry),
+`stryker-config.json` and `stryker-config-backends.json` are checked-in configuration. Everything Stryker produces at run
 time — reports, logs — lands under `StrykerOutput/`, which git ignores; a report is
 never committed.
