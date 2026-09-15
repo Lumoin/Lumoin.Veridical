@@ -285,7 +285,7 @@ internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowMdocRevocationListCircuit(logic);
 
         var list = new int[listLength];
@@ -315,7 +315,7 @@ internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowMdocRevocationSpanCircuit(logic, Curve);
 
         int craPkX = logic.InputElement();
@@ -357,7 +357,7 @@ internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
     /// <returns>The witness column, one canonical scalar per declared input wire.</returns>
     private static byte[] BuildListWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, ReadOnlyMemory<byte>[] list, byte[] id)
     {
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list, inverse);
 
         byte[] column = new byte[circuit.InputCount * ScalarSize];
         field.Compiler.One.Span.CopyTo(column.AsSpan(0, ScalarSize));

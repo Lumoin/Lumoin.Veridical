@@ -197,7 +197,7 @@ internal sealed class LongfellowEcdsaVerifyWitness
             int bitIndex = bits - i - 1;
             int digit = BitAt(e, bitIndex) + (2 * BitAt(r, bitIndex)) + (4 * BitAt(negatedS, bitIndex));
 
-            LongfellowBitPlucker.PluckerPoint(field, DigitTableLength, digit).Span.CopyTo(bi[i]);
+            LongfellowBitPlucker.PluckerPoint(field, DigitTableLength, digit, bi[i]);
 
             if(i > 0)
             {

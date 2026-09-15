@@ -128,7 +128,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
 
         byte[] pkX = ParseScalar(tuple.PkX);
         byte[] pkY = ParseScalar(tuple.PkY);

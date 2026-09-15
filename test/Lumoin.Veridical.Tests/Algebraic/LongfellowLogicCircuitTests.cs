@@ -129,7 +129,7 @@ internal sealed class LongfellowLogicCircuitTests: IDisposable
 
         LongfellowLogicFieldOperations evaluationField = circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert, circuitScope.Pool));
         var evaluationBackend = new LongfellowEvaluationLogicBackend(evaluationField);
-        var evaluationLogic = new LongfellowLogic(evaluationBackend, evaluationField);
+        using var evaluationLogic = new LongfellowLogic(evaluationBackend, evaluationField);
 
         for(ulong x = 0; x < (1UL << MultiplierWidth); x++)
         {
@@ -232,14 +232,25 @@ internal sealed class LongfellowLogicCircuitTests: IDisposable
 
     /// <summary>Builds the GF(2^128) gadget layer and its backing compiler for one circuit compilation.</summary>
     /// <param name="builder">Receives the underlying quad-circuit builder.</param>
-    /// <returns>The gadget layer.</returns>
+    /// <returns>The gadget layer, owned until this test's scope is disposed.</returns>
     private LongfellowLogic NewCompileLogic(out LongfellowQuadCircuitBuilder builder)
     {
         LongfellowLogicFieldOperations field = circuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert, circuitScope.Pool));
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
 
-        return new LongfellowLogic(backend, field);
+        LongfellowLogic? logic = new(backend, field);
+        try
+        {
+            LongfellowLogic result = circuitScope.Track(logic);
+            logic = null;
+
+            return result;
+        }
+        finally
+        {
+            logic?.Dispose();
+        }
     }
 
 

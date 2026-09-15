@@ -1,3 +1,4 @@
+using System.Buffers;
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
@@ -82,7 +83,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
 
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;
         byte[] id = ParseScalar(vector.Id);
@@ -173,11 +174,11 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
         byte[] id = Canonical(EvalUnlistedIdValue);
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list, inverse);
 
         var circuit = new LongfellowMdocRevocationListCircuit(logic);
         circuit.AssertNotOnList(InternList(backend, list), backend.Constant(id), backend.Constant(inverse));
@@ -192,11 +193,11 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
         byte[] id = list[EvalListedIndex].ToArray();
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list, inverse);
 
         var circuit = new LongfellowMdocRevocationListCircuit(logic);
         circuit.AssertNotOnList(InternList(backend, list), backend.Constant(id), backend.Constant(inverse));
@@ -211,7 +212,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
         byte[] id = Canonical(EvalUnlistedIdValue);
@@ -230,9 +231,11 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         ReadOnlyMemory<byte>[] list = BuildEvalList();
 
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, list[EvalListedIndex].Span, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);
+        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];
+        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, list[EvalListedIndex].Span, list, inverse);
 
-        Assert.AreSequenceEqual(new byte[ScalarSize], inverse, "A listed identifier's product inverse must be the zero non-witness.");
+        Assert.AreSequenceEqual<byte>(field.Compiler.Zero.Span, inverse, "A listed identifier's product inverse must be the zero non-witness.");
     }
 
 
@@ -250,7 +253,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
 
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;
 

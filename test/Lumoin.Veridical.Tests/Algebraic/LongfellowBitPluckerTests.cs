@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -132,7 +133,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     [TestMethod]
     public void PackedV32ElementCountAtLogPointCountTwoMatchesTheReferenceKNv32EltsFormula()
     {
-        var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
@@ -145,19 +146,21 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
     [TestMethod]
     public void MakePackedV32RoundTripsThroughUnpackAtLogPointCountTwoOverGf2128()
     {
-        var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
         (uint value, _) = BuildPackingTestVector();
-        ReadOnlyMemory<byte>[] packed = encoder.MakePackedV32(value);
+        using IMemoryOwner<byte> packedOwner = encoder.Pool.Rent(encoder.PackedV32ElementCount * Scalar.SizeBytes);
+        Span<byte> packed = packedOwner.Memory.Span[..(encoder.PackedV32ElementCount * Scalar.SizeBytes)];
+        encoder.MakePackedV32(value, packed);
 
-        Assert.HasCount(PackedV32ElementCountAtLogPointCountTwo, packed, "MakePackedV32 must produce PackedV32ElementCount elements.");
+        Assert.AreEqual(PackedV32ElementCountAtLogPointCountTwo, packed.Length / Scalar.SizeBytes, "MakePackedV32 must produce PackedV32ElementCount elements.");
 
-        var packedWires = new int[packed.Length];
-        for(int i = 0; i < packed.Length; i++)
+        var packedWires = new int[encoder.PackedV32ElementCount];
+        for(int i = 0; i < packedWires.Length; i++)
         {
-            packedWires[i] = logic.Backend.Constant(packed[i].Span);
+            packedWires[i] = logic.Backend.Constant(packed.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes));
         }
 
         LongfellowBitWire[] unpacked = plucker.UnpackV32(packedWires);
@@ -180,13 +183,17 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
 
         (uint value, byte[] bitBytes) = BuildPackingTestVector();
-        ReadOnlyMemory<byte>[] fromValue = encoder.MakePackedV32(value);
-        ReadOnlyMemory<byte>[] fromBits = encoder.Pack(bitBytes, LongfellowLogic.BitWidth32, PackedV32ElementCountAtLogPointCountTwo);
+        using IMemoryOwner<byte> valueOwner = encoder.Pool.Rent(encoder.PackedV32ElementCount * Scalar.SizeBytes);
+        Span<byte> fromValue = valueOwner.Memory.Span[..(encoder.PackedV32ElementCount * Scalar.SizeBytes)];
+        encoder.MakePackedV32(value, fromValue);
+        using IMemoryOwner<byte> bitsOwner = encoder.Pool.Rent(PackedV32ElementCountAtLogPointCountTwo * Scalar.SizeBytes);
+        Span<byte> fromBits = bitsOwner.Memory.Span[..(PackedV32ElementCountAtLogPointCountTwo * Scalar.SizeBytes)];
+        encoder.Pack(bitBytes, LongfellowLogic.BitWidth32, PackedV32ElementCountAtLogPointCountTwo, fromBits);
 
         Assert.HasCount(fromValue.Length, fromBits, "Pack and MakePackedV32 must produce the same element count for the same bit pattern.");
-        for(int i = 0; i < fromValue.Length; i++)
+        for(int i = 0; i < encoder.PackedV32ElementCount; i++)
         {
-            Assert.IsTrue(fromValue[i].Span.SequenceEqual(fromBits[i].Span), $"Pack and MakePackedV32 must agree on packed element {i}.");
+            Assert.IsTrue(fromValue.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).SequenceEqual(fromBits.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes)), $"Pack and MakePackedV32 must agree on packed element {i}.");
         }
     }
 
@@ -226,7 +233,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         const int BeyondMaxLogPointCount = 9;
 
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new LongfellowBitPlucker(logic, BeyondMaxLogPointCount), "The plucker must reject a point-count exponent beyond eight.");
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new LongfellowBitPluckerEncoder(Fp256Field, BeyondMaxLogPointCount), "The encoder must reject a point-count exponent beyond eight.");
@@ -258,7 +265,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         {
             var builder = circuitScope.CreateBuilder(Fp256Field.Compiler);
             var backend = new LongfellowCompileLogicBackend(Fp256Field, builder);
-            var logic = new LongfellowLogic(backend, Fp256Field);
+            using var logic = new LongfellowLogic(backend, Fp256Field);
             var plucker = new LongfellowBitPlucker(logic, logPointCount);
 
             int element = logic.InputElement();
@@ -290,14 +297,17 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         for(int logPointCount = MinLogPointCount; logPointCount <= MaxLogPointCount; logPointCount++)
         {
             var backend = new LongfellowEvaluationLogicBackend(field);
-            var logic = new LongfellowLogic(backend, field);
+            using var logic = new LongfellowLogic(backend, field);
             var encoder = new LongfellowBitPluckerEncoder(field, logPointCount);
             var plucker = new LongfellowBitPlucker(logic, logPointCount);
 
             int pointCount = 1 << logPointCount;
             for(int i = 0; i < pointCount; i++)
             {
-                int wire = backend.Constant(encoder.Encode(i).Span);
+                using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+                Span<byte> encoded = owner.Memory.Span[..Scalar.SizeBytes];
+                encoder.Encode(i, encoded);
+                int wire = backend.Constant(encoded);
                 LongfellowBitWire[] bits = plucker.Pluck(wire);
 
                 for(int k = 0; k < logPointCount; k++)
@@ -319,7 +329,7 @@ internal sealed class LongfellowBitPluckerTests: IDisposable
         int pointCount = 1 << PackingLogPointCount;
 
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
         //OfScalar(pointCount) is not one of the plucker's pointCount interpolation points (those

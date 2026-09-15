@@ -56,7 +56,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// branch — produces.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowLogic
+internal sealed class LongfellowLogic: IDisposable
 {
     /// <summary>The reference's <c>v1</c> width alias.</summary>
     public const int BitWidth1 = 1;
@@ -96,6 +96,9 @@ internal sealed class LongfellowLogic
 
     private readonly LongfellowLogicBackend backend;
     private readonly LongfellowLogicFieldOperations field;
+
+    /// <summary>Owns retained wire coefficients and helper tables until this logic is disposed.</summary>
+    internal LongfellowCircuitStorage Storage { get; }
 
     /// <summary>
     /// A carry-propagation scan over parallel generate/propagate arrays (the reference's
@@ -257,7 +260,8 @@ internal sealed class LongfellowLogic
 
 
     /// <summary>
-    /// Constructs the gadget over a backend and its field-operation bundle.
+    /// Constructs the gadget over a borrowed backend and field bundle, which must outlive it.
+    /// Returned bit-wire coefficients and helper tables borrow this gadget's storage until disposal.
     /// </summary>
     /// <param name="backend">The backend every gate lowers to.</param>
     /// <param name="field">The field-operation bundle.</param>
@@ -269,6 +273,14 @@ internal sealed class LongfellowLogic
 
         this.backend = backend;
         this.field = field;
+        Storage = new LongfellowCircuitStorage(field.Pool);
+    }
+
+
+    /// <summary>Releases retained coefficients and tables. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        Storage.Dispose();
     }
 
 
@@ -280,11 +292,16 @@ internal sealed class LongfellowLogic
     /// <param name="d0">The new constant term, canonical big-endian.</param>
     /// <param name="d1">The new linear coefficient, canonical big-endian.</param>
     /// <param name="v">The bit to rebase.</param>
-    /// <returns>The rebased bit, over the same wire as <paramref name="v"/>.</returns>
+    /// <returns>The rebased bit, over the same wire as <paramref name="v"/>, borrowing coefficients until this logic is disposed.</returns>
     public LongfellowBitWire Rebase(ReadOnlySpan<byte> d0, ReadOnlySpan<byte> d1, LongfellowBitWire v)
     {
-        byte[] constantTerm = AddConstant(d0, MultiplyConstant(d1, v.ConstantTerm.Span));
-        byte[] linearCoefficient = MultiplyConstant(d1, v.LinearCoefficient.Span);
+        using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> product = owner.Memory.Span[..Scalar.SizeBytes];
+        MultiplyConstant(d1, v.ConstantTerm.Span, product);
+        Memory<byte> constantTerm = Storage.Allocate(Scalar.SizeBytes);
+        AddConstant(d0, product, constantTerm.Span);
+        Memory<byte> linearCoefficient = Storage.Allocate(Scalar.SizeBytes);
+        MultiplyConstant(d1, v.LinearCoefficient.Span, linearCoefficient.Span);
 
         return new LongfellowBitWire(constantTerm, linearCoefficient, v.Wire);
     }
@@ -1377,10 +1394,16 @@ internal sealed class LongfellowLogic
             return Mulv(b, a);
         }
 
-        int x = backend.MultiplyScaled(MultiplyConstant(a.LinearCoefficient.Span, b.LinearCoefficient.Span), a.Wire, b.Wire);
-        x = backend.Axpy(x, MultiplyConstant(a.ConstantTerm.Span, b.LinearCoefficient.Span), b.Wire);
-        x = backend.Axpy(x, MultiplyConstant(a.LinearCoefficient.Span, b.ConstantTerm.Span), a.Wire);
-        x = backend.Apy(x, MultiplyConstant(a.ConstantTerm.Span, b.ConstantTerm.Span));
+        using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> coefficient = owner.Memory.Span[..Scalar.SizeBytes];
+        MultiplyConstant(a.LinearCoefficient.Span, b.LinearCoefficient.Span, coefficient);
+        int x = backend.MultiplyScaled(coefficient, a.Wire, b.Wire);
+        MultiplyConstant(a.ConstantTerm.Span, b.LinearCoefficient.Span, coefficient);
+        x = backend.Axpy(x, coefficient, b.Wire);
+        MultiplyConstant(a.LinearCoefficient.Span, b.ConstantTerm.Span, coefficient);
+        x = backend.Axpy(x, coefficient, a.Wire);
+        MultiplyConstant(a.ConstantTerm.Span, b.ConstantTerm.Span, coefficient);
+        x = backend.Apy(x, coefficient);
 
         return new LongfellowBitWire(field, x);
     }
@@ -1392,12 +1415,15 @@ internal sealed class LongfellowLogic
     /// </summary>
     /// <param name="a">The first operand.</param>
     /// <param name="b">The second operand.</param>
-    /// <returns>The sum, over a fresh wire in the general case.</returns>
+    /// <returns>The sum, over a fresh wire in the general case; folded coefficients borrow this logic's storage.</returns>
     private LongfellowBitWire Addv(LongfellowBitWire a, LongfellowBitWire b)
     {
         if (LongfellowCompilerFieldOperations.ElementIsZero(a.LinearCoefficient.Span))
         {
-            return new LongfellowBitWire(AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span), b.LinearCoefficient, b.Wire);
+            Memory<byte> constantTerm = Storage.Allocate(Scalar.SizeBytes);
+            AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span, constantTerm.Span);
+
+            return new LongfellowBitWire(constantTerm, b.LinearCoefficient, b.Wire);
         }
 
         if (LongfellowCompilerFieldOperations.ElementIsZero(b.LinearCoefficient.Span))
@@ -1408,7 +1434,10 @@ internal sealed class LongfellowLogic
         int x = backend.MultiplyScaled(a.LinearCoefficient.Span, a.Wire);
         int axb = backend.MultiplyScaled(b.LinearCoefficient.Span, b.Wire);
         x = backend.Add(x, axb);
-        x = backend.Apy(x, AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span));
+        using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> coefficient = owner.Memory.Span[..Scalar.SizeBytes];
+        AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span, coefficient);
+        x = backend.Apy(x, coefficient);
 
         return new LongfellowBitWire(field, x);
     }
@@ -1765,25 +1794,21 @@ internal sealed class LongfellowLogic
     /// <summary>Multiplies two field constants out of circuit (the reference's <c>mulf</c>, applied to compile-time coefficients).</summary>
     /// <param name="left">The first factor, canonical big-endian.</param>
     /// <param name="right">The second factor, canonical big-endian.</param>
-    /// <returns>The product, canonical big-endian.</returns>
-    private byte[] MultiplyConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    /// <param name="product">Receives the canonical product, separate from both inputs.</param>
+    private void MultiplyConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> product)
     {
-        var product = new byte[Scalar.SizeBytes];
+        product.Clear();
         field.Compiler.Multiply(left, right, product, field.Compiler.Curve);
-
-        return product;
     }
 
 
     /// <summary>Adds two field constants out of circuit (the reference's <c>addf</c>, applied to compile-time coefficients).</summary>
     /// <param name="left">The first addend, canonical big-endian.</param>
     /// <param name="right">The second addend, canonical big-endian.</param>
-    /// <returns>The sum, canonical big-endian.</returns>
-    private byte[] AddConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    /// <param name="sum">Receives the canonical sum, separate from both inputs.</param>
+    private void AddConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> sum)
     {
-        var sum = new byte[Scalar.SizeBytes];
+        sum.Clear();
         field.Compiler.Add(left, right, sum, field.Compiler.Curve);
-
-        return sum;
     }
 }

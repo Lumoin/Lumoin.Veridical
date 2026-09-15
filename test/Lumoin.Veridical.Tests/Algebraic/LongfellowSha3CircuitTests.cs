@@ -76,7 +76,7 @@ internal sealed class LongfellowSha3CircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
         var state = new LongfellowBitWire[GridSize][][];
@@ -122,7 +122,7 @@ internal sealed class LongfellowSha3CircuitTests: IDisposable
             byte[] expected = Convert.FromHexString(vector.Output);
 
             var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-            var logic = new LongfellowLogic(backend, field);
+            using var logic = new LongfellowLogic(backend, field);
             var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
             LongfellowBitWire[][] output = circuit.AssertShake256(
@@ -151,7 +151,7 @@ internal sealed class LongfellowSha3CircuitTests: IDisposable
         byte[] expected = Convert.FromHexString(vector.Output);
 
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
         IReadOnlyList<LongfellowSha3BlockWitness> witnesses = LongfellowSha3Witness.ComputeWitnessShake256(seed, expected.Length);

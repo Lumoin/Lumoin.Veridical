@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Numerics;
 using System.Text;
@@ -73,7 +74,7 @@ internal sealed class LongfellowJwtCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
 
         LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
         byte[] token = Encoding.ASCII.GetBytes(vector.Token);
@@ -304,7 +305,9 @@ internal sealed class LongfellowJwtCircuitTests: IDisposable
     /// <returns>The wire bundle.</returns>
     private static LongfellowJwtOpenedAttributeWires BuildAttributeWires(LongfellowLogic logic, LongfellowJwtOpenedAttribute attribute)
     {
-        byte[] pattern = attribute.BuildPattern();
+        using IMemoryOwner<byte> owner = logic.Field.Pool.Rent(attribute.PatternLength);
+        Span<byte> pattern = owner.Memory.Span[..attribute.PatternLength];
+        attribute.BuildPattern(pattern);
         var patternWires = new LongfellowBitWire[LongfellowJwtOpenedAttributeWires.PatternLength][];
         for(int i = 0; i < patternWires.Length; i++)
         {

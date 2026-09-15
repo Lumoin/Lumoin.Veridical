@@ -567,7 +567,7 @@ internal sealed class LongfellowMlDsaCompileTests: IDisposable
     {
         var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
         DefineValidSignature(parameters)(logic, builder, verify);
 
@@ -586,7 +586,7 @@ internal sealed class LongfellowMlDsaCompileTests: IDisposable
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         define(logic, builder, verify);

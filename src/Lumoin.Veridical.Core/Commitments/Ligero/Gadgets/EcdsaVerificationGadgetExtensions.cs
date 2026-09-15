@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core.Algebraic;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Core.Commitments.Ligero.Gadgets;
 
@@ -344,12 +345,25 @@ internal static class EcdsaVerificationGadgetExtensions
     //bound as AddConstant targets; this binds the transcript to them too (domain
     //separation), mirroring the R1CS path's AbsorbR1csInstance without touching the
     //audited prover/verifier. Inputs must be canonical (ScalarSize bytes each).
-    public static byte[] DeriveTranscriptSeed(EcdsaPublicInputs publicInputs, ReadOnlySpan<byte> domainSeparator, FiatShamirHashDelegate hash, string hashFunction)
+    /// <summary>Writes a transcript seed bound to the domain and the five public scalar slots.</summary>
+    /// <param name="publicInputs">The public statement; short scalar slots are zero-padded.</param>
+    /// <param name="domainSeparator">The protocol domain bytes.</param>
+    /// <param name="hash">The Fiat-Shamir hash delegate.</param>
+    /// <param name="hashFunction">The hash algorithm identifier.</param>
+    /// <param name="pool">The caller's pool for the temporary transcript message.</param>
+    /// <param name="seed">Receives the scalar-sized transcript seed.</param>
+    /// <exception cref="ArgumentNullException">When <paramref name="hash"/> or <paramref name="pool"/> is null.</exception>
+    public static void DeriveTranscriptSeed(EcdsaPublicInputs publicInputs, ReadOnlySpan<byte> domainSeparator, FiatShamirHashDelegate hash, string hashFunction, BaseMemoryPool pool, Span<byte> seed)
     {
         ArgumentNullException.ThrowIfNull(hash);
+        ArgumentNullException.ThrowIfNull(pool);
 
-        byte[] message = new byte[domainSeparator.Length + (5 * ScalarSize)];
-        Span<byte> span = message;
+        //The statement binds Qx, Qy, e, r and s, each in its own scalar slot.
+        const int PublicScalarCount = 5;
+        int messageLength = checked(domainSeparator.Length + (PublicScalarCount * ScalarSize));
+        using IMemoryOwner<byte> owner = pool.Rent(messageLength);
+        Span<byte> span = owner.Memory.Span[..messageLength];
+        span.Clear();
         domainSeparator.CopyTo(span);
         int offset = domainSeparator.Length;
         publicInputs.PublicKeyX.Span.CopyTo(span.Slice(offset, ScalarSize));
@@ -358,10 +372,8 @@ internal static class EcdsaVerificationGadgetExtensions
         publicInputs.SignatureR.Span.CopyTo(span.Slice(offset + (3 * ScalarSize), ScalarSize));
         publicInputs.SignatureS.Span.CopyTo(span.Slice(offset + (4 * ScalarSize), ScalarSize));
 
-        byte[] seed = new byte[ScalarSize];
-        hash(message, seed, hashFunction);
-
-        return seed;
+        seed.Clear();
+        hash(span, seed, hashFunction);
     }
 
 

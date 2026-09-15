@@ -1,4 +1,6 @@
 using System;
+using System.Buffers;
+using Lumoin.Veridical.Core.Algebraic;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 
@@ -34,7 +36,7 @@ internal sealed class LongfellowEltMuxer
 
     /// <summary>
     /// Constructs the muxer over an array of element wires, interpolating one even-spaced Lagrange
-    /// basis polynomial per array entry and accumulating <c>basis_i[j] · array[i]</c> into the
+    /// basis polynomial per array entry in call-owned storage and accumulating <c>basis_i[j] · array[i]</c> into the
     /// <c>j</c>-th monomial coefficient wire, exactly as the reference constructor does.
     /// </summary>
     /// <param name="logic">The gadget layer this muxer builds on.</param>
@@ -63,9 +65,12 @@ internal sealed class LongfellowEltMuxer
         PointSetSize = pointSetSize == 0 ? array.Length : pointSetSize;
 
         var points = new ReadOnlyMemory<byte>[ElementCount];
+        using IMemoryOwner<byte> pointsOwner = field.Pool.Rent(ElementCount * Scalar.SizeBytes);
         for(int i = 0; i < ElementCount; i++)
         {
-            points[i] = LongfellowBitPlucker.PluckerPoint(field, PointSetSize, i);
+            Memory<byte> point = pointsOwner.Memory.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes);
+            LongfellowBitPlucker.PluckerPoint(field, PointSetSize, i, point.Span);
+            points[i] = point;
         }
 
         coefficients = new int[ElementCount];
@@ -82,7 +87,8 @@ internal sealed class LongfellowEltMuxer
                 values[j] = j == i ? field.Compiler.One : field.Compiler.Zero;
             }
 
-            ReadOnlyMemory<byte>[] basis = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points);
+            using var storage = new LongfellowCircuitStorage(field.Pool);
+            ReadOnlyMemory<byte>[] basis = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points, storage);
             for(int j = 0; j < ElementCount; j++)
             {
                 int basisWire = backend.Constant(basis[j].Span);

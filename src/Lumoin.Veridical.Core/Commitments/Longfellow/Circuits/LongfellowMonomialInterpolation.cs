@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 
@@ -28,14 +29,16 @@ internal static class LongfellowMonomialInterpolation
     /// <param name="field">The field-operation bundle supplying subtraction, multiplication and inversion.</param>
     /// <param name="values">The interpolated values (the reference's Lagrange-basis coefficients <c>L</c>), one per point.</param>
     /// <param name="points">The evaluation points (the reference's <c>X</c>), the same length as <paramref name="values"/>.</param>
-    /// <returns>The monomial coefficients, least significant first, the same length as <paramref name="values"/>.</returns>
-    /// <exception cref="ArgumentNullException">When <paramref name="field"/>, <paramref name="values"/> or <paramref name="points"/> is <see langword="null"/>.</exception>
+    /// <param name="storage">Owns the returned coefficient bytes until disposal.</param>
+    /// <returns>The monomial coefficients, least significant first, borrowed from <paramref name="storage"/>. A single value retains its supplied byte length.</returns>
+    /// <exception cref="ArgumentNullException">When <paramref name="field"/>, <paramref name="values"/>, <paramref name="points"/> or <paramref name="storage"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="values"/> and <paramref name="points"/> differ in length.</exception>
-    public static ReadOnlyMemory<byte>[] MonomialOfLagrange(LongfellowLogicFieldOperations field, ReadOnlyMemory<byte>[] values, ReadOnlyMemory<byte>[] points)
+    public static ReadOnlyMemory<byte>[] MonomialOfLagrange(LongfellowLogicFieldOperations field, ReadOnlyMemory<byte>[] values, ReadOnlyMemory<byte>[] points, LongfellowCircuitStorage storage)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(values);
         ArgumentNullException.ThrowIfNull(points);
+        ArgumentNullException.ThrowIfNull(storage);
 
         if(values.Length != points.Length)
         {
@@ -43,19 +46,46 @@ internal static class LongfellowMonomialInterpolation
         }
 
         int n = values.Length;
-        var coefficients = new byte[n][];
-        for(int i = 0; i < n; i++)
+        if(n == 0)
         {
-            coefficients[i] = values[i].ToArray();
+            return [];
         }
 
-        ConvertLagrangeToNewtonInPlace(field, coefficients, points, n);
-        ConvertNewtonToMonomialInPlace(field, coefficients, points, n);
+        if(n == 1)
+        {
+            return [storage.Copy(values[0].Span)];
+        }
+
+        //Each slot preserves the input's byte length until arithmetic replaces it with a scalar.
+        int byteLength = 0;
+        for(int i = 0; i < n; i++)
+        {
+            byteLength = checked(byteLength + Math.Max(Scalar.SizeBytes, values[i].Length));
+        }
+
+        using IMemoryOwner<byte> owner = field.Pool.Rent(byteLength);
+        Span<byte> buffer = owner.Memory.Span[..byteLength];
+        buffer.Clear();
+        var coefficients = new Memory<byte>[n];
+        var slots = new Memory<byte>[n];
+        int offset = 0;
+        for(int i = 0; i < n; i++)
+        {
+            int slotLength = Math.Max(Scalar.SizeBytes, values[i].Length);
+            Memory<byte> slot = owner.Memory.Slice(offset, slotLength);
+            values[i].Span.CopyTo(slot.Span);
+            coefficients[i] = slot[..values[i].Length];
+            slots[i] = slot[..Scalar.SizeBytes];
+            offset += slotLength;
+        }
+
+        ConvertLagrangeToNewtonInPlace(field, coefficients, slots, points, n);
+        ConvertNewtonToMonomialInPlace(field, coefficients, slots, points, n);
 
         var result = new ReadOnlyMemory<byte>[n];
         for(int i = 0; i < n; i++)
         {
-            result[i] = coefficients[i];
+            result[i] = storage.Copy(coefficients[i].Span);
         }
 
         return result;
@@ -69,25 +99,37 @@ internal static class LongfellowMonomialInterpolation
     /// </summary>
     /// <param name="field">The field-operation bundle.</param>
     /// <param name="coefficients">The coefficients, mutated in place.</param>
+    /// <param name="slots">The full scalar destinations backing each coefficient.</param>
     /// <param name="points">The evaluation points.</param>
     /// <param name="n">The coefficient count.</param>
-    private static void ConvertLagrangeToNewtonInPlace(LongfellowLogicFieldOperations field, byte[][] coefficients, ReadOnlyMemory<byte>[] points, int n)
+    private static void ConvertLagrangeToNewtonInPlace(LongfellowLogicFieldOperations field, Memory<byte>[] coefficients, Memory<byte>[] slots, ReadOnlyMemory<byte>[] points, int n)
     {
-        byte[] cachedDifference = field.Compiler.One.ToArray();
-        byte[] cachedInverse = field.Compiler.One.ToArray();
+        //The two cached scalars and two arithmetic temporaries never alias active operands.
+        const int ScratchScalarCount = 4;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(ScratchScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(ScratchScalarCount * Scalar.SizeBytes)];
+        Span<byte> cachedDifference = buffer[..Scalar.SizeBytes];
+        Span<byte> cachedInverse = buffer.Slice(Scalar.SizeBytes, Scalar.SizeBytes);
+        Span<byte> difference = buffer.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes);
+        Span<byte> intermediate = buffer.Slice(3 * Scalar.SizeBytes, Scalar.SizeBytes);
+        field.Compiler.One.Span.CopyTo(cachedDifference);
+        field.Compiler.One.Span.CopyTo(cachedInverse);
 
         for(int i = 1; i < n; i++)
         {
             for(int k = n - 1; k >= i; k--)
             {
-                byte[] difference = Subtract(field, points[k].Span, points[k - i].Span);
+                Subtract(field, points[k].Span, points[k - i].Span, difference);
                 if(!LongfellowCompilerFieldOperations.ElementsEqual(difference, cachedDifference))
                 {
-                    cachedDifference = difference;
-                    cachedInverse = Invert(field, difference);
+                    difference.CopyTo(cachedDifference);
+                    Invert(field, difference, cachedInverse);
                 }
 
-                coefficients[k] = Multiply(field, Subtract(field, coefficients[k], coefficients[k - 1]), cachedInverse);
+                Subtract(field, coefficients[k].Span, coefficients[k - 1].Span, intermediate);
+                Multiply(field, intermediate, cachedInverse, difference);
+                difference.CopyTo(slots[k].Span);
+                coefficients[k] = slots[k];
             }
         }
     }
@@ -99,15 +141,25 @@ internal static class LongfellowMonomialInterpolation
     /// </summary>
     /// <param name="field">The field-operation bundle.</param>
     /// <param name="coefficients">The coefficients, mutated in place.</param>
+    /// <param name="slots">The full scalar destinations backing each coefficient.</param>
     /// <param name="points">The evaluation points.</param>
     /// <param name="n">The coefficient count.</param>
-    private static void ConvertNewtonToMonomialInPlace(LongfellowLogicFieldOperations field, byte[][] coefficients, ReadOnlyMemory<byte>[] points, int n)
+    private static void ConvertNewtonToMonomialInPlace(LongfellowLogicFieldOperations field, Memory<byte>[] coefficients, Memory<byte>[] slots, ReadOnlyMemory<byte>[] points, int n)
     {
+        //The product and difference stay separate from the coefficients until each update completes.
+        const int ScratchScalarCount = 2;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(ScratchScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(ScratchScalarCount * Scalar.SizeBytes)];
+        Span<byte> product = buffer[..Scalar.SizeBytes];
+        Span<byte> difference = buffer[Scalar.SizeBytes..];
         for(int i = n - 1; i >= 0; i--)
         {
             for(int k = i + 1; k < n; k++)
             {
-                coefficients[k - 1] = Subtract(field, coefficients[k - 1], Multiply(field, coefficients[k], points[i].Span));
+                Multiply(field, coefficients[k].Span, points[i].Span, product);
+                Subtract(field, coefficients[k - 1].Span, product, difference);
+                difference.CopyTo(slots[k - 1].Span);
+                coefficients[k - 1] = slots[k - 1];
             }
         }
     }
@@ -117,13 +169,11 @@ internal static class LongfellowMonomialInterpolation
     /// <param name="field">The field-operation bundle.</param>
     /// <param name="left">The minuend, canonical big-endian.</param>
     /// <param name="right">The subtrahend, canonical big-endian.</param>
-    /// <returns>The difference, canonical big-endian.</returns>
-    private static byte[] Subtract(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    /// <param name="difference">Receives the canonical difference, separate from the inputs.</param>
+    private static void Subtract(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> difference)
     {
-        var difference = new byte[Scalar.SizeBytes];
+        difference.Clear();
         field.Subtract(left, right, difference, field.Compiler.Curve);
-
-        return difference;
     }
 
 
@@ -131,25 +181,21 @@ internal static class LongfellowMonomialInterpolation
     /// <param name="field">The field-operation bundle.</param>
     /// <param name="left">The first factor, canonical big-endian.</param>
     /// <param name="right">The second factor, canonical big-endian.</param>
-    /// <returns>The product, canonical big-endian.</returns>
-    private static byte[] Multiply(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    /// <param name="product">Receives the canonical product, separate from the inputs.</param>
+    private static void Multiply(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> product)
     {
-        var product = new byte[Scalar.SizeBytes];
+        product.Clear();
         field.Compiler.Multiply(left, right, product, field.Compiler.Curve);
-
-        return product;
     }
 
 
     /// <summary>Inverts a field constant out of circuit.</summary>
     /// <param name="field">The field-operation bundle.</param>
     /// <param name="value">The value to invert, canonical big-endian.</param>
-    /// <returns>The multiplicative inverse, canonical big-endian.</returns>
-    private static byte[] Invert(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> value)
+    /// <param name="inverse">Receives the canonical inverse, separate from the input.</param>
+    private static void Invert(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> value, Span<byte> inverse)
     {
-        var inverse = new byte[Scalar.SizeBytes];
+        inverse.Clear();
         field.Invert(value, inverse, field.Compiler.Curve);
-
-        return inverse;
     }
 }

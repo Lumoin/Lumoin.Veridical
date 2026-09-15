@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using Lumoin.Veridical.Core.Algebraic;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
@@ -218,15 +219,21 @@ internal sealed class LongfellowMdocRevocationSpanCircuit
 
         //Recompose the digest bits into a field element and tie it to the signature's digest; this
         //is also what guarantees e is nonzero advice-independently.
-        ReadOnlyMemory<byte> powerOfTwo = field.Compiler.One;
+        //Separate current and doubled scalars preserve delegates whose outputs cannot alias inputs.
+        const int DoublingScalarCount = 2;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(DoublingScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(DoublingScalarCount * Scalar.SizeBytes)];
+        Span<byte> powerOfTwo = buffer[..Scalar.SizeBytes];
+        Span<byte> doubled = buffer[Scalar.SizeBytes..];
+        field.Compiler.One.Span.CopyTo(powerOfTwo);
         int est = backend.Constant(field.Compiler.Zero.Span);
         for(int i = 0; i < LongfellowLogic.BitWidth256; i++)
         {
-            est = backend.Axpy(est, powerOfTwo.Span, logic.Eval(witness.EBits[i]));
+            est = backend.Axpy(est, powerOfTwo, logic.Eval(witness.EBits[i]));
 
-            var doubled = new byte[Scalar.SizeBytes];
-            field.Compiler.Add(powerOfTwo.Span, powerOfTwo.Span, doubled, field.Compiler.Curve);
-            powerOfTwo = doubled;
+            doubled.Clear();
+            field.Compiler.Add(powerOfTwo, powerOfTwo, doubled, field.Compiler.Curve);
+            doubled.CopyTo(powerOfTwo);
         }
 
         _ = logic.AssertEqual(est, witness.E);

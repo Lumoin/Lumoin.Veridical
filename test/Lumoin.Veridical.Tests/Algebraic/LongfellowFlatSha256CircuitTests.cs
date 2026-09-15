@@ -2,6 +2,7 @@ using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 
@@ -244,7 +245,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     public void AssertTransformBlockUnpackedLatchesWhenAWitnessedScheduleWordIsTampered()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -274,7 +275,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     public void AssertTransformBlockAllPackedAcceptsTheWitnessedFirstVectorOverFp256()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -303,7 +304,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     public void AssertMessageHashAcceptsTheAbcMessageOverFp256()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -328,7 +329,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     public void AssertMessageHashLatchesWhenTheTargetHashIsWrong()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -354,7 +355,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     public void AssertZeroPaddingLatchesWhenAByteBeyondTheOccupiedBlocksIsNonzero()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -378,7 +379,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     public void AssertTransformBlockAllPackedLatchesWhenAPackedFinalStateWordIsTampered()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -410,7 +411,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     public void FindLengthRecoversTheAbcMessageBitLengthAsConstantBits()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -437,7 +438,7 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     private static void AssertUnpackedTransformBlockAcceptsVectorZero(LongfellowLogicFieldOperations field)
     {
         var backend = new LongfellowEvaluationLogicBackend(field);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -558,11 +559,13 @@ internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
     /// <returns>The packed wires.</returns>
     private static int[] PackWord(LongfellowEvaluationLogicBackend backend, LongfellowBitPluckerEncoder encoder, uint word)
     {
-        ReadOnlyMemory<byte>[] packedElements = encoder.MakePackedV32(word);
-        var wires = new int[packedElements.Length];
-        for(int k = 0; k < packedElements.Length; k++)
+        using IMemoryOwner<byte> owner = encoder.Pool.Rent(encoder.PackedV32ElementCount * Scalar.SizeBytes);
+        Span<byte> packedElements = owner.Memory.Span[..(encoder.PackedV32ElementCount * Scalar.SizeBytes)];
+        encoder.MakePackedV32(word, packedElements);
+        var wires = new int[encoder.PackedV32ElementCount];
+        for(int k = 0; k < wires.Length; k++)
         {
-            wires[k] = backend.Constant(packedElements[k].Span);
+            wires[k] = backend.Constant(packedElements.Slice(k * Scalar.SizeBytes, Scalar.SizeBytes));
         }
 
         return wires;

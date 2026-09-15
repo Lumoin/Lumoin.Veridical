@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
@@ -23,10 +24,10 @@ internal static class LongfellowMdocRevocationListWitness
     /// <param name="field">The base-field bundle.</param>
     /// <param name="id">The identifier, canonical big-endian.</param>
     /// <param name="list">The revocation list elements, canonical big-endian.</param>
-    /// <returns>The canonical product inverse, or zero when the identifier is listed.</returns>
+    /// <param name="inverse">Receives the canonical scalar-sized product inverse, or zero when the identifier is listed.</param>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="id"/> is not exactly <see cref="Scalar.SizeBytes"/> bytes.</exception>
-    public static byte[] ComputeProductInverse(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> id, ReadOnlyMemory<byte>[] list)
+    public static void ComputeProductInverse(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> id, ReadOnlyMemory<byte>[] list, Span<byte> inverse)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(list);
@@ -36,7 +37,8 @@ internal static class LongfellowMdocRevocationListWitness
             throw new ArgumentException($"The identifier is a canonical {Scalar.SizeBytes}-byte scalar.", nameof(id));
         }
 
-        byte[] product = new byte[Scalar.SizeBytes];
+        using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> product = owner.Memory.Span[..Scalar.SizeBytes];
         field.Compiler.One.Span.CopyTo(product);
 
         //The delegates' aliasing behavior is unspecified, so the running product ping-pongs
@@ -52,13 +54,13 @@ internal static class LongfellowMdocRevocationListWitness
 
         if(LongfellowCompilerFieldOperations.ElementIsZero(product))
         {
-            return new byte[Scalar.SizeBytes];
+            inverse.Clear();
+
+            return;
         }
 
-        byte[] inverse = new byte[Scalar.SizeBytes];
+        inverse.Clear();
         field.Invert(product, inverse, field.Compiler.Curve);
-
-        return inverse;
     }
 }
 
@@ -296,18 +298,14 @@ internal sealed class LongfellowMdocRevocationSpanWitness
     }
 
 
-    /// <summary>Writes one 32-bit word as its plucker-packed elements.</summary>
+    /// <summary>Writes one 32-bit word directly into the column as its plucker-packed elements.</summary>
     /// <param name="destination">The column being filled.</param>
     /// <param name="cursor">The element cursor.</param>
     /// <param name="word">The word to pack.</param>
     private void WritePackedWord(Span<byte> destination, ref int cursor, uint word)
     {
-        ReadOnlyMemory<byte>[] packed = encoder.MakePackedV32(word);
-        for(int i = 0; i < packed.Length; i++)
-        {
-            packed[i].Span.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
-            cursor++;
-        }
+        encoder.MakePackedV32(word, destination.Slice(cursor * Scalar.SizeBytes, encoder.PackedV32ElementCount * Scalar.SizeBytes));
+        cursor += encoder.PackedV32ElementCount;
     }
 
 

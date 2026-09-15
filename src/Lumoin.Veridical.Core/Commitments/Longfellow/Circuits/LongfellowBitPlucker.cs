@@ -48,7 +48,7 @@ internal sealed class LongfellowBitPlucker
     /// at construction time: for output bit <c>k</c>, the unique polynomial through
     /// <c>(PluckerPoint(i), OfScalar((i &gt;&gt; k) &amp; 1))</c> for every <c>i &lt; PointCount</c>.
     /// </summary>
-    /// <param name="logic">The gadget layer this plucker builds on.</param>
+    /// <param name="logic">The gadget layer this plucker builds on; it owns the polynomial bytes and must outlive this plucker.</param>
     /// <param name="logPointCount">The bit width <c>LOGN</c>.</param>
     /// <exception cref="ArgumentNullException">When <paramref name="logic"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="logPointCount"/> is not positive.</exception>
@@ -80,9 +80,12 @@ internal sealed class LongfellowBitPlucker
         PackedV256ElementCount = CeilingDivide(PackedV256BitWidth, logPointCount);
 
         var points = new ReadOnlyMemory<byte>[PointCount];
+        using IMemoryOwner<byte> pointsOwner = field.Pool.Rent(PointCount * Scalar.SizeBytes);
         for(int i = 0; i < PointCount; i++)
         {
-            points[i] = PluckerPoint(field, PointCount, i);
+            Memory<byte> point = pointsOwner.Memory.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes);
+            PluckerPoint(field, PointCount, i, point.Span);
+            points[i] = point;
         }
 
         pluckerPolynomials = new ReadOnlyMemory<byte>[logPointCount][];
@@ -94,7 +97,7 @@ internal sealed class LongfellowBitPlucker
                 values[i] = ((i >> k) & 1) == 0 ? field.Compiler.Zero : field.Compiler.One;
             }
 
-            pluckerPolynomials[k] = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points);
+            pluckerPolynomials[k] = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points, logic.Storage);
         }
     }
 
@@ -109,9 +112,9 @@ internal sealed class LongfellowBitPlucker
     /// <param name="field">The field-operation bundle.</param>
     /// <param name="pointCount">The total point count the packed value is drawn from.</param>
     /// <param name="bits">The packed value.</param>
-    /// <returns>The evaluation point, canonical big-endian.</returns>
+    /// <param name="difference">Receives the canonical evaluation point in a scalar-sized destination.</param>
     /// <exception cref="ArgumentNullException">When <paramref name="field"/> is <see langword="null"/>.</exception>
-    public static ReadOnlyMemory<byte> PluckerPoint(LongfellowLogicFieldOperations field, int pointCount, int bits)
+    public static void PluckerPoint(LongfellowLogicFieldOperations field, int pointCount, int bits, Span<byte> difference)
     {
         ArgumentNullException.ThrowIfNull(field);
 
@@ -124,10 +127,8 @@ internal sealed class LongfellowBitPlucker
         field.OfScalar(2UL * (ulong)bits, doubled);
         field.OfScalar((ulong)(pointCount - 1), offset);
 
-        var difference = new byte[Scalar.SizeBytes];
+        difference.Clear();
         field.Subtract(doubled, offset, difference, field.Compiler.Curve);
-
-        return difference;
     }
 
 

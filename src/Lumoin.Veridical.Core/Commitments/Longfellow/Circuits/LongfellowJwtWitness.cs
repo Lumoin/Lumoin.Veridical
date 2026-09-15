@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
@@ -25,6 +26,12 @@ internal sealed class LongfellowJwtOpenedAttribute
 
     /// <summary>The attribute value bytes.</summary>
     public ReadOnlyMemory<byte> Value { get; }
+
+    /// <summary>The quoted pattern's byte length, including four quotes and one colon.</summary>
+    public int PatternLength => checked(Id.Length + Value.Length + PatternFramingLength);
+
+    /// <summary>Four quotes and one colon frame the identifier and value.</summary>
+    private const int PatternFramingLength = 5;
 
 
     /// <summary>
@@ -68,23 +75,19 @@ internal sealed class LongfellowJwtOpenedAttribute
     /// generator locates in the payload (the reference's <c>fill_attribute</c> and
     /// <c>compute_witness</c> both build exactly this byte string).
     /// </summary>
-    /// <returns>The pattern bytes.</returns>
-    public byte[] BuildPattern()
+    /// <param name="pattern">Receives <see cref="PatternLength"/> pattern bytes.</param>
+    public void BuildPattern(Span<byte> pattern)
     {
-        //Four quotes and one colon frame the identifier and value.
-        var pattern = new byte[Id.Length + Value.Length + 5];
         int cursor = 0;
         pattern[cursor++] = (byte)'"';
-        Id.Span.CopyTo(pattern.AsSpan(cursor));
+        Id.Span.CopyTo(pattern[cursor..]);
         cursor += Id.Length;
         pattern[cursor++] = (byte)'"';
         pattern[cursor++] = (byte)':';
         pattern[cursor++] = (byte)'"';
-        Value.Span.CopyTo(pattern.AsSpan(cursor));
+        Value.Span.CopyTo(pattern[cursor..]);
         cursor += Value.Length;
         pattern[cursor] = (byte)'"';
-
-        return pattern;
     }
 }
 
@@ -121,6 +124,9 @@ internal sealed class LongfellowJwtWitness
 
     /// <summary>One base64url-encoded P-256 coordinate's character count (43 unpadded characters carry 32 bytes).</summary>
     private const int CoordinateCharacterCount = 43;
+
+    /// <summary>A parsed JWS retains its digest and both signature scalars while the witness consumes them.</summary>
+    private const int JwsScalarCount = 3;
 
     /// <summary>One SHA-256 block's byte width.</summary>
     private const int BytesPerBlock = 64;
@@ -259,7 +265,8 @@ internal sealed class LongfellowJwtWitness
         ReadOnlySpan<byte> issuerJws = token[..tilde];
         ReadOnlySpan<byte> kbJws = token[(tilde + 1)..];
 
-        if(!TryParseJws(issuerJws, out JwsParts issuer))
+        using IMemoryOwner<byte> issuerOwner = field.Pool.Rent(JwsScalarCount * Scalar.SizeBytes);
+        if(!TryParseJws(issuerJws, field.Pool, issuerOwner.Memory[..(JwsScalarCount * Scalar.SizeBytes)], out JwsParts issuer))
         {
             return false;
         }
@@ -271,30 +278,38 @@ internal sealed class LongfellowJwtWitness
 
         LongfellowFlatSha256Witness.TransformAndWitnessMessage(issuerJws[..issuer.MessageLength], maxBlocks, out occupiedBlockCount, preimage, blocks);
 
-        CanonicalScalarReduction.ReduceOnce(issuer.Digest, basePrime, issuerDigest);
+        CanonicalScalarReduction.ReduceOnce(issuer.Digest.Span, basePrime, issuerDigest);
         payloadIndex = issuer.PayloadIndex;
         payloadLength = issuer.PayloadLength;
 
-        if(!jwtSignature.ComputeWitness(pkX, pkY, issuer.Digest, issuer.R, issuer.S))
+        if(!jwtSignature.ComputeWitness(pkX, pkY, issuer.Digest.Span, issuer.R.Span, issuer.S.Span))
         {
             return false;
         }
 
         for(int i = 0; i < LongfellowLogic.BitWidth256; i++)
         {
-            eBits[i] = (byte)((issuer.Digest[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
+            eBits[i] = (byte)((issuer.Digest.Span[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
         }
 
         //Locate each disclosed attribute in the decoded payload.
-        if(!TryBase64UrlDecode(issuerJws.Slice(issuer.PayloadIndex, issuer.PayloadLength), out byte[] payload))
+        int payloadCapacity = GetDecodedLength(issuer.PayloadLength);
+        using IMemoryOwner<byte>? payloadOwner = payloadCapacity == 0 ? null : field.Pool.Rent(payloadCapacity);
+        Span<byte> payloadBuffer = payloadOwner is null ? Span<byte>.Empty : payloadOwner.Memory.Span[..payloadCapacity];
+        if(!TryBase64UrlDecode(issuerJws.Slice(issuer.PayloadIndex, issuer.PayloadLength), payloadBuffer, out int decodedPayloadLength))
         {
             return false;
         }
 
+        ReadOnlySpan<byte> payload = payloadBuffer[..decodedPayloadLength];
         attributeIndices.Clear();
         for(int i = 0; i < attributes.Count; i++)
         {
-            int index = payload.AsSpan().IndexOf(attributes[i].BuildPattern());
+            LongfellowJwtOpenedAttribute attribute = attributes[i];
+            using IMemoryOwner<byte> patternOwner = field.Pool.Rent(attribute.PatternLength);
+            Span<byte> pattern = patternOwner.Memory.Span[..attribute.PatternLength];
+            attribute.BuildPattern(pattern);
+            int index = payload.IndexOf(pattern);
             if(index < 0)
             {
                 return false;
@@ -309,17 +324,18 @@ internal sealed class LongfellowJwtWitness
         }
 
         //The key-binding portion: parse, and verify under the payload-carried device key.
-        if(kbJws.IsEmpty || !TryParseJws(kbJws, out JwsParts kb))
+        using IMemoryOwner<byte> kbOwner = field.Pool.Rent(JwsScalarCount * Scalar.SizeBytes);
+        if(kbJws.IsEmpty || !TryParseJws(kbJws, field.Pool, kbOwner.Memory[..(JwsScalarCount * Scalar.SizeBytes)], out JwsParts kb))
         {
             return false;
         }
 
-        if(!kbSignature.ComputeWitness(deviceKeyX, deviceKeyY, kb.Digest, kb.R, kb.S))
+        if(!kbSignature.ComputeWitness(deviceKeyX, deviceKeyY, kb.Digest.Span, kb.R.Span, kb.S.Span))
         {
             return false;
         }
 
-        CanonicalScalarReduction.ReduceOnce(kb.Digest, basePrime, kbDigest);
+        CanonicalScalarReduction.ReduceOnce(kb.Digest.Span, basePrime, kbDigest);
 
         return true;
     }
@@ -389,7 +405,9 @@ internal sealed class LongfellowJwtWitness
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(attribute);
 
-        byte[] pattern = attribute.BuildPattern();
+        using IMemoryOwner<byte> owner = field.Pool.Rent(attribute.PatternLength);
+        Span<byte> pattern = owner.Memory.Span[..attribute.PatternLength];
+        attribute.BuildPattern(pattern);
         for(int i = 0; i < LongfellowJwtOpenedAttributeWires.PatternLength; i++)
         {
             byte value = i < pattern.Length ? pattern[i] : (byte)0;
@@ -400,14 +418,14 @@ internal sealed class LongfellowJwtWitness
     }
 
 
-    /// <summary>The parsed pieces of one JWS compact serialization.</summary>
+    /// <summary>The parsed pieces of one JWS compact serialization, borrowing the caller's scalar workspace.</summary>
     /// <param name="MessageLength">The signed message's byte length (<c>header.payload</c>).</param>
     /// <param name="PayloadIndex">The payload's start index in the token.</param>
     /// <param name="PayloadLength">The payload's byte length.</param>
     /// <param name="Digest">The SHA-256 digest of the signed message.</param>
     /// <param name="R">The signature's <c>r</c>, big-endian.</param>
     /// <param name="S">The signature's <c>s</c>, big-endian.</param>
-    private readonly record struct JwsParts(int MessageLength, int PayloadIndex, int PayloadLength, byte[] Digest, byte[] R, byte[] S);
+    private readonly record struct JwsParts(int MessageLength, int PayloadIndex, int PayloadLength, ReadOnlyMemory<byte> Digest, ReadOnlyMemory<byte> R, ReadOnlyMemory<byte> S);
 
 
     /// <summary>
@@ -415,9 +433,11 @@ internal sealed class LongfellowJwtWitness
     /// message, and decodes the signature into its scalar pair.
     /// </summary>
     /// <param name="jws">The JWS bytes.</param>
-    /// <param name="parts">Receives the parsed pieces.</param>
+    /// <param name="pool">The caller pool supplying temporary signature decoding bytes.</param>
+    /// <param name="scalars">The caller-owned digest and signature scalar slots, kept alive while the parsed pieces are used.</param>
+    /// <param name="parts">Receives the parsed pieces borrowing <paramref name="scalars"/>.</param>
     /// <returns>Whether the JWS parsed.</returns>
-    private static bool TryParseJws(ReadOnlySpan<byte> jws, out JwsParts parts)
+    private static bool TryParseJws(ReadOnlySpan<byte> jws, BaseMemoryPool pool, Memory<byte> scalars, out JwsParts parts)
     {
         parts = default;
 
@@ -436,20 +456,25 @@ internal sealed class LongfellowJwtWitness
         secondDot += dot + 1;
 
         ReadOnlySpan<byte> signature = jws[(secondDot + 1)..];
-        byte[] digest = SHA256.HashData(jws[..secondDot]);
+        Memory<byte> digest = scalars[..Scalar.SizeBytes];
+        SHA256.HashData(jws[..secondDot], digest.Span);
 
-        if(!TryBase64UrlDecode(signature, out byte[] signatureBytes) || signatureBytes.Length < 2 * Scalar.SizeBytes)
+        int signatureCapacity = GetDecodedLength(signature.Length);
+        using IMemoryOwner<byte>? signatureOwner = signatureCapacity == 0 ? null : pool.Rent(signatureCapacity);
+        Span<byte> signatureBytes = signatureOwner is null ? Span<byte>.Empty : signatureOwner.Memory.Span[..signatureCapacity];
+        if(!TryBase64UrlDecode(signature, signatureBytes, out int signatureLength) || signatureLength < 2 * Scalar.SizeBytes)
         {
             return false;
         }
 
+        signatureBytes[..(2 * Scalar.SizeBytes)].CopyTo(scalars.Span[Scalar.SizeBytes..]);
         parts = new JwsParts(
             secondDot,
             dot + 1,
             secondDot - dot - 1,
             digest,
-            signatureBytes[..Scalar.SizeBytes],
-            signatureBytes[Scalar.SizeBytes..(2 * Scalar.SizeBytes)]);
+            scalars.Slice(Scalar.SizeBytes, Scalar.SizeBytes),
+            scalars.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes));
 
         return true;
     }
@@ -461,10 +486,10 @@ internal sealed class LongfellowJwtWitness
     /// </summary>
     /// <param name="payload">The decoded payload.</param>
     /// <returns>Whether the device key was found.</returns>
-    private bool TryExtractDeviceKey(byte[] payload)
+    private bool TryExtractDeviceKey(ReadOnlySpan<byte> payload)
     {
         byte[] prefix = Encoding.ASCII.GetBytes(DeviceKeyPrefix);
-        int xIndex = payload.AsSpan().IndexOf(prefix);
+        int xIndex = payload.IndexOf(prefix);
         if(xIndex < 0)
         {
             return false;
@@ -472,7 +497,7 @@ internal sealed class LongfellowJwtWitness
 
         int xStart = xIndex + prefix.Length;
         byte[] separator = Encoding.ASCII.GetBytes(DeviceKeySeparator);
-        int yIndex = payload.AsSpan(xStart).IndexOf(separator);
+        int yIndex = payload[xStart..].IndexOf(separator);
         if(yIndex < 0)
         {
             return false;
@@ -484,14 +509,19 @@ internal sealed class LongfellowJwtWitness
             return false;
         }
 
-        if(!TryBase64UrlDecode(payload.AsSpan(xStart, CoordinateCharacterCount), out byte[] xBytes)
-            || !TryBase64UrlDecode(payload.AsSpan(yStart, CoordinateCharacterCount), out byte[] yBytes))
+        int coordinateCapacity = GetDecodedLength(CoordinateCharacterCount);
+        using IMemoryOwner<byte> xOwner = field.Pool.Rent(coordinateCapacity);
+        Span<byte> xBytes = xOwner.Memory.Span[..coordinateCapacity];
+        using IMemoryOwner<byte> yOwner = field.Pool.Rent(coordinateCapacity);
+        Span<byte> yBytes = yOwner.Memory.Span[..coordinateCapacity];
+        if(!TryBase64UrlDecode(payload.Slice(xStart, CoordinateCharacterCount), xBytes, out int xLength)
+            || !TryBase64UrlDecode(payload.Slice(yStart, CoordinateCharacterCount), yBytes, out int yLength))
         {
             return false;
         }
 
-        CanonicalScalarReduction.ReduceOnce(xBytes.AsSpan(0, Scalar.SizeBytes), basePrime, deviceKeyX);
-        CanonicalScalarReduction.ReduceOnce(yBytes.AsSpan(0, Scalar.SizeBytes), basePrime, deviceKeyY);
+        CanonicalScalarReduction.ReduceOnce(xBytes[..xLength][..Scalar.SizeBytes], basePrime, deviceKeyX);
+        CanonicalScalarReduction.ReduceOnce(yBytes[..yLength][..Scalar.SizeBytes], basePrime, deviceKeyY);
 
         return true;
     }
@@ -503,11 +533,12 @@ internal sealed class LongfellowJwtWitness
     /// zero-padded trailing partial group.
     /// </summary>
     /// <param name="input">The encoded bytes.</param>
-    /// <param name="output">Receives the decoded bytes.</param>
+    /// <param name="decoded">Receives three bytes per input group, including partial groups; empty input accepts an empty span.</param>
+    /// <param name="written">Receives the decoded length, or zero on failure.</param>
     /// <returns>Whether every character was in the alphabet.</returns>
-    private static bool TryBase64UrlDecode(ReadOnlySpan<byte> input, out byte[] output)
+    private static bool TryBase64UrlDecode(ReadOnlySpan<byte> input, Span<byte> decoded, out int written)
     {
-        var decoded = new byte[((input.Length + 3) / 4) * 3];
+        written = 0;
         int cursor = 0;
         Span<int> group = stackalloc int[4];
         for(int i = 0; i < input.Length; i += 4)
@@ -518,8 +549,6 @@ internal sealed class LongfellowJwtWitness
                 int symbol = Base64UrlAlphabet.IndexOf((char)input[i + j], StringComparison.Ordinal);
                 if(symbol < 0)
                 {
-                    output = [];
-
                     return false;
                 }
 
@@ -531,9 +560,19 @@ internal sealed class LongfellowJwtWitness
             decoded[cursor++] = (byte)(((group[2] << 6) | group[3]) & 0xFF);
         }
 
-        output = decoded;
+        written = cursor;
 
         return true;
+    }
+
+
+    /// <summary>The decoder's three-byte capacity per four-character group, including a partial group.</summary>
+    /// <param name="inputLength">The encoded byte length.</param>
+    /// <returns>The decoded byte length, including zero for empty input.</returns>
+    /// <exception cref="OverflowException">When the padded input length exceeds the signed length range.</exception>
+    private static int GetDecodedLength(int inputLength)
+    {
+        return checked(((inputLength + 3) / 4) * 3);
     }
 
 
@@ -564,18 +603,14 @@ internal sealed class LongfellowJwtWitness
     }
 
 
-    /// <summary>Writes one 32-bit word as its plucker-packed elements.</summary>
+    /// <summary>Writes one 32-bit word directly into the column as its plucker-packed elements.</summary>
     /// <param name="destination">The column being filled.</param>
     /// <param name="cursor">The element cursor.</param>
     /// <param name="word">The word to pack.</param>
     private void WritePackedWord(Span<byte> destination, ref int cursor, uint word)
     {
-        ReadOnlyMemory<byte>[] packed = encoder.MakePackedV32(word);
-        for(int i = 0; i < packed.Length; i++)
-        {
-            packed[i].Span.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
-            cursor++;
-        }
+        encoder.MakePackedV32(word, destination.Slice(cursor * Scalar.SizeBytes, encoder.PackedV32ElementCount * Scalar.SizeBytes));
+        cursor += encoder.PackedV32ElementCount;
     }
 
 

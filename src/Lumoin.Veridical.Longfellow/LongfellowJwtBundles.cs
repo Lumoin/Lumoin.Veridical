@@ -97,7 +97,7 @@ internal static class LongfellowJwtBundles
     {
         using var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowJwtCircuit(logic, curve, blockCapacity);
 
         int pkX = logic.InputElement();

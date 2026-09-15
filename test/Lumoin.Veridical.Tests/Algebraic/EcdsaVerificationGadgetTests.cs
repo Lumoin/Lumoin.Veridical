@@ -183,6 +183,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Proves and verifies a genuine signature using a caller-owned transcript seed.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void ProvesAndVerifiesAGenuineDotNetEcdsaSignature()
@@ -207,7 +208,10 @@ internal sealed class EcdsaVerificationGadgetTests
         (BigInteger rx, BigInteger ry) = RecoverNoncePoint(qx, qy, e, r, s);
 
         EcdsaPublicInputs pub = Public(qx, qy, e, r, s);
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         var (builder, gadget) = NewGadget();
         builder.AssertVerifies(gadget, pub, new EcdsaWitness(Bytes(rx), Bytes(ry)));
@@ -247,6 +251,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Proves the signature and age threshold with a statement-bound transcript.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void SignatureAndAgeThresholdProveAndVerifyEndToEnd()
@@ -262,7 +267,10 @@ internal sealed class EcdsaVerificationGadgetTests
         //evaluator gates above cover the logic.
         (BigInteger qx, BigInteger qy, BigInteger rx, BigInteger ry, BigInteger r, BigInteger s) = Sign(D, K, E);
         EcdsaPublicInputs pub = Public(qx, qy, E, r, s);
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         var (builder, gadget) = NewGadget();
         builder.AssertVerifies(gadget, pub, new EcdsaWitness(Bytes(rx), Bytes(ry)));
@@ -273,6 +281,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Checks full-width signature proofs, statement binding and tamper rejection.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void FullWidthSignatureProvesAndVerifiesEndToEnd()
@@ -288,7 +297,10 @@ internal sealed class EcdsaVerificationGadgetTests
         EcdsaPublicInputs pub = Public(qx, qy, E, r, s);
         var wit = new EcdsaWitness(Bytes(rx), Bytes(ry));
 
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         var (builder, gadget) = NewGadget();
         builder.AssertVerifies(gadget, pub, wit);
@@ -298,7 +310,9 @@ internal sealed class EcdsaVerificationGadgetTests
 
         //Statement binding: the same proof is rejected under a different statement's
         //seed (here the seed for a tampered s).
-        byte[] otherSeed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(Public(qx, qy, E, r, (s + 1) % N), Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using IMemoryOwner<byte> otherSeedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> otherSeed = otherSeedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(Public(qx, qy, E, r, (s + 1) % N), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, otherSeed);
         Assert.IsFalse(Verify(builder, proof, otherSeed), "A proof must be rejected under a different statement's seed.");
 
         //Tampering an opened column breaks the proof.
@@ -477,6 +491,7 @@ internal sealed class EcdsaVerificationGadgetTests
     private const int EndToEndHangGuardMilliseconds = 7_200_000;
 
 
+    /// <summary>Proves the real credential disclosure using a statement-bound transcript.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     [Timeout(EndToEndHangGuardMilliseconds, CooperativeCancellation = true)]
@@ -506,8 +521,11 @@ internal sealed class EcdsaVerificationGadgetTests
             new EcdsaMdocWitness(disclosure.SignedStructure, disclosure.IssuerSignedItem, Bytes(rx), Bytes(ry)),
             disclosure.Attribute, disclosure.ItemDigestOffset, disclosure.AttributeOffset);
 
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(
-            Public(qx, qy, e, r, s), Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(
+            Public(qx, qy, e, r, s), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         using LigeroProof proof = ProveMontgomery(builder, seed);
         Assert.IsTrue(VerifyMontgomery(builder, proof, seed), "A real credential's age_over_18 disclosure must prove and verify end-to-end in zero knowledge.");
@@ -582,7 +600,9 @@ internal sealed class EcdsaVerificationGadgetTests
 
 
     /// <summary>Proves with pooled snapshots that remain owned until the prover returns.</summary>
-    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder, byte[] seed)
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> seed)
     {
         using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
         using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
@@ -599,7 +619,10 @@ internal sealed class EcdsaVerificationGadgetTests
 
 
     /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
-    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof, byte[] seed)
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="proof">The proof to verify.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof, ReadOnlySpan<byte> seed)
     {
         using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
 
@@ -618,7 +641,9 @@ internal sealed class EcdsaVerificationGadgetTests
     //integer-node extension; the byte gate is Fp256LigeroRowExtenderTests), used for the large
     //real-credential circuit where the barycentric loop was the 6.6-hour wall.
     /// <summary>Proves through the Montgomery backend while owning the witness and target snapshots.</summary>
-    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, byte[] seed)
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> seed)
     {
         Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
@@ -657,7 +682,10 @@ internal sealed class EcdsaVerificationGadgetTests
 
 
     /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
-    private static bool VerifyMontgomery(LigeroConstraintSystemBuilder builder, LigeroProof proof, byte[] seed)
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="proof">The proof to verify.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static bool VerifyMontgomery(LigeroConstraintSystemBuilder builder, LigeroProof proof, ReadOnlySpan<byte> seed)
     {
         using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
 

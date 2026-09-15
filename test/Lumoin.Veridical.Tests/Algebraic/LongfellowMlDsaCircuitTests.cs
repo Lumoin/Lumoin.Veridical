@@ -221,7 +221,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, LongfellowMlDsaParameters.MlDsa44, SexticSubfieldBits);
 
         for(int t = 0; t < LongfellowMlDsa44EncodingVectors.NttVectors.Count; t++)
@@ -305,7 +305,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
 
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         IReadOnlyList<LongfellowSha3BlockWitness> spongeWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(spongeInput, MuBytes);
@@ -317,7 +317,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
         Assert.IsFalse(backend.AssertionFailed, "The example's message representative must satisfy the sponge assertion.");
 
         var corruptedBackend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var corruptedLogic = new LongfellowLogic(corruptedBackend, field);
+        using var corruptedLogic = new LongfellowLogic(corruptedBackend, field);
         var corruptedVerify = new LongfellowMlDsaVerifyCircuit(corruptedLogic, parameters, SexticSubfieldBits);
 
         IReadOnlyList<LongfellowSha3BlockWitness> corruptedWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(spongeInput, MuBytes);
@@ -450,7 +450,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
         for(int t = firstVector; t < vectorEnd; t++)
         {
             var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-            var logic = new LongfellowLogic(backend, field);
+            using var logic = new LongfellowLogic(backend, field);
             var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
             byte[] seed = vectors[t].Seed;
@@ -512,7 +512,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         for(int t = 0; t < cases.Count; t++)
@@ -557,7 +557,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         for(int t = 0; t < vectors.Count; t++)
@@ -599,7 +599,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
             Assert.IsNotNull(witnessData, $"The {setName} witness must compute for example {t}.");
 
             var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-            var logic = new LongfellowLogic(backend, field);
+            using var logic = new LongfellowLogic(backend, field);
             var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
             LongfellowMlDsaPublicKeyWires publicKey = ConvertPublicKey(backend, logic, field, parameters, witnessData);
@@ -651,7 +651,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         var z = new LongfellowMlDsaPolynomialWires[parameters.ColumnCount];
@@ -680,7 +680,7 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
     {
         LongfellowLogicFieldOperations field = NewFp24SexticBundle(circuitScope);
         var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         ulong twoGamma2 = 2UL * parameters.RoundingRange;

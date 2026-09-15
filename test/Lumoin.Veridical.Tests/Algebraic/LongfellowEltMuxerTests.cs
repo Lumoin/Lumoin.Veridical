@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -87,7 +88,7 @@ internal sealed class LongfellowEltMuxerTests: IDisposable
     public void TheMuxerSelectsEveryTableEntry()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
 
         AssertMuxerSelectsEveryEntry(backend, logic, ZTable, TableEntryCount);
         AssertMuxerSelectsEveryEntry(backend, logic, ETable, TableEntryCount);
@@ -101,14 +102,17 @@ internal sealed class LongfellowEltMuxerTests: IDisposable
     public void TheNineEntryMuxerRangeChecksTheDigitDomain()
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
 
         int[] wires = BuildTableWires(backend, Fp256Field, DigitRangeCheckTable);
         var muxer = new LongfellowEltMuxer(logic, wires, NineEntryMuxerPointSetSize);
 
         for(int i = 0; i < MuxIndexSweepExclusiveUpperBound; i++)
         {
-            int index = backend.Constant(LongfellowBitPlucker.PluckerPoint(Fp256Field, NineEntryMuxerPointSetSize, i).Span);
+            using IMemoryOwner<byte> owner = Fp256Field.Pool.Rent(Scalar.SizeBytes);
+            Span<byte> point = owner.Memory.Span[..Scalar.SizeBytes];
+            LongfellowBitPlucker.PluckerPoint(Fp256Field, NineEntryMuxerPointSetSize, i, point);
+            int index = backend.Constant(point);
             int selected = muxer.Mux(index);
 
             if(i < NineEntryMuxerElementCount)
@@ -135,7 +139,10 @@ internal sealed class LongfellowEltMuxerTests: IDisposable
 
         for(int i = 0; i < pointSetSize; i++)
         {
-            int index = backend.Constant(LongfellowBitPlucker.PluckerPoint(Fp256Field, pointSetSize, i).Span);
+            using IMemoryOwner<byte> owner = Fp256Field.Pool.Rent(Scalar.SizeBytes);
+            Span<byte> point = owner.Memory.Span[..Scalar.SizeBytes];
+            LongfellowBitPlucker.PluckerPoint(Fp256Field, pointSetSize, i, point);
+            int index = backend.Constant(point);
             int selected = muxer.Mux(index);
 
             Assert.IsTrue(backend.ElementAt(selected).Span.SequenceEqual(backend.ElementAt(wires[i]).Span), $"Muxing table entry {i} must select the array entry it stores.");

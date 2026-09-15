@@ -44,24 +44,34 @@ internal sealed class EcdsaStatementBindingTests
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
+    /// <summary>Pins transcript determinism and its binding to the statement and protocol domain.</summary>
     [TestMethod]
     public void DeriveTranscriptSeedIsStatementSpecific()
     {
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        using IMemoryOwner<byte> comparisonOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> comparison = comparisonOwner.Memory.Span[..ScalarSize];
         EcdsaPublicInputs statement = MakeInputs(5);
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(statement, Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(statement, Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(5), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, comparison);
         Assert.IsTrue(
-            seed.AsSpan().SequenceEqual(EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(5), Domain, Hash, WellKnownHashAlgorithms.Blake3)),
+            seed.SequenceEqual(comparison),
             "The same statement must yield the same seed.");
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(6), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, comparison);
         Assert.IsFalse(
-            seed.AsSpan().SequenceEqual(EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(6), Domain, Hash, WellKnownHashAlgorithms.Blake3)),
+            seed.SequenceEqual(comparison),
             "A different statement (s) must yield a different seed.");
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(statement, OtherDomain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, comparison);
         Assert.IsFalse(
-            seed.AsSpan().SequenceEqual(EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(statement, OtherDomain, Hash, WellKnownHashAlgorithms.Blake3)),
+            seed.SequenceEqual(comparison),
             "A different domain separator must yield a different seed.");
     }
 
 
+    /// <summary>Pins rejection when verification uses a different statement's transcript seed.</summary>
     [TestMethod]
     public void AProofIsRejectedUnderADifferentStatementSeed()
     {
@@ -69,8 +79,13 @@ internal sealed class EcdsaStatementBindingTests
         //seed: the seed feeds the transcript, so different statements draw different
         //challenges. (Demonstrated cheaply here; the full-width gate exercises it on the
         //real gadget.)
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(5), Domain, Hash, WellKnownHashAlgorithms.Blake3);
-        byte[] otherSeed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(6), Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(5), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
+        using IMemoryOwner<byte> otherSeedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> otherSeed = otherSeedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(MakeInputs(6), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, otherSeed);
 
         var builder = NewBuilder();
         builder.AddBit(Bytes(1));
@@ -122,7 +137,9 @@ internal sealed class EcdsaStatementBindingTests
 
 
     /// <summary>Proves with pooled snapshots that remain owned until the prover returns.</summary>
-    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder, byte[] seed)
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> seed)
     {
         using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
         using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
@@ -139,7 +156,10 @@ internal sealed class EcdsaStatementBindingTests
 
 
     /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
-    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof, byte[] seed)
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="proof">The proof to verify.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof, ReadOnlySpan<byte> seed)
     {
         using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
 

@@ -128,7 +128,7 @@ internal sealed class LongfellowFlatSha256Circuit
         ArgumentNullException.ThrowIfNull(registerAWitness);
         ArgumentNullException.ThrowIfNull(finalState);
 
-        var adder = new LongfellowBitAdder(logic, LongfellowLogic.BitWidth32);
+        using var adder = new LongfellowBitAdder(logic, LongfellowLogic.BitWidth32);
 
         var w = new LongfellowBitWire[RoundCount][];
         for(int i = 0; i < InputWordCount; i++)

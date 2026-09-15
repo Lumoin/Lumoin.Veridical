@@ -147,7 +147,7 @@ internal sealed class LongfellowRoutingTests: IDisposable
     private void AssertOneCombination(int logn, int n, int k, int shift, int unroll)
     {
         var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var routing = new LongfellowRouting(logic);
 
         LongfellowBitWire bitDefault = logic.Bit(DefaultBitValue);

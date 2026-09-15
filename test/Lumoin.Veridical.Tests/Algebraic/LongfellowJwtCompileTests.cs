@@ -218,7 +218,7 @@ internal sealed class LongfellowJwtCompileTests: IDisposable
     {
         var builder = circuitScope.CreateBuilder(NewGfBundle(circuitScope).Compiler);
         var backend = new LongfellowCompileLogicBackend(NewGfBundle(circuitScope), builder);
-        var logic = new LongfellowLogic(backend, NewGfBundle(circuitScope));
+        using var logic = new LongfellowLogic(backend, NewGfBundle(circuitScope));
         var decoder = new LongfellowBase64Decoder(logic);
 
         LongfellowBitWire[] input = logic.InputVector(LongfellowLogic.BitWidth8);
@@ -319,7 +319,7 @@ internal sealed class LongfellowJwtCompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowJwtCircuit(logic, Curve, blocks);
 
         int pkX = logic.InputElement();
@@ -351,7 +351,7 @@ internal sealed class LongfellowJwtCompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowEcdsaVerifyCircuit(logic, Curve);
 
         int pkX = logic.InputElement();

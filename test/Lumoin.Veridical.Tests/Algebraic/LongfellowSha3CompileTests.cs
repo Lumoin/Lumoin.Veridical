@@ -354,7 +354,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
         var state = new LongfellowBitWire[GridSize][][];
@@ -412,7 +412,7 @@ internal sealed class LongfellowSha3CompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, subfieldBits);
 
         var seed = new LongfellowBitWire[seedLength][];

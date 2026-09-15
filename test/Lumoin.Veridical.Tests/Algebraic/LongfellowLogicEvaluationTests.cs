@@ -261,7 +261,7 @@ internal sealed class LongfellowLogicEvaluationTests: IDisposable
     public void AssertZeroLatchesAssertionFailedOnANonPanickingBackendAndResetsOnRead()
     {
         var backend = new LongfellowEvaluationLogicBackend(Gf2128Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Gf2128Field);
+        using var logic = new LongfellowLogic(backend, Gf2128Field);
         int nonzeroWire = logic.Eval(logic.Bit(1));
 
         _ = logic.AssertZero(nonzeroWire);
@@ -412,7 +412,7 @@ internal sealed class LongfellowLogicEvaluationTests: IDisposable
                 for(int c = 0; c < (1 << AssertSumWidth); c++)
                 {
                     var backend = new LongfellowEvaluationLogicBackend(Gf2128Field, panicOnAssertionFailure: false);
-                    var logic = new LongfellowLogic(backend, Gf2128Field);
+                    using var logic = new LongfellowLogic(backend, Gf2128Field);
 
                     LongfellowBitWire[] ea = logic.BitVector(AssertSumWidth, (ulong)a);
                     LongfellowBitWire[] eb = logic.BitVector(AssertSumWidth, (ulong)b);
@@ -639,7 +639,7 @@ internal sealed class LongfellowLogicEvaluationTests: IDisposable
     /// <param name="field">The field bundle to gate over.</param>
     private static void AssertSimpleGates(LongfellowLogicFieldOperations field)
     {
-        var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(field), field);
+        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(field), field);
 
         for(int a = 0; a < BitValues; a++)
         {
@@ -756,7 +756,7 @@ internal sealed class LongfellowLogicEvaluationTests: IDisposable
     /// <param name="width">The operand width.</param>
     private static void AssertAdders(LongfellowLogicFieldOperations field, int width)
     {
-        var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(field), field);
+        using var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(field), field);
         int widthPlusOneMask = (1 << (width + 1)) - 1;
 
         foreach(AdderKind kind in Enum.GetValues<AdderKind>())
@@ -821,13 +821,41 @@ internal sealed class LongfellowLogicEvaluationTests: IDisposable
 
 
     /// <summary>Constructs a fresh evaluating <see cref="LongfellowLogic"/> over <see cref="Gf2128Field"/>, panicking on a failed assertion.</summary>
-    /// <returns>The gadget layer.</returns>
-    private LongfellowLogic NewGf2128Logic() => new(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+    /// <returns>The gadget layer, owned until this test's scope is disposed.</returns>
+    private LongfellowLogic NewGf2128Logic()
+    {
+        LongfellowLogic? logic = new(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        try
+        {
+            LongfellowLogic result = circuitScope.Track(logic);
+            logic = null;
+
+            return result;
+        }
+        finally
+        {
+            logic?.Dispose();
+        }
+    }
 
 
     /// <summary>Constructs a fresh evaluating <see cref="LongfellowLogic"/> over <see cref="Fp256Field"/>, panicking on a failed assertion.</summary>
-    /// <returns>The gadget layer.</returns>
-    private LongfellowLogic NewFp256Logic() => new(new LongfellowEvaluationLogicBackend(Fp256Field), Fp256Field);
+    /// <returns>The gadget layer, owned until this test's scope is disposed.</returns>
+    private LongfellowLogic NewFp256Logic()
+    {
+        LongfellowLogic? logic = new(new LongfellowEvaluationLogicBackend(Fp256Field), Fp256Field);
+        try
+        {
+            LongfellowLogic result = circuitScope.Track(logic);
+            logic = null;
+
+            return result;
+        }
+        finally
+        {
+            logic?.Dispose();
+        }
+    }
 
 
     /// <summary>Reads a bit's evaluated canonical bytes off its backend.</summary>

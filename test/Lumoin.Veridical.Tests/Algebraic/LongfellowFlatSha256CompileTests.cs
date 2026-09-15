@@ -189,7 +189,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
         LongfellowLogicFieldOperations field = NewGfBundle(circuitScope);
         var builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -246,7 +246,10 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
         var encoder = new LongfellowBitPluckerEncoder(field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         ComputeBlockWitness(out _, out LongfellowFlatSha256BlockWitness blockWitness);
         int finalStateFirstElementWire = 1 + (InputWordCount * WordWidth) + (StateWordCount * encoder.PackedV32ElementCount);
-        encoder.MakePackedV32(blockWitness.FinalState[0] ^ 1U)[0].Span.CopyTo(witnessColumn.AsSpan(finalStateFirstElementWire * ScalarSize, ScalarSize));
+        using IMemoryOwner<byte> packedOwner = encoder.Pool.Rent(encoder.PackedV32ElementCount * ScalarSize);
+        Span<byte> packed = packedOwner.Memory.Span[..(encoder.PackedV32ElementCount * ScalarSize)];
+        encoder.MakePackedV32(blockWitness.FinalState[0] ^ 1U, packed);
+        packed[..ScalarSize].CopyTo(witnessColumn.AsSpan(finalStateFirstElementWire * ScalarSize, ScalarSize));
 
         Assert.ThrowsExactly<InvalidOperationException>(
             () => ProduceGfProof(circuit, witnessColumn, GfTranscriptSeed),
@@ -293,7 +296,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, UnpackedPluckerLogPointCount);
         var sha = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -349,7 +352,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     {
         builder = circuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var sha = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -530,11 +533,7 @@ internal sealed class LongfellowFlatSha256CompileTests: IDisposable
     /// <param name="word">The word to encode.</param>
     private static void WritePackedWord(byte[] column, ref int wire, LongfellowBitPluckerEncoder encoder, uint word)
     {
-        ReadOnlyMemory<byte>[] packed = encoder.MakePackedV32(word);
-        foreach(ReadOnlyMemory<byte> element in packed)
-        {
-            element.Span.CopyTo(column.AsSpan(wire * ScalarSize, ScalarSize));
-            wire++;
-        }
+        encoder.MakePackedV32(word, column.AsSpan(wire * ScalarSize, encoder.PackedV32ElementCount * ScalarSize));
+        wire += encoder.PackedV32ElementCount;
     }
 }
