@@ -32,7 +32,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// yields an unsatisfiable column rather than throwing.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowEcdsaVerifyWitness
+internal sealed class LongfellowEcdsaVerifyWitness: IDisposable
 {
     //The packed digit's plucker-point domain: three exponent bits index an eight-entry table.
     private const int DigitTableLength = 8;
@@ -43,20 +43,48 @@ internal sealed class LongfellowEcdsaVerifyWitness
     private readonly ScalarInvertDelegate orderInvert;
     private readonly CurveParameterSet orderCurve;
     private readonly LongfellowEllipticCurveParameters curve;
-    private readonly byte[] basePrime;
-    private readonly byte[] curveA;
-    private readonly byte[] curveBTimes3;
 
-    private readonly byte[] rx;
-    private readonly byte[] ry;
-    private readonly byte[] rxInverse;
-    private readonly byte[] sInverse;
-    private readonly byte[] pkInverse;
-    private readonly byte[][] pre;
-    private readonly byte[][] bi;
-    private readonly byte[][] intX;
-    private readonly byte[][] intY;
-    private readonly byte[][] intZ;
+    /// <summary>Owns every retained scalar and table through the field's caller pool.</summary>
+    private readonly LongfellowCircuitStorage storage;
+
+    /// <summary>The canonical base prime, borrowed from storage.</summary>
+    private readonly Memory<byte> basePrime;
+
+    /// <summary>The copied curve coefficient, borrowed from storage.</summary>
+    private readonly Memory<byte> curveA;
+
+    /// <summary>The copied tripled curve coefficient, borrowed from storage.</summary>
+    private readonly Memory<byte> curveBTimes3;
+
+    /// <summary>The recovered signature point's x coordinate, borrowed from storage.</summary>
+    private readonly Memory<byte> rx;
+
+    /// <summary>The recovered signature point's y coordinate, borrowed from storage.</summary>
+    private readonly Memory<byte> ry;
+
+    /// <summary>The signature x-coordinate inverse, borrowed from storage.</summary>
+    private readonly Memory<byte> rxInverse;
+
+    /// <summary>The cross-field signature inverse, borrowed from storage.</summary>
+    private readonly Memory<byte> sInverse;
+
+    /// <summary>The public key x-coordinate inverse, borrowed from storage.</summary>
+    private readonly Memory<byte> pkInverse;
+
+    /// <summary>The flattened sum-table coordinates, borrowed from storage.</summary>
+    private readonly Memory<byte> pre;
+
+    /// <summary>The flattened packed digits, borrowed from storage.</summary>
+    private readonly Memory<byte> bi;
+
+    /// <summary>The flattened intermediate x coordinates, borrowed from storage.</summary>
+    private readonly Memory<byte> intX;
+
+    /// <summary>The flattened intermediate y coordinates, borrowed from storage.</summary>
+    private readonly Memory<byte> intY;
+
+    /// <summary>The flattened intermediate z coordinates, borrowed from storage.</summary>
+    private readonly Memory<byte> intZ;
 
     /// <summary>The column length in elements: the five scalars, the sum table, and per scalar bit the digit plus (all but the last step) the intermediate triple.</summary>
     public int ElementCount { get; }
@@ -65,12 +93,12 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <summary>
     /// Constructs the generator over a base-field bundle, the order-field delegates, and the curve.
     /// </summary>
-    /// <param name="field">The base-field bundle (addition and multiplication through <see cref="LongfellowLogicFieldOperations.Compiler"/>, genuine subtraction and inversion on the bundle itself).</param>
+    /// <param name="field">The borrowed base-field bundle and originating pool, both kept alive until this generator is disposed.</param>
     /// <param name="orderMultiply">The order-field multiplication, canonical in and out.</param>
     /// <param name="orderSubtract">The order-field subtraction, canonical in and out.</param>
     /// <param name="orderInvert">The order-field inversion, canonical in and out.</param>
     /// <param name="orderCurve">The curve parameter set the order-field delegates dispatch on.</param>
-    /// <param name="curve">The curve constants.</param>
+    /// <param name="curve">The curve constants borrowed until this generator is disposed.</param>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
     public LongfellowEcdsaVerifyWitness(
         LongfellowLogicFieldOperations field,
@@ -92,24 +120,33 @@ internal sealed class LongfellowEcdsaVerifyWitness
         this.orderInvert = orderInvert;
         this.orderCurve = orderCurve;
         this.curve = curve;
-        curveA = curve.A.ToArray();
-        curveBTimes3 = curve.BTimes3.ToArray();
+        storage = new LongfellowCircuitStorage(field.Pool);
+        try
+        {
+            curveA = storage.Copy(curve.A.Span);
+            curveBTimes3 = storage.Copy(curve.BTimes3.Span);
+            basePrime = storage.Allocate(Scalar.SizeBytes);
+            DeriveBasePrime(field, basePrime.Span);
 
-        basePrime = DeriveBasePrime(field);
+            int bits = curve.ScalarBitCount;
+            ElementCount = 5 + LongfellowEcdsaVerifyWitnessWires.PreTableLength + bits + (3 * (bits - 1));
 
-        int bits = curve.ScalarBitCount;
-        ElementCount = 5 + LongfellowEcdsaVerifyWitnessWires.PreTableLength + bits + (3 * (bits - 1));
-
-        rx = new byte[Scalar.SizeBytes];
-        ry = new byte[Scalar.SizeBytes];
-        rxInverse = new byte[Scalar.SizeBytes];
-        sInverse = new byte[Scalar.SizeBytes];
-        pkInverse = new byte[Scalar.SizeBytes];
-        pre = NewElementArray(LongfellowEcdsaVerifyWitnessWires.PreTableLength);
-        bi = NewElementArray(bits);
-        intX = NewElementArray(bits);
-        intY = NewElementArray(bits);
-        intZ = NewElementArray(bits);
+            rx = storage.Allocate(Scalar.SizeBytes);
+            ry = storage.Allocate(Scalar.SizeBytes);
+            rxInverse = storage.Allocate(Scalar.SizeBytes);
+            sInverse = storage.Allocate(Scalar.SizeBytes);
+            pkInverse = storage.Allocate(Scalar.SizeBytes);
+            pre = NewElementArray(LongfellowEcdsaVerifyWitnessWires.PreTableLength);
+            bi = NewElementArray(bits);
+            intX = NewElementArray(bits);
+            intY = NewElementArray(bits);
+            intZ = NewElementArray(bits);
+        }
+        catch
+        {
+            storage.Dispose();
+            throw;
+        }
     }
 
 
@@ -159,13 +196,13 @@ internal sealed class LongfellowEcdsaVerifyWitness
         Normalize(ref recovered);
 
         //rx is the signature scalar r read in the base field; ry is the recovered point's y.
-        CanonicalScalarReduction.ReduceOnce(r, basePrime, rx);
-        recovered.Y.CopyTo(ry.AsSpan());
+        CanonicalScalarReduction.ReduceOnce(r, basePrime.Span, rx.Span);
+        recovered.Y.Span.CopyTo(ry.Span);
 
-        Array.Clear(rxInverse);
-        if(!LongfellowCompilerFieldOperations.ElementIsZero(rx))
+        rxInverse.Span.Clear();
+        if(!LongfellowCompilerFieldOperations.ElementIsZero(rx.Span))
         {
-            field.Invert(rx, rxInverse, field.Compiler.Curve);
+            field.Invert(rx.Span, rxInverse.Span, field.Compiler.Curve);
         }
 
         //The certificate for s is the BASE-field inverse of −s's canonical order-field value, the
@@ -173,16 +210,16 @@ internal sealed class LongfellowEcdsaVerifyWitness
         Span<byte> negatedS = stackalloc byte[Scalar.SizeBytes];
         Span<byte> zeroOrder = stackalloc byte[Scalar.SizeBytes];
         orderSubtract(zeroOrder, sOrder, negatedS, orderCurve);
-        Array.Clear(sInverse);
+        sInverse.Span.Clear();
         if(!LongfellowCompilerFieldOperations.ElementIsZero(negatedS))
         {
-            field.Invert(negatedS, sInverse, field.Compiler.Curve);
+            field.Invert(negatedS, sInverse.Span, field.Compiler.Curve);
         }
 
-        Array.Clear(pkInverse);
+        pkInverse.Span.Clear();
         if(!LongfellowCompilerFieldOperations.ElementIsZero(pkX))
         {
-            field.Invert(pkX, pkInverse, field.Compiler.Curve);
+            field.Invert(pkX, pkInverse.Span, field.Compiler.Curve);
         }
 
         FillPreTable(pkX, pkY);
@@ -197,7 +234,7 @@ internal sealed class LongfellowEcdsaVerifyWitness
             int bitIndex = bits - i - 1;
             int digit = BitAt(e, bitIndex) + (2 * BitAt(r, bitIndex)) + (4 * BitAt(negatedS, bitIndex));
 
-            LongfellowBitPlucker.PluckerPoint(field, DigitTableLength, digit, bi[i]);
+            LongfellowBitPlucker.PluckerPoint(field, DigitTableLength, digit, bi.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
 
             if(i > 0)
             {
@@ -206,13 +243,13 @@ internal sealed class LongfellowEcdsaVerifyWitness
 
             accumulator = AddPoints(accumulator, digitTable[digit]);
 
-            accumulator.X.CopyTo(intX[i].AsSpan());
-            accumulator.Y.CopyTo(intY[i].AsSpan());
-            accumulator.Z.CopyTo(intZ[i].AsSpan());
+            accumulator.X.Span.CopyTo(intX.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
+            accumulator.Y.Span.CopyTo(intY.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
+            accumulator.Z.Span.CopyTo(intZ.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
         }
 
-        return LongfellowCompilerFieldOperations.ElementIsZero(accumulator.X)
-            && LongfellowCompilerFieldOperations.ElementIsZero(accumulator.Z);
+        return LongfellowCompilerFieldOperations.ElementIsZero(accumulator.X.Span)
+            && LongfellowCompilerFieldOperations.ElementIsZero(accumulator.Z.Span);
     }
 
 
@@ -231,25 +268,25 @@ internal sealed class LongfellowEcdsaVerifyWitness
         }
 
         int cursor = 0;
-        WriteElement(destination, ref cursor, rx);
-        WriteElement(destination, ref cursor, ry);
-        WriteElement(destination, ref cursor, rxInverse);
-        WriteElement(destination, ref cursor, sInverse);
-        WriteElement(destination, ref cursor, pkInverse);
-        for(int i = 0; i < pre.Length; i++)
+        WriteElement(destination, ref cursor, rx.Span);
+        WriteElement(destination, ref cursor, ry.Span);
+        WriteElement(destination, ref cursor, rxInverse.Span);
+        WriteElement(destination, ref cursor, sInverse.Span);
+        WriteElement(destination, ref cursor, pkInverse.Span);
+        for(int i = 0; i < pre.Length / Scalar.SizeBytes; i++)
         {
-            WriteElement(destination, ref cursor, pre[i]);
+            WriteElement(destination, ref cursor, pre.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
         }
 
         int bits = curve.ScalarBitCount;
         for(int i = 0; i < bits; i++)
         {
-            WriteElement(destination, ref cursor, bi[i]);
+            WriteElement(destination, ref cursor, bi.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
             if(i < bits - 1)
             {
-                WriteElement(destination, ref cursor, intX[i]);
-                WriteElement(destination, ref cursor, intY[i]);
-                WriteElement(destination, ref cursor, intZ[i]);
+                WriteElement(destination, ref cursor, intX.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
+                WriteElement(destination, ref cursor, intY.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
+                WriteElement(destination, ref cursor, intZ.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).Span);
             }
         }
     }
@@ -269,8 +306,8 @@ internal sealed class LongfellowEcdsaVerifyWitness
 
         var leftX = new byte[3][];
         var leftY = new byte[3][];
-        var rightX = new byte[3][];
-        var rightY = new byte[3][];
+        var rightX = new ReadOnlyMemory<byte>[3];
+        var rightY = new ReadOnlyMemory<byte>[3];
         leftX[0] = curve.GeneratorX.ToArray();
         leftY[0] = curve.GeneratorY.ToArray();
         rightX[0] = pkX.ToArray();
@@ -289,13 +326,13 @@ internal sealed class LongfellowEcdsaVerifyWitness
             ProjectivePoint sum = AddPoints(
                 new ProjectivePoint(leftX[i], leftY[i], one.ToArray()),
                 new ProjectivePoint(rightX[i], rightY[i], one.ToArray()));
-            NormalizeIntoPair(sum, pre[2 * i], pre[(2 * i) + 1]);
+            NormalizeIntoPair(sum, pre.Slice((2 * i) * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(((2 * i) + 1) * Scalar.SizeBytes, Scalar.SizeBytes).Span);
         }
 
         ProjectivePoint grpk = AddPoints(
-            new ProjectivePoint(pre[2], pre[3], one.ToArray()),
+            new ProjectivePoint(pre.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes), pre.Slice(3 * Scalar.SizeBytes, Scalar.SizeBytes), one.ToArray()),
             new ProjectivePoint(pkX.ToArray(), pkY.ToArray(), one.ToArray()));
-        NormalizeIntoPair(grpk, pre[6], pre[7]);
+        NormalizeIntoPair(grpk, pre.Slice(6 * Scalar.SizeBytes, Scalar.SizeBytes).Span, pre.Slice(7 * Scalar.SizeBytes, Scalar.SizeBytes).Span);
     }
 
 
@@ -303,16 +340,16 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <param name="point">The sum to normalize.</param>
     /// <param name="destinationX">Receives the x coordinate.</param>
     /// <param name="destinationY">Receives the y coordinate.</param>
-    private void NormalizeIntoPair(ProjectivePoint point, byte[] destinationX, byte[] destinationY)
+    private void NormalizeIntoPair(ProjectivePoint point, Span<byte> destinationX, Span<byte> destinationY)
     {
         Span<byte> scale = stackalloc byte[Scalar.SizeBytes];
-        if(!LongfellowCompilerFieldOperations.ElementIsZero(point.Z))
+        if(!LongfellowCompilerFieldOperations.ElementIsZero(point.Z.Span))
         {
-            field.Invert(point.Z, scale, field.Compiler.Curve);
+            field.Invert(point.Z.Span, scale, field.Compiler.Curve);
         }
 
-        field.Compiler.Multiply(point.X, scale, destinationX, field.Compiler.Curve);
-        field.Compiler.Multiply(point.Y, scale, destinationY, field.Compiler.Curve);
+        field.Compiler.Multiply(point.X.Span, scale, destinationX, field.Compiler.Curve);
+        field.Compiler.Multiply(point.Y.Span, scale, destinationY, field.Compiler.Curve);
     }
 
 
@@ -330,20 +367,20 @@ internal sealed class LongfellowEcdsaVerifyWitness
             new ProjectivePoint(zero, one, (byte[])zero.Clone()),
             new ProjectivePoint(curve.GeneratorX.ToArray(), curve.GeneratorY.ToArray(), (byte[])one.Clone()),
             new ProjectivePoint(pkX.ToArray(), pkY.ToArray(), (byte[])one.Clone()),
-            new ProjectivePoint(pre[0], pre[1], (byte[])one.Clone()),
+            new ProjectivePoint(pre.Slice(0 * Scalar.SizeBytes, Scalar.SizeBytes), pre.Slice(1 * Scalar.SizeBytes, Scalar.SizeBytes), (byte[])one.Clone()),
             new ProjectivePoint(rx, ry, (byte[])one.Clone()),
-            new ProjectivePoint(pre[2], pre[3], (byte[])one.Clone()),
-            new ProjectivePoint(pre[4], pre[5], (byte[])one.Clone()),
-            new ProjectivePoint(pre[6], pre[7], (byte[])one.Clone()),
+            new ProjectivePoint(pre.Slice(2 * Scalar.SizeBytes, Scalar.SizeBytes), pre.Slice(3 * Scalar.SizeBytes, Scalar.SizeBytes), (byte[])one.Clone()),
+            new ProjectivePoint(pre.Slice(4 * Scalar.SizeBytes, Scalar.SizeBytes), pre.Slice(5 * Scalar.SizeBytes, Scalar.SizeBytes), (byte[])one.Clone()),
+            new ProjectivePoint(pre.Slice(6 * Scalar.SizeBytes, Scalar.SizeBytes), pre.Slice(7 * Scalar.SizeBytes, Scalar.SizeBytes), (byte[])one.Clone()),
         ];
     }
 
 
-    /// <summary>A projective point over canonical base-field elements.</summary>
+    /// <summary>A non-owning projective point view; any pooled coordinates borrow the live witness storage.</summary>
     /// <param name="X">The x coordinate.</param>
     /// <param name="Y">The y coordinate.</param>
     /// <param name="Z">The z coordinate.</param>
-    private readonly record struct ProjectivePoint(byte[] X, byte[] Y, byte[] Z);
+    private readonly record struct ProjectivePoint(ReadOnlyMemory<byte> X, ReadOnlyMemory<byte> Y, ReadOnlyMemory<byte> Z);
 
 
     /// <summary>The projective identity <c>(0 : 1 : 0)</c>.</summary>
@@ -382,37 +419,37 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <returns>The sum.</returns>
     private ProjectivePoint AddPoints(ProjectivePoint p1, ProjectivePoint p2)
     {
-        byte[] t0 = Mul(p1.X, p2.X);
-        byte[] t1 = Mul(p1.Y, p2.Y);
-        byte[] t2 = Mul(p1.Z, p2.Z);
-        byte[] t3 = AddF(p1.X, p1.Y);
-        byte[] t4 = AddF(p2.X, p2.Y);
+        byte[] t0 = Mul(p1.X.Span, p2.X.Span);
+        byte[] t1 = Mul(p1.Y.Span, p2.Y.Span);
+        byte[] t2 = Mul(p1.Z.Span, p2.Z.Span);
+        byte[] t3 = AddF(p1.X.Span, p1.Y.Span);
+        byte[] t4 = AddF(p2.X.Span, p2.Y.Span);
         t3 = Mul(t3, t4);
         t4 = AddF(t0, t1);
         t3 = SubF(t3, t4);
-        t4 = AddF(p1.X, p1.Z);
-        byte[] t5 = AddF(p2.X, p2.Z);
+        t4 = AddF(p1.X.Span, p1.Z.Span);
+        byte[] t5 = AddF(p2.X.Span, p2.Z.Span);
         t4 = Mul(t4, t5);
         t5 = AddF(t0, t2);
         t4 = SubF(t4, t5);
-        t5 = AddF(p1.Y, p1.Z);
-        byte[] x3 = AddF(p2.Y, p2.Z);
+        t5 = AddF(p1.Y.Span, p1.Z.Span);
+        byte[] x3 = AddF(p2.Y.Span, p2.Z.Span);
         t5 = Mul(t5, x3);
         x3 = AddF(t1, t2);
         t5 = SubF(t5, x3);
-        byte[] z3 = Mul(curveA, t4);
-        x3 = Mul(curveBTimes3, t2);
+        byte[] z3 = Mul(curveA.Span, t4);
+        x3 = Mul(curveBTimes3.Span, t2);
         z3 = AddF(x3, z3);
         x3 = SubF(t1, z3);
         z3 = AddF(t1, z3);
         byte[] y3 = Mul(x3, z3);
         t1 = AddF(t0, t0);
         t1 = AddF(t1, t0);
-        t2 = Mul(curveA, t2);
-        t4 = Mul(curveBTimes3, t4);
+        t2 = Mul(curveA.Span, t2);
+        t4 = Mul(curveBTimes3.Span, t4);
         t1 = AddF(t1, t2);
         t2 = SubF(t0, t2);
-        t2 = Mul(curveA, t2);
+        t2 = Mul(curveA.Span, t2);
         t4 = AddF(t4, t2);
         t0 = Mul(t1, t4);
         y3 = AddF(y3, t0);
@@ -432,31 +469,31 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <returns>The doubled point.</returns>
     private ProjectivePoint DoublePoint(ProjectivePoint p)
     {
-        byte[] t0 = Mul(p.X, p.X);
-        byte[] t1 = Mul(p.Y, p.Y);
-        byte[] t2 = Mul(p.Z, p.Z);
-        byte[] t3 = Mul(p.X, p.Y);
+        byte[] t0 = Mul(p.X.Span, p.X.Span);
+        byte[] t1 = Mul(p.Y.Span, p.Y.Span);
+        byte[] t2 = Mul(p.Z.Span, p.Z.Span);
+        byte[] t3 = Mul(p.X.Span, p.Y.Span);
         t3 = AddF(t3, t3);
-        byte[] z3 = Mul(p.X, p.Z);
+        byte[] z3 = Mul(p.X.Span, p.Z.Span);
         z3 = AddF(z3, z3);
-        byte[] x3 = Mul(curveA, z3);
-        byte[] y3 = Mul(curveBTimes3, t2);
+        byte[] x3 = Mul(curveA.Span, z3);
+        byte[] y3 = Mul(curveBTimes3.Span, t2);
         y3 = AddF(x3, y3);
         x3 = SubF(t1, y3);
         y3 = AddF(t1, y3);
         y3 = Mul(x3, y3);
         x3 = Mul(t3, x3);
-        z3 = Mul(curveBTimes3, z3);
-        t2 = Mul(curveA, t2);
+        z3 = Mul(curveBTimes3.Span, z3);
+        t2 = Mul(curveA.Span, t2);
         t3 = SubF(t0, t2);
-        t3 = Mul(curveA, t3);
+        t3 = Mul(curveA.Span, t3);
         t3 = AddF(t3, z3);
         z3 = AddF(t0, t0);
         t0 = AddF(z3, t0);
         t0 = AddF(t0, t2);
         t0 = Mul(t0, t3);
         y3 = AddF(y3, t0);
-        t2 = Mul(p.Y, p.Z);
+        t2 = Mul(p.Y.Span, p.Z.Span);
         t2 = AddF(t2, t2);
         t0 = Mul(t2, t3);
         x3 = SubF(x3, t0);
@@ -472,17 +509,17 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <param name="point">The point to normalize.</param>
     private void Normalize(ref ProjectivePoint point)
     {
-        if(LongfellowCompilerFieldOperations.ElementIsZero(point.Z))
+        if(LongfellowCompilerFieldOperations.ElementIsZero(point.Z.Span))
         {
             return;
         }
 
         Span<byte> inverse = stackalloc byte[Scalar.SizeBytes];
-        field.Invert(point.Z, inverse, field.Compiler.Curve);
+        field.Invert(point.Z.Span, inverse, field.Compiler.Curve);
         byte[] x = new byte[Scalar.SizeBytes];
         byte[] y = new byte[Scalar.SizeBytes];
-        field.Compiler.Multiply(point.X, inverse, x, field.Compiler.Curve);
-        field.Compiler.Multiply(point.Y, inverse, y, field.Compiler.Curve);
+        field.Compiler.Multiply(point.X.Span, inverse, x, field.Compiler.Curve);
+        field.Compiler.Multiply(point.Y.Span, inverse, y, field.Compiler.Curve);
         point = new ProjectivePoint(x, y, field.Compiler.One.ToArray());
     }
 
@@ -507,7 +544,7 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <param name="a">The first factor.</param>
     /// <param name="b">The second factor.</param>
     /// <returns>The product.</returns>
-    private byte[] Mul(byte[] a, byte[] b)
+    private byte[] Mul(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         var result = new byte[Scalar.SizeBytes];
         field.Compiler.Multiply(a, b, result, field.Compiler.Curve);
@@ -520,7 +557,7 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <param name="a">The first addend.</param>
     /// <param name="b">The second addend.</param>
     /// <returns>The sum.</returns>
-    private byte[] AddF(byte[] a, byte[] b)
+    private byte[] AddF(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         var result = new byte[Scalar.SizeBytes];
         field.Compiler.Add(a, b, result, field.Compiler.Curve);
@@ -533,7 +570,7 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <param name="a">The minuend.</param>
     /// <param name="b">The subtrahend.</param>
     /// <returns>The difference.</returns>
-    private byte[] SubF(byte[] a, byte[] b)
+    private byte[] SubF(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         var result = new byte[Scalar.SizeBytes];
         field.Subtract(a, b, result, field.Compiler.Curve);
@@ -557,10 +594,10 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// every raw-value reduction in agreement with the delegates' own modulus.
     /// </summary>
     /// <param name="field">The base-field bundle.</param>
-    /// <returns>The prime, canonical big-endian.</returns>
-    internal static byte[] DeriveBasePrime(LongfellowLogicFieldOperations field)
+    /// <param name="prime">Receives the canonical big-endian prime in a scalar-sized destination owned by the caller.</param>
+    internal static void DeriveBasePrime(LongfellowLogicFieldOperations field, Span<byte> prime)
     {
-        var prime = new byte[Scalar.SizeBytes];
+        prime.Clear();
         field.Compiler.MinusOne.Span.CopyTo(prime);
         for(int i = Scalar.SizeBytes - 1; i >= 0; i--)
         {
@@ -570,8 +607,6 @@ internal sealed class LongfellowEcdsaVerifyWitness
                 break;
             }
         }
-
-        return prime;
     }
 
 
@@ -579,24 +614,30 @@ internal sealed class LongfellowEcdsaVerifyWitness
     /// <param name="destination">The column.</param>
     /// <param name="cursor">The element cursor.</param>
     /// <param name="element">The element to write.</param>
-    private static void WriteElement(Span<byte> destination, ref int cursor, byte[] element)
+    private static void WriteElement(Span<byte> destination, ref int cursor, ReadOnlySpan<byte> element)
     {
         element.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
         cursor++;
     }
 
 
-    /// <summary>Allocates an array of zeroed canonical elements.</summary>
-    /// <param name="count">The element count.</param>
-    /// <returns>The array.</returns>
-    private static byte[][] NewElementArray(int count)
+    /// <summary>Allocates a flattened table of zeroed canonical elements owned by this generator.</summary>
+    /// <param name="count">The element count; zero needs no rental.</param>
+    /// <returns>The table bytes borrowed until this generator is disposed.</returns>
+    private Memory<byte> NewElementArray(int count)
     {
-        var array = new byte[count][];
-        for(int i = 0; i < count; i++)
+        if(count == 0)
         {
-            array[i] = new byte[Scalar.SizeBytes];
+            return Memory<byte>.Empty;
         }
 
-        return array;
+        return storage.Allocate(checked(count * Scalar.SizeBytes));
+    }
+
+
+    /// <summary>Clears and releases every retained scalar and table. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        storage.Dispose();
     }
 }

@@ -116,7 +116,7 @@ internal sealed class LongfellowJwtOpenedAttribute
 /// <see cref="ComputeWitness"/> return <see langword="false"/> rather than throwing.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowJwtWitness
+internal sealed class LongfellowJwtWitness: IDisposable
 {
     private const string Base64UrlAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     private const string DeviceKeyPrefix = "\"cnf\":{\"jwk\":{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"";
@@ -134,39 +134,62 @@ internal sealed class LongfellowJwtWitness
     /// <summary>The words one SHA-256 block's advice records: the schedule extension, both per-round registers, and the final state.</summary>
     private const int WordsPerBlock = 48 + 64 + 64 + 8;
 
+    /// <summary>Owns all retained byte buffers through the field's caller pool.</summary>
+    private readonly LongfellowCircuitStorage storage;
+
     private readonly LongfellowLogicFieldOperations field;
     private readonly LongfellowEllipticCurveParameters curve;
+
+    /// <summary>The nested ECDSA advice owner, released with this generator.</summary>
     private readonly LongfellowEcdsaVerifyWitness jwtSignature;
+
+    /// <summary>The nested ECDSA advice owner, released with this generator.</summary>
     private readonly LongfellowEcdsaVerifyWitness kbSignature;
+
     private readonly LongfellowBitPluckerEncoder encoder;
-    private readonly byte[] basePrime;
+
+    /// <summary>The canonical base prime, borrowed from this generator's storage.</summary>
+    private readonly Memory<byte> basePrime;
+
     private readonly int maxBlocks;
 
-    private readonly byte[] issuerDigest;
-    private readonly byte[] deviceKeyX;
-    private readonly byte[] deviceKeyY;
-    private readonly byte[] kbDigest;
-    private readonly byte[] preimage;
-    private readonly byte[] eBits;
+    /// <summary>The reduced issuer digest, borrowed from this generator's storage.</summary>
+    private readonly Memory<byte> issuerDigest;
+
+    /// <summary>The device key's x coordinate, borrowed from this generator's storage.</summary>
+    private readonly Memory<byte> deviceKeyX;
+
+    /// <summary>The device key's y coordinate, borrowed from this generator's storage.</summary>
+    private readonly Memory<byte> deviceKeyY;
+
+    /// <summary>The reduced key-binding digest, borrowed from this generator's storage.</summary>
+    private readonly Memory<byte> kbDigest;
+
+    /// <summary>The padded signing preimage, borrowed from this generator's storage.</summary>
+    private readonly Memory<byte> preimage;
+
+    /// <summary>The raw issuer digest bits, borrowed from this generator's storage.</summary>
+    private readonly Memory<byte> eBits;
+
     private readonly LongfellowFlatSha256BlockWitness[] blocks;
     private byte occupiedBlockCount;
     private readonly List<int> attributeIndices = [];
     private int payloadIndex;
     private int payloadLength;
 
-    /// <summary>The key-binding digest as a canonical base-field element — the public <c>e2</c> input the verifier recomputes from the presented key-binding JWT.</summary>
+    /// <summary>The key-binding digest, borrowed until disposal, as a canonical base-field element — the public <c>e2</c> input the verifier recomputes from the presented key-binding JWT.</summary>
     public ReadOnlyMemory<byte> KbDigest => kbDigest;
 
 
     /// <summary>
     /// Constructs the generator over the same field bundles and curve the statement circuit uses.
     /// </summary>
-    /// <param name="field">The base-field bundle.</param>
+    /// <param name="field">The borrowed base-field bundle and originating pool, both kept alive until this generator is disposed.</param>
     /// <param name="orderMultiply">The order-field multiplication, canonical in and out.</param>
     /// <param name="orderSubtract">The order-field subtraction, canonical in and out.</param>
     /// <param name="orderInvert">The order-field inversion, canonical in and out.</param>
     /// <param name="orderCurve">The curve parameter set the order-field delegates dispatch on.</param>
-    /// <param name="curve">The curve constants.</param>
+    /// <param name="curve">The curve constants borrowed until this generator is disposed.</param>
     /// <param name="maxShaBlocks">The preimage capacity in SHA-256 blocks.</param>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="maxShaBlocks"/> is outside the statement circuit's own shape bounds.</exception>
@@ -195,21 +218,41 @@ internal sealed class LongfellowJwtWitness
         this.field = field;
         this.curve = curve;
         maxBlocks = maxShaBlocks;
-        jwtSignature = new LongfellowEcdsaVerifyWitness(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
-        kbSignature = new LongfellowEcdsaVerifyWitness(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
-        encoder = new LongfellowBitPluckerEncoder(field, LongfellowJwtConstants.ShaJwtPluckerBits);
-        basePrime = LongfellowEcdsaVerifyWitness.DeriveBasePrime(field);
-
-        issuerDigest = new byte[Scalar.SizeBytes];
-        deviceKeyX = new byte[Scalar.SizeBytes];
-        deviceKeyY = new byte[Scalar.SizeBytes];
-        kbDigest = new byte[Scalar.SizeBytes];
-        preimage = new byte[maxShaBlocks * BytesPerBlock];
-        eBits = new byte[LongfellowLogic.BitWidth256];
-        blocks = new LongfellowFlatSha256BlockWitness[maxShaBlocks];
-        for(int i = 0; i < maxShaBlocks; i++)
+        LongfellowCircuitStorage? storageOwner = new LongfellowCircuitStorage(field.Pool);
+        LongfellowEcdsaVerifyWitness? jwtSignatureOwner = null;
+        LongfellowEcdsaVerifyWitness? kbSignatureOwner = null;
+        try
         {
-            blocks[i] = new LongfellowFlatSha256BlockWitness();
+            jwtSignatureOwner = new LongfellowEcdsaVerifyWitness(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
+            kbSignatureOwner = new LongfellowEcdsaVerifyWitness(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
+            encoder = new LongfellowBitPluckerEncoder(field, LongfellowJwtConstants.ShaJwtPluckerBits);
+            basePrime = storageOwner.Allocate(Scalar.SizeBytes);
+            LongfellowEcdsaVerifyWitness.DeriveBasePrime(field, basePrime.Span);
+
+            issuerDigest = storageOwner.Allocate(Scalar.SizeBytes);
+            deviceKeyX = storageOwner.Allocate(Scalar.SizeBytes);
+            deviceKeyY = storageOwner.Allocate(Scalar.SizeBytes);
+            kbDigest = storageOwner.Allocate(Scalar.SizeBytes);
+            preimage = storageOwner.Allocate(maxShaBlocks * BytesPerBlock);
+            eBits = storageOwner.Allocate(LongfellowLogic.BitWidth256);
+            blocks = new LongfellowFlatSha256BlockWitness[maxShaBlocks];
+            for(int i = 0; i < maxShaBlocks; i++)
+            {
+                blocks[i] = new LongfellowFlatSha256BlockWitness();
+            }
+
+            jwtSignature = jwtSignatureOwner;
+            jwtSignatureOwner = null;
+            kbSignature = kbSignatureOwner;
+            kbSignatureOwner = null;
+            storage = storageOwner;
+            storageOwner = null;
+        }
+        finally
+        {
+            kbSignatureOwner?.Dispose();
+            jwtSignatureOwner?.Dispose();
+            storageOwner?.Dispose();
         }
     }
 
@@ -276,9 +319,9 @@ internal sealed class LongfellowJwtWitness
             return false;
         }
 
-        LongfellowFlatSha256Witness.TransformAndWitnessMessage(issuerJws[..issuer.MessageLength], maxBlocks, out occupiedBlockCount, preimage, blocks);
+        LongfellowFlatSha256Witness.TransformAndWitnessMessage(issuerJws[..issuer.MessageLength], maxBlocks, out occupiedBlockCount, preimage.Span, blocks);
 
-        CanonicalScalarReduction.ReduceOnce(issuer.Digest.Span, basePrime, issuerDigest);
+        CanonicalScalarReduction.ReduceOnce(issuer.Digest.Span, basePrime.Span, issuerDigest.Span);
         payloadIndex = issuer.PayloadIndex;
         payloadLength = issuer.PayloadLength;
 
@@ -289,7 +332,7 @@ internal sealed class LongfellowJwtWitness
 
         for(int i = 0; i < LongfellowLogic.BitWidth256; i++)
         {
-            eBits[i] = (byte)((issuer.Digest.Span[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
+            eBits.Span[i] = (byte)((issuer.Digest.Span[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
         }
 
         //Locate each disclosed attribute in the decoded payload.
@@ -330,12 +373,12 @@ internal sealed class LongfellowJwtWitness
             return false;
         }
 
-        if(!kbSignature.ComputeWitness(deviceKeyX, deviceKeyY, kb.Digest.Span, kb.R.Span, kb.S.Span))
+        if(!kbSignature.ComputeWitness(deviceKeyX.Span, deviceKeyY.Span, kb.Digest.Span, kb.R.Span, kb.S.Span))
         {
             return false;
         }
 
-        CanonicalScalarReduction.ReduceOnce(kb.Digest.Span, basePrime, kbDigest);
+        CanonicalScalarReduction.ReduceOnce(kb.Digest.Span, basePrime.Span, kbDigest.Span);
 
         return true;
     }
@@ -355,9 +398,9 @@ internal sealed class LongfellowJwtWitness
         }
 
         int cursor = 0;
-        WriteElement(destination, ref cursor, issuerDigest);
-        WriteElement(destination, ref cursor, deviceKeyX);
-        WriteElement(destination, ref cursor, deviceKeyY);
+        WriteElement(destination, ref cursor, issuerDigest.Span);
+        WriteElement(destination, ref cursor, deviceKeyX.Span);
+        WriteElement(destination, ref cursor, deviceKeyY.Span);
 
         jwtSignature.FillWitness(destination.Slice(cursor * Scalar.SizeBytes, jwtSignature.ElementCount * Scalar.SizeBytes));
         cursor += jwtSignature.ElementCount;
@@ -366,12 +409,12 @@ internal sealed class LongfellowJwtWitness
 
         for(int i = 0; i < preimage.Length; i++)
         {
-            WriteBits(destination, ref cursor, preimage[i], LongfellowLogic.BitWidth8);
+            WriteBits(destination, ref cursor, preimage.Span[i], LongfellowLogic.BitWidth8);
         }
 
         for(int i = 0; i < eBits.Length; i++)
         {
-            WriteBits(destination, ref cursor, eBits[i], 1);
+            WriteBits(destination, ref cursor, eBits.Span[i], 1);
         }
 
         for(int j = 0; j < maxBlocks; j++)
@@ -520,8 +563,8 @@ internal sealed class LongfellowJwtWitness
             return false;
         }
 
-        CanonicalScalarReduction.ReduceOnce(xBytes[..xLength][..Scalar.SizeBytes], basePrime, deviceKeyX);
-        CanonicalScalarReduction.ReduceOnce(yBytes[..yLength][..Scalar.SizeBytes], basePrime, deviceKeyY);
+        CanonicalScalarReduction.ReduceOnce(xBytes[..xLength][..Scalar.SizeBytes], basePrime.Span, deviceKeyX.Span);
+        CanonicalScalarReduction.ReduceOnce(yBytes[..yLength][..Scalar.SizeBytes], basePrime.Span, deviceKeyY.Span);
 
         return true;
     }
@@ -646,9 +689,18 @@ internal sealed class LongfellowJwtWitness
     /// <param name="destination">The column.</param>
     /// <param name="cursor">The element cursor.</param>
     /// <param name="element">The element to write.</param>
-    private static void WriteElement(Span<byte> destination, ref int cursor, byte[] element)
+    private static void WriteElement(Span<byte> destination, ref int cursor, ReadOnlySpan<byte> element)
     {
         element.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
         cursor++;
+    }
+
+
+    /// <summary>Clears and releases retained bytes and nested signature advice. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        kbSignature.Dispose();
+        jwtSignature.Dispose();
+        storage.Dispose();
     }
 }

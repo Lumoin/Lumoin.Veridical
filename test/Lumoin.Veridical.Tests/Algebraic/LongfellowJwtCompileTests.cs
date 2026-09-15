@@ -382,7 +382,7 @@ internal sealed class LongfellowJwtCompileTests: IDisposable
         byte[] e2 = ParseScalar(vector.E2);
         var attribute = LongfellowJwtOpenedAttribute.FromStrings("given_name", "Erika");
 
-        var generator = new LongfellowJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, SevenBlocks);
+        var generator = circuitScope.CreateJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, SevenBlocks);
         Assert.IsTrue(generator.ComputeWitness(token, pkX, pkY, [attribute]), "The reference token must produce a witness at seven blocks.");
 
         byte[] column = new byte[circuit.InputCount * ScalarSize];
@@ -399,7 +399,7 @@ internal sealed class LongfellowJwtCompileTests: IDisposable
         //The digest-bit region sits after the three witness scalars and both advice bundles and the
         //preimage bytes; the layout mirrors the declaration order.
         int witnessStart = cursor;
-        var probeGenerator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var probeGenerator = circuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         eBitsStartWire = witnessStart + 3 + (2 * probeGenerator.ElementCount) + (SevenBlocks * 64 * LongfellowLogic.BitWidth8);
 
         int witnessElements = generator.GetElementCount(AttributeCount);

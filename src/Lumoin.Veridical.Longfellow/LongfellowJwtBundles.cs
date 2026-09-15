@@ -75,10 +75,10 @@ internal static class LongfellowJwtBundles
 
 
     /// <summary>Builds the witness generator over the same field bundle and curve the statement circuit uses.</summary>
-    /// <param name="field">The field bundle.</param>
+    /// <param name="field">The borrowed field bundle carrying the facade's pool for retained witness storage.</param>
     /// <param name="curve">The curve constants borrowed for the generator's lifetime.</param>
     /// <param name="blockCapacity">The preimage capacity in SHA-256 blocks.</param>
-    /// <returns>The generator.</returns>
+    /// <returns>The disposable generator; the caller releases it before the field, curve and pool.</returns>
     internal static LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field, LongfellowEllipticCurveParameters curve, int blockCapacity) =>
         new(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, curve, blockCapacity);
 

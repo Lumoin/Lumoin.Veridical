@@ -1,3 +1,4 @@
+using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
@@ -7,7 +8,7 @@ using System.Collections.Generic;
 
 namespace Lumoin.Veridical.Tests;
 
-/// <summary>Bounds compiler and circuit rentals to one test, including failed assertions and discarded results.</summary>
+/// <summary>Bounds compiler, circuit and witness rentals to one test, including failed assertions and discarded results.</summary>
 internal sealed class LongfellowCircuitTestScope: IDisposable
 {
     /// <summary>The test's independent pool, disposed after every owner.</summary>
@@ -98,6 +99,98 @@ internal sealed class LongfellowCircuitTestScope: IDisposable
     public LongfellowSumcheckCircuit Lift(LongfellowSumcheckCircuit circuit, LongfellowDomainConvertDelegate toWorking)
     {
         return Track(circuit.LiftCoefficientsToWorking(toWorking));
+    }
+
+    /// <summary>Constructs and retains a witness generator using the supplied field's originating pool.</summary>
+    /// <param name="field">The field bundle borrowed for the generator's lifetime.</param>
+    /// <param name="orderMultiply">The canonical order-field multiplication.</param>
+    /// <param name="orderSubtract">The canonical order-field subtraction.</param>
+    /// <param name="orderInvert">The canonical order-field inversion.</param>
+    /// <param name="orderCurve">The order-field curve parameter set.</param>
+    /// <param name="curve">The curve constants borrowed for the generator's lifetime.</param>
+    /// <returns>The generator borrowed until this test scope is disposed.</returns>
+    public LongfellowEcdsaVerifyWitness CreateEcdsaWitness(
+        LongfellowLogicFieldOperations field,
+        ScalarMultiplyDelegate orderMultiply,
+        ScalarSubtractDelegate orderSubtract,
+        ScalarInvertDelegate orderInvert,
+        CurveParameterSet orderCurve,
+        LongfellowEllipticCurveParameters curve)
+    {
+        LongfellowEcdsaVerifyWitness? owner = new(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
+        try
+        {
+            LongfellowEcdsaVerifyWitness witness = Track(owner);
+            owner = null;
+
+            return witness;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
+    }
+
+    /// <summary>Constructs and retains a witness generator using the supplied field's originating pool.</summary>
+    /// <param name="field">The field bundle borrowed for the generator's lifetime.</param>
+    /// <param name="orderMultiply">The canonical order-field multiplication.</param>
+    /// <param name="orderSubtract">The canonical order-field subtraction.</param>
+    /// <param name="orderInvert">The canonical order-field inversion.</param>
+    /// <param name="orderCurve">The order-field curve parameter set.</param>
+    /// <param name="curve">The curve constants borrowed for the generator's lifetime.</param>
+    /// <param name="maxShaBlocks">The preimage capacity in SHA-256 blocks.</param>
+    /// <returns>The generator borrowed until this test scope is disposed.</returns>
+    public LongfellowJwtWitness CreateJwtWitness(
+        LongfellowLogicFieldOperations field,
+        ScalarMultiplyDelegate orderMultiply,
+        ScalarSubtractDelegate orderSubtract,
+        ScalarInvertDelegate orderInvert,
+        CurveParameterSet orderCurve,
+        LongfellowEllipticCurveParameters curve,
+        int maxShaBlocks)
+    {
+        LongfellowJwtWitness? owner = new(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve, maxShaBlocks);
+        try
+        {
+            LongfellowJwtWitness witness = Track(owner);
+            owner = null;
+
+            return witness;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
+    }
+
+    /// <summary>Constructs and retains a witness generator using the supplied field's originating pool.</summary>
+    /// <param name="field">The field bundle borrowed for the generator's lifetime.</param>
+    /// <param name="orderMultiply">The canonical order-field multiplication.</param>
+    /// <param name="orderSubtract">The canonical order-field subtraction.</param>
+    /// <param name="orderInvert">The canonical order-field inversion.</param>
+    /// <param name="orderCurve">The order-field curve parameter set.</param>
+    /// <param name="curve">The curve constants borrowed for the generator's lifetime.</param>
+    /// <returns>The generator borrowed until this test scope is disposed.</returns>
+    public LongfellowMdocRevocationSpanWitness CreateRevocationSpanWitness(
+        LongfellowLogicFieldOperations field,
+        ScalarMultiplyDelegate orderMultiply,
+        ScalarSubtractDelegate orderSubtract,
+        ScalarInvertDelegate orderInvert,
+        CurveParameterSet orderCurve,
+        LongfellowEllipticCurveParameters curve)
+    {
+        LongfellowMdocRevocationSpanWitness? owner = new(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
+        try
+        {
+            LongfellowMdocRevocationSpanWitness witness = Track(owner);
+            owner = null;
+
+            return witness;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
     }
 
     /// <summary>Registers an owner or releases it if registration fails.</summary>

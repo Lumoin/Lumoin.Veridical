@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowJwtCircuitTests: IDisposable
 {
-    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    /// <summary>Owns this test's field, curve, witness and scalar storage through cleanup.</summary>
     private readonly LongfellowCircuitTestScope circuitScope = new();
 
     /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
@@ -132,10 +132,10 @@ internal sealed class LongfellowJwtCircuitTests: IDisposable
 
     /// <summary>Builds the witness generator over the production Montgomery field backends at the evaluation block capacity.</summary>
     /// <param name="field">The base-field bundle.</param>
-    /// <returns>The generator.</returns>
+    /// <returns>The generator borrowed until this test scope is disposed.</returns>
     private LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
     {
-        return new LongfellowJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, EvalShaBlocks);
+        return circuitScope.CreateJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, EvalShaBlocks);
     }
 
 

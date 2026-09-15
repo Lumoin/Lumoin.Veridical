@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
 {
-    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    /// <summary>Owns this test's field, curve, witness and scalar storage through cleanup.</summary>
     private readonly LongfellowCircuitTestScope circuitScope = new();
 
     /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
@@ -305,10 +305,10 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
 
     /// <summary>Builds the witness generator over the production Montgomery field backends.</summary>
     /// <param name="field">The base-field bundle.</param>
-    /// <returns>The generator.</returns>
+    /// <returns>The generator borrowed until this test scope is disposed.</returns>
     private LongfellowMdocRevocationSpanWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
     {
-        return new LongfellowMdocRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        return circuitScope.CreateRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
     }
 
 
@@ -316,7 +316,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
     /// <returns>The element offset.</returns>
     private int EBitsElementOffset()
     {
-        var probe = new LongfellowEcdsaVerifyWitness(NewFp256Bundle(), OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var probe = circuitScope.CreateEcdsaWitness(NewFp256Bundle(), OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
 
         return 3
             + probe.ElementCount

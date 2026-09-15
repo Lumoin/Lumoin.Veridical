@@ -59,7 +59,7 @@ public static class LongfellowJwt
         //rejected before the expensive circuit compilation.
         using LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle(pool);
         using LongfellowEllipticCurveParameters curve = LongfellowEllipticCurveParameters.CreateP256(pool);
-        LongfellowJwtWitness generator = LongfellowJwtBundles.NewWitnessGenerator(field, curve, statement.Spec.BlockCapacity);
+        using LongfellowJwtWitness generator = LongfellowJwtBundles.NewWitnessGenerator(field, curve, statement.Spec.BlockCapacity);
         var openedAttributes = new LongfellowJwtOpenedAttribute[statement.Attributes.Count];
         for(int i = 0; i < openedAttributes.Length; i++)
         {

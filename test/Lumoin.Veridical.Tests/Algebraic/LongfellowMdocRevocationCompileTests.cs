@@ -392,7 +392,7 @@ internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;
         byte[] id = ParseScalar(vector.Id);
 
-        var generator = new LongfellowMdocRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var generator = circuitScope.CreateRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         Assert.IsTrue(
             generator.ComputeWitness(
                 ParseScalar(vector.PkX),
@@ -419,7 +419,7 @@ internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
         //The identifier-bit region sits after the three signature scalars, the advice bundle and
         //the preimage bytes; the layout mirrors the declaration order.
         int witnessStart = cursor;
-        var probeGenerator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var probeGenerator = circuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         idBitsStartWire = witnessStart + 3 + probeGenerator.ElementCount + (LongfellowMdocRevocationConstants.SpanBlockCount * BytesPerBlock * LongfellowLogic.BitWidth8);
 
         generator.FillWitness(column.AsSpan(witnessStart * ScalarSize, generator.ElementCount * ScalarSize));

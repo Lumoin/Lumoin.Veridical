@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
 {
-    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    /// <summary>Owns this test's field, curve, witness and scalar storage through cleanup.</summary>
     private readonly LongfellowCircuitTestScope circuitScope = new();
 
     /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
@@ -93,7 +93,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         foreach(LongfellowEcdsaTestVectors.SignatureTuple tuple in LongfellowEcdsaTestVectors.Accepting)
         {
-            var generator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+            var generator = circuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
             byte[] pkX = ParseScalar(tuple.PkX);
             byte[] pkY = ParseScalar(tuple.PkY);
             byte[] e = ParseScalar(tuple.E);
@@ -136,7 +136,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
         byte[] r = ParseScalar(tuple.R);
         byte[] s = ParseScalar(tuple.S);
 
-        var generator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var generator = circuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         computed = generator.ComputeWitness(pkX, pkY, e, r, s);
 
         byte[] column = new byte[generator.ElementCount * ScalarSize];
