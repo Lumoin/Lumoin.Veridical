@@ -84,6 +84,19 @@ To try a single file first, copy the config next to it, shorten its `mutate` lis
 useful, its `test-case-filter`), run with `--config-file` naming the copy, and delete the
 copy afterwards; copies are never committed.
 
+**Lower tiers.** On an AVX-512 host the dispatch facades never take their AVX2, NEON,
+WebAssembly or serial arms, so the slice is run again with a runtime switch that hides a
+tier: `DOTNET_EnableAVX512=0` makes the facades select AVX2, and `DOTNET_EnableAVX2=0`
+withdraws AVX-512 as well and leaves only the serial fallback (`DOTNET_EnableAVX512F`, the
+name from before the AVX-512 instruction sets were merged into one switch, does nothing on
+.NET 10 and later). Under a switch the tests that require the hidden feature report
+`Assert.Inconclusive` and that tier's own kernel files survive wholesale, so no single run's
+score means anything for the slice: a mutant counts as covered when at least one
+configuration kills it, and the runs are compared per file. Two groups stay uncovered on any
+x64 host by construction: the NEON and WebAssembly arm bodies, and the AVX-512 condition's
+`&&`, which only a host reporting AVX-512F without 512-bit acceleration tells apart from `||`
+(`DOTNET_PreferredVectorBitWidth=256` reproduces such a host).
+
 **Fallback.** Setting `UseVSTest` alone left the MSTest test host active (the suite
 still started through the Microsoft.Testing.Platform entry point instead of VsTest),
 so the tracked property group carries the explicit pair alongside it: `UseVSTest`

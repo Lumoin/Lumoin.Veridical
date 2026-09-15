@@ -270,7 +270,17 @@ internal static class Bn254SimdScalarBackend
     }
 
 
-    private static void BatchMultiply(
+    /// <summary>
+    /// Serial fallback returned by the facade when no per-ISA backend is available; internal so the
+    /// test project can exercise the loop on hosts whose facade never selects it.
+    /// </summary>
+    /// <param name="leftOperandsConcatenated">Concatenated canonical left scalars.</param>
+    /// <param name="rightOperandsConcatenated">Concatenated canonical right scalars.</param>
+    /// <param name="resultsConcatenated">Destination containing exactly one scalar slot per element.</param>
+    /// <param name="count">Number of scalar products.</param>
+    /// <param name="curve">Curve identity used by the operation counter.</param>
+    /// <exception cref="ArgumentException">A buffer does not contain exactly <paramref name="count"/> scalar slots.</exception>
+    internal static void BatchMultiply(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
         Span<byte> resultsConcatenated,
