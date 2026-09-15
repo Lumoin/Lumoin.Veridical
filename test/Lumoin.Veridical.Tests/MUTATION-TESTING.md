@@ -41,9 +41,17 @@ replaces the assembly under test inside the test project's `bin/` with its mutat
 build: never run `dotnet build` or `dotnet test` in the tree while a run is in
 progress, or the run is destroyed.
 
-The `mutate` entries are file paths relative to the directory of the project the
-`project` key names; a path that starts outside that directory matches nothing, and a
-list that matches nothing mutates the entire project.
+The `mutate` entries are glob patterns. Each is written with a `**/` prefix followed by
+the file's path inside the project the `project` key names, so it matches whichever
+base directory Stryker resolves patterns against (the source project's folder in
+project mode, the solution's folder when a `solution` key is present). Stryker
+generates mutants for every file of the project before it applies the list: the
+"N mutants created" line is that pre-filter total and says nothing about the slice.
+The list takes effect afterwards, once the initial coverage run has finished, as a
+line reporting the mutants that "got status Ignored" because of the file pattern
+filter, followed by the count that will actually be tested. Judge a slice's scope by
+those lines, never by the creation count; a list that matches nothing shows up there
+as zero ignored mutants and a tested count equal to the total.
 
 ## Slices over another project
 
@@ -59,9 +67,18 @@ dotnet tool run dotnet-stryker --config-file stryker-config-backends.json --outp
 Remove-Item Env:\VERIDICAL_STRYKER_RUN
 ```
 
-To try a single file first, copy the config next to it, shorten its `mutate` list, run
-with `--config-file` naming the copy, and delete the copy afterwards; copies are never
-committed.
+Its `test-case-filter` names the fourteen test classes that exercise those kernels (the
+per-backend agreement tests, the dispatch, batch, multilinear-extension and managed-backend
+tests) instead of the whole non-Slow suite. Stryker compiles every mutant of the project
+into the assembly under test before the `mutate` list narrows what is tested, so a
+whole-suite coverage run executes the BigInteger reference arithmetic with every mutation
+point instrumented and takes hours; the fourteen classes give the same kill power for the
+kernels in minutes. The filter is a config key: Stryker 4.16 has no command-line option for
+it.
+
+To try a single file first, copy the config next to it, shorten its `mutate` list (and, if
+useful, its `test-case-filter`), run with `--config-file` naming the copy, and delete the
+copy afterwards; copies are never committed.
 
 **Fallback.** Setting `UseVSTest` alone left the MSTest test host active (the suite
 still started through the Microsoft.Testing.Platform entry point instead of VsTest),
