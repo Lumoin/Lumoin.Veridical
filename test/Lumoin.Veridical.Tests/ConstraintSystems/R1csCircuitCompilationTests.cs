@@ -25,55 +25,110 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 [TestClass]
 internal sealed class R1csCircuitCompilationTests
 {
+    /// <summary>The left factor of the multiply assignment most compilations in this class bind; the hand-crafted reference witness uses the same value.</summary>
+    private const int LeftFactor = 3;
+
+    /// <summary>The right factor of the multiply assignment most compilations in this class bind; the hand-crafted reference witness uses the same value.</summary>
+    private const int RightFactor = 11;
+
+    /// <summary>The product that satisfies the multiply constraint for <see cref="LeftFactor"/> and <see cref="RightFactor"/>.</summary>
+    private const int Product = LeftFactor * RightFactor;
+
+    /// <summary>One more than <see cref="Product"/>, so the multiply constraint does not hold.</summary>
+    private const int WrongProduct = Product + 1;
+
+    /// <summary>The left factor of the BN254 single-constraint assignment.</summary>
+    private const int Bn254LeftFactor = 4;
+
+    /// <summary>The right factor of the BN254 single-constraint assignment.</summary>
+    private const int Bn254RightFactor = 5;
+
+    /// <summary>The product that satisfies the multiply constraint for <see cref="Bn254LeftFactor"/> and <see cref="Bn254RightFactor"/>.</summary>
+    private const int Bn254Product = Bn254LeftFactor * Bn254RightFactor;
+
+    /// <summary>The left factor of the second assignment the reused circuit compiles against.</summary>
+    private const int SecondLeftFactor = 6;
+
+    /// <summary>The right factor of the second assignment the reused circuit compiles against.</summary>
+    private const int SecondRightFactor = 7;
+
+    /// <summary>The product that satisfies the multiply constraint for the second assignment.</summary>
+    private const int SecondProduct = SecondLeftFactor * SecondRightFactor;
+
+    /// <summary>The padded multiplier's row count: its multiply constraint and the one padding constraint that reaches the two-row floor.</summary>
+    private const int PaddedMultiplierRowCount = 2;
+
+    /// <summary>The padded multiplier's column count: the constant one, the public product and the two private factors.</summary>
+    private const int PaddedMultiplierColumnCount = 4;
+
+    /// <summary>The padded multiplier's public-input count: the product.</summary>
+    private const int PaddedMultiplierPublicInputCount = 1;
+
+    /// <summary>The padded multiplier's witness count: the two factors.</summary>
+    private const int PaddedMultiplierWitnessCount = 2;
+
+    /// <summary>The value both variables of the reduced identity constraint <c>x · 1 = y</c> take.</summary>
+    private const int ReducedIdentityValue = 9;
+
+    /// <summary>The missing-input guard's wording for the multiply circuit's unbound product <c>z</c>.</summary>
+    private const string UnboundProductMessage = "No input value bound for variable 'z'";
+
+
+    /// <summary>The shared pool the compilations in this class rent from, except where a test builds a private pool to observe its rentals.</summary>
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 
 
+    /// <summary>Compiles the padded multiplier over BLS12-381 for a prover and a verifier and checks that a Spartan proof over it verifies.</summary>
     [TestMethod]
     public void Bls12Curve381PaddedMultiplier2ProvesAndVerifies()
     {
         R1csCircuit circuit = BuildPaddedMultiplier2(CurveParameterSet.Bls12Curve381);
-        R1csCircuitInputs inputs = Inputs(("product", 33), ("a", 3), ("b", 11));
-        ProveAndVerify(circuit, inputs, columnCount: 4, Bls12Curve381Backend);
+        R1csCircuitInputs inputs = Inputs(("product", Product), ("a", LeftFactor), ("b", RightFactor));
+        ProveAndVerify(circuit, inputs, PaddedMultiplierColumnCount, Bls12Curve381Backend);
     }
 
 
+    /// <summary>Compiles the padded multiplier over BN254 for a prover and a verifier and checks that a Spartan proof over it verifies.</summary>
     [TestMethod]
     public void Bn254PaddedMultiplier2ProvesAndVerifies()
     {
         R1csCircuit circuit = BuildPaddedMultiplier2(CurveParameterSet.Bn254);
-        R1csCircuitInputs inputs = Inputs(("product", 33), ("a", 3), ("b", 11));
-        ProveAndVerify(circuit, inputs, columnCount: 4, Bn254Backend);
+        R1csCircuitInputs inputs = Inputs(("product", Product), ("a", LeftFactor), ("b", RightFactor));
+        ProveAndVerify(circuit, inputs, PaddedMultiplierColumnCount, Bn254Backend);
     }
 
 
+    /// <summary>Compiles the multiply constraint over BLS12-381 and checks that the compiled witness satisfies the compiled instance.</summary>
     [TestMethod]
     public void Bls12Curve381SingleConstraintCompilesAndSatisfies()
     {
         R1csCircuit circuit = BuildSingleMultiply(CurveParameterSet.Bls12Curve381);
-        CompileAndAssertSatisfied(circuit, Inputs(("x", 3), ("y", 11), ("z", 33)), Bls12Curve381Backend);
+        CompileAndAssertSatisfied(circuit, Inputs(("x", LeftFactor), ("y", RightFactor), ("z", Product)), Bls12Curve381Backend);
     }
 
 
+    /// <summary>Compiles the multiply constraint over BN254 and checks that the compiled witness satisfies the compiled instance.</summary>
     [TestMethod]
     public void Bn254SingleConstraintCompilesAndSatisfies()
     {
         R1csCircuit circuit = BuildSingleMultiply(CurveParameterSet.Bn254);
-        CompileAndAssertSatisfied(circuit, Inputs(("x", 4), ("y", 5), ("z", 20)), Bn254Backend);
+        CompileAndAssertSatisfied(circuit, Inputs(("x", Bn254LeftFactor), ("y", Bn254RightFactor), ("z", Bn254Product)), Bn254Backend);
     }
 
 
+    /// <summary>Checks that the builder's multiply circuit compiles to the exact matrix and witness bytes of the hand-crafted reference circuit.</summary>
     [TestMethod]
     public void CompiledInstanceMatchesHandCraftedMultiplyCircuit()
     {
         //The builder circuit z = (1, x, y, z) with x·y = z must compile to the
         //exact bytes of the hand-crafted R1csTestCircuits.BuildMultiplyCircuit.
         R1csCircuit circuit = BuildSingleMultiply(CurveParameterSet.Bls12Curve381);
-        (RawR1csInstance Instance, RawR1csWitness Witness) compiled = circuit.Compile(Inputs(("x", 3), ("y", 11), ("z", 33)), Pool);
+        (RawR1csInstance Instance, RawR1csWitness Witness) compiled = circuit.Compile(Inputs(("x", LeftFactor), ("y", RightFactor), ("z", Product)), Pool);
 
         using RawR1csInstance instance = compiled.Instance;
         using RawR1csWitness witness = compiled.Witness;
         using RawR1csInstance reference = R1csTestCircuits.BuildMultiplyCircuit();
-        using RawR1csWitness referenceWitness = R1csTestCircuits.BuildMultiplyWitness(3, 11);
+        using RawR1csWitness referenceWitness = R1csTestCircuits.BuildMultiplyWitness(LeftFactor, RightFactor);
 
         Assert.AreEqual(reference.PublicInputCount, instance.PublicInputCount, "public-input count");
         AssertMatricesEqual(reference.A, instance.A, "A");
@@ -83,54 +138,59 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>Rejects an assignment that leaves the product unbound, and the rejection names the unbound variable.</summary>
     [TestMethod]
     public void MissingInputThrows()
     {
         R1csCircuit circuit = BuildSingleMultiply(CurveParameterSet.Bls12Curve381);
         //'z' is not bound.
         R1csCircuitCompilationException error = Assert.ThrowsExactly<R1csCircuitCompilationException>(
-            () => circuit.Compile(Inputs(("x", 3), ("y", 11)), Pool));
-        Assert.Contains("z", error.Message, StringComparison.Ordinal);
+            () => DisposeCompiled(circuit.Compile(Inputs(("x", LeftFactor), ("y", RightFactor)), Pool)));
+        Assert.Contains(UnboundProductMessage, error.Message, StringComparison.Ordinal);
     }
 
 
+    /// <summary>Rejects an assignment that does not satisfy the multiply constraint, and the rejection names the failing constraint.</summary>
     [TestMethod]
     public void NonSatisfyingAssignmentThrows()
     {
         R1csCircuit circuit = BuildSingleMultiply(CurveParameterSet.Bls12Curve381);
-        //3 · 11 = 33, not 34.
+        //The bound product is one more than the factors multiply to.
         R1csCircuitCompilationException error = Assert.ThrowsExactly<R1csCircuitCompilationException>(
-            () => circuit.Compile(Inputs(("x", 3), ("y", 11), ("z", 34)), Pool));
+            () => DisposeCompiled(circuit.Compile(Inputs(("x", LeftFactor), ("y", RightFactor), ("z", WrongProduct)), Pool)));
         Assert.Contains("constraint", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
 
+    /// <summary>Compiles one circuit against two different assignments, since a circuit is a statement reusable across assignments.</summary>
     [TestMethod]
     public void TheSameCircuitCompilesAgainstDifferentInputs()
     {
         //A circuit is reusable: the same statement proves many assignments.
         R1csCircuit circuit = BuildSingleMultiply(CurveParameterSet.Bls12Curve381);
-        CompileAndAssertSatisfied(circuit, Inputs(("x", 3), ("y", 11), ("z", 33)), Bls12Curve381Backend);
-        CompileAndAssertSatisfied(circuit, Inputs(("x", 6), ("y", 7), ("z", 42)), Bls12Curve381Backend);
+        CompileAndAssertSatisfied(circuit, Inputs(("x", LeftFactor), ("y", RightFactor), ("z", Product)), Bls12Curve381Backend);
+        CompileAndAssertSatisfied(circuit, Inputs(("x", SecondLeftFactor), ("y", SecondRightFactor), ("z", SecondProduct)), Bls12Curve381Backend);
     }
 
 
+    /// <summary>Checks the padded multiplier's compiled row, column, public-input and witness counts.</summary>
     [TestMethod]
     public void CompiledWitnessAndInstanceHaveExpectedShape()
     {
         R1csCircuit circuit = BuildPaddedMultiplier2(CurveParameterSet.Bls12Curve381);
-        (RawR1csInstance Instance, RawR1csWitness Witness) compiled = circuit.Compile(Inputs(("product", 33), ("a", 3), ("b", 11)), Pool);
+        (RawR1csInstance Instance, RawR1csWitness Witness) compiled = circuit.Compile(Inputs(("product", Product), ("a", LeftFactor), ("b", RightFactor)), Pool);
 
         using RawR1csInstance instance = compiled.Instance;
         using RawR1csWitness witness = compiled.Witness;
 
-        Assert.AreEqual(2, instance.A.RowCount, "two constraints");
-        Assert.AreEqual(4, instance.A.ColumnCount, "constant + product + a + b");
-        Assert.AreEqual(1, instance.PublicInputCount, "product is public");
-        Assert.AreEqual(2, witness.WitnessVariableCount, "a and b are private");
+        Assert.AreEqual(PaddedMultiplierRowCount, instance.A.RowCount, "two constraints");
+        Assert.AreEqual(PaddedMultiplierColumnCount, instance.A.ColumnCount, "constant + product + a + b");
+        Assert.AreEqual(PaddedMultiplierPublicInputCount, instance.PublicInputCount, "product is public");
+        Assert.AreEqual(PaddedMultiplierWitnessCount, witness.WitnessVariableCount, "a and b are private");
     }
 
 
+    /// <summary>Checks that a coefficient one above the field order reduces to one, so the compiled constraint is the identity <c>x · 1 = y</c>.</summary>
     [TestMethod]
     public void EmptyConstantCoefficientsReduceModuloField()
     {
@@ -147,10 +207,13 @@ internal sealed class R1csCircuitCompilationTests
         builder.AddConstraint(left, R1csLinearCombination.FromConstant(BigInteger.One), y);
         R1csCircuit circuit = builder.Build();
 
-        CompileAndAssertSatisfied(circuit, Inputs(("x", 9), ("y", 9)), Bls12Curve381Backend);
+        CompileAndAssertSatisfied(circuit, Inputs(("x", ReducedIdentityValue), ("y", ReducedIdentityValue)), Bls12Curve381Backend);
     }
 
 
+    /// <summary>Builds the multiply circuit <c>x · y = z</c> with three witness variables and no public inputs.</summary>
+    /// <param name="curve">The wired curve to build over.</param>
+    /// <returns>The built circuit.</returns>
     private static R1csCircuit BuildSingleMultiply(CurveParameterSet curve)
     {
         //z = (1, x, y, z): x · y = z, no public inputs. Matches
@@ -160,10 +223,14 @@ internal sealed class R1csCircuitCompilationTests
         R1csVariableIndex y = builder.DeclareWitnessVariable("y");
         R1csVariableIndex z = builder.DeclareWitnessVariable("z");
         builder.AddConstraint(x, y, z);
+
         return builder.Build();
     }
 
 
+    /// <summary>Builds the multiplier with a public product and two private factors, padded to power-of-two dimensions.</summary>
+    /// <param name="curve">The wired curve to build over.</param>
+    /// <returns>The padded circuit.</returns>
     private static R1csCircuit BuildPaddedMultiplier2(CurveParameterSet curve)
     {
         //product public, a·b = product, padded to power-of-two dimensions via
@@ -178,6 +245,10 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>Compiles a circuit and checks that the compiled witness satisfies the compiled instance.</summary>
+    /// <param name="circuit">The circuit to compile.</param>
+    /// <param name="inputs">The satisfying input bindings.</param>
+    /// <param name="backend">The backends of the circuit's curve.</param>
     private static void CompileAndAssertSatisfied(R1csCircuit circuit, R1csCircuitInputs inputs, SpartanBackend backend)
     {
         (RawR1csInstance Instance, RawR1csWitness Witness) compiled = circuit.Compile(inputs, Pool);
@@ -189,6 +260,23 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>
+    /// Disposes both halves of a compilation result. The rejection tests pass their compilation through this, so
+    /// a compilation that returns instead of throwing still gives its pooled storage back.
+    /// </summary>
+    /// <param name="compiled">The instance and witness the compilation returned.</param>
+    private static void DisposeCompiled((RawR1csInstance Instance, RawR1csWitness Witness) compiled)
+    {
+        compiled.Instance.Dispose();
+        compiled.Witness.Dispose();
+    }
+
+
+    /// <summary>Compiles the circuit for a prover and a verifier, proves the prover's instance under Spartan and checks that the verifier accepts the proof.</summary>
+    /// <param name="circuit">The circuit to compile.</param>
+    /// <param name="inputs">The satisfying input bindings.</param>
+    /// <param name="columnCount">The circuit's power-of-two column count, which sizes the commitment key.</param>
+    /// <param name="backend">The backends of the circuit's curve.</param>
     [SuppressMessage("Reliability", "CA2000", Justification = "Instances, witnesses, prover, verifier, and transcripts are disposed via using declarations before the assertion completes.")]
     private static void ProveAndVerify(R1csCircuit circuit, R1csCircuitInputs inputs, int columnCount, SpartanBackend backend)
     {
@@ -223,24 +311,38 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>Builds a Spartan prover over a Hyrax commitment key of the supplied vector length.</summary>
+    /// <param name="hyraxVectorLength">The vector length of the commitment key.</param>
+    /// <param name="backend">The backends of the prover's curve.</param>
+    /// <returns>The prover, which owns the key.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanProver via its constructor chain.")]
     private static SpartanProver BuildProver(int hyraxVectorLength, SpartanBackend backend)
     {
         HyraxCommitmentKey commitmentKey = HyraxCommitmentKey.Derive(
             hyraxVectorLength, WellKnownHyraxDomainLabels.CanonicalSeedV1, backend.Curve, backend.HashToCurve, Pool);
+
         return new SpartanProver(new SpartanProvingKey(BuildProvider(commitmentKey, backend)));
     }
 
 
+    /// <summary>Builds a Spartan verifier over a Hyrax commitment key of the supplied vector length.</summary>
+    /// <param name="hyraxVectorLength">The vector length of the commitment key.</param>
+    /// <param name="backend">The backends of the verifier's curve.</param>
+    /// <returns>The verifier, which owns the key.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanVerifier via its constructor chain.")]
     private static SpartanVerifier BuildVerifier(int hyraxVectorLength, SpartanBackend backend)
     {
         HyraxCommitmentKey commitmentKey = HyraxCommitmentKey.Derive(
             hyraxVectorLength, WellKnownHyraxDomainLabels.CanonicalSeedV1, backend.Curve, backend.HashToCurve, Pool);
+
         return new SpartanVerifier(new SpartanVerifyingKey(BuildProvider(commitmentKey, backend)));
     }
 
 
+    /// <summary>Creates the Hyrax commitment provider and transfers ownership of the supplied key to it.</summary>
+    /// <param name="commitmentKey">The key the provider takes ownership of.</param>
+    /// <param name="backend">The backends of the key's curve.</param>
+    /// <returns>The provider.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider takes ownership of the key (ownsKey: true) and transfers to the Spartan key that consumes it.")]
     private static PolynomialCommitmentProvider BuildProvider(HyraxCommitmentKey commitmentKey, SpartanBackend backend)
     {
@@ -253,6 +355,9 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>Creates a fresh BLAKE3 transcript under the Spartan protocol domain.</summary>
+    /// <param name="backend">The backends whose transcript hash the transcript uses.</param>
+    /// <returns>The transcript, which the caller disposes.</returns>
     private static FiatShamirTranscript FreshTranscript(SpartanBackend backend)
     {
         return FiatShamirTranscript.Initialise(
@@ -261,6 +366,10 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>Checks that two matrices have the same shape and the same row, column and value bytes.</summary>
+    /// <param name="expected">The reference matrix.</param>
+    /// <param name="actual">The compiled matrix.</param>
+    /// <param name="label">The matrix name the assertion messages carry.</param>
     private static void AssertMatricesEqual(R1csMatrix expected, R1csMatrix actual, string label)
     {
         Assert.AreEqual(expected.RowCount, actual.RowCount, $"{label}.RowCount");
@@ -272,6 +381,9 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>Wraps variable names and their values as circuit input bindings.</summary>
+    /// <param name="pairs">The variable names and the values bound to them.</param>
+    /// <returns>The input bindings.</returns>
     private static R1csCircuitInputs Inputs(params (string Name, int Value)[] pairs)
     {
         var dictionary = new Dictionary<string, BigInteger>(StringComparer.Ordinal);
@@ -284,6 +396,7 @@ internal sealed class R1csCircuitCompilationTests
     }
 
 
+    /// <summary>The BLS12-381 backends: BLAKE3 transcripts, the BigInteger scalar, G1 and multilinear references, and the test multiscalar multiplication.</summary>
     private static SpartanBackend Bls12Curve381Backend { get; } = new(
         CurveParameterSet.Bls12Curve381,
         FiatShamirBlake3Reference.GetHash(),
@@ -304,6 +417,7 @@ internal sealed class R1csCircuitCompilationTests
         MultilinearExtensionBigIntegerReference.GetFold());
 
 
+    /// <summary>The BN254 backends: BLAKE3 transcripts, the BigInteger scalar, G1 and multilinear references, and the test multiscalar multiplication.</summary>
     private static SpartanBackend Bn254Backend { get; } = new(
         CurveParameterSet.Bn254,
         FiatShamirBlake3Reference.GetHash(),
@@ -324,6 +438,24 @@ internal sealed class R1csCircuitCompilationTests
         MultilinearExtensionBigIntegerReference.GetFold());
 
 
+    /// <summary>The curve and the backend delegates that one compile, prove and verify run over that curve uses.</summary>
+    /// <param name="Curve">The curve the backends operate over.</param>
+    /// <param name="Hash">The transcript hash.</param>
+    /// <param name="Squeeze">The transcript squeeze.</param>
+    /// <param name="Reduce">Scalar reduction.</param>
+    /// <param name="Add">Scalar addition.</param>
+    /// <param name="Subtract">Scalar subtraction.</param>
+    /// <param name="Multiply">Scalar multiplication.</param>
+    /// <param name="Invert">Scalar inversion.</param>
+    /// <param name="Random">Random scalar generation.</param>
+    /// <param name="G1Add">G1 addition.</param>
+    /// <param name="G1ScalarMul">G1 scalar multiplication.</param>
+    /// <param name="G1Msm">G1 multiscalar multiplication.</param>
+    /// <param name="G1IsOnCurve">G1 curve membership.</param>
+    /// <param name="G1IsInPrimeOrderSubgroup">G1 prime-order subgroup membership.</param>
+    /// <param name="HashToCurve">Hashing to G1, which derives the commitment generators.</param>
+    /// <param name="MleEvaluate">Multilinear extension evaluation.</param>
+    /// <param name="MleFold">Multilinear extension folding.</param>
     private sealed record SpartanBackend(
         CurveParameterSet Curve,
         FiatShamirHashDelegate Hash,

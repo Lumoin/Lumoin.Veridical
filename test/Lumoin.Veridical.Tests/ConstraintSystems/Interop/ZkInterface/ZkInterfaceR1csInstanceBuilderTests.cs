@@ -26,10 +26,19 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 [TestClass]
 internal sealed class ZkInterfaceR1csInstanceBuilderTests
 {
+    /// <summary>
+    /// The four-column variable space <c>z = (1, c, a, b)</c> of multiplier2, declared as <c>free_variable_id</c>.
+    /// </summary>
     private const int VariableCount = 4;
+
+    /// <summary>The multiplier2 constraint plus the padding row.</summary>
     private const int ConstraintCount = 2;
 
 
+    /// <summary>
+    /// Builds the padded multiplier2 over BLS12-381 and checks its shape and its satisfaction by
+    /// <c>(1, 33, 3, 11)</c>.
+    /// </summary>
     [TestMethod]
     public void Bls12Curve381Multiplier2BuildsAndSatisfies()
     {
@@ -40,6 +49,10 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
     }
 
 
+    /// <summary>
+    /// Builds the padded multiplier2 over BN254 and checks its shape and its satisfaction by
+    /// <c>(1, 33, 3, 11)</c>.
+    /// </summary>
     [TestMethod]
     public void Bn254Multiplier2BuildsAndSatisfies()
     {
@@ -50,6 +63,10 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
     }
 
 
+    /// <summary>
+    /// Pins that a BLS12-381 builder rejects a declared BN254 field at the declaration itself with
+    /// <see cref="R1csUnsupportedFieldException"/>.
+    /// </summary>
     [TestMethod]
     public void BuilderRejectsFieldThatDoesNotMatchTheCurve()
     {
@@ -61,6 +78,11 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
     }
 
 
+    /// <summary>
+    /// Pins that a complete circuit that never declares <c>field_maximum</c> is rejected at
+    /// <see cref="ZkInterfaceR1csInstanceBuilder.Build"/>, because an undeclared field cannot be
+    /// validated against the curve.
+    /// </summary>
     [TestMethod]
     public void BuilderRejectsAbsentField()
     {
@@ -75,6 +97,13 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
     }
 
 
+    /// <summary>
+    /// Builds multiplier2 over <paramref name="curve"/> and asserts its shape and its satisfaction by the
+    /// multiplier2 witness.
+    /// </summary>
+    /// <param name="curve">The curve the instance and the witness are built over.</param>
+    /// <param name="add">The reference scalar addition for <paramref name="curve"/>.</param>
+    /// <param name="multiply">The reference scalar multiplication for <paramref name="curve"/>.</param>
     private static void ExerciseMultiplier2(CurveParameterSet curve, ScalarAddDelegate add, ScalarMultiplyDelegate multiply)
     {
         using RawR1csInstance instance = BuildMultiplier2(curve);
@@ -99,6 +128,9 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
     }
 
 
+    /// <summary>Pushes the padded multiplier2 circuit through the sink interface and builds the instance.</summary>
+    /// <param name="curve">The curve whose field the circuit declares.</param>
+    /// <returns>The built instance, owned by the caller.</returns>
     private static RawR1csInstance BuildMultiplier2(CurveParameterSet curve)
     {
         var builder = new ZkInterfaceR1csInstanceBuilder(curve, BaseMemoryPool.Shared);
@@ -126,6 +158,11 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
     }
 
 
+    /// <summary>
+    /// Pushes the <c>1·1 = 1</c> padding row: one constraint whose A, B and C terms reference the constant
+    /// column, each with coefficient one.
+    /// </summary>
+    /// <param name="sink">The sink receiving the constraint.</param>
     private static void PushPaddingConstraint(IZkInterfaceMessageSink sink)
     {
         Span<byte> one = stackalloc byte[] { 1 };
@@ -137,6 +174,9 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
     }
 
 
+    /// <summary>Builds the multiplier2 witness <c>z[1..] = (33, 3, 11)</c>.</summary>
+    /// <param name="curve">The curve whose scalar width the witness uses.</param>
+    /// <returns>The witness, owned by the caller.</returns>
     private static RawR1csWitness BuildMultiplier2Witness(CurveParameterSet curve)
     {
         //z[1..] = (c, a, b) = (33, 3, 11); satisfies a · b = c with a = 3, b = 11.
@@ -146,10 +186,17 @@ internal sealed class ZkInterfaceR1csInstanceBuilderTests
         WriteCanonicalBigEndian(new BigInteger(33), witnessBytes.Slice(0 * scalarSize, scalarSize));
         WriteCanonicalBigEndian(new BigInteger(3), witnessBytes.Slice(1 * scalarSize, scalarSize));
         WriteCanonicalBigEndian(new BigInteger(11), witnessBytes.Slice(2 * scalarSize, scalarSize));
+
         return RawR1csWitness.FromCanonical(witnessBytes, curve, BaseMemoryPool.Shared);
     }
 
 
+    /// <summary>
+    /// Writes <paramref name="value"/> into <paramref name="destination"/> as a right-aligned canonical
+    /// big-endian scalar.
+    /// </summary>
+    /// <param name="value">The non-negative value to write.</param>
+    /// <param name="destination">The scalar-width destination.</param>
     private static void WriteCanonicalBigEndian(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

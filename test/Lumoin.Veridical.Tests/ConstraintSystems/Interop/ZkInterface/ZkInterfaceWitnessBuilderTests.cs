@@ -15,21 +15,32 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 /// payoff assertion combines both builders: a multiplier2 instance (public
 /// output <c>c</c>, private <c>a, b</c>) and the witness assembled from the
 /// header's instance value plus the witness message's private values must
-/// satisfy <c>A·z ∘ B·z = C·z</c> — proving the scatter reconstructs the
+/// satisfy <c>A·z ∘ B·z = C·z</c>, because the scatter must reconstruct the
 /// full <c>z[1..]</c> that the PublicInputCount = 0 convention expects.
 /// </summary>
 [TestClass]
 internal sealed class ZkInterfaceWitnessBuilderTests
 {
+    /// <summary>
+    /// The four-column variable space <c>z = (1, c, a, b)</c> of multiplier2, declared as <c>free_variable_id</c>.
+    /// </summary>
     private const int VariableCount = 4;
+
+    /// <summary>The witness width of a four-column variable space: every variable but the constant one.</summary>
     private const int WitnessVariableCount = 3;
 
-    //These tests drive the assembly logic directly, not the source-size
-    //amplification guard, so they pass an unbounded column ceiling; the guard is
-    //pinned separately in ZkInterfaceBuilderBoundaryTests.
+    /// <summary>
+    /// The widest column ceiling. These tests drive the assembly logic directly, not the source-size
+    /// amplification guard, so they pass a ceiling no column count exceeds; <see cref="ZkInterfaceBuilderBoundaryTests"/>
+    /// pins that guard.
+    /// </summary>
     private const int UnboundedColumnCeiling = int.MaxValue;
 
 
+    /// <summary>
+    /// Builds the multiplier2 instance and witness over BLS12-381 and checks the witness width and that the pair
+    /// satisfies the instance.
+    /// </summary>
     [TestMethod]
     public void Bls12Curve381InstanceAndWitnessSatisfy()
     {
@@ -40,6 +51,10 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     }
 
 
+    /// <summary>
+    /// Builds the multiplier2 instance and witness over BN254 and checks the witness width and that the pair
+    /// satisfies the instance.
+    /// </summary>
     [TestMethod]
     public void Bn254InstanceAndWitnessSatisfy()
     {
@@ -50,6 +65,11 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     }
 
 
+    /// <summary>
+    /// Pins that a witness stream that never declares <c>field_maximum</c> is rejected at
+    /// <see cref="ZkInterfaceWitnessBuilder.Build"/> with <see cref="R1csUnsupportedFieldException"/>, because an
+    /// undeclared field cannot be validated against the curve.
+    /// </summary>
     [TestMethod]
     public void WitnessBuilderRejectsAbsentField()
     {
@@ -62,6 +82,13 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     }
 
 
+    /// <summary>
+    /// Builds the multiplier2 instance and witness over <paramref name="curve"/> and asserts the witness width and
+    /// that the pair satisfies the instance.
+    /// </summary>
+    /// <param name="curve">The curve the instance and the witness are built over.</param>
+    /// <param name="add">The reference scalar addition for <paramref name="curve"/>.</param>
+    /// <param name="multiply">The reference scalar multiplication for <paramref name="curve"/>.</param>
     private static void ExerciseMultiplier2(CurveParameterSet curve, ScalarAddDelegate add, ScalarMultiplyDelegate multiply)
     {
         using RawR1csInstance instance = BuildMultiplier2Instance(curve);
@@ -80,6 +107,12 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     }
 
 
+    /// <summary>
+    /// Pushes the multiplier2 assignment through the sink interface, the public output as an instance variable
+    /// and the factors as witness variables, and builds the witness <c>z[1..] = (33, 3, 11)</c>.
+    /// </summary>
+    /// <param name="curve">The curve whose field the stream declares.</param>
+    /// <returns>The witness, owned by the caller.</returns>
     private static RawR1csWitness BuildMultiplier2Witness(CurveParameterSet curve)
     {
         //z = (1, c, a, b) with c public (instance variable), a and b private
@@ -100,6 +133,11 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     }
 
 
+    /// <summary>Reports one assignment whose value fits in the single little-endian byte a truncating producer emits.</summary>
+    /// <param name="sink">The sink receiving the assignment.</param>
+    /// <param name="witness"><see langword="true"/> to report a private witness variable; <see langword="false"/> to report a public instance variable.</param>
+    /// <param name="variableId">The variable the value is assigned to.</param>
+    /// <param name="value">The value.</param>
     private static void PushAssignment(IZkInterfaceMessageSink sink, bool witness, ulong variableId, byte value)
     {
         Span<byte> littleEndian = stackalloc byte[1];
@@ -115,6 +153,9 @@ internal sealed class ZkInterfaceWitnessBuilderTests
     }
 
 
+    /// <summary>Pushes the padded multiplier2 circuit through the sink interface and builds the instance.</summary>
+    /// <param name="curve">The curve whose field the circuit declares.</param>
+    /// <returns>The instance, owned by the caller.</returns>
     private static RawR1csInstance BuildMultiplier2Instance(CurveParameterSet curve)
     {
         var builder = new ZkInterfaceR1csInstanceBuilder(curve, BaseMemoryPool.Shared);

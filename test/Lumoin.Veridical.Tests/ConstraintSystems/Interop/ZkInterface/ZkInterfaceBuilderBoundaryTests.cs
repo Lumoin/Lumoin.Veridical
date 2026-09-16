@@ -21,17 +21,43 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 [TestClass]
 internal sealed class ZkInterfaceBuilderBoundaryTests
 {
-    //A variable id equal to int.MaxValue is the smallest id whose +1 column count overflows Int32.
+    /// <summary>A variable id equal to <see cref="int.MaxValue"/> is the smallest id whose +1 column count overflows Int32.</summary>
     private const ulong Int32BoundaryVariableId = int.MaxValue;
 
-    //An id above int.MaxValue is rejected before column resolution, so the ceiling below it is
-    //irrelevant to the boundary tests; they pass the widest ceiling.
+    /// <summary>
+    /// The widest column ceiling, which no Int32 column count exceeds, so the source-ceiling guard never answers
+    /// and the tests that pass it reach the builders' other guards.
+    /// </summary>
     private const int UnboundedColumnCeiling = int.MaxValue;
 
-    //A tiny source cannot describe many columns; the ceiling below stands in for a short stream.
+    /// <summary>The byte length of a short source, passed as the column ceiling; a stream this short cannot describe many columns.</summary>
     private const int SmallSourceByteLength = 32;
 
+    /// <summary>
+    /// The field element one, written as the single little-endian byte a truncating producer emits; the witness
+    /// rejection tests assign it where no value is ever read back.
+    /// </summary>
+    private const byte UnitValue = 1;
 
+    /// <summary>
+    /// A declared million-column variable space: far more columns than <see cref="SmallSourceByteLength"/> bytes can
+    /// describe, and far below the dense-buffer limit.
+    /// </summary>
+    private const ulong SourceExceedingFreeVariableId = 1_000_000;
+
+    /// <summary>
+    /// A variable id half a million columns out: its column count is far more than <see cref="SmallSourceByteLength"/>
+    /// bytes can describe, and far below the dense-buffer limit.
+    /// </summary>
+    private const ulong SourceExceedingAssignedId = 500_000;
+
+
+    /// <summary>
+    /// Pins that a variable id equal to <see cref="int.MaxValue"/> is rejected at intake with an
+    /// <see cref="ArgumentException"/>, because holding it would need <c>int.MaxValue + 1</c>
+    /// columns. The id is the only input the call validates, so the range guard is the only one that can
+    /// answer.
+    /// </summary>
     [TestMethod]
     public void R1csInstanceBuilderRejectsVariableIdAtInt32Boundary()
     {
@@ -41,6 +67,11 @@ internal sealed class ZkInterfaceBuilderBoundaryTests
     }
 
 
+    /// <summary>
+    /// Pins that the witness builder rejects a variable id equal to <see cref="int.MaxValue"/> at intake with an
+    /// <see cref="ArgumentException"/>, because holding it would need <c>int.MaxValue + 1</c>
+    /// columns. The range check is the first statement of intake, so it is the only guard that can answer.
+    /// </summary>
     [TestMethod]
     public void WitnessBuilderRejectsVariableIdAtInt32Boundary()
     {
@@ -50,46 +81,51 @@ internal sealed class ZkInterfaceBuilderBoundaryTests
     }
 
 
+    /// <summary>
+    /// Pins that a short source declaring a million-column variable space through <c>free_variable_id</c> is
+    /// rejected against the source ceiling instead of being sized into a dense witness of about 32 MB. The column
+    /// count is far below the dense-buffer limit and nothing is assigned, so only the source-ceiling guard can
+    /// answer.
+    /// </summary>
     [TestMethod]
     public void WitnessBuilderRejectsFreeVariableIdExceedingSource()
     {
-        //A short source declares a million-column variable space via free_variable_id; sizing the
-        //dense witness from it would rent gigabytes, so Build rejects it as malformed.
-        const ulong declaredColumns = 1_000_000;
-
         ZkInterfaceWitnessBuilder builder = new(CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared, SmallSourceByteLength);
         IZkInterfaceMessageSink sink = builder;
         sink.OnFieldMaximum(ZkInterfaceTestFields.FieldMaximumLittleEndian(CurveParameterSet.Bls12Curve381));
-        sink.OnFreeVariableId(declaredColumns);
+        sink.OnFreeVariableId(SourceExceedingFreeVariableId);
 
-        Assert.ThrowsExactly<ArgumentException>(() => builder.Build());
+        Assert.ThrowsExactly<ArgumentException>(() => builder.Build().Dispose());
     }
 
 
+    /// <summary>
+    /// Pins that one assignment to a far column is rejected against the source ceiling, because a referenced id
+    /// widens the dense witness exactly as a declared <c>free_variable_id</c> does. The stream declares only the
+    /// field, so the assigned id alone sizes the column space, and that count is far below the dense-buffer limit,
+    /// so only the source-ceiling guard can answer.
+    /// </summary>
     [TestMethod]
     public void WitnessBuilderRejectsAssignedIdExceedingSource()
     {
-        //The amplification also travels the assigned-id path: one reference to a far column widens
-        //the dense witness the same way, so it must be rejected against the source ceiling too.
-        const ulong farColumn = 500_000;
-
         ZkInterfaceWitnessBuilder builder = new(CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared, SmallSourceByteLength);
         IZkInterfaceMessageSink sink = builder;
         sink.OnFieldMaximum(ZkInterfaceTestFields.FieldMaximumLittleEndian(CurveParameterSet.Bls12Curve381));
 
-        Span<byte> value = stackalloc byte[] { 1 };
-        sink.OnWitnessVariable(farColumn, value);
+        Span<byte> value = stackalloc byte[] { UnitValue };
+        sink.OnWitnessVariable(SourceExceedingAssignedId, value);
 
-        Assert.ThrowsExactly<ArgumentException>(() => builder.Build());
+        Assert.ThrowsExactly<ArgumentException>(() => builder.Build().Dispose());
     }
 
 
+    /// <summary>
+    /// Pins that the source ceiling is inclusive: a column count exactly equal to the ceiling is accepted, so a
+    /// witness whose variable space just fills its source still builds.
+    /// </summary>
     [TestMethod]
     public void WitnessBuilderAcceptsColumnCountEqualToCeiling()
     {
-        //The ceiling is inclusive: a column count exactly equal to the source ceiling is accepted
-        //(the guard is '>', not '>='). Locks that boundary so a future '>=' typo cannot silently
-        //start rejecting a valid witness whose variable space just fills its source.
         const int columnCount = 4;
 
         ZkInterfaceWitnessBuilder builder = new(CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared, columnCount);
