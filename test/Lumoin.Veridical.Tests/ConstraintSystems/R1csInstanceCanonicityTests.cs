@@ -33,6 +33,18 @@ internal sealed class R1csInstanceCanonicityTests
     private const int ScalarSize = 32;
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
+    /// <summary>Two public inputs, so a non-canonical input can sit behind a canonical one.</summary>
+    private const int PublicInputPairCount = 2;
+
+    /// <summary>The index of the non-canonical input in the pair, which the refusal names.</summary>
+    private const int SecondPublicInputIndex = 1;
+
+    /// <summary>The offset from the scalar field order that gives the largest canonical value.</summary>
+    private const int LargestCanonicalOffset = -1;
+
+    /// <summary>The offset from the scalar field order that gives the smallest non-canonical value, the order itself.</summary>
+    private const int SmallestNonCanonicalOffset = 0;
+
 
     [TestMethod]
     public void RawInstanceRejectsAPublicInputAtTheScalarFieldOrder()
@@ -73,6 +85,38 @@ internal sealed class R1csInstanceCanonicityTests
             publicOwner.Memory.Span[..ScalarSize], BaseMemoryPool.Shared);
 
         Assert.AreEqual(1, instance.PublicInputCount);
+    }
+
+
+    /// <summary>
+    /// Each public input is checked at its own offset, so a non-canonical input behind a canonical one is refused
+    /// and the refusal names its index. The first input is the largest canonical value and the second is the scalar
+    /// field order itself: a check that read the first slot for every index would accept the pair. The two inputs are
+    /// whole scalars and leave room for the constant in four columns, so only the canonicity check can refuse them.
+    /// </summary>
+    [TestMethod]
+    public void RawInstanceRejectsANonCanonicalSecondPublicInput()
+    {
+        using IMemoryOwner<byte> publicOwner = BaseMemoryPool.Shared.Rent(PublicInputPairCount * ScalarSize);
+        WriteOrderPlus(LargestCanonicalOffset, publicOwner.Memory.Span[..ScalarSize]);
+        WriteOrderPlus(SmallestNonCanonicalOffset, publicOwner.Memory.Span.Slice(SecondPublicInputIndex * ScalarSize, ScalarSize));
+
+        R1csMatrix a = BuildOneEntryMatrix();
+        R1csMatrix b = BuildOneEntryMatrix();
+        R1csMatrix c = BuildOneEntryMatrix();
+
+        try
+        {
+            ArgumentException ex = Assert.ThrowsExactly<ArgumentException>(() =>
+                RawR1csInstance.Create(a, b, c, publicOwner.Memory.Span[..(PublicInputPairCount * ScalarSize)], BaseMemoryPool.Shared).Dispose());
+            Assert.Contains($"Public input {SecondPublicInputIndex} encodes", ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            a.Dispose();
+            b.Dispose();
+            c.Dispose();
+        }
     }
 
 
