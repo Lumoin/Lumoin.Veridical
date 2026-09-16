@@ -18,7 +18,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
 /// Pins BN254 Poseidon byte compatibility with the circomlib vector and witness for <c>Poseidon(1, 2)</c>,
-/// BLS12-381 Grain generation and hash determinism, Merkle membership, and permutation argument validation.
+/// BLS12-381 Grain generation and hash determinism, Merkle membership, the input-count and curve validation of the
+/// circomlib-compatible parameter entry, and permutation argument validation.
 /// The BLS circom fixture uses BN254 constants reduced modulo the BLS prime, so it does not represent the
 /// canonical Grain instantiation over the BLS scalar field.
 /// </summary>
@@ -39,6 +40,18 @@ internal sealed class PoseidonPermutationTests
 
     /// <summary>The state width of a two-to-one Poseidon hash: its two input lanes plus the capacity lane.</summary>
     private const int TwoInputStateWidth = TwoInputCount + CapacityLanes;
+
+    /// <summary>
+    /// An input count of zero, one below the single-input arity, which is the narrowest arity circomlib pins a
+    /// partial-round count for.
+    /// </summary>
+    private const int ZeroInputCount = 0;
+
+    /// <summary>The widest hash arity circomlib pins a partial-round count for: sixteen inputs, a seventeen-lane state.</summary>
+    private const int WidestCircomlibInputCount = 16;
+
+    /// <summary>One input beyond the widest arity circomlib pins, whose eighteen-lane state has no partial-round count.</summary>
+    private const int BeyondCircomlibInputCount = WidestCircomlibInputCount + 1;
 
     /// <summary>The first round index, selected to compare the beginning of independently generated constant streams.</summary>
     private const int FirstRoundIndex = 0;
@@ -148,6 +161,12 @@ internal sealed class PoseidonPermutationTests
     /// <summary>The parameter name the multiplication-backend null guards of the permutation and the Merkle compression report.</summary>
     private const string MultiplyParameterName = "multiply";
 
+    /// <summary>The parameter name both input-count guards of the circomlib-compatible parameter entry report.</summary>
+    private const string InputCountParameterName = "inputCount";
+
+    /// <summary>The parameter name the curve guard of the circomlib-compatible parameter entry reports.</summary>
+    private const string CurveParameterName = "curve";
+
     /// <summary>The wire-name prefix the independent modular trace binds its intermediate values under.</summary>
     private const string TraceName = "h";
 
@@ -165,6 +184,9 @@ internal sealed class PoseidonPermutationTests
 
     /// <summary>The Merkle compression's refusal of a two-lane parameter set.</summary>
     private const string NotTwoInputMessage = "A two-to-one Merkle compression needs two-input parameters (StateWidth = 3); received 2.";
+
+    /// <summary>The circomlib-compatible parameter entry's refusal of P256, which names the two wired curves and the received one.</summary>
+    private const string UnwiredCurveMessage = "Poseidon parameters are wired for Bn254 and Bls12Curve381; received 'P256'.";
 
     /// <summary>The fixed big-endian scalar inputs <c>(1, 2)</c> shared by the circomlib vector and witness.</summary>
     private static ReadOnlySpan<byte> CircomlibInputs =>
@@ -396,6 +418,66 @@ internal sealed class PoseidonPermutationTests
         int partialRounds = generated.PartialRounds;
         _ = Assert.ThrowsExactly<ArgumentException>(
             () => new PoseidonParameters(TwoInputStateWidth, fullRounds, partialRounds, constantsOwner.Memory.Span[..^ScalarSize], mdsOwner.Memory.Span, CurveParameterSet.Bn254));
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="WellKnownPoseidonParameters.CreateCircomlibCompatible"/> refuses an input count of zero with
+    /// an <see cref="ArgumentOutOfRangeException"/> that names <c>inputCount</c> and carries the refused count, instead
+    /// of reading the partial-round table at index -1 and faulting with an <see cref="IndexOutOfRangeException"/>.
+    /// circomlib pins partial-round counts for one to sixteen inputs; zero lies below that range but within the upper
+    /// bound, and BN254 is wired, so only the lower input-count guard can refuse the call.
+    /// </summary>
+    [TestMethod]
+    public void CreateCircomlibCompatibleRejectsAZeroInputCount()
+    {
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: ZeroInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert),
+            "An input count below one must be refused.");
+
+        Assert.AreEqual(InputCountParameterName, exception.ParamName, "The refusal must name the inputCount parameter.");
+        Assert.AreEqual(ZeroInputCount, exception.ActualValue, "The refusal must carry the refused input count.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="WellKnownPoseidonParameters.CreateCircomlibCompatible"/> refuses seventeen inputs with an
+    /// <see cref="ArgumentOutOfRangeException"/> that names <c>inputCount</c> and carries the refused count, instead of
+    /// reading one entry past the sixteen-entry partial-round table for the eighteen-lane state and faulting with an
+    /// <see cref="IndexOutOfRangeException"/>. Seventeen is at least one, so the lower input-count guard passes, and
+    /// BN254 is wired, so only the upper input-count guard can refuse the call. Seventeen is the first count past the
+    /// table, so the refusal also pins the bound at the table's length rather than anywhere wider.
+    /// </summary>
+    [TestMethod]
+    public void CreateCircomlibCompatibleRejectsAnInputCountBeyondTheCircomlibTable()
+    {
+        ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: BeyondCircomlibInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert),
+            "An input count beyond the circomlib table must be refused.");
+
+        Assert.AreEqual(InputCountParameterName, exception.ParamName, "The refusal must name the inputCount parameter.");
+        Assert.AreEqual(BeyondCircomlibInputCount, exception.ActualValue, "The refusal must carry the refused input count.");
+    }
+
+
+    /// <summary>
+    /// Pins that <see cref="WellKnownPoseidonParameters.CreateCircomlibCompatible"/> refuses a curve without Poseidon
+    /// wiring with an <see cref="ArgumentException"/> that names <c>curve</c> and states the wired curves and the
+    /// received one, instead of generating a parameter set for that curve. P256 has a scalar-field order in
+    /// <see cref="WellKnownCurves"/>, so the order lookup in <see cref="PoseidonParameterGenerator.Generate"/> accepts
+    /// it, and the BN254 reference backends reduce modulo their own order whatever curve tag they receive, so without
+    /// this guard the call returns a P256-tagged set instead of throwing. The input count is two, inside both
+    /// input-count bounds, so neither input-count guard can answer, and no other refusal carries this message.
+    /// </summary>
+    [TestMethod]
+    public void CreateCircomlibCompatibleRejectsACurveWithoutPoseidonWiring()
+    {
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
+            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: TwoInputCount, CurveParameterSet.P256, Bn254Add, Bn254Invert),
+            "A curve without Poseidon wiring must be refused.");
+
+        Assert.AreEqual(CurveParameterName, exception.ParamName, "The refusal must name the curve parameter.");
+        Assert.Contains(UnwiredCurveMessage, exception.Message, StringComparison.Ordinal);
     }
 
 
