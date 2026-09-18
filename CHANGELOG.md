@@ -16,13 +16,34 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `MerkleCommitmentParameters` binds a Merkle tree's two-to-one compression to the node width it produces, and every hash-tree commitment scheme — BaseFold, `ZkBaseFold`, Ligero, WHIR, and the Merkle set commitment — now takes its digest width from that pairing instead of assuming it coincides with the scalar field, up to the 64-byte Merkle-surface cap. Ligero, BaseFold, `ZkBaseFold`, and WHIR (plain and hiding) commit, open, and verify correctly at digest widths of 16, 32, 48, and 64 bytes; the Merkle set commitment carries the same widest-admissible-digest bound and is proven at the wired 32-byte width and at the 64-byte cap.
+- A commitment provider can now state its own sizing. `PolynomialCommitmentProvider.CommitmentSizeBytes` and `EvaluationProofSizeBytes` (backed by the new `PolynomialCommitmentSizeDelegate` and `PolynomialOpeningSizeDelegate`) return a commitment's and an evaluation opening's serialized length for a given variable count, computed purely from the parameters the provider was built with. A caller composing a fixed-format proof reads every section length from the provider instead of reassembling scheme-specific arithmetic — a query repetition count, an inverse rate, a digest size — that cannot describe every scheme; WHIR's query count varies per round and could not be expressed that way at all. BaseFold, `ZkBaseFold`, Ligero, Hyrax, and WHIR (plain and hiding) all implement it.
+- Spartan2 proofs now compose with any polynomial-commitment scheme, through `SpartanProverExtensions.ProveCommitted`/`SpartanVerifierExtensions.VerifyCommitted` and the new `CommitmentSpartanProof`, so WHIR gains a Spartan2 path for the first time; it proves over a padded relaxed R1CS instance, since WHIR cannot open a polynomial in fewer variables than its folding parameter.
+- `WellKnownWhirParameters.ProvenJohnsonSecurityLevelBits` and `ProvenJohnsonSecurityRegime` name a 100-bit proven-Johnson soundness profile for WHIR (the Johnson list-decoding regime already priced from the proven BCHKS25 mutual correlated-agreement bound), expressed the same way as the wired default regime. It is opt-in and not interchangeable with the default regime on one artifact, and admits both a plain and a hiding evaluation schedule at the same pinned shape.
+
 ### Changed
 
+- The target framework moves from `net10.0` to `net11.0` across every published package.
+- Dependency refresh: `Lumoin.Base` 0.0.14, `Microsoft.Extensions.Hosting` 10.0.12, `System.CommandLine` 2.0.12, and `ModelContextProtocol` 2.2.0.
 - `PoseidonParameterGenerator.Generate` no longer takes `fieldSizeBits` or `modulus`; the scalar-field order comes from the curve, and a curve without a wired order is rejected.
 - `PoseidonParameterGenerator.Generate` and `WellKnownPoseidonParameters.CreateCircomlibCompatible` require a `BaseMemoryPool`; callers supply the pool for temporary generation buffers.
 - The BaseFold and zero-knowledge BaseFold provider factories require a `BaseMemoryPool`; callers keep the pool alive until the provider is disposed.
 - `MonomialBasis` factories require a `BaseMemoryPool`, and `MonomialBasis` implements `IDisposable`; callers dispose each basis after its borrowed exponent views and masks are finished.
 - `ZkInterfaceMessageDecoderDelegate` receives a `BaseMemoryPool`; custom decoders accept the reader caller's pool and use it for temporary buffers.
+- The raw-instance `ProveCommitted` overload refuses a hiding commitment provider up front with `InvalidOperationException`. The overload supplies a zero error-opening blind, and a hiding provider's opening needs the blind sampled when the error vector was committed, which the placeholder cannot match; the `ProveBaseFold` overload it replaces had no such check, so a hiding provider passed there failed inside its opening rather than producing a proof. A hiding scheme proves through the relaxed-instance entry point with a blind the caller samples.
+- SIMD dispatch and kernel work: the AVX-512 scalar-field dispatch for BLS12-381 and BN254 batch operations, and for the P-256 base-field batch multiplier, now additionally requires the runtime to report 512-bit vector acceleration before selecting the AVX-512 kernels, falling back to AVX2 otherwise. The AVX2 batch kernels for BLS12-381, BN254, and the P-256 base field transpose quartets of limbs with vector zip/concat primitives instead of per-limb scalar reads and per-lane inserts; their arithmetic and outputs are unchanged.
+
+### Removed
+
+- The per-scheme Spartan2 proof types `BaseFoldSpartanProof` and `LigeroSpartanProof`, and their entry points `ProveBaseFold`, `ProveLigero`, `VerifyBaseFold` and `VerifyLigero`, are gone, replaced by `CommitmentSpartanProof` with `ProveCommitted` and `VerifyCommitted`: one proof type and one pair of entry points for any commitment scheme. The proof keeps the same four sections in the same order — witness commitment, sumcheck, error opening, witness opening — with no length prefixes, and takes each section's length from the verifying provider's sizing instead of deriving it from scheme-specific parameters.
+
+### Security
+
+- WHIR's verify funnels refuse a wire commitment whose width does not match the scheme's configured digest size, before any parsing runs, rather than reaching a raw fault from inside the authentication walk on malformed input; the shared coset-leaf authentication likewise refuses a root wider than the Merkle surface can recompute.
+- BaseFold, `ZkBaseFold`, Ligero, and the Merkle set commitment refuse a configured digest width wider than the 64-byte Merkle surface at construction (BaseFold, `ZkBaseFold` and Ligero at every factory entry point), so a misconfigured scheme fails immediately instead of inside a later verification.
+- Wire bytes for Ligero, BaseFold, and WHIR commitments and openings, at the wired 32-byte digest paired with the 32-byte scalar, are pinned unchanged.
 
 ## [0.0.6] - 2026-08-12
 
