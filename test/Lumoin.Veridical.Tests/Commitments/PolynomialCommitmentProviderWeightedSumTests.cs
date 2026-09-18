@@ -63,22 +63,24 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that BaseFold weighted opening roundtrips and rejects wrong claim.</summary>
     [TestMethod]
     public void BaseFoldWeightedOpeningRoundtripsAndRejectsWrongClaim()
     {
         using PolynomialCommitmentProvider provider = BaseFoldPolynomialCommitmentScheme.Create(
-            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar);
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, BaseMemoryPool.Shared);
 
         RunWeightedRoundtrip(provider);
     }
 
 
+    /// <summary>Checks that zk BaseFold weighted opening roundtrips and rejects wrong claim.</summary>
     [TestMethod]
     public void ZkBaseFoldWeightedOpeningRoundtripsAndRejectsWrongClaim()
     {
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            MakeFixedRandom(seed: 1111), HashToScalar, WitnessLiftVariableCount);
+            MakeFixedRandom(seed: 1111), HashToScalar, WitnessLiftVariableCount, BaseMemoryPool.Shared);
 
         RunWeightedRoundtrip(provider);
     }
@@ -95,7 +97,7 @@ internal sealed class PolynomialCommitmentProviderWeightedSumTests
     {
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            MakeFixedRandom(seed: 1111), HashToScalar, WitnessLiftVariableCount,
+            MakeFixedRandom(seed: 1111), HashToScalar, WitnessLiftVariableCount, BaseMemoryPool.Shared,
             digestSizeBytes: WideDigestSizeBytes);
 
         RunWeightedRoundtrip(provider);

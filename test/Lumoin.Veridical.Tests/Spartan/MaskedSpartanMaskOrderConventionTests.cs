@@ -39,6 +39,7 @@ internal sealed class MaskedSpartanMaskOrderConventionTests
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan.mask-order-convention.test.v1");
 
 
+    /// <summary>Checks that low first chain closes at the reversed point.</summary>
     [TestMethod]
     [DataRow(2, 2)]
     [DataRow(3, 2)]
@@ -51,7 +52,7 @@ internal sealed class MaskedSpartanMaskOrderConventionTests
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
 
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 0, perVariableDegree);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 0, pool, perVariableDegree);
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
 
         using Scalar rho = MakeScalar(7, pool);

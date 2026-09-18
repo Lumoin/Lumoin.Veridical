@@ -218,6 +218,7 @@ public static class MaskedSpartanProverExtensions
         //weighted openings); differs only in the final assembly supplied as the
         //scheme-shaped assemble callback. The components are alive in the
         //using-scope when assemble runs, so it copies their bytes before disposal.
+    /// <summary>Produces a masked Spartan proof with caller-owned pools and operation-owned mask bases.</summary>
         [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers via using declarations and the assemble callback; the assembled proof transfers to the caller.")]
         private TProof ProveMaskedCore<TProof>(
             RelaxedR1csInstance instance,
@@ -339,10 +340,10 @@ public static class MaskedSpartanProverExtensions
                 StatisticalMaskParameters outerShape = resolveMaskShape(rowVariableCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
                 StatisticalMaskParameters innerShape = resolveMaskShape(columnVariableCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
 
-                MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    rowVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
-                MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    columnVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
+                using MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    rowVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
+                using MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    columnVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
 
                 using MonomialBasisMask outerMask = MonomialBasisMask.Sample(outerBasis, scalarRandom, curve, pool);
                 using MonomialBasisMask innerMask = MonomialBasisMask.Sample(innerBasis, scalarRandom, curve, pool);

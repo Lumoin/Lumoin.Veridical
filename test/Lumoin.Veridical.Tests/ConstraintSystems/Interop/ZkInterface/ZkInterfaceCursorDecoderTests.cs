@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
+using System.Diagnostics.Metrics;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading;
@@ -249,6 +250,51 @@ internal sealed class ZkInterfaceCursorDecoderTests
     }
 
 
+    /// <summary>Empty single- and multi-segment streams retain their rejection without renting staging memory.</summary>
+    /// <param name="multipleSegments">Whether the empty sequence has two distinct segment objects.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void EmptySequencesRentNothing(bool multipleSegments)
+    {
+        using var meter = new Meter(nameof(EmptySequencesRentNothing));
+        using var listener = new MeterListener();
+        long rents = 0;
+        listener.InstrumentPublished = (instrument, observer) =>
+        {
+            if(ReferenceEquals(instrument.Meter, meter))
+            {
+                observer.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) =>
+        {
+            if(instrument.Name == BaseMemoryPoolMetrics.BaseMemoryPoolRentOperationsTotal)
+            {
+                rents += measurement;
+            }
+        });
+        listener.Start();
+        using BaseMemoryPool pool = new(meter);
+
+        ReadOnlySequence<byte> sequence = ReadOnlySequence<byte>.Empty;
+        if(multipleSegments)
+        {
+            var first = new StreamSegment(ReadOnlyMemory<byte>.Empty, SequenceStartIndex);
+            StreamSegment last = first.Append(ReadOnlyMemory<byte>.Empty);
+            sequence = new ReadOnlySequence<byte>(first, SequenceStartIndex, last, SequenceStartIndex);
+            Assert.IsFalse(sequence.IsSingleSegment);
+        }
+
+        var sink = new RecordingSink();
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
+            ZkInterfaceCursorDecoder.Decoder(sequence, sink, pool, CancellationToken.None));
+
+        Assert.Contains("contains no messages", exception.Message);
+        Assert.AreEqual(0L, rents);
+    }
+
+
     /// <summary>Locates the example header, constraint system and witness in order, with their size-prefixed ranges tiling the stream.</summary>
     [TestMethod]
     public void LocateMessagesYieldsHeaderConstraintSystemWitnessInOrder()
@@ -302,7 +348,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     public void DecoderPushesExampleHeaderConstraintsAndWitness()
     {
         var sink = new RecordingSink();
-        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes()), sink, CancellationToken.None);
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes()), sink, BaseMemoryPool.Shared, CancellationToken.None);
 
         Assert.AreEqual(6UL, sink.FreeVariableId, "free_variable_id");
         Assert.IsFalse(sink.FieldMaximumSeen, "field_maximum is absent in the toy sample");
@@ -334,7 +380,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     [TestMethod]
     public void DecoderRejectsOffsetAliasingAmplification()
     {
-        AssertAliasedConstraintSystemRejected(EventConstraintAliases, EventIdsPerConstraint, OneValueByte);
+        AssertAliasedConstraintSystemRejected(BaseMemoryPool.Shared, EventConstraintAliases, EventIdsPerConstraint, OneValueByte);
     }
 
 
@@ -342,7 +388,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     [TestMethod]
     public void DecoderRejectsTermCountAmplificationWithoutCoefficientBytes()
     {
-        AssertAliasedConstraintSystemRejected(EventConstraintAliases, EventIdsPerConstraint, NoValueBytes);
+        AssertAliasedConstraintSystemRejected(BaseMemoryPool.Shared, EventConstraintAliases, EventIdsPerConstraint, NoValueBytes);
     }
 
 
@@ -350,7 +396,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     [TestMethod]
     public void DecoderRejectsCoefficientScanAmplification()
     {
-        AssertAliasedConstraintSystemRejected(ScanConstraintAliases, OneVariableId, WideCoefficientBytes);
+        AssertAliasedConstraintSystemRejected(BaseMemoryPool.Shared, ScanConstraintAliases, OneVariableId, WideCoefficientBytes);
     }
 
 
@@ -370,7 +416,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         Assert.IsFalse(sequence.IsSingleSegment, "the stream must span more than one segment");
 
         var sink = new RecordingSink();
-        ZkInterfaceCursorDecoder.Decoder(sequence, sink, CancellationToken.None);
+        ZkInterfaceCursorDecoder.Decoder(sequence, sink, BaseMemoryPool.Shared, CancellationToken.None);
 
         Assert.AreEqual(ExampleFreeVariableId, sink.FreeVariableId, "free_variable_id");
         Assert.AreEqual(ExampleConstraintCount, sink.ConstraintCount, "constraint count");
@@ -403,7 +449,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         Assert.AreNotEqual(AbsentFieldOffset, BinaryPrimitives.ReadUInt16LittleEndian(file.AsSpan(entryPosition)), "the union value field must be present before decoding");
 
         var sink = new ValueSlotClearingSink(file, entryPosition);
-        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(file), sink, CancellationToken.None);
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(file), sink, BaseMemoryPool.Shared, CancellationToken.None);
 
         Assert.AreEqual(SkippedConstraintCount, sink.ConstraintCount, "the message whose union value vanished is skipped");
         Assert.AreSequenceEqual(ExampleWitnessVariableIds, sink.WitnessVariableIds, "decoding continues past the skipped message");
@@ -420,7 +466,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         var sink = new RecordingSink();
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
-            ZkInterfaceCursorDecoder.Decoder(ReadOnlySequence<byte>.Empty, sink, CancellationToken.None));
+            ZkInterfaceCursorDecoder.Decoder(ReadOnlySequence<byte>.Empty, sink, BaseMemoryPool.Shared, CancellationToken.None));
 
         Assert.Contains("contains no messages", exception.Message, "the empty-stream framing guard must be what rejects the stream");
     }
@@ -440,7 +486,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         WriteEmptyAssignedVariablesWitnessStream(owner.Memory.Span[..EmptyWitnessStreamBytes]);
 
         var sink = new RecordingSink();
-        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None);
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, BaseMemoryPool.Shared, CancellationToken.None);
 
         Assert.IsEmpty(sink.WitnessVariableIds, "an empty variable_ids vector assigns nothing");
     }
@@ -461,7 +507,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         WriteAliasedConstraintSystemStream(owner.Memory.Span[..streamLength], SingleConstraint, NoVariableIds, NoValueBytes, valuesPresent: true);
 
         var sink = new RecordingSink();
-        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None);
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, BaseMemoryPool.Shared, CancellationToken.None);
 
         Assert.AreEqual(SingleConstraint, sink.ConstraintCount, "the constraint is still opened");
         Assert.IsEmpty(sink.Terms, "an empty variable_ids vector contributes no terms");
@@ -484,7 +530,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
 
         var sink = new RecordingSink();
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
-            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None));
+            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, BaseMemoryPool.Shared, CancellationToken.None));
 
         Assert.Contains("no coefficient values", exception.Message, "the missing-values guard must be what rejects the combination");
     }
@@ -506,7 +552,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
 
         var sink = new RecordingSink();
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
-            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None));
+            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, BaseMemoryPool.Shared, CancellationToken.None));
 
         Assert.Contains($"values length {IndivisibleValueByteCount} is not divisible by the {TwoVariableIds} variable id(s)", exception.Message, "the element-size divisibility guard must be what rejects the stream");
         Assert.IsEmpty(sink.Terms, "no term is pushed before the coefficient width is validated");
@@ -601,7 +647,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         var source = new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes());
 
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(() =>
-            ZkInterfaceCursorDecoder.Decoder(source, null!, CancellationToken.None));
+            ZkInterfaceCursorDecoder.Decoder(source, null!, BaseMemoryPool.Shared, CancellationToken.None));
 
         Assert.AreEqual("sink", exception.ParamName, "the sink argument check must be what rejects the call");
     }
@@ -618,7 +664,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         var sink = new RecordingSink();
         var cancelled = new CancellationToken(canceled: true);
 
-        OperationCanceledException exception = Assert.ThrowsExactly<OperationCanceledException>(() => ZkInterfaceCursorDecoder.Decoder(source, sink, cancelled));
+        OperationCanceledException exception = Assert.ThrowsExactly<OperationCanceledException>(() => ZkInterfaceCursorDecoder.Decoder(source, sink, BaseMemoryPool.Shared, cancelled));
 
         Assert.AreEqual(cancelled, exception.CancellationToken, "The cancellation exception must carry the token supplied to the decoder.");
         Assert.IsEmpty(sink.Callbacks, "Cancellation before the first message must prevent every sink callback.");
@@ -633,7 +679,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
     public void DecoderClosesEveryConstraintItOpens()
     {
         var sink = new RecordingSink();
-        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes()), sink, CancellationToken.None);
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(ZkInterfaceExampleFixture.ExampleBytes()), sink, BaseMemoryPool.Shared, CancellationToken.None);
 
         Assert.AreEqual(ExampleConstraintCount, sink.ConstraintCount, "constraints opened");
         Assert.AreEqual(ExampleConstraintCount, sink.EndedConstraintCount, "every opened constraint is closed");
@@ -690,7 +736,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
         WriteAliasedConstraintSystemStream(owner.Memory.Span[..streamLength], ExactBudgetConstraintAliases, ExactBudgetIdsPerConstraint, NoValueBytes, valuesPresent: true);
 
         var sink = new RecordingSink();
-        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None);
+        ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, BaseMemoryPool.Shared, CancellationToken.None);
 
         Assert.AreEqual(ExactBudgetConstraintAliases, sink.ConstraintCount, "every aliased constraint is decoded");
         Assert.HasCount(ExactBudgetConstraintAliases * ExactBudgetIdsPerConstraint, sink.Terms, "every term is decoded");
@@ -724,7 +770,7 @@ internal sealed class ZkInterfaceCursorDecoderTests
 
         var sink = new RecordingSink();
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
-            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None));
+            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, BaseMemoryPool.Shared, CancellationToken.None));
 
         Assert.Contains("more work than its byte length", exception.Message, "the decode-work budget must be what rejects the stream");
     }
@@ -751,17 +797,21 @@ internal sealed class ZkInterfaceCursorDecoderTests
 
 
     /// <summary>Encodes the given aliased constraint shape and requires the decode-work budget rejection message, so a bounds failure cannot satisfy the assertion.</summary>
-    private static void AssertAliasedConstraintSystemRejected(int constraintAliases, int idsPerConstraint, int coefficientByteWidth)
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="constraintAliases">The aliased constraint count.</param>
+    /// <param name="idsPerConstraint">The variable identifiers per constraint.</param>
+    /// <param name="coefficientByteWidth">The coefficient width in bytes.</param>
+    private static void AssertAliasedConstraintSystemRejected(BaseMemoryPool pool, int constraintAliases, int idsPerConstraint, int coefficientByteWidth)
     {
         int valueByteCount = idsPerConstraint * coefficientByteWidth;
         int streamLength = AliasedConstraintSystemStreamLength(constraintAliases, idsPerConstraint, valueByteCount);
-        using IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(streamLength);
+        using IMemoryOwner<byte> owner = pool.Rent(streamLength);
         ReadOnlyMemory<byte> stream = owner.Memory[..streamLength];
         WriteAliasedConstraintSystemStream(owner.Memory.Span[..streamLength], constraintAliases, idsPerConstraint, valueByteCount, valuesPresent: true);
 
         var sink = new RecordingSink();
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
-            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, CancellationToken.None));
+            ZkInterfaceCursorDecoder.Decoder(new ReadOnlySequence<byte>(stream), sink, pool, CancellationToken.None));
 
         Assert.Contains("more work than its byte length", exception.Message, "the decode-work budget must be what rejects the aliased stream");
     }

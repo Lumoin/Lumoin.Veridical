@@ -42,6 +42,7 @@ internal sealed class BaseFoldValidationTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that repeated commitments use identical bytes.</summary>
     [TestMethod]
     public void CommitIsDeterministic()
     {
@@ -53,8 +54,8 @@ internal sealed class BaseFoldValidationTests
         //Two independent providers built from the same seed must reproduce the
         //identical commitment (Merkle root) — the transparent commit has no
         //hidden randomness.
-        using PolynomialCommitmentProvider providerA = NewProvider(FastQueryCount);
-        using PolynomialCommitmentProvider providerB = NewProvider(FastQueryCount);
+        using PolynomialCommitmentProvider providerA = NewProvider(pool, FastQueryCount);
+        using PolynomialCommitmentProvider providerB = NewProvider(pool, FastQueryCount);
 
         (PolynomialCommitment commitmentA, PolynomialCommitmentBlind blindA) = providerA.Commit(mle, pool);
         (PolynomialCommitment commitmentB, PolynomialCommitmentBlind blindB) = providerB.Commit(mle, pool);
@@ -71,6 +72,7 @@ internal sealed class BaseFoldValidationTests
     }
 
 
+    /// <summary>Checks that repeated openings use identical bytes.</summary>
     [TestMethod]
     public void OpenIsDeterministic()
     {
@@ -82,7 +84,7 @@ internal sealed class BaseFoldValidationTests
 
         try
         {
-            using PolynomialCommitmentProvider provider = NewProvider(FastQueryCount);
+            using PolynomialCommitmentProvider provider = NewProvider(pool, FastQueryCount);
             (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
 
             using(commitment)
@@ -166,6 +168,7 @@ internal sealed class BaseFoldValidationTests
     }
 
 
+    /// <summary>Checks that tampering is rejected at the johnson query count.</summary>
     [TestMethod]
     public void OneAndAHalfJohnsonQueryCountTamperRejects()
     {
@@ -179,7 +182,7 @@ internal sealed class BaseFoldValidationTests
 
         try
         {
-            using PolynomialCommitmentProvider provider = NewProvider(queryCount);
+            using PolynomialCommitmentProvider provider = NewProvider(pool, queryCount);
             (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
 
             using(commitment)
@@ -230,6 +233,7 @@ internal sealed class BaseFoldValidationTests
     }
 
 
+    /// <summary>Demonstrates the caller-funded commit, open and verify flow.</summary>
     [TestMethod]
     public void UsageExampleCommitOpenVerify()
     {
@@ -239,7 +243,7 @@ internal sealed class BaseFoldValidationTests
         //1. Build a provider from a public code seed, the curve, the IOPP query
         //   count, the Merkle hash, and the field/transcript backends.
         using PolynomialCommitmentProvider provider = BaseFoldPolynomialCommitmentScheme.Create(
-            Seed, Curve, FastQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            Seed, Curve, FastQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
 
         //2. Build the multilinear polynomial to commit (here, three variables).
         using MultilinearExtension polynomial = BuildRandomMle(3, 9, pool);
@@ -280,9 +284,10 @@ internal sealed class BaseFoldValidationTests
     }
 
 
+    /// <summary>Checks a provider commit, opening and verification round trip.</summary>
     private static bool RoundTrips(MultilinearExtension mle, Scalar[] point, int queryCount, BaseMemoryPool pool)
     {
-        using PolynomialCommitmentProvider provider = NewProvider(queryCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, queryCount);
         (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
 
         using(commitment)
@@ -344,10 +349,13 @@ internal sealed class BaseFoldValidationTests
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider(int queryCount)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="queryCount">The query repetition count.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, int queryCount)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            Seed, Curve, queryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            Seed, Curve, queryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 

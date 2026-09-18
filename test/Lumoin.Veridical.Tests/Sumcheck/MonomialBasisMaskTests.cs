@@ -38,19 +38,46 @@ internal sealed class MonomialBasisMaskTests
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("veridical.sumcheck.monomialmask.kernel.test.v1");
 
 
+    /// <summary>Both factory shapes release storage idempotently and reject all exponent access after disposal.</summary>
+    /// <param name="padded">Whether to use the padded univariate basis.</param>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void BasisDisposalIsIdempotentAndInvalidatesAccess(bool padded)
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        //A single variable exercises both factory shapes without unnecessary storage.
+        const int VariableCount = 1;
+        using MonomialBasis basis = padded
+            ? MonomialBasis.SumOfUnivariatesWithPad(VariableCount, padPairCount: 0, pool)
+            : MonomialBasis.Full(VariableCount, pool);
+        Assert.HasCount(VariableCount, basis.ExponentsAt(0));
+
+        basis.Dispose();
+        basis.Dispose();
+
+        ObjectDisposedException exception = Assert.ThrowsExactly<ObjectDisposedException>(() => basis.ExponentsAt(0));
+        Assert.AreEqual(nameof(MonomialBasis), exception.ObjectName);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => basis.ExponentsAt(-1));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => basis.ExponentsAt(basis.Count));
+    }
+
+
+    /// <summary>Checks the padded univariate mask chain from its hypercube sum to the terminal evaluation.</summary>
     [TestMethod]
     [DataRow(5, 4)]
     [DataRow(5, 8)]
     [DataRow(6, 8)]
     public void PaddedSumOfUnivariatesChainsFromSigmaToTerminal(int variableCount, int padPairCount)
     {
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount, BaseMemoryPool.Shared);
         Assert.AreEqual((2 * variableCount) + 1 + (2 * padPairCount), basis.Count, "The padded basis count must be 2d + 1 + 2P.");
 
         AssertChainsFromSigmaToTerminal(basis, salt: 23);
     }
 
 
+    /// <summary>Checks the full basis mask chain from its hypercube sum to the terminal evaluation.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -58,7 +85,7 @@ internal sealed class MonomialBasisMaskTests
     [DataRow(4)]
     public void FullBasisChainsFromSigmaToTerminal(int variableCount)
     {
-        MonomialBasis basis = MonomialBasis.Full(variableCount);
+        using MonomialBasis basis = MonomialBasis.Full(variableCount, BaseMemoryPool.Shared);
         int expectedCount = 1;
         for(int j = 0; j < variableCount; j++)
         {
@@ -71,6 +98,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks that the public weights and mask coefficients reproduce the mask evaluation.</summary>
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
@@ -81,9 +109,9 @@ internal sealed class MonomialBasisMaskTests
         //committed coefficient multilinear relies on.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = padded
-            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 6)
-            : MonomialBasis.Full(variableCount: 3);
+        using MonomialBasis basis = padded
+            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 6, pool)
+            : MonomialBasis.Full(variableCount: 3, pool);
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
         Scalar[] registry = BuildChallengeRegistry(basis.VariableCount, salt: 31, pool);
@@ -123,6 +151,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks that a zero-entropy sampler cannot produce an accepted mask.</summary>
     [TestMethod]
     public void SampleWithZeroEntropyThrows()
     {
@@ -131,12 +160,10 @@ internal sealed class MonomialBasisMaskTests
         //blends nothing, yet every proof still verifies. Sample must reject it
         //at generation with InvalidOperationException.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 0);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 0, pool);
 
         Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using MonomialBasisMask _ = MonomialBasisMask.Sample(basis, ZeroScalarRandom, Curve, pool);
-        });
+            MonomialBasisMask.Sample(basis, ZeroScalarRandom, Curve, pool).Dispose());
     }
 
 
@@ -150,6 +177,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks that sigma matches dense hypercube sum.</summary>
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
@@ -158,9 +186,9 @@ internal sealed class MonomialBasisMaskTests
         //σ against the literal Σ_b s(b) over all 2^d boolean points.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = padded
-            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 5)
-            : MonomialBasis.Full(variableCount: 4);
+        using MonomialBasis basis = padded
+            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 5, pool)
+            : MonomialBasis.Full(variableCount: 4, pool);
         int d = basis.VariableCount;
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
@@ -198,6 +226,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks the cubic mask chain from its hypercube sum to the terminal evaluation.</summary>
     [TestMethod]
     [DataRow(2)]
     [DataRow(3)]
@@ -213,7 +242,7 @@ internal sealed class MonomialBasisMaskTests
         //the cubic down to s(r).
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 2, perVariableDegree: 3);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 2, pool, perVariableDegree: 3);
         Assert.AreEqual((3 * variableCount) + 1 + 4, basis.Count, "The cubic padded basis count must be 3d + 1 + 2P.");
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
@@ -301,6 +330,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks that quadratic blend overload rejects cubic bases.</summary>
     [TestMethod]
     public void QuadraticBlendOverloadRejectsCubicBases()
     {
@@ -308,7 +338,7 @@ internal sealed class MonomialBasisMaskTests
         //the cubic share; the kernel must refuse loudly instead.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 3, padPairCount: 0, perVariableDegree: 3);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 3, padPairCount: 0, pool, perVariableDegree: 3);
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
         Scalar[] registry = BuildChallengeRegistry(3, salt: 43, pool);
@@ -331,6 +361,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks that the basis factory rejects pad pairs beyond its capacity.</summary>
     [TestMethod]
     public void PadPairCapacityIsEnforced()
     {
@@ -339,21 +370,22 @@ internal sealed class MonomialBasisMaskTests
         const int VariableCount = 3;
         const int Capacity = 1 << (VariableCount - 1);
 
-        MonomialBasis atCapacity = MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity);
+        using MonomialBasis atCapacity = MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity, BaseMemoryPool.Shared);
         Assert.AreEqual((2 * VariableCount) + 1 + (2 * Capacity), atCapacity.Count);
 
         _ = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => _ = MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity + 1),
+            () => MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity + 1, BaseMemoryPool.Shared).Dispose(),
             "A pad request beyond the multilinear-monomial capacity must be refused.");
     }
 
 
+    /// <summary>Checks that separately sampled masks have different coefficients.</summary>
     [TestMethod]
     public void TwoSampledMasksDiffer()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 3);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 3, pool);
 
         using MonomialBasisMask first = MonomialBasisMask.Sample(basis, random, Curve, pool);
         using MonomialBasisMask second = MonomialBasisMask.Sample(basis, random, Curve, pool);

@@ -77,6 +77,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// <param name="invert">Scalar inversion backend.</param>
     /// <param name="scalarRandom">The entropy-sourced sampler for the per-leaf hiding salts.</param>
     /// <param name="hashToScalar">Hash-to-scalar backend the code derivation uses for its diagonal entries.</param>
+    /// <param name="pool">The pool supplying the retained seed; it must outlive the returned provider.</param>
     /// <param name="digestSizeBytes">The Merkle node digest size <paramref name="merkleHash"/> produces; defaults to <see cref="WellKnownMerkleHashParameters.DefaultDigestSizeBytes"/>.</param>
     /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <returns>A hiding provider whose commit / open / verify route to the salted BaseFold evaluation protocol.</returns>
@@ -96,6 +97,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
         ScalarInvertDelegate invert,
         ScalarRandomDelegate scalarRandom,
         ScalarHashToScalarDelegate hashToScalar,
+        BaseMemoryPool pool,
         int digestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes,
         ScalarArithmeticBackend? batch = null)
     {
@@ -109,119 +111,76 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
         ArgumentNullException.ThrowIfNull(invert);
         ArgumentNullException.ThrowIfNull(scalarRandom);
         ArgumentNullException.ThrowIfNull(hashToScalar);
+        ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
-        //Copy the seed: the closures outlive the caller's span.
-        byte[] seedCopy = seed.ToArray();
-        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
-
-        FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
+        //The provider owns the seed because its delegates outlive the caller's span.
+        OwnedByteBuffer? seedOwner = seed.IsEmpty ? null : OwnedByteBuffer.Rent(seed.Length, pool);
+        try
         {
-            FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
-            return FoldableCode.Derive(parameters, seedCopy, hashToScalar, pool);
-        }
-
-        PolynomialCommitDelegate commit = (polynomial, pool) =>
-        {
-            using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
-            FoldableCodeParameters parameters = code.Parameters;
-
-            int messageElements = parameters.MessageLength;
-            int codewordElements = parameters.CodewordLength;
-
-            using IMemoryOwner<byte> coeffsOwner = pool.Rent(messageElements * ScalarSize);
-            Span<byte> coeffs = coeffsOwner.Memory.Span[..(messageElements * ScalarSize)];
-            polynomial.InterpolateToCoefficients(coeffs, subtract);
-
-            using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
-
-            //One fresh salt per codeword position; the blind retains them so the
-            //matching open rebuilds π_d's salted tree identically, while the
-            //commitment root over hash(value ‖ salt) reveals nothing about the
-            //codeword.
-            int saltBytes = codewordElements * ScalarSize;
-            using IMemoryOwner<byte> saltOwner = pool.Rent(saltBytes);
-            Span<byte> salts = saltOwner.Memory.Span[..saltBytes];
-            GenerateScalars(salts, codewordElements, scalarRandom, curve);
-
-            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
-
-            PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
-                tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
-            PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
-                salts, curve, CommitmentScheme.BaseFold, pool);
-
-            return (commitment, blind);
-        };
-
-        PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
-        {
-            using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
-
-            (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveHiding(
-                code,
-                polynomial,
-                evaluationPoint,
-                queryCount,
-                transcript,
-                merkleParameters,
-                hash,
-                squeeze,
-                reduce,
-                add,
-                subtract,
-                multiply,
-                invert,
-                blind.AsReadOnlySpan(),
-                scalarRandom,
-                pool,
-                batch);
-
-            using(proof)
+            OwnedByteBuffer? seedCopy = seedOwner;
+            if(seedCopy is not null)
             {
-                (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
-                using(bytesOwner)
-                {
-                    PolynomialOpening opening = PolynomialOpening.FromBytes(
-                        bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
-
-                    return (opening, claimedValue);
-                }
-            }
-        };
-
-        PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
-        {
-            using FoldableCode code = DeriveCode(evaluationPoint.Length, pool);
-
-            BaseFoldEvaluationProof? proof = null;
-            try
-            {
-                proof = BaseFoldEvaluationProofSerialization.FromBytes(
-                    opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
-            }
-            catch(ArgumentException)
-            {
-                //Malformed opening bytes are a rejection, not a fault.
-                return false;
+                seed.CopyTo(seedCopy.Bytes);
             }
 
-            using(proof)
-            using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+            MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
+
+            FoldableCode DeriveCode(int variableCount, BaseMemoryPool operationPool)
             {
-                return BaseFoldEvaluationVerifier.Verify(
+                FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
+
+                return FoldableCode.Derive(parameters, seedCopy is null ? ReadOnlySpan<byte>.Empty : seedCopy.Bytes, hashToScalar, operationPool);
+            }
+
+            PolynomialCommitDelegate commit = (polynomial, pool) =>
+            {
+                using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
+                FoldableCodeParameters parameters = code.Parameters;
+
+                int messageElements = parameters.MessageLength;
+                int codewordElements = parameters.CodewordLength;
+
+                using IMemoryOwner<byte> coeffsOwner = pool.Rent(messageElements * ScalarSize);
+                Span<byte> coeffs = coeffsOwner.Memory.Span[..(messageElements * ScalarSize)];
+                polynomial.InterpolateToCoefficients(coeffs, subtract);
+
+                using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
+
+                //One fresh salt per codeword position; the blind retains them so the
+                //matching open rebuilds π_d's salted tree identically, while the
+                //commitment root over hash(value ‖ salt) reveals nothing about the
+                //codeword.
+                int saltBytes = codewordElements * ScalarSize;
+                using IMemoryOwner<byte> saltOwner = pool.Rent(saltBytes);
+                Span<byte> salts = saltOwner.Memory.Span[..saltBytes];
+                GenerateScalars(salts, codewordElements, scalarRandom, curve);
+
+                using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
+
+                PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
+                    tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
+                PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
+                    salts, curve, CommitmentScheme.BaseFold, pool);
+
+                return (commitment, blind);
+            };
+
+            PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
+            {
+                using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
+
+                (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveHiding(
                     code,
-                    commitmentRoot,
+                    polynomial,
                     evaluationPoint,
-                    claimedValue,
-                    proof,
                     queryCount,
                     transcript,
-                    merkleHash,
+                    merkleParameters,
                     hash,
                     squeeze,
                     reduce,
@@ -229,26 +188,87 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
                     subtract,
                     multiply,
                     invert,
-                    pool);
-            }
-        };
+                    blind.AsReadOnlySpan(),
+                    scalarRandom,
+                    pool,
+                    batch);
 
-        return new PolynomialCommitmentProvider(
-            CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
-            ownedResource: null, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
-            //Salted leaves are still hash-based — binding but not additively
-            //homomorphic, so this cannot back Nova-style folding — yet the secret
-            //salts make the commitment hiding, which the non-hiding sibling is not.
-            isAdditivelyHomomorphic: false, isHiding: true,
-            //Salting widens the opening rather than the commitment: each fold-pair
-            //step carries the two leaf salts alongside the authentication path, which
-            //is exactly the difference the hiding opening mode accounts for.
-            evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes),
-            //Salting changes what a leaf commits to, not how wide it is: the
-            //salted leaf is the compression's output and carries the configured
-            //node width, so the root is exactly digestSizeBytes wide as in the
-            //non-hiding sibling.
-            commitmentSizeBytes: _ => digestSizeBytes);
+                using(proof)
+                {
+                    (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
+                    using(bytesOwner)
+                    {
+                        PolynomialOpening opening = PolynomialOpening.FromBytes(
+                            bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
+
+                        return (opening, claimedValue);
+                    }
+                }
+            };
+
+            PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
+            {
+                using FoldableCode code = DeriveCode(evaluationPoint.Length, pool);
+
+                BaseFoldEvaluationProof? proof = null;
+                try
+                {
+                    proof = BaseFoldEvaluationProofSerialization.FromBytes(
+                        opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
+                }
+                catch(ArgumentException)
+                {
+                    //Malformed opening bytes are a rejection, not a fault.
+                    return false;
+                }
+
+                using(proof)
+                using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+                {
+                    return BaseFoldEvaluationVerifier.Verify(
+                        code,
+                        commitmentRoot,
+                        evaluationPoint,
+                        claimedValue,
+                        proof,
+                        queryCount,
+                        transcript,
+                        merkleHash,
+                        hash,
+                        squeeze,
+                        reduce,
+                        add,
+                        subtract,
+                        multiply,
+                        invert,
+                        pool);
+                }
+            };
+
+            PolynomialCommitmentProvider provider = new(
+                CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
+                ownedResource: seedOwner, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
+                //Salted leaves are still hash-based — binding but not additively
+                //homomorphic, so this cannot back Nova-style folding — yet the secret
+                //salts make the commitment hiding, which the non-hiding sibling is not.
+                isAdditivelyHomomorphic: false, isHiding: true,
+                //Salting widens the opening rather than the commitment: each fold-pair
+                //step carries the two leaf salts alongside the authentication path, which
+                //is exactly the difference the hiding opening mode accounts for.
+                evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes),
+                //Salting changes what a leaf commits to, not how wide it is: the
+                //salted leaf is the compression's output and carries the configured
+                //node width, so the root is exactly digestSizeBytes wide as in the
+                //non-hiding sibling.
+                commitmentSizeBytes: _ => digestSizeBytes);
+            seedOwner = null;
+
+            return provider;
+        }
+        finally
+        {
+            seedOwner?.Dispose();
+        }
     }
 
 
@@ -302,6 +322,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
     /// <param name="scalarRandom">Backend random scalar generation.</param>
     /// <param name="hashToScalar">Hash-to-scalar backend the code derivation uses for its diagonal entries.</param>
     /// <param name="extraVariableCount">The number of extra (mask) variables <c>t</c> the witness is lifted by; must be positive.</param>
+    /// <param name="pool">The pool supplying the retained seed; it must outlive the returned provider.</param>
     /// <param name="digestSizeBytes">The Merkle node digest size <paramref name="merkleHash"/> produces; defaults to <see cref="WellKnownMerkleHashParameters.DefaultDigestSizeBytes"/>.</param>
     /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <inheritdoc cref="Create"/>
@@ -321,6 +342,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
         ScalarRandomDelegate scalarRandom,
         ScalarHashToScalarDelegate hashToScalar,
         int extraVariableCount,
+        BaseMemoryPool pool,
         int digestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes,
         ScalarArithmeticBackend? batch = null)
     {
@@ -334,172 +356,191 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
         ArgumentNullException.ThrowIfNull(invert);
         ArgumentNullException.ThrowIfNull(scalarRandom);
         ArgumentNullException.ThrowIfNull(hashToScalar);
+        ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(extraVariableCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
-        byte[] seedCopy = seed.ToArray();
-        int t = extraVariableCount;
-        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
-
-        FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
+        //The provider owns the seed because its delegates outlive the caller's span.
+        OwnedByteBuffer? seedOwner = seed.IsEmpty ? null : OwnedByteBuffer.Rent(seed.Length, pool);
+        try
         {
-            FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
-            return FoldableCode.Derive(parameters, seedCopy, hashToScalar, pool);
-        }
-
-        PolynomialCommitDelegate commit = (polynomial, pool) =>
-        {
-            ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
-
-            int liftedVariableCount = polynomial.VariableCount + t;
-            int realEvaluations = polynomial.EvaluationCount;
-            int liftedEvaluations = 1 << liftedVariableCount;
-            int maskScalars = liftedEvaluations - realEvaluations;
-
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-            FoldableCodeParameters parameters = code.Parameters;
-            int codewordElements = parameters.CodewordLength;
-
-            //f' evaluations: the real witness in the Y = 0 slice (first 2^d
-            //entries), entropy mask in the rest.
-            using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
-            GenerateScalars(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize), maskScalars, scalarRandom, curve);
-
-            using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
-
-            using IMemoryOwner<byte> coeffsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> coeffs = coeffsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            lifted.InterpolateToCoefficients(coeffs, subtract);
-
-            using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
-
-            //Top-layer salts for the lifted codeword.
-            using IMemoryOwner<byte> saltsOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            GenerateScalars(salts, codewordElements, scalarRandom, curve);
-
-            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
-
-            PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
-                tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
-
-            //Blind = [mask Y-block evaluations ‖ top-layer salts]; the matching
-            //open reuses both to rebuild f' and its salted tree identically.
-            using IMemoryOwner<byte> blindOwner = pool.Rent((maskScalars + codewordElements) * ScalarSize);
-            Span<byte> blindBytes = blindOwner.Memory.Span[..((maskScalars + codewordElements) * ScalarSize)];
-            liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize).CopyTo(blindBytes[..(maskScalars * ScalarSize)]);
-            salts.CopyTo(blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize));
-            PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
-                blindBytes, curve, CommitmentScheme.BaseFold, pool);
-
-            return (commitment, blind);
-        };
-
-        PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
-        {
-            ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
-
-            int liftedVariableCount = polynomial.VariableCount + t;
-            int realEvaluations = polynomial.EvaluationCount;
-            int liftedEvaluations = 1 << liftedVariableCount;
-            int maskScalars = liftedEvaluations - realEvaluations;
-
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-            int codewordElements = code.Parameters.CodewordLength;
-
-            ReadOnlySpan<byte> blindBytes = blind.AsReadOnlySpan();
-            ReadOnlySpan<byte> maskBlock = blindBytes[..(maskScalars * ScalarSize)];
-            ReadOnlySpan<byte> topSalts = blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize);
-
-            //Rebuild the exact f' committed: real witness ‖ the blind's mask block.
-            using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
-            maskBlock.CopyTo(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize));
-
-            using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
-
-            Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
-            try
+            OwnedByteBuffer? seedCopy = seedOwner;
+            if(seedCopy is not null)
             {
-                (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveHiding(
-                    code, lifted, liftedPoint, queryCount, transcript, merkleParameters, hash, squeeze,
-                    reduce, add, subtract, multiply, invert, topSalts, scalarRandom, pool, batch);
+                seed.CopyTo(seedCopy.Bytes);
+            }
 
-                using(proof)
+            int t = extraVariableCount;
+            MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
+
+            FoldableCode DeriveCode(int variableCount, BaseMemoryPool operationPool)
+            {
+                FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
+
+                return FoldableCode.Derive(parameters, seedCopy is null ? ReadOnlySpan<byte>.Empty : seedCopy.Bytes, hashToScalar, operationPool);
+            }
+
+            PolynomialCommitDelegate commit = (polynomial, pool) =>
+            {
+                ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
+
+                int liftedVariableCount = polynomial.VariableCount + t;
+                int realEvaluations = polynomial.EvaluationCount;
+                int liftedEvaluations = 1 << liftedVariableCount;
+                int maskScalars = liftedEvaluations - realEvaluations;
+
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+                FoldableCodeParameters parameters = code.Parameters;
+                int codewordElements = parameters.CodewordLength;
+
+                //f' evaluations: the real witness in the Y = 0 slice (first 2^d
+                //entries), entropy mask in the rest.
+                using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
+                GenerateScalars(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize), maskScalars, scalarRandom, curve);
+
+                using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
+
+                using IMemoryOwner<byte> coeffsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> coeffs = coeffsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                lifted.InterpolateToCoefficients(coeffs, subtract);
+
+                using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
+
+                //Top-layer salts for the lifted codeword.
+                using IMemoryOwner<byte> saltsOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                GenerateScalars(salts, codewordElements, scalarRandom, curve);
+
+                using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
+
+                PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
+                    tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
+
+                //Blind = [mask Y-block evaluations ‖ top-layer salts]; the matching
+                //open reuses both to rebuild f' and its salted tree identically.
+                using IMemoryOwner<byte> blindOwner = pool.Rent((maskScalars + codewordElements) * ScalarSize);
+                Span<byte> blindBytes = blindOwner.Memory.Span[..((maskScalars + codewordElements) * ScalarSize)];
+                liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize).CopyTo(blindBytes[..(maskScalars * ScalarSize)]);
+                salts.CopyTo(blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize));
+                PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
+                    blindBytes, curve, CommitmentScheme.BaseFold, pool);
+
+                return (commitment, blind);
+            };
+
+            PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
+            {
+                ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
+
+                int liftedVariableCount = polynomial.VariableCount + t;
+                int realEvaluations = polynomial.EvaluationCount;
+                int liftedEvaluations = 1 << liftedVariableCount;
+                int maskScalars = liftedEvaluations - realEvaluations;
+
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+                int codewordElements = code.Parameters.CodewordLength;
+
+                ReadOnlySpan<byte> blindBytes = blind.AsReadOnlySpan();
+                ReadOnlySpan<byte> maskBlock = blindBytes[..(maskScalars * ScalarSize)];
+                ReadOnlySpan<byte> topSalts = blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize);
+
+                //Rebuild the exact f' committed: real witness ‖ the blind's mask block.
+                using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
+                maskBlock.CopyTo(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize));
+
+                using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
+
+                Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
+                try
                 {
-                    (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
-                    using(bytesOwner)
-                    {
-                        PolynomialOpening opening = PolynomialOpening.FromBytes(
-                            bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
+                    (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveHiding(
+                        code, lifted, liftedPoint, queryCount, transcript, merkleParameters, hash, squeeze,
+                        reduce, add, subtract, multiply, invert, topSalts, scalarRandom, pool, batch);
 
-                        return (opening, claimedValue);
+                    using(proof)
+                    {
+                        (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
+                        using(bytesOwner)
+                        {
+                            PolynomialOpening opening = PolynomialOpening.FromBytes(
+                                bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
+
+                            return (opening, claimedValue);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                foreach(Scalar coordinate in liftedPoint)
+                finally
                 {
-                    coordinate.Dispose();
+                    foreach(Scalar coordinate in liftedPoint)
+                    {
+                        coordinate.Dispose();
+                    }
                 }
-            }
-        };
+            };
 
-        PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
+            PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
+            {
+                int liftedVariableCount = evaluationPoint.Length + t;
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+
+                BaseFoldEvaluationProof? proof = null;
+                try
+                {
+                    proof = BaseFoldEvaluationProofSerialization.FromBytes(
+                        opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
+                }
+                catch(ArgumentException)
+                {
+                    return false;
+                }
+
+                Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
+                try
+                {
+                    using(proof)
+                    using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+                    {
+                        return BaseFoldEvaluationVerifier.Verify(
+                            code, commitmentRoot, liftedPoint, claimedValue, proof, queryCount, transcript,
+                            merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, pool);
+                    }
+                }
+                finally
+                {
+                    foreach(Scalar coordinate in liftedPoint)
+                    {
+                        coordinate.Dispose();
+                    }
+                }
+            };
+
+            PolynomialCommitmentProvider provider = new(
+                CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
+                ownedResource: seedOwner, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
+                isAdditivelyHomomorphic: false, isHiding: true, extraVariableCount: t,
+                //The caller asks about the polynomial it hands in, so the lift is this
+                //provider's to add: a d-variable witness is committed and opened at
+                //d + t layers, and the opening's length follows the lifted count.
+                evaluationProofSizeBytes: variableCount => GetZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
+                //The lift raises the leaf count, never the node width, so the root
+                //stays exactly digestSizeBytes wide.
+                commitmentSizeBytes: _ => digestSizeBytes);
+            seedOwner = null;
+
+            return provider;
+        }
+        finally
         {
-            int liftedVariableCount = evaluationPoint.Length + t;
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-
-            BaseFoldEvaluationProof? proof = null;
-            try
-            {
-                proof = BaseFoldEvaluationProofSerialization.FromBytes(
-                    opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
-            }
-            catch(ArgumentException)
-            {
-                return false;
-            }
-
-            Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
-            try
-            {
-                using(proof)
-                using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
-                {
-                    return BaseFoldEvaluationVerifier.Verify(
-                        code, commitmentRoot, liftedPoint, claimedValue, proof, queryCount, transcript,
-                        merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, pool);
-                }
-            }
-            finally
-            {
-                foreach(Scalar coordinate in liftedPoint)
-                {
-                    coordinate.Dispose();
-                }
-            }
-        };
-
-        return new PolynomialCommitmentProvider(
-            CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
-            ownedResource: null, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
-            isAdditivelyHomomorphic: false, isHiding: true, extraVariableCount: t,
-            //The caller asks about the polynomial it hands in, so the lift is this
-            //provider's to add: a d-variable witness is committed and opened at
-            //d + t layers, and the opening's length follows the lifted count.
-            evaluationProofSizeBytes: variableCount => GetZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
-            //The lift raises the leaf count, never the node width, so the root
-            //stays exactly digestSizeBytes wide.
-            commitmentSizeBytes: _ => digestSizeBytes);
+            seedOwner?.Dispose();
+        }
     }
 
 
@@ -549,6 +590,7 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
         ScalarRandomDelegate scalarRandom,
         ScalarHashToScalarDelegate hashToScalar,
         int extraVariableCount,
+        BaseMemoryPool pool,
         int digestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes,
         ScalarArithmeticBackend? batch = null)
     {
@@ -562,111 +604,268 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
         ArgumentNullException.ThrowIfNull(invert);
         ArgumentNullException.ThrowIfNull(scalarRandom);
         ArgumentNullException.ThrowIfNull(hashToScalar);
+        ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(extraVariableCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
-        byte[] seedCopy = seed.ToArray();
-        int t = extraVariableCount;
-        MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
-
-        FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
+        //The provider owns the seed because its delegates outlive the caller's span.
+        OwnedByteBuffer? seedOwner = seed.IsEmpty ? null : OwnedByteBuffer.Rent(seed.Length, pool);
+        try
         {
-            FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
-            return FoldableCode.Derive(parameters, seedCopy, hashToScalar, pool);
-        }
-
-        PolynomialCommitDelegate commit = (polynomial, pool) =>
-        {
-            ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
-
-            int liftedVariableCount = polynomial.VariableCount + t;
-            int realEvaluations = polynomial.EvaluationCount;
-            int liftedEvaluations = 1 << liftedVariableCount;
-            int maskScalars = liftedEvaluations - realEvaluations;
-
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-            FoldableCodeParameters parameters = code.Parameters;
-            int codewordElements = parameters.CodewordLength;
-
-            //f' evaluations: the real witness in the Y = 0 slice, entropy mask in
-            //the rest — identical to CreateZeroKnowledge's commitment.
-            using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
-            GenerateScalars(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize), maskScalars, scalarRandom, curve);
-
-            using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
-
-            using IMemoryOwner<byte> coeffsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> coeffs = coeffsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            lifted.InterpolateToCoefficients(coeffs, subtract);
-
-            using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
-
-            using IMemoryOwner<byte> saltsOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            GenerateScalars(salts, codewordElements, scalarRandom, curve);
-
-            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
-
-            PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
-                tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
-
-            using IMemoryOwner<byte> blindOwner = pool.Rent((maskScalars + codewordElements) * ScalarSize);
-            Span<byte> blindBytes = blindOwner.Memory.Span[..((maskScalars + codewordElements) * ScalarSize)];
-            liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize).CopyTo(blindBytes[..(maskScalars * ScalarSize)]);
-            salts.CopyTo(blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize));
-            PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
-                blindBytes, curve, CommitmentScheme.BaseFold, pool);
-
-            return (commitment, blind);
-        };
-
-        PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
-        {
-            ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
-
-            int liftedVariableCount = polynomial.VariableCount + t;
-            int realEvaluations = polynomial.EvaluationCount;
-            int liftedEvaluations = 1 << liftedVariableCount;
-            int maskScalars = liftedEvaluations - realEvaluations;
-
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-            int codewordElements = code.Parameters.CodewordLength;
-
-            ReadOnlySpan<byte> blindBytes = blind.AsReadOnlySpan();
-            ReadOnlySpan<byte> maskBlock = blindBytes[..(maskScalars * ScalarSize)];
-            ReadOnlySpan<byte> topSalts = blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize);
-
-            using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
-            maskBlock.CopyTo(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize));
-
-            using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
-
-            //The mask's coefficient commitment lives under its own code from the
-            //same seed, at the deterministic policy shape for this sumcheck.
-            StatisticalMaskParameters maskParameters = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(liftedVariableCount, curve, queryCount);
-            using FoldableCode maskCommitmentCode = DeriveCode(maskParameters.LiftedVariableCount, pool);
-
-            Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
-            try
+            OwnedByteBuffer? seedCopy = seedOwner;
+            if(seedCopy is not null)
             {
-                //The witness salts source the hiding side; the same entropy sampler
-                //sources the sumcheck mask, the filler, and the mask commitment's
-                //lift block (independent draws).
-                (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveZeroKnowledge(
-                    code, lifted, liftedPoint, queryCount, transcript, merkleParameters, hash, squeeze,
-                    reduce, add, subtract, multiply, invert, topSalts, scalarRandom, scalarRandom, maskCommitmentCode, pool, batch);
+                seed.CopyTo(seedCopy.Bytes);
+            }
+
+            int t = extraVariableCount;
+            MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
+
+            FoldableCode DeriveCode(int variableCount, BaseMemoryPool operationPool)
+            {
+                FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
+
+                return FoldableCode.Derive(parameters, seedCopy is null ? ReadOnlySpan<byte>.Empty : seedCopy.Bytes, hashToScalar, operationPool);
+            }
+
+            PolynomialCommitDelegate commit = (polynomial, pool) =>
+            {
+                ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
+
+                int liftedVariableCount = polynomial.VariableCount + t;
+                int realEvaluations = polynomial.EvaluationCount;
+                int liftedEvaluations = 1 << liftedVariableCount;
+                int maskScalars = liftedEvaluations - realEvaluations;
+
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+                FoldableCodeParameters parameters = code.Parameters;
+                int codewordElements = parameters.CodewordLength;
+
+                //f' evaluations: the real witness in the Y = 0 slice, entropy mask in
+                //the rest — identical to CreateZeroKnowledge's commitment.
+                using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
+                GenerateScalars(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize), maskScalars, scalarRandom, curve);
+
+                using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
+
+                using IMemoryOwner<byte> coeffsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> coeffs = coeffsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                lifted.InterpolateToCoefficients(coeffs, subtract);
+
+                using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
+
+                using IMemoryOwner<byte> saltsOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                GenerateScalars(salts, codewordElements, scalarRandom, curve);
+
+                using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
+
+                PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
+                    tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
+
+                using IMemoryOwner<byte> blindOwner = pool.Rent((maskScalars + codewordElements) * ScalarSize);
+                Span<byte> blindBytes = blindOwner.Memory.Span[..((maskScalars + codewordElements) * ScalarSize)];
+                liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize).CopyTo(blindBytes[..(maskScalars * ScalarSize)]);
+                salts.CopyTo(blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize));
+                PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
+                    blindBytes, curve, CommitmentScheme.BaseFold, pool);
+
+                return (commitment, blind);
+            };
+
+            PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
+            {
+                ThrowIfHidingBudgetUnmet(polynomial.VariableCount, t, curve, queryCount);
+
+                int liftedVariableCount = polynomial.VariableCount + t;
+                int realEvaluations = polynomial.EvaluationCount;
+                int liftedEvaluations = 1 << liftedVariableCount;
+                int maskScalars = liftedEvaluations - realEvaluations;
+
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+                int codewordElements = code.Parameters.CodewordLength;
+
+                ReadOnlySpan<byte> blindBytes = blind.AsReadOnlySpan();
+                ReadOnlySpan<byte> maskBlock = blindBytes[..(maskScalars * ScalarSize)];
+                ReadOnlySpan<byte> topSalts = blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize);
+
+                using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                polynomial.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
+                maskBlock.CopyTo(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize));
+
+                using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
+
+                //The mask's coefficient commitment lives under its own code from the
+                //same seed, at the deterministic policy shape for this sumcheck.
+                StatisticalMaskParameters maskParameters = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(liftedVariableCount, curve, queryCount);
+                using FoldableCode maskCommitmentCode = DeriveCode(maskParameters.LiftedVariableCount, pool);
+
+                Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
+                try
+                {
+                    //The witness salts source the hiding side; the same entropy sampler
+                    //sources the sumcheck mask, the filler, and the mask commitment's
+                    //lift block (independent draws).
+                    (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveZeroKnowledge(
+                        code, lifted, liftedPoint, queryCount, transcript, merkleParameters, hash, squeeze,
+                        reduce, add, subtract, multiply, invert, topSalts, scalarRandom, scalarRandom, maskCommitmentCode, pool, batch);
+
+                    using(proof)
+                    {
+                        (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.ZeroKnowledge, pool);
+                        using(bytesOwner)
+                        {
+                            PolynomialOpening opening = PolynomialOpening.FromBytes(
+                                bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
+
+                            return (opening, claimedValue);
+                        }
+                    }
+                }
+                finally
+                {
+                    foreach(Scalar coordinate in liftedPoint)
+                    {
+                        coordinate.Dispose();
+                    }
+                }
+            };
+
+            PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
+            {
+                int liftedVariableCount = evaluationPoint.Length + t;
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+
+                BaseFoldEvaluationProof? proof = null;
+                try
+                {
+                    proof = BaseFoldEvaluationProofSerialization.FromBytes(
+                        opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.ZeroKnowledge, pool);
+                }
+                catch(ArgumentException)
+                {
+                    return false;
+                }
+
+                StatisticalMaskParameters maskParameters = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(liftedVariableCount, curve, queryCount);
+                using FoldableCode maskCommitmentCode = DeriveCode(maskParameters.LiftedVariableCount, pool);
+
+                Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
+                try
+                {
+                    using(proof)
+                    using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+                    {
+                        return BaseFoldEvaluationVerifier.VerifyZeroKnowledge(
+                            code, commitmentRoot, liftedPoint, claimedValue, proof, queryCount, transcript,
+                            merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, maskCommitmentCode, pool);
+                    }
+                }
+                finally
+                {
+                    foreach(Scalar coordinate in liftedPoint)
+                    {
+                        coordinate.Dispose();
+                    }
+                }
+            };
+
+            //The weighted-opening path (the statistical sumcheck mask's binding):
+            //the vector is committed salted-and-lifted at its OWN minimum lift
+            //(recomputed from the vector's variable count — the provider's witness
+            //lift t is sized for a different shape), and the weighted opening is
+            //the multiplier-generic evaluation protocol in hiding mode with the
+            //weights zero-extended over the lift block, so the claimed value stays
+            //the inner product over the caller's coordinates.
+            PolynomialCommitDelegate commitVector = (vector, pool) =>
+            {
+                int vectorLift = GetMinimumExtraVariableCount(vector.VariableCount, curve, queryCount);
+                ThrowIfHidingBudgetUnmet(vector.VariableCount, vectorLift, curve, queryCount);
+
+                int liftedVariableCount = vector.VariableCount + vectorLift;
+                int realEvaluations = vector.EvaluationCount;
+                int liftedEvaluations = 1 << liftedVariableCount;
+                int maskScalars = liftedEvaluations - realEvaluations;
+
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+                int codewordElements = code.Parameters.CodewordLength;
+
+                using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                vector.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
+                GenerateScalars(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize), maskScalars, scalarRandom, curve);
+
+                using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
+
+                using IMemoryOwner<byte> coeffsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> coeffs = coeffsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                lifted.InterpolateToCoefficients(coeffs, subtract);
+
+                using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
+
+                using IMemoryOwner<byte> saltsOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                GenerateScalars(salts, codewordElements, scalarRandom, curve);
+
+                using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
+
+                PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
+                    tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
+
+                //Blind = [lift block ‖ top-layer salts], the witness commit's layout.
+                using IMemoryOwner<byte> blindOwner = pool.Rent((maskScalars + codewordElements) * ScalarSize);
+                Span<byte> blindBytes = blindOwner.Memory.Span[..((maskScalars + codewordElements) * ScalarSize)];
+                liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize).CopyTo(blindBytes[..(maskScalars * ScalarSize)]);
+                salts.CopyTo(blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize));
+                PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
+                    blindBytes, curve, CommitmentScheme.BaseFold, pool);
+
+                return (commitment, blind);
+            };
+
+            PolynomialOpenWeightedSumDelegate openWeightedSum = (commitment, blind, vector, weights, transcript, pool) =>
+            {
+                int vectorLift = GetMinimumExtraVariableCount(vector.VariableCount, curve, queryCount);
+                ThrowIfHidingBudgetUnmet(vector.VariableCount, vectorLift, curve, queryCount);
+
+                int liftedVariableCount = vector.VariableCount + vectorLift;
+                int realEvaluations = vector.EvaluationCount;
+                int liftedEvaluations = 1 << liftedVariableCount;
+                int maskScalars = liftedEvaluations - realEvaluations;
+
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+                int codewordElements = code.Parameters.CodewordLength;
+
+                ReadOnlySpan<byte> blindBytes = blind.AsReadOnlySpan();
+                ReadOnlySpan<byte> maskBlock = blindBytes[..(maskScalars * ScalarSize)];
+                ReadOnlySpan<byte> topSalts = blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize);
+
+                //Rebuild the exact lifted vector committed: the caller's coordinates
+                //followed by the blind's lift block.
+                using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
+                Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
+                vector.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
+                maskBlock.CopyTo(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize));
+
+                using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
+                using MultilinearExtension liftedWeights = BuildLiftedWeights(weights, liftedVariableCount, curve, pool);
+
+                (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSumHiding(
+                    code, lifted, liftedWeights, queryCount, transcript, merkleParameters, hash, squeeze,
+                    reduce, add, subtract, multiply, invert, topSalts, scalarRandom, pool, batch);
 
                 using(proof)
                 {
-                    (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.ZeroKnowledge, pool);
+                    (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
                     using(bytesOwner)
                     {
                         PolynomialOpening opening = PolynomialOpening.FromBytes(
@@ -675,199 +874,61 @@ public static class ZkBaseFoldPolynomialCommitmentScheme
                         return (opening, claimedValue);
                     }
                 }
-            }
-            finally
+            };
+
+            PolynomialVerifyWeightedSumDelegate verifyWeightedSum = (commitment, weights, claimedValue, opening, transcript, pool) =>
             {
-                foreach(Scalar coordinate in liftedPoint)
+                int vectorLift = GetMinimumExtraVariableCount(weights.VariableCount, curve, queryCount);
+                int liftedVariableCount = weights.VariableCount + vectorLift;
+                using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+
+                BaseFoldEvaluationProof? proof = null;
+                try
                 {
-                    coordinate.Dispose();
+                    proof = BaseFoldEvaluationProofSerialization.FromBytes(
+                        opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
                 }
-            }
-        };
+                catch(ArgumentException)
+                {
+                    return false;
+                }
 
-        PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
-        {
-            int liftedVariableCount = evaluationPoint.Length + t;
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
+                using MultilinearExtension liftedWeights = BuildLiftedWeights(weights, liftedVariableCount, curve, pool);
 
-            BaseFoldEvaluationProof? proof = null;
-            try
-            {
-                proof = BaseFoldEvaluationProofSerialization.FromBytes(
-                    opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.ZeroKnowledge, pool);
-            }
-            catch(ArgumentException)
-            {
-                return false;
-            }
-
-            StatisticalMaskParameters maskParameters = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(liftedVariableCount, curve, queryCount);
-            using FoldableCode maskCommitmentCode = DeriveCode(maskParameters.LiftedVariableCount, pool);
-
-            Scalar[] liftedPoint = BuildLiftedPoint(evaluationPoint, t, curve, pool);
-            try
-            {
                 using(proof)
                 using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
                 {
-                    return BaseFoldEvaluationVerifier.VerifyZeroKnowledge(
-                        code, commitmentRoot, liftedPoint, claimedValue, proof, queryCount, transcript,
-                        merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, maskCommitmentCode, pool);
+                    return BaseFoldEvaluationVerifier.VerifyWeightedSum(
+                        code, commitmentRoot, liftedWeights, claimedValue, proof, queryCount, transcript,
+                        merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, pool);
                 }
-            }
-            finally
-            {
-                foreach(Scalar coordinate in liftedPoint)
-                {
-                    coordinate.Dispose();
-                }
-            }
-        };
+            };
 
-        //The weighted-opening path (the statistical sumcheck mask's binding):
-        //the vector is committed salted-and-lifted at its OWN minimum lift
-        //(recomputed from the vector's variable count — the provider's witness
-        //lift t is sized for a different shape), and the weighted opening is
-        //the multiplier-generic evaluation protocol in hiding mode with the
-        //weights zero-extended over the lift block, so the claimed value stays
-        //the inner product over the caller's coordinates.
-        PolynomialCommitDelegate commitVector = (vector, pool) =>
+            PolynomialCommitmentProvider provider = new(
+                CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
+                ownedResource: seedOwner, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
+                isAdditivelyHomomorphic: false, isHiding: true, extraVariableCount: t,
+                commitVector, openWeightedSum, verifyWeightedSum,
+                //The lifted-and-filled BaseFold mask-shape ledger at this provider's
+                //query count.
+                resolveStatisticalMaskShape: (d, degree) => WellKnownStatisticalMaskParameters.CreateClassicalSecurity(d, curve, queryCount, degree),
+                //The opening carries the lifted witness proof and the CFS-2017 mask side
+                //in one buffer, so its length is the zero-knowledge mode's at the lifted
+                //count, not the lifted sibling's. This is what the evaluation open emits:
+                //a weighted opening runs in hiding mode at the vector's own minimum lift,
+                //so its length is the mask ledger's rather than this one.
+                evaluationProofSizeBytes: variableCount => GetFullZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
+                //The witness is committed exactly as in the lifted sibling, so the
+                //root is exactly digestSizeBytes wide there too.
+                commitmentSizeBytes: _ => digestSizeBytes);
+            seedOwner = null;
+
+            return provider;
+        }
+        finally
         {
-            int vectorLift = GetMinimumExtraVariableCount(vector.VariableCount, curve, queryCount);
-            ThrowIfHidingBudgetUnmet(vector.VariableCount, vectorLift, curve, queryCount);
-
-            int liftedVariableCount = vector.VariableCount + vectorLift;
-            int realEvaluations = vector.EvaluationCount;
-            int liftedEvaluations = 1 << liftedVariableCount;
-            int maskScalars = liftedEvaluations - realEvaluations;
-
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-            int codewordElements = code.Parameters.CodewordLength;
-
-            using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            vector.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
-            GenerateScalars(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize), maskScalars, scalarRandom, curve);
-
-            using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
-
-            using IMemoryOwner<byte> coeffsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> coeffs = coeffsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            lifted.InterpolateToCoefficients(coeffs, subtract);
-
-            using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
-
-            using IMemoryOwner<byte> saltsOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> salts = saltsOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            GenerateScalars(salts, codewordElements, scalarRandom, curve);
-
-            using MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword, salts, codewordElements, merkleParameters, pool);
-
-            PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
-                tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
-
-            //Blind = [lift block ‖ top-layer salts], the witness commit's layout.
-            using IMemoryOwner<byte> blindOwner = pool.Rent((maskScalars + codewordElements) * ScalarSize);
-            Span<byte> blindBytes = blindOwner.Memory.Span[..((maskScalars + codewordElements) * ScalarSize)];
-            liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize).CopyTo(blindBytes[..(maskScalars * ScalarSize)]);
-            salts.CopyTo(blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize));
-            PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.FromCanonical(
-                blindBytes, curve, CommitmentScheme.BaseFold, pool);
-
-            return (commitment, blind);
-        };
-
-        PolynomialOpenWeightedSumDelegate openWeightedSum = (commitment, blind, vector, weights, transcript, pool) =>
-        {
-            int vectorLift = GetMinimumExtraVariableCount(vector.VariableCount, curve, queryCount);
-            ThrowIfHidingBudgetUnmet(vector.VariableCount, vectorLift, curve, queryCount);
-
-            int liftedVariableCount = vector.VariableCount + vectorLift;
-            int realEvaluations = vector.EvaluationCount;
-            int liftedEvaluations = 1 << liftedVariableCount;
-            int maskScalars = liftedEvaluations - realEvaluations;
-
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-            int codewordElements = code.Parameters.CodewordLength;
-
-            ReadOnlySpan<byte> blindBytes = blind.AsReadOnlySpan();
-            ReadOnlySpan<byte> maskBlock = blindBytes[..(maskScalars * ScalarSize)];
-            ReadOnlySpan<byte> topSalts = blindBytes.Slice(maskScalars * ScalarSize, codewordElements * ScalarSize);
-
-            //Rebuild the exact lifted vector committed: the caller's coordinates
-            //followed by the blind's lift block.
-            using IMemoryOwner<byte> liftedEvalsOwner = pool.Rent(liftedEvaluations * ScalarSize);
-            Span<byte> liftedEvals = liftedEvalsOwner.Memory.Span[..(liftedEvaluations * ScalarSize)];
-            vector.AsReadOnlySpan().CopyTo(liftedEvals[..(realEvaluations * ScalarSize)]);
-            maskBlock.CopyTo(liftedEvals.Slice(realEvaluations * ScalarSize, maskScalars * ScalarSize));
-
-            using MultilinearExtension lifted = MultilinearExtension.FromEvaluations(liftedEvals, liftedVariableCount, curve, pool);
-            using MultilinearExtension liftedWeights = BuildLiftedWeights(weights, liftedVariableCount, curve, pool);
-
-            (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSumHiding(
-                code, lifted, liftedWeights, queryCount, transcript, merkleParameters, hash, squeeze,
-                reduce, add, subtract, multiply, invert, topSalts, scalarRandom, pool, batch);
-
-            using(proof)
-            {
-                (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
-                using(bytesOwner)
-                {
-                    PolynomialOpening opening = PolynomialOpening.FromBytes(
-                        bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
-
-                    return (opening, claimedValue);
-                }
-            }
-        };
-
-        PolynomialVerifyWeightedSumDelegate verifyWeightedSum = (commitment, weights, claimedValue, opening, transcript, pool) =>
-        {
-            int vectorLift = GetMinimumExtraVariableCount(weights.VariableCount, curve, queryCount);
-            int liftedVariableCount = weights.VariableCount + vectorLift;
-            using FoldableCode code = DeriveCode(liftedVariableCount, pool);
-
-            BaseFoldEvaluationProof? proof = null;
-            try
-            {
-                proof = BaseFoldEvaluationProofSerialization.FromBytes(
-                    opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Hiding, pool);
-            }
-            catch(ArgumentException)
-            {
-                return false;
-            }
-
-            using MultilinearExtension liftedWeights = BuildLiftedWeights(weights, liftedVariableCount, curve, pool);
-
-            using(proof)
-            using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
-            {
-                return BaseFoldEvaluationVerifier.VerifyWeightedSum(
-                    code, commitmentRoot, liftedWeights, claimedValue, proof, queryCount, transcript,
-                    merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, pool);
-            }
-        };
-
-        return new PolynomialCommitmentProvider(
-            CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
-            ownedResource: null, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
-            isAdditivelyHomomorphic: false, isHiding: true, extraVariableCount: t,
-            commitVector, openWeightedSum, verifyWeightedSum,
-            //The lifted-and-filled BaseFold mask-shape ledger at this provider's
-            //query count.
-            resolveStatisticalMaskShape: (d, degree) => WellKnownStatisticalMaskParameters.CreateClassicalSecurity(d, curve, queryCount, degree),
-            //The opening carries the lifted witness proof and the CFS-2017 mask side
-            //in one buffer, so its length is the zero-knowledge mode's at the lifted
-            //count, not the lifted sibling's. This is what the evaluation open emits:
-            //a weighted opening runs in hiding mode at the vector's own minimum lift,
-            //so its length is the mask ledger's rather than this one.
-            evaluationProofSizeBytes: variableCount => GetFullZeroKnowledgeEvaluationProofSizeBytes(variableCount, t, curve, queryCount, digestSizeBytes),
-            //The witness is committed exactly as in the lifted sibling, so the
-            //root is exactly digestSizeBytes wide there too.
-            commitmentSizeBytes: _ => digestSizeBytes);
+            seedOwner?.Dispose();
+        }
     }
 
 

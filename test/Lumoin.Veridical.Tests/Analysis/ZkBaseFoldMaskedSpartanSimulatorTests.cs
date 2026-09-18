@@ -160,27 +160,29 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Simulates a proof with provider factories funded by the caller's pool.</summary>
     private static (ZkBaseFoldMaskedSpartanProof Proof, ProgrammableFiatShamirOracle Oracle) Simulate(
         RawR1csInstance instance, BaseMemoryPool pool)
     {
         using FiatShamirTranscript transcript = FreshTranscript();
 
         return ZkBaseFoldMaskedSpartanSimulator.Simulate(
-            instance, transcript, BuildProvider, BuildErrorProvider,
+            instance, transcript, squeeze => BuildProvider(pool, squeeze), squeeze => BuildErrorProvider(pool, squeeze),
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold,
             QueryCount, DigestSizeBytes, ExtraVariableCount, pool);
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The Spartan key takes ownership of the provider and the prover disposes the key; the proof transfers to the caller.")]
+    /// <summary>Produces a witness-backed proof using the caller's pool and transfers provider ownership to the prover.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the proving key and the key to the prover, which the using declaration releases; the key and prover constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static ZkBaseFoldMaskedSpartanProof ProveReal(RawR1csInstance instance, BaseMemoryPool pool)
     {
         using RawR1csWitness witness = BuildSatisfyingWitness();
-        var provingKey = new SpartanProvingKey(BuildProvider(Squeeze));
+        var provingKey = new SpartanProvingKey(BuildProvider(pool, Squeeze));
         using var prover = new MaskedSpartanProver(provingKey);
         using FiatShamirTranscript transcript = FreshTranscript();
-        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(Squeeze);
+        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(pool, Squeeze);
 
         return prover.ProveZkBaseFold(
             instance, witness, transcript,
@@ -189,14 +191,15 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The Spartan key takes ownership of the provider and the verifier disposes the key.")]
+    /// <summary>Verifies the test proof and releases provider storage through the owning verifier.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the verifying key and the key to the verifier, which the using declaration releases; the key and verifier constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static bool Verify(
         ZkBaseFoldMaskedSpartanProof proof, RawR1csInstance instance, FiatShamirSqueezeDelegate squeeze, BaseMemoryPool pool)
     {
-        var verifyingKey = new SpartanVerifyingKey(BuildProvider(squeeze));
+        var verifyingKey = new SpartanVerifyingKey(BuildProvider(pool, squeeze));
         using var verifier = new MaskedSpartanVerifier(verifyingKey);
         using FiatShamirTranscript transcript = FreshTranscript();
-        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(squeeze);
+        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(pool, squeeze);
 
         return verifier.VerifyZkBaseFold(
             proof, instance, transcript,
@@ -204,23 +207,27 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the consumer disposes it.")]
-    private static PolynomialCommitmentProvider BuildProvider(FiatShamirSqueezeDelegate squeeze)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="squeeze">The transcript squeeze backend.</param>
+    private static PolynomialCommitmentProvider BuildProvider(BaseMemoryPool pool, FiatShamirSqueezeDelegate squeeze)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             CodeSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, ExtraVariableCount, DigestSizeBytes);
+            Random, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes);
     }
 
 
     //The plain (deterministic) BaseFold provider for the public zero-error
     //vector, over the same code parameters so prover and verifier recompute
     //the identical error commitment.
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the consumer disposes it.")]
-    private static PolynomialCommitmentProvider BuildErrorProvider(FiatShamirSqueezeDelegate squeeze)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="squeeze">The transcript squeeze backend.</param>
+    private static PolynomialCommitmentProvider BuildErrorProvider(BaseMemoryPool pool, FiatShamirSqueezeDelegate squeeze)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 

@@ -15,7 +15,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// values derived from the Grain procedure, with the descriptor and draw width determined by the modulus.
 /// </summary>
 [TestClass]
-internal sealed class PoseidonParameterGeneratorTests
+internal sealed class PoseidonParameterGeneratorTests: IDisposable
 {
     /// <summary>The canonical byte width of one scalar, which is also the width the modulus must have.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
@@ -166,6 +166,13 @@ internal sealed class PoseidonParameterGeneratorTests
     [TestCleanup]
     public void DisposeRentals()
     {
+        Dispose();
+    }
+
+
+    /// <summary>Releases the test rentals. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
         for(int i = Disposables.Count - 1; i >= 0; i--)
         {
             Disposables[i].Dispose();
@@ -191,7 +198,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, OddFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, OddFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared),
             "An odd full-round count must be rejected.");
 
         Assert.AreEqual(FullRoundsParameterName, exception.ParamName, "The rejection must name the fullRounds parameter.");
@@ -216,7 +223,7 @@ internal sealed class PoseidonParameterGeneratorTests
         string expectedMessage = $"The modulus must be exactly {ScalarSize} canonical bytes; received {modulusLength}.";
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
-            () => PoseidonParameterGenerator.GenerateOverModulus(ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.GenerateOverModulus(ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared),
             "A modulus that is not one scalar wide must be rejected.");
 
         Assert.AreEqual(ModulusParameterName, exception.ParamName, "The rejection must name the modulus parameter.");
@@ -237,7 +244,7 @@ internal sealed class PoseidonParameterGeneratorTests
         string expectedMessage = $"No scalar field order known for {CurveParameterSet.Pallas}; add a WellKnownCurves entry when wiring this curve.";
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Pallas, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Pallas, backend.Add, backend.Invert, BaseMemoryPool.Shared),
             "A curve without a wired scalar-field order must be rejected.");
 
         Assert.AreEqual(CurveParameterName, exception.ParamName, "The rejection must name the curve parameter.");
@@ -258,7 +265,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
-            () => PoseidonParameterGenerator.GenerateOverModulus(ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.GenerateOverModulus(ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared),
             "A zero modulus must be rejected.");
 
         Assert.AreEqual(ModulusParameterName, exception.ParamName, "The rejection must name the modulus parameter.");
@@ -283,7 +290,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, null!, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, null!, backend.Invert, BaseMemoryPool.Shared),
             "A null addition backend must be rejected.");
 
         Assert.AreEqual(AddParameterName, exception.ParamName, "The rejection must name the add parameter.");
@@ -305,7 +312,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentNullException exception = Assert.ThrowsExactly<ArgumentNullException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, null!),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, null!, BaseMemoryPool.Shared),
             "A null inversion backend must be rejected.");
 
         Assert.AreEqual(InvertParameterName, exception.ParamName, "The rejection must name the invert parameter.");
@@ -329,7 +336,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(SingleLaneStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(SingleLaneStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared),
             "A state width below two must be rejected.");
 
         Assert.AreEqual(StateWidthParameterName, exception.ParamName, "The rejection must name the stateWidth parameter.");
@@ -354,7 +361,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, ZeroFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, ZeroFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared),
             "A full-round count of zero must be rejected.");
 
         Assert.AreEqual(FullRoundsParameterName, exception.ParamName, "The rejection must name the fullRounds parameter.");
@@ -378,7 +385,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ZeroPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert),
+            () => PoseidonParameterGenerator.Generate(ValidStateWidth, EvenFullRounds, ZeroPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared),
             "A partial-round count of zero must be rejected.");
 
         Assert.AreEqual(PartialRoundsParameterName, exception.ParamName, "The rejection must name the partialRounds parameter.");
@@ -397,7 +404,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         PoseidonParameters parameters = PoseidonParameterGenerator.Generate(
-            ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+            ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared);
 
         Assert.AreEqual(CurveParameterSet.Bn254, parameters.Curve, "The accepted generation must carry the requested curve tag.");
         Assert.AreEqual(ValidStateWidth, parameters.StateWidth, "The accepted generation must carry the requested state width.");
@@ -417,7 +424,7 @@ internal sealed class PoseidonParameterGeneratorTests
     {
         PoseidonParameters parameters = PoseidonParameterGenerator.Generate(
             ValidStateWidth, EvenFullRounds, ValidPartialRounds, CurveParameterSet.Bls12Curve381,
-            Bls12Curve381BigIntegerScalarReference.GetAdd(), Bls12Curve381BigIntegerScalarReference.GetInvert());
+            Bls12Curve381BigIntegerScalarReference.GetAdd(), Bls12Curve381BigIntegerScalarReference.GetInvert(), BaseMemoryPool.Shared);
 
         Assert.AreEqual(CurveParameterSet.Bls12Curve381, parameters.Curve, "The accepted generation must carry the requested curve tag.");
         Assert.AreEqual(ValidStateWidth, parameters.StateWidth, "The accepted generation must carry the requested state width.");
@@ -441,7 +448,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         PoseidonParameters parameters = PoseidonParameterGenerator.GenerateOverModulus(
-            ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+            ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared);
 
         Span<byte> expectedLowBytes = stackalloc byte[SmallShapeConstantCount];
         _ = Convert.FromHexString(ExpectedEightBitRoundConstantsHex, expectedLowBytes, out _, out _);
@@ -477,7 +484,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new CountingBn254ScalarBackend();
 
         PoseidonParameters parameters = PoseidonParameterGenerator.GenerateOverModulus(
-            ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+            ValidStateWidth, EvenFullRounds, ValidPartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared);
 
         Span<byte> expected = stackalloc byte[MdsByteCount];
         _ = Convert.FromHexString(ExpectedNarrowMdsHex, expected, out _, out _);
@@ -513,7 +520,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new UnitSumRecordingBackend(RentScalarBuffer());
 
         PoseidonParameters parameters = PoseidonParameterGenerator.GenerateOverModulus(
-            WideStateWidth, EvenFullRounds, WidePartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+            WideStateWidth, EvenFullRounds, WidePartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared);
 
         Span<byte> zero = stackalloc byte[ScalarSize];
         zero.Clear();
@@ -547,7 +554,7 @@ internal sealed class PoseidonParameterGeneratorTests
         var backend = new UnitSumRecordingBackend(operandUnion);
 
         _ = PoseidonParameterGenerator.GenerateOverModulus(
-            WideStateWidth, EvenFullRounds, WidePartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert);
+            WideStateWidth, EvenFullRounds, WidePartialRounds, modulus.Span, CurveParameterSet.Bn254, backend.Add, backend.Invert, BaseMemoryPool.Shared);
 
         Span<byte> zero = stackalloc byte[ScalarSize];
         zero.Clear();

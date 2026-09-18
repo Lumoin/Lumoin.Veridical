@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// canonical Grain instantiation over the BLS scalar field.
 /// </summary>
 [TestClass]
-internal sealed class PoseidonPermutationTests
+internal sealed class PoseidonPermutationTests: IDisposable
 {
     /// <summary>The canonical byte width of one scalar, which sizes every field element consumed by Poseidon.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
@@ -226,6 +226,13 @@ internal sealed class PoseidonPermutationTests
     [TestCleanup]
     public void DisposeRentals()
     {
+        Dispose();
+    }
+
+
+    /// <summary>Releases the test rentals. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
         foreach(IDisposable rental in Disposables)
         {
             rental.Dispose();
@@ -240,7 +247,7 @@ internal sealed class PoseidonPermutationTests
     public void Bn254PoseidonMatchesTheCircomlibVector()
     {
         PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
 
         ReadOnlySpan<byte> inputs = CircomlibInputs;
 
@@ -273,7 +280,7 @@ internal sealed class PoseidonPermutationTests
         Assert.AreEqual(2, secondInput[^1], "The fixture's second input must be 2.");
 
         PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
 
         Span<byte> inputs = stackalloc byte[TwoInputCount * ScalarSize];
         firstInput.CopyTo(inputs[..ScalarSize]);
@@ -293,9 +300,9 @@ internal sealed class PoseidonPermutationTests
     public void Bls12Curve381GenerationIsDeterministicAndPermutes()
     {
         PoseidonParameters first = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bls12Curve381, BlsAdd, BlsInvert);
+            inputCount: TwoInputCount, CurveParameterSet.Bls12Curve381, BlsAdd, BlsInvert, BaseMemoryPool.Shared);
         PoseidonParameters second = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bls12Curve381, BlsAdd, BlsInvert);
+            inputCount: TwoInputCount, CurveParameterSet.Bls12Curve381, BlsAdd, BlsInvert, BaseMemoryPool.Shared);
 
         Assert.IsTrue(
             first.GetRoundConstant(FirstRoundIndex, FirstStateLane).SequenceEqual(second.GetRoundConstant(FirstRoundIndex, FirstStateLane))
@@ -321,7 +328,7 @@ internal sealed class PoseidonPermutationTests
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
         PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, pool);
         MerkleHashDelegate poseidonHash = PoseidonPermutation.GetMerkleHash(parameters, Bn254Add, Bn254Multiply);
 
         Span<byte> entries = stackalloc byte[SetEntryCount * EntrySizeBytes];
@@ -359,7 +366,7 @@ internal sealed class PoseidonPermutationTests
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
         PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, pool);
         MerkleHashDelegate poseidonHash = PoseidonPermutation.GetMerkleHash(parameters, Bn254Add, Bn254Multiply);
 
         //The entry matches the stated node width, so the compression receives a key and value each wider than one scalar.
@@ -378,7 +385,7 @@ internal sealed class PoseidonPermutationTests
     public void ExternallyConstructedParametersDriveTheSamePermutation()
     {
         PoseidonParameters generated = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
 
         int t = generated.StateWidth;
         int rounds = generated.FullRounds + generated.PartialRounds;
@@ -432,7 +439,7 @@ internal sealed class PoseidonPermutationTests
     public void CreateCircomlibCompatibleRejectsAZeroInputCount()
     {
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: ZeroInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert),
+            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: ZeroInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared),
             "An input count below one must be refused.");
 
         Assert.AreEqual(InputCountParameterName, exception.ParamName, "The refusal must name the inputCount parameter.");
@@ -452,7 +459,7 @@ internal sealed class PoseidonPermutationTests
     public void CreateCircomlibCompatibleRejectsAnInputCountBeyondTheCircomlibTable()
     {
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: BeyondCircomlibInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert),
+            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: BeyondCircomlibInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared),
             "An input count beyond the circomlib table must be refused.");
 
         Assert.AreEqual(InputCountParameterName, exception.ParamName, "The refusal must name the inputCount parameter.");
@@ -473,7 +480,7 @@ internal sealed class PoseidonPermutationTests
     public void CreateCircomlibCompatibleRejectsACurveWithoutPoseidonWiring()
     {
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
-            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: TwoInputCount, CurveParameterSet.P256, Bn254Add, Bn254Invert),
+            () => _ = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount: TwoInputCount, CurveParameterSet.P256, Bn254Add, Bn254Invert, BaseMemoryPool.Shared),
             "A curve without Poseidon wiring must be refused.");
 
         Assert.AreEqual(CurveParameterName, exception.ParamName, "The refusal must name the curve parameter.");
@@ -494,7 +501,7 @@ internal sealed class PoseidonPermutationTests
     public void PermuteRejectsAStateOfTheWrongWidth()
     {
         PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
         Memory<byte> state = RentCanonicalScalars(ForeignStateScalars, StateFillSalt);
 
         ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(
@@ -541,7 +548,7 @@ internal sealed class PoseidonPermutationTests
     public void HashRejectsInputsOfTheWrongArity()
     {
         PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
         Memory<byte> inputs = RentCanonicalScalars(ShortInputScalars, InputFillSalt);
         Memory<byte> digest = RentCanonicalScalars(DigestScalars, DigestFillSalt);
 
@@ -565,7 +572,7 @@ internal sealed class PoseidonPermutationTests
     public void HashRejectsADigestOfTheWrongWidth()
     {
         PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(
-            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+            inputCount: TwoInputCount, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
         Memory<byte> inputs = RentCanonicalScalars(TwoInputCount, InputFillSalt);
         Memory<byte> digest = RentCanonicalScalars(ForeignDigestScalars, DigestFillSalt);
 

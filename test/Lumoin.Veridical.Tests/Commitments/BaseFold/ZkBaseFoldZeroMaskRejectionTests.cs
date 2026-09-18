@@ -47,6 +47,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that zero entropy commit throws for the lift provider.</summary>
     [TestMethod]
     public void ZeroEntropyCommitThrowsForTheLiftProvider()
     {
@@ -56,7 +57,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            ZeroScalarRandom, HashToScalar, ExtraVariableCount);
+            ZeroScalarRandom, HashToScalar, ExtraVariableCount, pool);
 
         using MultilinearExtension witness = BuildDeterministicMle(RealVariableCount, salt: 11, pool);
 
@@ -66,6 +67,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
+    /// <summary>Checks that zero entropy open throws for the full zero knowledge provider.</summary>
     [TestMethod]
     public void ZeroEntropyOpenThrowsForTheFullZeroKnowledgeProvider()
     {
@@ -74,8 +76,8 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
         //open's first draw is the CFS sumcheck mask, so this exercises the
         //mask-generation check on the open (prove) path specifically.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider healthyProvider = NewFullZeroKnowledgeProvider(Random);
-        using PolynomialCommitmentProvider zeroEntropyProvider = NewFullZeroKnowledgeProvider(ZeroScalarRandom);
+        using PolynomialCommitmentProvider healthyProvider = NewFullZeroKnowledgeProvider(pool, Random);
+        using PolynomialCommitmentProvider zeroEntropyProvider = NewFullZeroKnowledgeProvider(pool, ZeroScalarRandom);
 
         using MultilinearExtension witness = BuildDeterministicMle(RealVariableCount, salt: 13, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 17, pool);
@@ -114,11 +116,14 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
-    private static PolynomialCommitmentProvider NewFullZeroKnowledgeProvider(ScalarRandomDelegate scalarRandom)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="scalarRandom">The scalar entropy backend.</param>
+    private static PolynomialCommitmentProvider NewFullZeroKnowledgeProvider(BaseMemoryPool pool, ScalarRandomDelegate scalarRandom)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            scalarRandom, HashToScalar, ExtraVariableCount);
+            scalarRandom, HashToScalar, ExtraVariableCount, pool);
     }
 
 

@@ -43,13 +43,14 @@ internal sealed class BaseFoldFoldChainGuardTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that start rejects non homomorphic BaseFold provider.</summary>
     [TestMethod]
     public void StartRejectsNonHomomorphicBaseFoldProvider()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
         using PolynomialCommitmentProvider provider = BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, 8, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, 8, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
 
         Assert.IsFalse(provider.IsAdditivelyHomomorphic, "A BaseFold provider must report itself as non-homomorphic.");
 

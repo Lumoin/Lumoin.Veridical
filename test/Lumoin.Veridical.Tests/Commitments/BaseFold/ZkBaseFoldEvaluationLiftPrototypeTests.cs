@@ -73,6 +73,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that lifted evaluation recovers witness value and verifies.</summary>
     [TestMethod]
     [DataRow(1, 2)]
     [DataRow(2, 3)]
@@ -80,7 +81,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     public void LiftedEvaluationRecoversWitnessValueAndVerifies(int realVariableCount, int extraVariableCount)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         int liftedVariableCount = realVariableCount + extraVariableCount;
         int realEvaluations = 1 << realVariableCount;
@@ -146,6 +147,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
+    /// <summary>Checks that provider internal lift recovers witness value and verifies.</summary>
     [TestMethod]
     //Each (d, t) row is the minimal budget-meeting lift for its witness size at
     //TestQueryCount = 12: the provider enforces the hiding budget on commit and
@@ -159,7 +161,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
         //opens an ordinary d-variable witness at a d-coordinate point, and the
         //(d + t)-variable masked codeword is entirely behind the surface.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewZeroKnowledgeProvider(extraVariableCount);
+        using PolynomialCommitmentProvider provider = NewZeroKnowledgeProvider(pool, extraVariableCount);
 
         Assert.IsTrue(provider.IsHiding, "The ZK BaseFold provider must report itself as hiding.");
 
@@ -210,17 +212,22 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.Create(
-            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar);
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, pool);
     }
 
 
-    private static PolynomialCommitmentProvider NewZeroKnowledgeProvider(int extraVariableCount)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="extraVariableCount">The number of mask variables.</param>
+    private static PolynomialCommitmentProvider NewZeroKnowledgeProvider(BaseMemoryPool pool, int extraVariableCount)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateZeroKnowledge(
-            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount);
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount, pool);
     }
 
 

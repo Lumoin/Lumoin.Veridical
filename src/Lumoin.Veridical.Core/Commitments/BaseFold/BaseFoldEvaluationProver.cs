@@ -316,6 +316,7 @@ public static class BaseFoldEvaluationProver
     }
 
 
+    /// <summary>Produces a BaseFold evaluation proof while retaining its mask basis until all mask consumers are disposed.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Working codewords, trees, salt buffers, and the f/eq tables are disposed in the finally block; the round polynomials, fold roots, final oracle, and query steps the proof keeps are owned by the returned proof.")]
     private static (BaseFoldEvaluationProof Proof, Scalar ClaimedValue) ProveCore(
         FoldableCode code,
@@ -416,6 +417,7 @@ public static class BaseFoldEvaluationProver
 
         var roundPolynomials = new CompressedRoundPolynomial[d];
         bool success = false;
+        MonomialBasis? maskBasis = null;
 
         try
         {
@@ -480,7 +482,6 @@ public static class BaseFoldEvaluationProver
             //mask-commitment code. The lifted table and salts stay alive for the
             //terminal weighted opening after the witness protocol completes.
             MonomialBasisMask? mask = null;
-            MonomialBasis? maskBasis = null;
             Scalar? sigma = null;
             Scalar? fillerSum = null;
             Scalar? rho = null;
@@ -499,7 +500,7 @@ public static class BaseFoldEvaluationProver
                         nameof(maskCommitmentCode));
                 }
 
-                maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0);
+                maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0, pool);
                 mask = MonomialBasisMask.Sample(maskBasis, maskRandom!, curve, pool);
                 disposables.Add(mask);
 
@@ -710,6 +711,8 @@ public static class BaseFoldEvaluationProver
             {
                 disposables[i].Dispose();
             }
+
+            maskBasis?.Dispose();
         }
     }
 

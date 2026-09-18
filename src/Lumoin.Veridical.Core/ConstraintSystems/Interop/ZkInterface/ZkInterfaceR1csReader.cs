@@ -58,6 +58,7 @@ public static class ZkInterfaceR1csReader
     }
 
 
+    /// <summary>Decodes the complete stream with the caller's pool and assembles the owned R1CS result.</summary>
     private static RawR1csInstance ReadInternal(
         ZkInterfaceMessageDecoderDelegate decoder,
         PipeReader pipe,
@@ -83,7 +84,8 @@ public static class ZkInterfaceR1csReader
         try
         {
             var builder = new ZkInterfaceR1csInstanceBuilder(curve, pool);
-            decoder(buffer, builder, cancellationToken);
+            decoder(buffer, builder, pool, cancellationToken);
+
             return builder.Build();
         }
         finally

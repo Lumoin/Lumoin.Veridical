@@ -79,7 +79,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
         const int RealVariableCount = 1;
         const int ExtraVariableCount = 6;
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount, WideDigestSizeBytes);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, ExtraVariableCount, WideDigestSizeBytes);
 
         using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 27, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 29, pool);
@@ -120,6 +120,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     //Each (d, t) row is the minimal budget-meeting lift for its witness size at
     //TestQueryCount = 12 (GetMinimumExtraVariableCount; the provider refuses
     //under-budget configurations since the hiding-budget enforcement landed).
+    /// <summary>Checks that full zero knowledge opening recovers witness value and verifies.</summary>
     [TestMethod]
     [DataRow(1, 6)]
     [DataRow(2, 5)]
@@ -128,7 +129,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     public void FullZeroKnowledgeOpeningRecoversWitnessValueAndVerifies(int realVariableCount, int extraVariableCount)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider(extraVariableCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, extraVariableCount);
 
         Assert.IsTrue(provider.IsHiding, "The full ZK BaseFold provider must report itself as hiding.");
 
@@ -205,6 +206,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
+    /// <summary>Checks that tampered mask sum is rejected.</summary>
     [TestMethod]
     public void TamperedMaskSumIsRejected()
     {
@@ -212,7 +214,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
         //t = 4 is the minimal budget-meeting lift for d = 3 at TestQueryCount = 12.
         const int RealVariableCount = 3;
         const int ExtraVariableCount = 4;
-        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, ExtraVariableCount);
 
         using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 31, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 33, pool);
@@ -257,6 +259,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
+    /// <summary>Checks that tampered mask root is rejected.</summary>
     [TestMethod]
     public void TamperedMaskRootIsRejected()
     {
@@ -264,7 +267,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
         //t = 4 is the minimal budget-meeting lift for d = 3 at TestQueryCount = 12.
         const int RealVariableCount = 3;
         const int ExtraVariableCount = 4;
-        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, ExtraVariableCount);
 
         using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 61, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 63, pool);
@@ -307,6 +310,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
+    /// <summary>Checks that tampered filler sum is rejected.</summary>
     [TestMethod]
     public void TamperedFillerSumIsRejected()
     {
@@ -314,7 +318,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
         //t = 4 is the minimal budget-meeting lift for d = 3 at TestQueryCount = 12.
         const int RealVariableCount = 3;
         const int ExtraVariableCount = 4;
-        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, ExtraVariableCount);
 
         using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 71, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 73, pool);
@@ -358,6 +362,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
+    /// <summary>Checks that tampered nested weighted opening is rejected.</summary>
     [TestMethod]
     public void TamperedNestedWeightedOpeningIsRejected()
     {
@@ -365,7 +370,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
         //t = 4 is the minimal budget-meeting lift for d = 3 at TestQueryCount = 12.
         const int RealVariableCount = 3;
         const int ExtraVariableCount = 4;
-        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, ExtraVariableCount);
 
         using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 81, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 83, pool);
@@ -406,6 +411,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
+    /// <summary>Checks that tampered round polynomial is rejected.</summary>
     [TestMethod]
     public void TamperedRoundPolynomialIsRejected()
     {
@@ -413,7 +419,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
         //t = 4 is the minimal budget-meeting lift for d = 3 at TestQueryCount = 12.
         const int RealVariableCount = 3;
         const int ExtraVariableCount = 4;
-        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, ExtraVariableCount);
 
         using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 41, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 43, pool);
@@ -452,6 +458,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
+    /// <summary>Checks that two openings of the same statement differ.</summary>
     [TestMethod]
     public void TwoOpeningsOfTheSameStatementDiffer()
     {
@@ -463,7 +470,7 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
         //t = 4 is the minimal budget-meeting lift for d = 3 at TestQueryCount = 12.
         const int RealVariableCount = 3;
         const int ExtraVariableCount = 4;
-        using PolynomialCommitmentProvider provider = NewProvider(ExtraVariableCount);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, ExtraVariableCount);
 
         using MultilinearExtension witness = BuildRandomMle(RealVariableCount, salt: 51, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 53, pool);
@@ -510,9 +517,12 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider(int extraVariableCount)
+    /// <summary>Builds a provider at the default digest width using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="extraVariableCount">The number of mask variables.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, int extraVariableCount)
     {
-        return NewProvider(extraVariableCount, DigestSizeBytes);
+        return NewProvider(pool, extraVariableCount, DigestSizeBytes);
     }
 
 
@@ -520,10 +530,13 @@ internal sealed class ZkBaseFoldFullZeroKnowledgeTests
     /// The full zero-knowledge provider at the test figures and an explicit
     /// digest size.
     /// </summary>
-    private static PolynomialCommitmentProvider NewProvider(int extraVariableCount, int digestSizeBytes)
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="extraVariableCount">The number of mask variables.</param>
+    /// <param name="digestSizeBytes">The Merkle digest width in bytes.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, int extraVariableCount, int digestSizeBytes)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
-            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount,
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount, pool,
             digestSizeBytes: digestSizeBytes);
     }
 

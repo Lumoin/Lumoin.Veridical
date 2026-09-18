@@ -65,6 +65,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     private static byte[] ProviderSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.fs-simulator.code.v1");
 
 
+    /// <summary>Checks that simulated opening verifies under the programmed oracle.</summary>
     [TestMethod]
     public void SimulatedOpeningVerifiesUnderTheProgrammedOracle()
     {
@@ -85,7 +86,7 @@ internal sealed class ZkBaseFoldSimulatorTests
             {
                 using(opening)
                 {
-                    using PolynomialCommitmentProvider replayProvider = NewProvider(oracle.CreateReplaySqueeze());
+                    using PolynomialCommitmentProvider replayProvider = NewProvider(pool, oracle.CreateReplaySqueeze());
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     Assert.IsTrue(
                         replayProvider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
@@ -104,6 +105,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>Checks that simulated opening is rejected by the real oracle.</summary>
     [TestMethod]
     public void SimulatedOpeningIsRejectedByTheRealOracle()
     {
@@ -125,7 +127,7 @@ internal sealed class ZkBaseFoldSimulatorTests
             {
                 using(opening)
                 {
-                    using PolynomialCommitmentProvider realProvider = NewProvider(Squeeze);
+                    using PolynomialCommitmentProvider realProvider = NewProvider(pool, Squeeze);
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     Assert.IsFalse(
                         realProvider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
@@ -140,6 +142,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>Checks that real and simulated openings compare in two sample tests.</summary>
     [TestMethod]
     public void RealAndSimulatedOpeningsCompareInTwoSampleTests()
     {
@@ -164,7 +167,7 @@ internal sealed class ZkBaseFoldSimulatorTests
                 //A real proof of a real witness.
                 using(MultilinearExtension witness = BuildRandomMle(VariableCount, salt: 1000 + i, pool))
                 {
-                    using PolynomialCommitmentProvider provider = NewProvider(Squeeze);
+                    using PolynomialCommitmentProvider provider = NewProvider(pool, Squeeze);
                     (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(witness, pool);
                     using(commitment)
                     {
@@ -284,11 +287,14 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider(FiatShamirSqueezeDelegate squeeze)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="squeeze">The transcript squeeze backend.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, FiatShamirSqueezeDelegate squeeze)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             ProviderSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, ExtraVariableCount, DigestSizeBytes);
+            Random, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes);
     }
 
 

@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Diagnostics.Metrics;
 using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
@@ -59,6 +60,50 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Every zero-knowledge provider factory accepts an empty seed without renting storage.</summary>
+    [TestMethod]
+    public void EmptySeedsRentNothing()
+    {
+        using var meter = new Meter(nameof(EmptySeedsRentNothing));
+        using var listener = new MeterListener();
+        long rents = 0;
+        listener.InstrumentPublished = (instrument, observer) =>
+        {
+            if(ReferenceEquals(instrument.Meter, meter))
+            {
+                observer.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) =>
+        {
+            if(instrument.Name == BaseMemoryPoolMetrics.BaseMemoryPoolRentOperationsTotal)
+            {
+                rents += measurement;
+            }
+        });
+        listener.Start();
+        using BaseMemoryPool pool = new(meter);
+
+        //One extra variable is the smallest accepted lift at factory creation.
+        const int ExtraMaskVariableCount = 1;
+        using(PolynomialCommitmentProvider salted = ZkBaseFoldPolynomialCommitmentScheme.Create(
+            ReadOnlySpan<byte>.Empty, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce,
+            Add, Subtract, Multiply, Invert, Random, HashToScalar, pool))
+        using(PolynomialCommitmentProvider lifted = ZkBaseFoldPolynomialCommitmentScheme.CreateZeroKnowledge(
+            ReadOnlySpan<byte>.Empty, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce,
+            Add, Subtract, Multiply, Invert, Random, HashToScalar, ExtraMaskVariableCount, pool))
+        using(PolynomialCommitmentProvider full = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
+            ReadOnlySpan<byte>.Empty, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce,
+            Add, Subtract, Multiply, Invert, Random, HashToScalar, ExtraMaskVariableCount, pool))
+        {
+            Assert.AreEqual(0L, rents);
+        }
+
+        Assert.AreEqual(0L, rents);
+    }
+
+
+    /// <summary>Checks that committing, opening and verifying succeeds for the selected variable count.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -67,7 +112,7 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     public void CommitOpenVerifyRoundTrips(int variableCount)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         Assert.IsTrue(provider.IsHiding, "The ZK BaseFold provider must report itself as hiding.");
 
@@ -119,7 +164,7 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     public void CommitOpenVerifyRoundTripsAtAWideDigest()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider(WideDigestSizeBytes);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, WideDigestSizeBytes);
 
         using MultilinearExtension mle = BuildRandomMle(WideDigestVariableCount, 1, pool);
         Scalar[] point = BuildPoint(WideDigestVariableCount, 5, pool);
@@ -157,12 +202,13 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that committing the same polynomial twice yields different roots.</summary>
     [TestMethod]
     public void CommittingTheSamePolynomialTwiceYieldsDifferentRoots()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 9, pool);
 
@@ -183,12 +229,13 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that tampered opening is rejected.</summary>
     [TestMethod]
     public void TamperedOpeningIsRejected()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 2, pool);
         Scalar[] point = BuildPoint(VariableCount, 6, pool);
@@ -223,12 +270,13 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that tampered leaf salt is rejected.</summary>
     [TestMethod]
     public void TamperedLeafSaltIsRejected()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 10, pool);
         Scalar[] point = BuildPoint(VariableCount, 11, pool);
@@ -265,12 +313,13 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that tampered commitment is rejected.</summary>
     [TestMethod]
     public void TamperedCommitmentIsRejected()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 3, pool);
         Scalar[] point = BuildPoint(VariableCount, 7, pool);
@@ -304,12 +353,13 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that wrong claimed value is rejected.</summary>
     [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 4, pool);
         Scalar[] point = BuildPoint(VariableCount, 8, pool);
@@ -390,22 +440,26 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
                 Multiply,
                 Invert,
                 Random,
-                HashToScalar,
-                digestSizeBytes: TooWideDigestSizeBytes),
+                HashToScalar, BaseMemoryPool.Shared,
+                digestSizeBytes: TooWideDigestSizeBytes).Dispose(),
             "A digest wider than the verifier's reserved stack space must be refused where the provider is wired.");
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider()
+    /// <summary>Builds a provider at the default digest width using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool)
     {
-        return NewProvider(DigestSizeBytes);
+        return NewProvider(pool, DigestSizeBytes);
     }
 
 
     /// <summary>
     /// The hiding provider at the test figures and an explicit digest size.
     /// </summary>
-    private static PolynomialCommitmentProvider NewProvider(int digestSizeBytes)
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="digestSizeBytes">The Merkle digest width in bytes.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, int digestSizeBytes)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.Create(
             Seed,
@@ -420,7 +474,7 @@ internal sealed class ZkBaseFoldPolynomialCommitmentSchemeTests
             Multiply,
             Invert,
             Random,
-            HashToScalar,
+            HashToScalar, pool,
             digestSizeBytes: digestSizeBytes);
     }
 

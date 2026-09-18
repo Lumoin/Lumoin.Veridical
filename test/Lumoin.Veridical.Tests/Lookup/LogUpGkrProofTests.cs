@@ -119,11 +119,12 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Checks that single column lookup round trips through BaseFold.</summary>
     [TestMethod]
     public void SingleColumnLookupRoundTripsThroughBaseFold()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider pcs = BuildBaseFoldProvider();
+        using PolynomialCommitmentProvider pcs = BuildBaseFoldProvider(pool);
         using IMemoryOwner<byte> material = BuildLookupMaterial(TestVariableCount, witnessColumnCount: 1, pool);
 
         using LogUpGkrProof proof = Prove(material, TestVariableCount, witnessColumnCount: 1, pcs, pool);
@@ -417,14 +418,15 @@ internal sealed class LogUpGkrProofTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The BaseFold provider holds no disposable key material; callers dispose the provider itself.")]
-    private static PolynomialCommitmentProvider BuildBaseFoldProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider BuildBaseFoldProvider(BaseMemoryPool pool)
     {
         ReadOnlySpan<byte> codeSeed = "veridical.logup.gkr.test.basefold.code.v1"u8;
 
         return BaseFoldPolynomialCommitmentScheme.Create(
             codeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce,
-            Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 

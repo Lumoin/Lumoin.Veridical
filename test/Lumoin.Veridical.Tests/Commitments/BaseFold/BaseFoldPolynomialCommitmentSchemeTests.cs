@@ -9,6 +9,7 @@ using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
+using System.Diagnostics.Metrics;
 using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
@@ -57,6 +58,42 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>An empty retained seed needs no rental during provider creation or disposal.</summary>
+    [TestMethod]
+    public void EmptySeedRentsNothing()
+    {
+        using var meter = new Meter(nameof(EmptySeedRentsNothing));
+        using var listener = new MeterListener();
+        long rents = 0;
+        listener.InstrumentPublished = (instrument, observer) =>
+        {
+            if(ReferenceEquals(instrument.Meter, meter))
+            {
+                observer.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) =>
+        {
+            if(instrument.Name == BaseMemoryPoolMetrics.BaseMemoryPoolRentOperationsTotal)
+            {
+                rents += measurement;
+            }
+        });
+        listener.Start();
+        using BaseMemoryPool pool = new(meter);
+
+        using(PolynomialCommitmentProvider provider = BaseFoldPolynomialCommitmentScheme.Create(
+            ReadOnlySpan<byte>.Empty, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce,
+            Add, Subtract, Multiply, Invert, HashToScalar, pool))
+        {
+            Assert.AreEqual(0L, rents);
+        }
+
+        Assert.AreEqual(0L, rents);
+    }
+
+
+    /// <summary>Checks that committing, opening and verifying succeeds for the selected variable count.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -65,7 +102,7 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     public void CommitOpenVerifyRoundTrips(int variableCount)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(variableCount, 1, pool);
         Scalar[] point = BuildPoint(variableCount, 5, pool);
@@ -104,12 +141,13 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that tampered opening is rejected.</summary>
     [TestMethod]
     public void TamperedOpeningIsRejected()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 2, pool);
         Scalar[] point = BuildPoint(VariableCount, 6, pool);
@@ -144,12 +182,13 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that tampered commitment is rejected.</summary>
     [TestMethod]
     public void TamperedCommitmentIsRejected()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 3, pool);
         Scalar[] point = BuildPoint(VariableCount, 7, pool);
@@ -183,12 +222,13 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Checks that wrong claimed value is rejected.</summary>
     [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         const int VariableCount = 3;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(VariableCount, 4, pool);
         Scalar[] point = BuildPoint(VariableCount, 8, pool);
@@ -235,7 +275,7 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     public void CommitOpenVerifyRoundTripsAtAWideDigest()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider(WideDigestSizeBytes);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, WideDigestSizeBytes);
 
         using MultilinearExtension mle = BuildRandomMle(WideDigestVariableCount, 1, pool);
         Scalar[] point = BuildPoint(WideDigestVariableCount, 5, pool);
@@ -316,7 +356,7 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     public void CommitmentAndOpeningBytesAreUnchangedAtTheWiredDigestSize()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         using MultilinearExtension mle = BuildRandomMle(PinnedVariableCount, PinnedMleSalt, pool);
         Scalar[] point = BuildPoint(PinnedVariableCount, PinnedPointSalt, pool);
@@ -380,23 +420,28 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
     [TestMethod]
     public void CreateRefusesADigestWiderThanTheVerifierReservesFor()
     {
-        using PolynomialCommitmentProvider atCap = NewProvider(WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
+        using PolynomialCommitmentProvider atCap = NewProvider(BaseMemoryPool.Shared, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
         Assert.IsNotNull(atCap, "The widest digest the verifier reserves for must stay a legal configuration.");
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => NewProvider(TooWideDigestSizeBytes),
+            () => NewProvider(BaseMemoryPool.Shared, TooWideDigestSizeBytes),
             "A digest wider than the verifier's reserved stack space must be refused where the provider is wired.");
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider()
+    /// <summary>Builds a provider at the default digest width using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool)
     {
-        return NewProvider(DigestSizeBytes);
+        return NewProvider(pool, DigestSizeBytes);
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider(int digestSizeBytes)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="digestSizeBytes">The Merkle digest width in bytes.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, int digestSizeBytes)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
             Seed,
@@ -410,7 +455,7 @@ internal sealed class BaseFoldPolynomialCommitmentSchemeTests
             Subtract,
             Multiply,
             Invert,
-            HashToScalar,
+            HashToScalar, pool,
             digestSizeBytes);
     }
 

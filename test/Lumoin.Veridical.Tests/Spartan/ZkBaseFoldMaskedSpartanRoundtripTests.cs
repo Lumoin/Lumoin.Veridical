@@ -150,19 +150,20 @@ internal sealed class ZkBaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; the returned proof transfers to the caller.")]
+    /// <summary>Produces the test proof and releases provider storage through the owning prover.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the proving key and the key to the prover, which the using declaration releases; the key and prover constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static ZkBaseFoldMaskedSpartanProof Prove(BaseMemoryPool pool, ScalarArithmeticBackend? batch = null, MleFoldDelegate? mleFold = null)
     {
         using RawR1csInstance instance = BuildInstance();
         using RawR1csWitness witness = BuildWitness();
 
-        var provingKey = new SpartanProvingKey(BuildProvider(batch));
+        var provingKey = new SpartanProvingKey(BuildProvider(pool, batch));
         using var prover = new MaskedSpartanProver(provingKey);
         using FiatShamirTranscript transcript = FreshTranscript();
 
         ScalarRandomDelegate random = new DeterministicScalarRandom(SpartanRandomSeed).AsDelegate();
 
-        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(batch);
+        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(pool, batch);
 
         return prover.ProveZkBaseFold(
             instance, witness, transcript,
@@ -171,14 +172,15 @@ internal sealed class ZkBaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations.")]
+    /// <summary>Verifies the test proof and releases provider storage through the owning verifier.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the verifying key and the key to the verifier, which the using declaration releases; the key and verifier constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static bool Verify(ZkBaseFoldMaskedSpartanProof proof, BaseMemoryPool pool)
     {
-        var verifyingKey = new SpartanVerifyingKey(BuildProvider());
+        var verifyingKey = new SpartanVerifyingKey(BuildProvider(pool));
         using var verifier = new MaskedSpartanVerifier(verifyingKey);
         using RawR1csInstance instance = BuildInstance();
         using FiatShamirTranscript transcript = FreshTranscript();
-        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider();
+        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(pool);
 
         return verifier.VerifyZkBaseFold(
             proof, instance, transcript,
@@ -186,25 +188,29 @@ internal sealed class ZkBaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The BaseFold provider holds no disposable key; the Spartan key that consumes it disposes it.")]
-    private static PolynomialCommitmentProvider BuildProvider(ScalarArithmeticBackend? batch = null)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="batch">The optional batched scalar backend.</param>
+    private static PolynomialCommitmentProvider BuildProvider(BaseMemoryPool pool, ScalarArithmeticBackend? batch = null)
     {
         ScalarRandomDelegate providerRandom = new DeterministicScalarRandom(ProviderRandomSeed).AsDelegate();
 
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            providerRandom, HashToScalar, ExtraVariableCount, DigestSizeBytes, batch);
+            providerRandom, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes, batch);
     }
 
 
     //The plain (deterministic) BaseFold provider for the public zero-error vector,
     //over the same code parameters as the full-ZK provider so prover and verifier
     //recompute the identical error commitment.
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the caller disposes it via a using declaration.")]
-    private static PolynomialCommitmentProvider BuildErrorProvider(ScalarArithmeticBackend? batch = null)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="batch">The optional batched scalar backend.</param>
+    private static PolynomialCommitmentProvider BuildErrorProvider(BaseMemoryPool pool, ScalarArithmeticBackend? batch = null)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes, batch);
+            CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes, batch);
     }
 
 

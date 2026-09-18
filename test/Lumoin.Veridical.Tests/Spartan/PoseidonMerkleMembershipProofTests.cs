@@ -67,11 +67,12 @@ internal sealed class PoseidonMerkleMembershipProofTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that Poseidon hash proves in zero knowledge.</summary>
     [TestMethod]
     [TestCategory("Slow")]
     public void PoseidonHashProvesInZeroKnowledge()
     {
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, Curve, PoseidonAdd, PoseidonInvert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, Curve, PoseidonAdd, PoseidonInvert, BaseMemoryPool.Shared);
         BigInteger[] inputs = [7, 11];
         BigInteger digest = PlaintextHash(parameters, inputs);
 
@@ -236,9 +237,10 @@ internal sealed class PoseidonMerkleMembershipProofTests
     }
 
 
+    /// <summary>Builds the Poseidon Merkle membership fixture for the selected entry.</summary>
     private static MerkleFixture BuildMerkleFixture(int entryIndex)
     {
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, Curve, PoseidonAdd, PoseidonInvert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, Curve, PoseidonAdd, PoseidonInvert, BaseMemoryPool.Shared);
         MerkleHashDelegate poseidonHash = PoseidonPermutation.GetMerkleHash(parameters, PoseidonAdd, PoseidonMultiply);
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 

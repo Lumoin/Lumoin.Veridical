@@ -84,17 +84,18 @@ internal sealed class ZkBaseFoldHidingValidationTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that commitment recoverability is certain for plain and not detected under full zero knowledge.</summary>
     [TestMethod]
     public void CommitmentRecoverabilityIsCertainForPlainAndNotDetectedUnderFullZeroKnowledge()
     {
-        using PolynomialCommitmentProvider plain = NewPlainProvider();
+        using PolynomialCommitmentProvider plain = NewPlainProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageExperimentResult plainResult =
             BaseFoldCommitmentRecoverabilityExperiment.Run(NewHarness(plain), VariableCount, SampleCount);
         Assert.AreEqual(
             BaseFoldLeakageSignal.StructurallyCertain, plainResult.Signal,
             "Plain BaseFold's commitment is a deterministic witness fingerprint — recovery is certain.");
 
-        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();
+        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageExperimentResult zkResult =
             BaseFoldCommitmentRecoverabilityExperiment.Run(NewHarness(fullZk), VariableCount, SampleCount);
         Assert.AreEqual(
@@ -103,6 +104,7 @@ internal sealed class ZkBaseFoldHidingValidationTests
     }
 
 
+    /// <summary>Checks that statistical experiments run to completion under full zero knowledge.</summary>
     [TestMethod]
     public void StatisticalExperimentsRunToCompletionUnderFullZeroKnowledge()
     {
@@ -111,7 +113,7 @@ internal sealed class ZkBaseFoldHidingValidationTests
         //borderline finding either way is a valid outcome, not a failure (the
         //statistical mask makes NotDetected the expected outcome, observed at
         //permutation p ≈ 0.24). The findings are logged for the record.
-        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();
+        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider(BaseMemoryPool.Shared);
 
         BaseFoldLeakageExperimentResult byteStats =
             BaseFoldByteStatisticsExperiment.Run(NewHarness(fullZk), VariableCount, SampleCount);
@@ -144,6 +146,7 @@ internal sealed class ZkBaseFoldHidingValidationTests
     private const string AtScaleOptInVariable = "VERIDICAL_AT_SCALE_LEAKAGE";
 
 
+    /// <summary>Checks that statistical experiments at scale report findings.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void StatisticalExperimentsAtScaleReportFindings()
@@ -160,7 +163,7 @@ internal sealed class ZkBaseFoldHidingValidationTests
         //reproducible source instead of a one-off observation.
         const int ScaleSampleCount = 200;
 
-        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();
+        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider(BaseMemoryPool.Shared);
 
         BaseFoldLeakageExperimentResult byteStats =
             BaseFoldByteStatisticsExperiment.Run(NewHarness(fullZk), VariableCount, ScaleSampleCount);
@@ -179,13 +182,14 @@ internal sealed class ZkBaseFoldHidingValidationTests
     }
 
 
+    /// <summary>Checks that committing the same witness twice under full zero knowledge yields different proofs.</summary>
     [TestMethod]
     public void CommittingTheSameWitnessTwiceUnderFullZeroKnowledgeYieldsDifferentProofs()
     {
         //The strong, guaranteed hiding property at the proof level: fresh salts and
         //a fresh sumcheck mask each open, so an opening is not a deterministic
         //function of the witness.
-        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider();
+        using PolynomialCommitmentProvider fullZk = NewFullZeroKnowledgeProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageHarness harness = NewHarness(fullZk);
 
         using MultilinearExtension witness = harness.SamplePolynomial(VariableCount);
@@ -238,21 +242,25 @@ internal sealed class ZkBaseFoldHidingValidationTests
     }
 
 
-    private static PolynomialCommitmentProvider NewPlainProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewPlainProvider(BaseMemoryPool pool)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 
-    private static PolynomialCommitmentProvider NewFullZeroKnowledgeProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewFullZeroKnowledgeProvider(BaseMemoryPool pool)
     {
         //Entropy-backed salts and mask (not the deterministic sampler) so the
         //commitment and opening are genuinely hiding.
         ScalarRandomDelegate entropy = Bls12Curve381BigIntegerScalarReference.GetRandom();
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            entropy, HashToScalar, ExtraVariableCount, DigestSizeBytes);
+            entropy, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes);
     }
 
 

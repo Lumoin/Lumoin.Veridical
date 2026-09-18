@@ -22,8 +22,10 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 /// </remarks>
 /// <param name="source">The complete ZkInterface stream (a sequence of size-prefixed FlatBuffers messages).</param>
 /// <param name="sink">The consumer the decoded fields are pushed into.</param>
+/// <param name="pool">The caller's pool for temporary decoding buffers.</param>
 /// <param name="cancellationToken">Cancellation, honoured between messages.</param>
 public delegate void ZkInterfaceMessageDecoderDelegate(
     ReadOnlySequence<byte> source,
     IZkInterfaceMessageSink sink,
+    BaseMemoryPool pool,
     CancellationToken cancellationToken);

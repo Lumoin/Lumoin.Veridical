@@ -49,6 +49,7 @@ public static class ZkInterfaceWitnessReader
     }
 
 
+    /// <summary>Decodes the complete stream with the caller's pool and assembles the owned R1CS result.</summary>
     private static RawR1csWitness ReadInternal(
         ZkInterfaceMessageDecoderDelegate decoder,
         PipeReader pipe,
@@ -78,7 +79,8 @@ public static class ZkInterfaceWitnessReader
             //can legitimately declare, keeping the allocation bounded by input.
             int maxColumnCount = (int)Math.Min(buffer.Length, int.MaxValue);
             var builder = new ZkInterfaceWitnessBuilder(curve, pool, maxColumnCount);
-            decoder(buffer, builder, cancellationToken);
+            decoder(buffer, builder, pool, cancellationToken);
+
             return builder.Build();
         }
         finally

@@ -120,7 +120,7 @@ public static class ZkBaseFoldOpeningSimulator
         var oracle = new ProgrammableFiatShamirOracle();
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             providerSeed, curve, queryCount, merkleHash, hash, oracle.CreateRecordingSqueeze(squeeze), reduce,
-            add, subtract, multiply, invert, scalarRandom, hashToScalar, extraVariableCount, digestSizeBytes);
+            add, subtract, multiply, invert, scalarRandom, hashToScalar, extraVariableCount, pool, digestSizeBytes);
 
         //The fake witness f*: uniformly random, no relation to the statement.
         int evaluationCount = 1 << variableCount;

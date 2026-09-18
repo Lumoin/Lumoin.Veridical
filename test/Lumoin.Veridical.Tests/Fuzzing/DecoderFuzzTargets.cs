@@ -155,11 +155,12 @@ internal static class DecoderFuzzTargets
     }
 
 
+    /// <summary>Exercises the built-in decoder with arbitrary fuzz input and an explicit staging pool.</summary>
     private static void InvokeZkInterfaceDecoder(ReadOnlySpan<byte> input)
     {
         ZkInterfaceCursorDecoder.Decoder(
             new ReadOnlySequence<byte>(input.ToArray()),
-            new NoOpZkInterfaceMessageSink(),
+            new NoOpZkInterfaceMessageSink(), BaseMemoryPool.Shared,
             CancellationToken.None);
     }
 

@@ -107,6 +107,7 @@ internal sealed class ZkBaseFoldHidingBudgetTests
     }
 
 
+    /// <summary>Checks that under budget commit through the lift provider throws actionably.</summary>
     [TestMethod]
     public void UnderBudgetCommitThroughTheLiftProviderThrowsActionably()
     {
@@ -118,7 +119,7 @@ internal sealed class ZkBaseFoldHidingBudgetTests
 
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, UnderBudgetLift, DigestSizeBytes);
+            Random, HashToScalar, UnderBudgetLift, pool, DigestSizeBytes);
 
         using MultilinearExtension witness = BuildRandomMle(VariableCount, salt: 17, pool);
 
@@ -133,6 +134,7 @@ internal sealed class ZkBaseFoldHidingBudgetTests
     }
 
 
+    /// <summary>Checks that under budget commit through the full zero knowledge provider throws.</summary>
     [TestMethod]
     public void UnderBudgetCommitThroughTheFullZeroKnowledgeProviderThrows()
     {
@@ -143,7 +145,7 @@ internal sealed class ZkBaseFoldHidingBudgetTests
 
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, UnderBudgetLift, DigestSizeBytes);
+            Random, HashToScalar, UnderBudgetLift, pool, DigestSizeBytes);
 
         using MultilinearExtension witness = BuildRandomMle(VariableCount, salt: 19, pool);
 

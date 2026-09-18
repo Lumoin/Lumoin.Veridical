@@ -41,7 +41,7 @@ public sealed class MonomialBasisMask: SensitiveMemory
     private const int ScalarSize = Scalar.SizeBytes;
 
 
-    /// <summary>The public monomial basis the coefficients live on.</summary>
+    /// <summary>The borrowed public monomial basis; it must remain alive until this mask is disposed.</summary>
     public MonomialBasis Basis { get; }
 
     /// <summary>The masked sumcheck's variable count <c>d</c>.</summary>
@@ -68,7 +68,7 @@ public sealed class MonomialBasisMask: SensitiveMemory
     /// <c>ρ</c> is squeezed — the commitment to these coefficients must enter
     /// the transcript first or the blend's soundness argument fails.
     /// </summary>
-    /// <param name="basis">The public monomial basis.</param>
+    /// <param name="basis">The borrowed public monomial basis; the caller must keep it alive until the returned mask is disposed.</param>
     /// <param name="random">The entropy-sourced scalar sampler.</param>
     /// <param name="curve">The curve identifying the scalar field.</param>
     /// <param name="pool">The pool to rent the coefficient buffer from.</param>

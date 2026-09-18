@@ -37,12 +37,15 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     public CurveParameterSet Curve { get; }
 
     /// <summary>Commits to a multilinear polynomial.</summary>
+    /// <remarks>Do not invoke this delegate after provider disposal or concurrently with disposal.</remarks>
     public PolynomialCommitDelegate Commit { get; }
 
     /// <summary>Produces an evaluation argument for a committed polynomial at a point.</summary>
+    /// <remarks>Do not invoke this delegate after provider disposal or concurrently with disposal.</remarks>
     public PolynomialOpenDelegate Open { get; }
 
     /// <summary>Verifies an evaluation argument.</summary>
+    /// <remarks>Do not invoke this delegate after provider disposal or concurrently with disposal.</remarks>
     public PolynomialVerifyEvaluationDelegate VerifyEvaluation { get; }
 
     /// <summary>

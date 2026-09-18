@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 
 - `PoseidonParameterGenerator.Generate` no longer takes `fieldSizeBits` or `modulus`; the scalar-field order comes from the curve, and a curve without a wired order is rejected.
+- `PoseidonParameterGenerator.Generate` and `WellKnownPoseidonParameters.CreateCircomlibCompatible` require a `BaseMemoryPool`; callers supply the pool for temporary generation buffers.
+- The BaseFold and zero-knowledge BaseFold provider factories require a `BaseMemoryPool`; callers keep the pool alive until the provider is disposed.
+- `MonomialBasis` factories require a `BaseMemoryPool`, and `MonomialBasis` implements `IDisposable`; callers dispose each basis after its borrowed exponent views and masks are finished.
+- `ZkInterfaceMessageDecoderDelegate` receives a `BaseMemoryPool`; custom decoders accept the reader caller's pool and use it for temporary buffers.
 
 ## [0.0.6] - 2026-08-12
 

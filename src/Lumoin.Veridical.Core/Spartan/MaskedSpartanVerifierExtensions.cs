@@ -477,6 +477,7 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>Verifies a masked Spartan proof while keeping each derived basis alive through its weight-vector use.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Intermediate disposables flow through using declarations.")]
     private static bool VerifyCore(
         SpartanSumcheckProofPart sumcheckPart,
@@ -696,8 +697,8 @@ public static class MaskedSpartanVerifierExtensions
                 using Scalar outerWeightedClaim = Scalar.FromCanonical(derivedOuterClaim, curve, pool);
 
                 StatisticalMaskParameters outerShape = pcs.ResolveStatisticalMaskShape!(rowVariableCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
-                MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    rowVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
+                using MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    rowVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
                 Scalar[] outerKernelPoint = MaskedSpartanAlgorithm.BuildReversedPoint(rxArray);
                 using MultilinearExtension outerWeights = MaskedSpartanAlgorithm.BuildMaskWeights(
                     outerBasis, outerShape, outerKernelPoint, scalarMultiply, curve, pool);
@@ -753,8 +754,8 @@ public static class MaskedSpartanVerifierExtensions
                 using Scalar innerWeightedClaim = Scalar.FromCanonical(derivedInnerClaim, curve, pool);
 
                 StatisticalMaskParameters innerShape = pcs.ResolveStatisticalMaskShape!(columnVariableCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
-                MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    columnVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
+                using MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    columnVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
                 Scalar[] innerKernelPoint = MaskedSpartanAlgorithm.BuildReversedPoint(ryArray);
                 using MultilinearExtension innerWeights = MaskedSpartanAlgorithm.BuildMaskWeights(
                     innerBasis, innerShape, innerKernelPoint, scalarMultiply, curve, pool);

@@ -527,7 +527,7 @@ public static class BaseFoldEvaluationVerifier
             //The nested weighted opening binds ⟨C*, w⁺⟩ = s(r) + σ_F: the weights
             //are the mask basis's monomials at the bound challenges, field one on
             //every filler coordinate, zero on the lift block.
-            MonomialBasis maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0);
+            using MonomialBasis maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0, pool);
             ReadOnlySpan<Scalar> terminalPoint = challengesForLevel.AsSpan(1, d);
 
             int liftedEvaluations = 1 << maskParameters.LiftedVariableCount;

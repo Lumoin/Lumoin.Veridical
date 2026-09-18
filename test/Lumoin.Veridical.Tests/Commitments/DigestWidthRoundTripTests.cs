@@ -134,7 +134,7 @@ internal sealed class DigestWidthRoundTripTests
     public void CommitOpenVerifyRoundTripsAtTheStatedWidth(string schemeName, int digestSizeBytes)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider(schemeName, digestSizeBytes);
+        using PolynomialCommitmentProvider provider = NewProvider(pool, schemeName, digestSizeBytes);
         int variableCount = VariableCountFor(schemeName);
 
         using MultilinearExtension mle = BuildMle(variableCount, pool);
@@ -184,7 +184,8 @@ internal sealed class DigestWidthRoundTripTests
     /// <param name="schemeName">The factory to build.</param>
     /// <param name="digestSizeBytes">The node width to build it at.</param>
     /// <returns>The provider; the caller owns its disposal.</returns>
-    private static PolynomialCommitmentProvider NewProvider(string schemeName, int digestSizeBytes)
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, string schemeName, int digestSizeBytes)
     {
         return schemeName switch
         {
@@ -193,10 +194,10 @@ internal sealed class DigestWidthRoundTripTests
                 WellKnownHashAlgorithms.Blake3, digestSizeBytes: digestSizeBytes),
             "basefold" => BaseFoldPolynomialCommitmentScheme.Create(
                 CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-                HashToScalar, digestSizeBytes),
+                HashToScalar, pool, digestSizeBytes),
             "zkbasefold" => ZkBaseFoldPolynomialCommitmentScheme.Create(
                 CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-                ScalarRandom, HashToScalar, digestSizeBytes),
+                ScalarRandom, HashToScalar, pool, digestSizeBytes),
             "whir" => WhirPolynomialCommitmentScheme.Create(
                 Curve, WhirInitialRateLog2, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
                 securityLevelBits: WhirSecurityLevelBits, digestSizeBytes: digestSizeBytes),

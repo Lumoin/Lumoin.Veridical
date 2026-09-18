@@ -53,16 +53,18 @@ public sealed class FoldableCode: IDisposable
     private IMemoryOwner<byte>? diagonals;
     private readonly int totalDiagonalScalars;
 
-    //Lazily-built fold acceleration tables: the elementwise inverses of every
-    //diagonal entry (same layout as the diagonals) and the constant 2⁻¹. Both
-    //are PUBLIC protocol values (the code is public parameter material), so
-    //plain arrays rather than pooled sensitive memory. Built once on the
-    //first fold via Montgomery batch inversion — one field inversion plus
-    //three multiplications per entry instead of one inversion per folded
-    //position per opening. Published with a volatile write so concurrent
-    //first folds observe fully-written tables.
-    private byte[]? inverseDiagonals;
-    private byte[]? halfScalar;
+    /// <summary>The caller's pool, retained for lazy fold tables.</summary>
+    private readonly BaseMemoryPool pool;
+
+    /// <summary>Whether the owned storage has been released.</summary>
+    private bool isDisposed;
+
+    //Fold tables remain owned by the code. The inverse table is published last,
+    //so concurrent first folds observe both fully initialized tables.
+    /// <summary>The inverse-diagonal owner, published after both tables are populated.</summary>
+    private OwnedByteBuffer? inverseDiagonals;
+    /// <summary>The cached inverse-of-two owner.</summary>
+    private OwnedByteBuffer? halfScalar;
     private readonly object inverseBuildLock = new();
 
 
@@ -70,11 +72,17 @@ public sealed class FoldableCode: IDisposable
     public FoldableCodeParameters Parameters { get; }
 
 
-    private FoldableCode(FoldableCodeParameters parameters, IMemoryOwner<byte> diagonals, int totalDiagonalScalars)
+    /// <summary>Takes ownership of the diagonal storage and retains its pool for lazy tables.</summary>
+    /// <param name="parameters">The code shape.</param>
+    /// <param name="diagonals">The diagonal rental, or null for a zero-layer code.</param>
+    /// <param name="totalDiagonalScalars">The logical diagonal element count.</param>
+    /// <param name="pool">The caller's pool, which must outlive the code.</param>
+    private FoldableCode(FoldableCodeParameters parameters, IMemoryOwner<byte>? diagonals, int totalDiagonalScalars, BaseMemoryPool pool)
     {
         Parameters = parameters;
         this.diagonals = diagonals;
         this.totalDiagonalScalars = totalDiagonalScalars;
+        this.pool = pool;
     }
 
 
@@ -86,7 +94,7 @@ public sealed class FoldableCode: IDisposable
     /// <param name="parameters">The code shape. Base dimension must be 1 (the repetition base code).</param>
     /// <param name="seed">The seed binding this code; the same seed reproduces the same code.</param>
     /// <param name="hashToScalar">The hash-to-scalar backend that maps seed material to canonical scalars.</param>
-    /// <param name="pool">The pool to rent the diagonal buffer from.</param>
+    /// <param name="pool">The pool supplying diagonals and lazy fold tables; it must outlive the code.</param>
     /// <returns>The derived code; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="hashToScalar"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the base dimension is not 1.</exception>
@@ -114,27 +122,38 @@ public sealed class FoldableCode: IDisposable
 
         //Total diagonal entries across all d layers: layer i holds n_i =
         //c·k0·2^i entries, so the sum is c·k0·(2^d − 1).
-        int totalScalars = (c * k0) * ((1 << d) - 1);
+        int totalScalars = checked((c * k0) * ((1 << d) - 1));
 
-        IMemoryOwner<byte> owner = pool.Rent(Math.Max(1, totalScalars * ScalarSize));
-        Span<byte> buffer = owner.Memory.Span[..(totalScalars * ScalarSize)];
-
-        ReadOnlySpan<byte> dst = Encoding.ASCII.GetBytes(WellKnownFoldableCodeParameters.DiagonalDerivationDomainSeparationTag);
-        Tag scalarTag = WellKnownAlgebraicTags.ScalarFor(curve);
-
-        int scalarIndex = 0;
-        for(int layer = 0; layer < d; layer++)
+        int length = checked(totalScalars * ScalarSize);
+        IMemoryOwner<byte>? owner = length == 0 ? null : pool.Rent(length);
+        try
         {
-            int layerLength = (c * k0) << layer;
-            for(int position = 0; position < layerLength; position++)
-            {
-                Span<byte> entry = buffer.Slice(scalarIndex * ScalarSize, ScalarSize);
-                DeriveNonZeroScalar(seed, layer, position, dst, curve, scalarTag, hashToScalar, entry);
-                scalarIndex++;
-            }
-        }
+            Span<byte> buffer = owner is null ? Span<byte>.Empty : owner.Memory.Span[..length];
 
-        return new FoldableCode(parameters, owner, totalScalars);
+            ReadOnlySpan<byte> dst = Encoding.ASCII.GetBytes(WellKnownFoldableCodeParameters.DiagonalDerivationDomainSeparationTag);
+            Tag scalarTag = WellKnownAlgebraicTags.ScalarFor(curve);
+
+            int scalarIndex = 0;
+            for(int layer = 0; layer < d; layer++)
+            {
+                int layerLength = (c * k0) << layer;
+                for(int position = 0; position < layerLength; position++)
+                {
+                    Span<byte> entry = buffer.Slice(scalarIndex * ScalarSize, ScalarSize);
+                    DeriveNonZeroScalar(seed, layer, position, dst, curve, scalarTag, hashToScalar, entry);
+                    scalarIndex++;
+                }
+            }
+
+            FoldableCode code = new(parameters, owner, totalScalars, pool);
+            owner = null;
+
+            return code;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
     }
 
 
@@ -146,9 +165,11 @@ public sealed class FoldableCode: IDisposable
     /// </summary>
     /// <exception cref="ObjectDisposedException">When the code has been disposed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="layer"/> is outside <c>[0, LayerCount)</c>.</exception>
+    /// <returns>A borrowed table view valid until code disposal.</returns>
     internal ReadOnlySpan<byte> GetDiagonal(int layer)
     {
-        IMemoryOwner<byte> local = diagonals ?? throw new ObjectDisposedException(nameof(FoldableCode));
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        IMemoryOwner<byte>? local = diagonals;
         ArgumentOutOfRangeException.ThrowIfNegative(layer);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(layer, Parameters.LayerCount);
 
@@ -159,7 +180,7 @@ public sealed class FoldableCode: IDisposable
         int offsetScalars = baseUnit * ((1 << layer) - 1);
         int lengthScalars = baseUnit << layer;
 
-        return local.Memory.Span.Slice(offsetScalars * ScalarSize, lengthScalars * ScalarSize);
+        return local!.Memory.Span.Slice(offsetScalars * ScalarSize, lengthScalars * ScalarSize);
     }
 
 
@@ -169,9 +190,12 @@ public sealed class FoldableCode: IDisposable
     /// have run <see cref="EnsureFoldTablesBuilt"/> on this code first.
     /// </summary>
     /// <exception cref="InvalidOperationException">When the tables have not been built.</exception>
+    /// <returns>A borrowed table view valid until code disposal.</returns>
+    /// <exception cref="ObjectDisposedException">When the code has been disposed.</exception>
     internal ReadOnlySpan<byte> GetDiagonalInverse(int layer)
     {
-        byte[] local = Volatile.Read(ref inverseDiagonals)
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        OwnedByteBuffer local = Volatile.Read(ref inverseDiagonals)
             ?? throw new InvalidOperationException("The fold tables have not been built; call EnsureFoldTablesBuilt first.");
         ArgumentOutOfRangeException.ThrowIfNegative(layer);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(layer, Parameters.LayerCount);
@@ -180,16 +204,21 @@ public sealed class FoldableCode: IDisposable
         int offsetScalars = baseUnit * ((1 << layer) - 1);
         int lengthScalars = baseUnit << layer;
 
-        return local.AsSpan(offsetScalars * ScalarSize, lengthScalars * ScalarSize);
+        return local.Bytes.Slice(offsetScalars * ScalarSize, lengthScalars * ScalarSize);
     }
 
 
     /// <summary>Returns the cached <c>2⁻¹</c>; requires <see cref="EnsureFoldTablesBuilt"/>.</summary>
     /// <exception cref="InvalidOperationException">When the tables have not been built.</exception>
+    /// <returns>A borrowed scalar view valid until code disposal.</returns>
+    /// <exception cref="ObjectDisposedException">When the code has been disposed.</exception>
     internal ReadOnlySpan<byte> GetHalfScalar()
     {
-        return Volatile.Read(ref halfScalar)
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        OwnedByteBuffer local = Volatile.Read(ref halfScalar)
             ?? throw new InvalidOperationException("The fold tables have not been built; call EnsureFoldTablesBuilt first.");
+
+        return local.Bytes;
     }
 
 
@@ -198,8 +227,12 @@ public sealed class FoldableCode: IDisposable
     /// entry's inverse via Montgomery batch inversion, and the constant
     /// <c>2⁻¹</c>. Idempotent and safe under concurrent first folds.
     /// </summary>
+    /// <param name="multiply">The scalar multiplication backend.</param>
+    /// <param name="invert">The scalar inversion backend.</param>
+    /// <exception cref="ObjectDisposedException">When the code has been disposed.</exception>
     internal void EnsureFoldTablesBuilt(ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert)
     {
+        ObjectDisposedException.ThrowIf(isDisposed, this);
         if(Volatile.Read(ref inverseDiagonals) is not null)
         {
             return;
@@ -212,41 +245,63 @@ public sealed class FoldableCode: IDisposable
                 return;
             }
 
-            IMemoryOwner<byte> local = diagonals ?? throw new ObjectDisposedException(nameof(FoldableCode));
+            ObjectDisposedException.ThrowIf(isDisposed, this);
+            if(totalDiagonalScalars == 0)
+            {
+                return;
+            }
+
+            IMemoryOwner<byte> local = diagonals!;
             ReadOnlySpan<byte> source = local.Memory.Span[..(totalDiagonalScalars * ScalarSize)];
             CurveParameterSet curve = Parameters.Curve;
 
             //Montgomery batch inversion over the whole diagonal buffer (every
             //entry is non-zero by derivation): prefix products forward, one
             //inversion of the total, then walk back emitting each inverse.
-            byte[] inverses = new byte[totalDiagonalScalars * ScalarSize];
-            byte[] prefixes = new byte[totalDiagonalScalars * ScalarSize];
-            source[..ScalarSize].CopyTo(prefixes);
-            for(int i = 1; i < totalDiagonalScalars; i++)
+            int length = checked(totalDiagonalScalars * ScalarSize);
+            OwnedByteBuffer? inversesOwner = OwnedByteBuffer.Rent(length, pool);
+            OwnedByteBuffer? halfOwner = null;
+            try
             {
-                multiply(
-                    prefixes.AsSpan((i - 1) * ScalarSize, ScalarSize),
-                    source.Slice(i * ScalarSize, ScalarSize),
-                    prefixes.AsSpan(i * ScalarSize, ScalarSize),
-                    curve);
-            }
+                Span<byte> inverses = inversesOwner.Bytes;
+                using IMemoryOwner<byte> prefixesOwner = pool.Rent(length);
+                Span<byte> prefixes = prefixesOwner.Memory.Span[..length];
+                source[..ScalarSize].CopyTo(prefixes);
+                for(int i = 1; i < totalDiagonalScalars; i++)
+                {
+                    multiply(
+                        prefixes.Slice((i - 1) * ScalarSize, ScalarSize),
+                        source.Slice(i * ScalarSize, ScalarSize),
+                        prefixes.Slice(i * ScalarSize, ScalarSize),
+                        curve);
+                }
 
-            Span<byte> running = stackalloc byte[ScalarSize];
-            invert(prefixes.AsSpan((totalDiagonalScalars - 1) * ScalarSize, ScalarSize), running, curve);
-            for(int i = totalDiagonalScalars - 1; i >= 1; i--)
+                Span<byte> running = stackalloc byte[ScalarSize];
+                invert(prefixes.Slice((totalDiagonalScalars - 1) * ScalarSize, ScalarSize), running, curve);
+                for(int i = totalDiagonalScalars - 1; i >= 1; i--)
+                {
+                    multiply(running, prefixes.Slice((i - 1) * ScalarSize, ScalarSize), inverses.Slice(i * ScalarSize, ScalarSize), curve);
+                    multiply(running, source.Slice(i * ScalarSize, ScalarSize), running, curve);
+                }
+
+                running.CopyTo(inverses.Slice(0, ScalarSize));
+
+                halfOwner = OwnedByteBuffer.Rent(ScalarSize, pool);
+                Span<byte> half = halfOwner.Bytes;
+                half.Clear();
+                half[^1] = 0x02;
+                invert(half, half, curve);
+
+                Volatile.Write(ref halfScalar, halfOwner);
+                halfOwner = null;
+                Volatile.Write(ref inverseDiagonals, inversesOwner);
+                inversesOwner = null;
+            }
+            finally
             {
-                multiply(running, prefixes.AsSpan((i - 1) * ScalarSize, ScalarSize), inverses.AsSpan(i * ScalarSize, ScalarSize), curve);
-                multiply(running, source.Slice(i * ScalarSize, ScalarSize), running, curve);
+                halfOwner?.Dispose();
+                inversesOwner?.Dispose();
             }
-
-            running.CopyTo(inverses.AsSpan(0, ScalarSize));
-
-            byte[] half = new byte[ScalarSize];
-            half[^1] = 0x02;
-            invert(half, half, curve);
-
-            Volatile.Write(ref halfScalar, half);
-            Volatile.Write(ref inverseDiagonals, inverses);
         }
     }
 
@@ -285,24 +340,36 @@ public sealed class FoldableCode: IDisposable
     }
 
 
-    /// <inheritdoc/>
+    /// <summary>Clears and releases diagonal storage and any cached fold tables. Repeated disposal has no effect.</summary>
+    /// <remarks>All folds and borrowed table reads must finish before disposal; concurrent disposal and use are unsupported.</remarks>
     public void Dispose()
     {
-        IMemoryOwner<byte>? local = diagonals;
-        if(local is null)
+        lock(inverseBuildLock)
         {
-            return;
-        }
+            if(isDisposed)
+            {
+                return;
+            }
 
-        diagonals = null;
-        try
-        {
-            local.Memory.Span[..(totalDiagonalScalars * ScalarSize)].Clear();
-            local.Dispose();
-        }
-        catch
-        {
-            //Disposal must not throw; an orphaned buffer beats a crash.
+            isDisposed = true;
+            IMemoryOwner<byte>? local = diagonals;
+            diagonals = null;
+            inverseDiagonals?.Dispose();
+            inverseDiagonals = null;
+            halfScalar?.Dispose();
+            halfScalar = null;
+            if(local is not null)
+            {
+                try
+                {
+                    local.Memory.Span[..(totalDiagonalScalars * ScalarSize)].Clear();
+                    local.Dispose();
+                }
+                catch
+                {
+                    //Disposal must not throw; an orphaned buffer beats a crash.
+                }
+            }
         }
     }
 }

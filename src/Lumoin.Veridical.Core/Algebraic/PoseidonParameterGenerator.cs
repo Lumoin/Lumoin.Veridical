@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Numerics;
 
 namespace Lumoin.Veridical.Core.Algebraic;
@@ -86,8 +87,9 @@ public static class PoseidonParameterGenerator
     /// <param name="curve">The curve the parameters are for.</param>
     /// <param name="add">Scalar-addition backend (sums the Cauchy points).</param>
     /// <param name="invert">Scalar-inversion backend (builds the Cauchy MDS entries).</param>
+    /// <param name="pool">The pool supplying temporary generation buffers.</param>
     /// <returns>The generated parameters.</returns>
-    /// <exception cref="ArgumentNullException">When a delegate argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">When a delegate argument or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range.</exception>
     /// <exception cref="ArgumentException">When <paramref name="curve"/> has no wired scalar-field order in <see cref="WellKnownCurves"/>.</exception>
     public static PoseidonParameters Generate(
@@ -96,11 +98,12 @@ public static class PoseidonParameterGenerator
         int partialRounds,
         CurveParameterSet curve,
         ScalarAddDelegate add,
-        ScalarInvertDelegate invert)
+        ScalarInvertDelegate invert,
+        BaseMemoryPool pool)
     {
         ReadOnlySpan<byte> modulus = WellKnownCurves.GetScalarFieldOrderBytes(curve);
 
-        return GenerateOverModulus(stateWidth, fullRounds, partialRounds, modulus, curve, add, invert);
+        return GenerateOverModulus(stateWidth, fullRounds, partialRounds, modulus, curve, add, invert, pool);
     }
 
 
@@ -119,8 +122,9 @@ public static class PoseidonParameterGenerator
     /// <param name="curve">The curve tag passed to the backends and carried by the parameters.</param>
     /// <param name="add">Scalar-addition backend (sums the Cauchy points).</param>
     /// <param name="invert">Scalar-inversion backend (builds the Cauchy MDS entries).</param>
+    /// <param name="pool">The pool supplying temporary generation buffers.</param>
     /// <returns>The generated parameters.</returns>
-    /// <exception cref="ArgumentNullException">When a delegate argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">When a delegate argument or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is out of range.</exception>
     /// <exception cref="ArgumentException">When the modulus is not one scalar wide or is zero.</exception>
     internal static PoseidonParameters GenerateOverModulus(
@@ -130,10 +134,12 @@ public static class PoseidonParameterGenerator
         ReadOnlySpan<byte> modulus,
         CurveParameterSet curve,
         ScalarAddDelegate add,
-        ScalarInvertDelegate invert)
+        ScalarInvertDelegate invert,
+        BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(invert);
+        ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfLessThan(stateWidth, 2);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(fullRounds);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(partialRounds);
@@ -164,30 +170,36 @@ public static class PoseidonParameterGenerator
         }
 
         //Draw (R_F + R_P) · t round constants sequentially from the Grain stream.
-        int constantCount = (fullRounds + partialRounds) * stateWidth;
-        byte[] roundConstants = new byte[constantCount * ScalarSize];
+        int constantCount = checked((fullRounds + partialRounds) * stateWidth);
+        int roundConstantsLength = checked(constantCount * ScalarSize);
+        using IMemoryOwner<byte> roundConstantsOwner = pool.Rent(roundConstantsLength);
+        Span<byte> roundConstants = roundConstantsOwner.Memory.Span[..roundConstantsLength];
         for(int i = 0; i < constantCount; i++)
         {
-            SampleFieldElement(lfsr, fieldSizeBits, modulus, roundConstants.AsSpan(i * ScalarSize, ScalarSize));
+            SampleFieldElement(lfsr, fieldSizeBits, modulus, roundConstants.Slice(i * ScalarSize, ScalarSize));
         }
 
         //Continue the stream with 2t raw n-bit Cauchy points without rejection,
         //as the reference create_mds_p requires, then set M[i][j] = (x_i + y_j)^{−1}.
-        byte[] cauchyPoints = new byte[2 * stateWidth * ScalarSize];
+        int cauchyPointsLength = checked(2 * stateWidth * ScalarSize);
+        using IMemoryOwner<byte> cauchyPointsOwner = pool.Rent(cauchyPointsLength);
+        Span<byte> cauchyPoints = cauchyPointsOwner.Memory.Span[..cauchyPointsLength];
         for(int i = 0; i < 2 * stateWidth; i++)
         {
-            SampleRawFieldElement(lfsr, fieldSizeBits, modulus, cauchyPoints.AsSpan(i * ScalarSize, ScalarSize));
+            SampleRawFieldElement(lfsr, fieldSizeBits, modulus, cauchyPoints.Slice(i * ScalarSize, ScalarSize));
         }
 
-        byte[] mds = new byte[stateWidth * stateWidth * ScalarSize];
+        int mdsLength = checked(stateWidth * stateWidth * ScalarSize);
+        using IMemoryOwner<byte> mdsOwner = pool.Rent(mdsLength);
+        Span<byte> mds = mdsOwner.Memory.Span[..mdsLength];
         Span<byte> sum = stackalloc byte[ScalarSize];
         for(int row = 0; row < stateWidth; row++)
         {
-            ReadOnlySpan<byte> x = cauchyPoints.AsSpan(row * ScalarSize, ScalarSize);
+            ReadOnlySpan<byte> x = cauchyPoints.Slice(row * ScalarSize, ScalarSize);
             for(int column = 0; column < stateWidth; column++)
             {
-                add(x, cauchyPoints.AsSpan((stateWidth + column) * ScalarSize, ScalarSize), sum, curve);
-                invert(sum, mds.AsSpan(((row * stateWidth) + column) * ScalarSize, ScalarSize), curve);
+                add(x, cauchyPoints.Slice((stateWidth + column) * ScalarSize, ScalarSize), sum, curve);
+                invert(sum, mds.Slice(((row * stateWidth) + column) * ScalarSize, ScalarSize), curve);
             }
         }
 

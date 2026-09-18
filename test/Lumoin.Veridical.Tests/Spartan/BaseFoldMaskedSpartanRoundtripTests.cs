@@ -102,13 +102,14 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; the returned proof transfers to the caller.")]
+    /// <summary>Produces the test proof and releases provider storage through the owning prover.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the proving key and the key to the prover, which the using declaration releases; the key and prover constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static BaseFoldMaskedSpartanProof Prove(BaseMemoryPool pool)
     {
         using RawR1csInstance instance = BuildInstance();
         using RawR1csWitness witness = BuildWitness();
 
-        var provingKey = new SpartanProvingKey(BuildProvider());
+        var provingKey = new SpartanProvingKey(BuildProvider(pool));
         using var prover = new MaskedSpartanProver(provingKey);
         using FiatShamirTranscript transcript = FreshTranscript();
 
@@ -121,10 +122,11 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations.")]
+    /// <summary>Verifies the test proof and releases provider storage through the owning verifier.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the verifying key and the key to the verifier, which the using declaration releases; the key and verifier constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static bool Verify(BaseFoldMaskedSpartanProof proof, BaseMemoryPool pool)
     {
-        var verifyingKey = new SpartanVerifyingKey(BuildProvider());
+        var verifyingKey = new SpartanVerifyingKey(BuildProvider(pool));
         using var verifier = new MaskedSpartanVerifier(verifyingKey);
         using RawR1csInstance instance = BuildInstance();
         using FiatShamirTranscript transcript = FreshTranscript();
@@ -135,11 +137,12 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The BaseFold provider holds no disposable key; the Spartan key that consumes it disposes it.")]
-    private static PolynomialCommitmentProvider BuildProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider BuildProvider(BaseMemoryPool pool)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 

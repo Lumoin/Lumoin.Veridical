@@ -46,10 +46,11 @@ internal sealed class BaseFoldLeakageTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Checks that the byte-statistics experiment completes.</summary>
     [TestMethod]
     public void ByteStatisticsExperimentRunsToCompletion()
     {
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageHarness harness = NewHarness(provider);
 
         BaseFoldLeakageExperimentResult result = BaseFoldByteStatisticsExperiment.Run(harness, VariableCount, SampleCount);
@@ -61,10 +62,11 @@ internal sealed class BaseFoldLeakageTests
     }
 
 
+    /// <summary>Checks that the classifier experiment completes.</summary>
     [TestMethod]
     public void ClassifierExperimentRunsToCompletion()
     {
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageHarness harness = NewHarness(provider);
 
         BaseFoldLeakageExperimentResult result = BaseFoldClassifierExperiment.Run(harness, VariableCount, SampleCount);
@@ -77,10 +79,11 @@ internal sealed class BaseFoldLeakageTests
     }
 
 
+    /// <summary>Checks that commitment recoverability is structurally certain.</summary>
     [TestMethod]
     public void CommitmentRecoverabilityIsStructurallyCertain()
     {
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageHarness harness = NewHarness(provider);
 
         BaseFoldLeakageExperimentResult result = BaseFoldCommitmentRecoverabilityExperiment.Run(harness, VariableCount, SampleCount);
@@ -91,6 +94,7 @@ internal sealed class BaseFoldLeakageTests
     }
 
 
+    /// <summary>Checks that hiding provider flips commitment recoverability to not detected.</summary>
     [TestMethod]
     public void HidingProviderFlipsCommitmentRecoverabilityToNotDetected()
     {
@@ -99,7 +103,7 @@ internal sealed class BaseFoldLeakageTests
         //the recoverability experiment that is StructurallyCertain for the plain
         //provider must report NotDetected here. This is the hiding provider's
         //leakage flip: recoverability moves from StructurallyCertain to NotDetected.
-        using PolynomialCommitmentProvider provider = NewHidingProvider();
+        using PolynomialCommitmentProvider provider = NewHidingProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageHarness harness = NewHarness(provider);
 
         BaseFoldLeakageExperimentResult result = BaseFoldCommitmentRecoverabilityExperiment.Run(harness, VariableCount, SampleCount);
@@ -108,10 +112,11 @@ internal sealed class BaseFoldLeakageTests
     }
 
 
+    /// <summary>Checks that the experiment suite returns its three results.</summary>
     [TestMethod]
     public void RunAllProducesThreeResults()
     {
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageHarness harness = NewHarness(provider);
 
         IReadOnlyList<BaseFoldLeakageExperimentResult> results = BaseFoldLeakageExperimentRunner.RunAll(harness, VariableCount, SampleCount);
@@ -125,11 +130,12 @@ internal sealed class BaseFoldLeakageTests
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>Checks that the experiment suite reports findings at the configured sample count.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void RunAllAtScaleReportsFindings()
     {
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(BaseMemoryPool.Shared);
         BaseFoldLeakageHarness harness = NewHarness(provider);
 
         const int ScaleVariableCount = 3;
@@ -154,20 +160,24 @@ internal sealed class BaseFoldLeakageTests
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 
-    private static PolynomialCommitmentProvider NewHidingProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewHidingProvider(BaseMemoryPool pool)
     {
         //Entropy-backed salts (not the deterministic sampler) so committing the
         //same witness twice yields different roots — the hiding property.
         ScalarRandomDelegate saltRandom = Bls12Curve381BigIntegerScalarReference.GetRandom();
         return ZkBaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, saltRandom, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, saltRandom, HashToScalar, pool, DigestSizeBytes);
     }
 
 

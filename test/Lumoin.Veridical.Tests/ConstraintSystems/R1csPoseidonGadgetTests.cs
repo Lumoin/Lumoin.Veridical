@@ -40,33 +40,37 @@ internal sealed class R1csPoseidonGadgetTests
     private static ScalarInvertDelegate BlsInvert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
 
 
+    /// <summary>Checks that BN254 Poseidon hash gadget matches plaintext.</summary>
     [TestMethod]
     public void Bn254PoseidonHashGadgetMatchesPlaintext()
     {
-        AssertHashGadgetMatchesPlaintext(CurveParameterSet.Bn254, inputCount: 2, Bn254Add, Bn254Multiply, Bn254Invert, [7, 11]);
+        AssertHashGadgetMatchesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bn254, inputCount: 2, Bn254Add, Bn254Multiply, Bn254Invert, [7, 11]);
     }
 
 
+    /// <summary>Checks that BLS12-381 Poseidon hash gadget matches plaintext.</summary>
     [TestMethod]
     public void Bls12Curve381PoseidonHashGadgetMatchesPlaintext()
     {
-        AssertHashGadgetMatchesPlaintext(CurveParameterSet.Bls12Curve381, inputCount: 2, BlsAdd, BlsMultiply, BlsInvert, [7, 11]);
+        AssertHashGadgetMatchesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bls12Curve381, inputCount: 2, BlsAdd, BlsMultiply, BlsInvert, [7, 11]);
     }
 
 
+    /// <summary>Checks that Poseidon hash gadget matches plaintext across arities.</summary>
     [TestMethod]
     public void PoseidonHashGadgetMatchesPlaintextAcrossArities()
     {
-        AssertHashGadgetMatchesPlaintext(CurveParameterSet.Bn254, inputCount: 1, Bn254Add, Bn254Multiply, Bn254Invert, [42]);
-        AssertHashGadgetMatchesPlaintext(CurveParameterSet.Bn254, inputCount: 4, Bn254Add, Bn254Multiply, Bn254Invert, [1, 2, 3, 4]);
-        AssertHashGadgetMatchesPlaintext(CurveParameterSet.Bn254, inputCount: 8, Bn254Add, Bn254Multiply, Bn254Invert, [3, 5, 8, 13, 21, 34, 55, 89]);
+        AssertHashGadgetMatchesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bn254, inputCount: 1, Bn254Add, Bn254Multiply, Bn254Invert, [42]);
+        AssertHashGadgetMatchesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bn254, inputCount: 4, Bn254Add, Bn254Multiply, Bn254Invert, [1, 2, 3, 4]);
+        AssertHashGadgetMatchesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bn254, inputCount: 8, Bn254Add, Bn254Multiply, Bn254Invert, [3, 5, 8, 13, 21, 34, 55, 89]);
     }
 
 
+    /// <summary>Checks that Poseidon hash gadget rejects wrong digest.</summary>
     [TestMethod]
     public void PoseidonHashGadgetRejectsWrongDigest()
     {
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
         R1csCircuit circuit = BuildHashCircuit(CurveParameterSet.Bn254, 2, parameters);
 
         BigInteger[] inputs = [7, 11];
@@ -77,13 +81,14 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that Poseidon hash gadget rejects under constrained sbox intermediate.</summary>
     [TestMethod]
     public void PoseidonHashGadgetRejectsUnderConstrainedSBoxIntermediate()
     {
         //The first S-box's x2 wire is bound by x·x = x2. Tampering it (leaving the
         //rest of the honest trace intact) must be caught at compile — proof that
         //the intermediate is genuinely constrained, not free.
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
         R1csCircuit circuit = BuildHashCircuit(CurveParameterSet.Bn254, 2, parameters);
 
         BigInteger[] inputs = [7, 11];
@@ -95,22 +100,24 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that Poseidon hash witness reproduces plaintext hash.</summary>
     [TestMethod]
     public void PoseidonHashWitnessReproducesPlaintextHash()
     {
         //The witness trace is an independent third implementation of the
         //permutation; it must reproduce the plaintext hash bit for bit on both
         //curves, which is what transitively binds the gadget to circomlib.
-        AssertWitnessReproducesPlaintext(CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, [7, 11]);
-        AssertWitnessReproducesPlaintext(CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, [0, 0]);
-        AssertWitnessReproducesPlaintext(CurveParameterSet.Bls12Curve381, BlsAdd, BlsMultiply, BlsInvert, [123456789, 987654321]);
+        AssertWitnessReproducesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, [7, 11]);
+        AssertWitnessReproducesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, [0, 0]);
+        AssertWitnessReproducesPlaintext(BaseMemoryPool.Shared, CurveParameterSet.Bls12Curve381, BlsAdd, BlsMultiply, BlsInvert, [123456789, 987654321]);
     }
 
 
+    /// <summary>Checks that Poseidon hash gadget rejects wrong input count.</summary>
     [TestMethod]
     public void PoseidonHashGadgetRejectsWrongInputCount()
     {
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, CurveParameterSet.Bn254, Bn254Add, Bn254Invert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, CurveParameterSet.Bn254, Bn254Add, Bn254Invert, BaseMemoryPool.Shared);
         var builder = new R1csCircuitBuilder(CurveParameterSet.Bn254);
         R1csVariableIndex only = builder.DeclareWitnessVariable("only");
 
@@ -120,10 +127,11 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that BN254 Merkle membership gadget authenticates the shadow root.</summary>
     [TestMethod]
     public void Bn254MerkleMembershipGadgetAuthenticatesTheShadowRoot()
     {
-        MerkleFixture fixture = BuildMerkleFixture(CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
+        MerkleFixture fixture = BuildMerkleFixture(BaseMemoryPool.Shared, CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
         R1csCircuit circuit = BuildMerkleCircuit(fixture);
 
         Dictionary<string, BigInteger> bindings = MerkleBindings(fixture);
@@ -136,10 +144,11 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that BLS12-381 Merkle membership gadget authenticates the shadow root.</summary>
     [TestMethod]
     public void Bls12Curve381MerkleMembershipGadgetAuthenticatesTheShadowRoot()
     {
-        MerkleFixture fixture = BuildMerkleFixture(CurveParameterSet.Bls12Curve381, BlsAdd, BlsMultiply, BlsInvert, Bls12Curve381BigIntegerScalarReference.GetReduce(), entryIndex: 2);
+        MerkleFixture fixture = BuildMerkleFixture(BaseMemoryPool.Shared, CurveParameterSet.Bls12Curve381, BlsAdd, BlsMultiply, BlsInvert, Bls12Curve381BigIntegerScalarReference.GetReduce(), entryIndex: 2);
         R1csCircuit circuit = BuildMerkleCircuit(fixture);
 
         Dictionary<string, BigInteger> bindings = MerkleBindings(fixture);
@@ -152,10 +161,11 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that Merkle membership gadget rejects wrong leaf.</summary>
     [TestMethod]
     public void MerkleMembershipGadgetRejectsWrongLeaf()
     {
-        MerkleFixture fixture = BuildMerkleFixture(CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
+        MerkleFixture fixture = BuildMerkleFixture(BaseMemoryPool.Shared, CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
         R1csCircuit circuit = BuildMerkleCircuit(fixture);
 
         Dictionary<string, BigInteger> bindings = MerkleBindings(fixture);
@@ -164,10 +174,11 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that Merkle membership gadget rejects wrong sibling.</summary>
     [TestMethod]
     public void MerkleMembershipGadgetRejectsWrongSibling()
     {
-        MerkleFixture fixture = BuildMerkleFixture(CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
+        MerkleFixture fixture = BuildMerkleFixture(BaseMemoryPool.Shared, CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
         R1csCircuit circuit = BuildMerkleCircuit(fixture);
 
         //A tampered sibling: the whole trace is recomputed from it, so the
@@ -181,10 +192,11 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that Merkle membership gadget rejects wrong root.</summary>
     [TestMethod]
     public void MerkleMembershipGadgetRejectsWrongRoot()
     {
-        MerkleFixture fixture = BuildMerkleFixture(CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
+        MerkleFixture fixture = BuildMerkleFixture(BaseMemoryPool.Shared, CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
         R1csCircuit circuit = BuildMerkleCircuit(fixture);
 
         Dictionary<string, BigInteger> bindings = MerkleBindings(fixture);
@@ -193,13 +205,14 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Checks that Merkle membership gadget rejects wrong direction bit.</summary>
     [TestMethod]
     public void MerkleMembershipGadgetRejectsWrongDirectionBit()
     {
         //Claiming a different index (flip the lowest direction bit) turns the
         //authentication toward the wrong subtree: the recomputed root no longer
         //equals the committed root. This is the in-circuit position binding.
-        MerkleFixture fixture = BuildMerkleFixture(CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
+        MerkleFixture fixture = BuildMerkleFixture(BaseMemoryPool.Shared, CurveParameterSet.Bn254, Bn254Add, Bn254Multiply, Bn254Invert, Bn254Reduce, entryIndex: 3);
         R1csCircuit circuit = BuildMerkleCircuit(fixture);
 
         var flipped = (int[])fixture.PathBits.Clone();
@@ -211,10 +224,19 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="curve">The scalar field identifying the fixture.</param>
+    /// <param name="inputCount">The number of hash inputs.</param>
+    /// <param name="add">The scalar addition backend.</param>
+    /// <param name="multiply">The scalar multiplication backend.</param>
+    /// <param name="invert">The scalar inversion backend.</param>
+    /// <param name="inputs">The plaintext inputs.</param>
     private static void AssertHashGadgetMatchesPlaintext(
+        BaseMemoryPool pool,
         CurveParameterSet curve, int inputCount, ScalarAddDelegate add, ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, BigInteger[] inputs)
     {
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount, curve, add, invert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputCount, curve, add, invert, pool);
         R1csCircuit circuit = BuildHashCircuit(curve, inputCount, parameters);
 
         BigInteger digest = PlaintextHash(parameters, inputs, add, multiply);
@@ -229,10 +251,18 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="curve">The scalar field identifying the fixture.</param>
+    /// <param name="add">The scalar addition backend.</param>
+    /// <param name="multiply">The scalar multiplication backend.</param>
+    /// <param name="invert">The scalar inversion backend.</param>
+    /// <param name="inputs">The plaintext inputs.</param>
     private static void AssertWitnessReproducesPlaintext(
+        BaseMemoryPool pool,
         CurveParameterSet curve, ScalarAddDelegate add, ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, BigInteger[] inputs)
     {
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputs.Length, curve, add, invert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(inputs.Length, curve, add, invert, pool);
         var bindings = new Dictionary<string, BigInteger>(StringComparer.Ordinal);
         BigInteger traceDigest = R1csPoseidonWitness.AddPoseidonHashWitness(bindings, "h", inputs, parameters);
         BigInteger plaintext = PlaintextHash(parameters, inputs, add, multiply);
@@ -320,10 +350,19 @@ internal sealed class R1csPoseidonGadgetTests
     }
 
 
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="curve">The scalar field identifying the fixture.</param>
+    /// <param name="add">The scalar addition backend.</param>
+    /// <param name="multiply">The scalar multiplication backend.</param>
+    /// <param name="invert">The scalar inversion backend.</param>
+    /// <param name="reduce">The scalar reduction backend.</param>
+    /// <param name="entryIndex">The Merkle entry to open.</param>
     private static MerkleFixture BuildMerkleFixture(
+        BaseMemoryPool pool,
         CurveParameterSet curve, ScalarAddDelegate add, ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, ScalarReduceDelegate reduce, int entryIndex)
     {
-        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, curve, add, invert);
+        PoseidonParameters parameters = WellKnownPoseidonParameters.CreateCircomlibCompatible(2, curve, add, invert, pool);
         MerkleHashDelegate poseidonHash = PoseidonPermutation.GetMerkleHash(parameters, add, multiply);
 
         Span<byte> entries = stackalloc byte[EntryCount * 2 * ScalarSize];

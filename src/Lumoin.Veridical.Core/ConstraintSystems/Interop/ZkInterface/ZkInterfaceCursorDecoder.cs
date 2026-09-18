@@ -46,19 +46,32 @@ public static class ZkInterfaceCursorDecoder
     public static ZkInterfaceMessageDecoderDelegate Decoder { get; } = Decode;
 
 
-    private static void Decode(ReadOnlySequence<byte> source, IZkInterfaceMessageSink sink, CancellationToken cancellationToken)
+    /// <summary>Decodes a stream using caller-funded contiguous staging when required.</summary>
+    /// <param name="source">The complete message stream.</param>
+    /// <param name="sink">The decoded-message consumer.</param>
+    /// <param name="pool">The pool supplying temporary contiguous storage.</param>
+    /// <param name="cancellationToken">Cancellation observed between messages.</param>
+    private static void Decode(ReadOnlySequence<byte> source, IZkInterfaceMessageSink sink, BaseMemoryPool pool, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sink);
+        ArgumentNullException.ThrowIfNull(pool);
 
         //FlatBuffers needs random access; use the segment directly when the
         //stream is contiguous, otherwise copy it into one buffer.
-        if(source.IsSingleSegment)
+        if(source.IsEmpty)
+        {
+            DecodeContiguous(ReadOnlySpan<byte>.Empty, sink, cancellationToken);
+        }
+        else if(source.IsSingleSegment)
         {
             DecodeContiguous(source.FirstSpan, sink, cancellationToken);
         }
         else
         {
-            byte[] contiguous = source.ToArray();
+            int length = checked((int)source.Length);
+            using IMemoryOwner<byte> owner = pool.Rent(length);
+            Span<byte> contiguous = owner.Memory.Span[..length];
+            source.CopyTo(contiguous);
             DecodeContiguous(contiguous, sink, cancellationToken);
         }
     }

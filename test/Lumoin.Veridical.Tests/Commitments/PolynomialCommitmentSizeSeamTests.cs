@@ -112,7 +112,7 @@ internal sealed class PolynomialCommitmentSizeSeamTests
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
-        using PolynomialCommitmentProvider provider = NewHashTreeProvider(schemeName);
+        using PolynomialCommitmentProvider provider = NewHashTreeProvider(pool, schemeName);
         using MultilinearExtension mle = BuildMle(variableCount, pool);
 
         PolynomialCommitmentSizeDelegate? seam = provider.CommitmentSizeBytes;
@@ -251,7 +251,7 @@ internal sealed class PolynomialCommitmentSizeSeamTests
     [DataRow("zkwhir")]
     public void HashTreeSeamIsConstantInTheVariableCount(string schemeName)
     {
-        using PolynomialCommitmentProvider provider = NewHashTreeProvider(schemeName);
+        using PolynomialCommitmentProvider provider = NewHashTreeProvider(BaseMemoryPool.Shared, schemeName);
         PolynomialCommitmentSizeDelegate seam = provider.CommitmentSizeBytes!;
 
         Assert.AreEqual(
@@ -266,7 +266,8 @@ internal sealed class PolynomialCommitmentSizeSeamTests
     /// </summary>
     /// <param name="schemeName">The factory to build.</param>
     /// <returns>The provider; the caller owns its disposal.</returns>
-    private static PolynomialCommitmentProvider NewHashTreeProvider(string schemeName)
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewHashTreeProvider(BaseMemoryPool pool, string schemeName)
     {
         return schemeName switch
         {
@@ -275,10 +276,10 @@ internal sealed class PolynomialCommitmentSizeSeamTests
                 WellKnownHashAlgorithms.Blake3),
             "basefold" => BaseFoldPolynomialCommitmentScheme.Create(
                 CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-                HashToScalar, DigestSizeBytes),
+                HashToScalar, pool, DigestSizeBytes),
             "zkbasefold" => ZkBaseFoldPolynomialCommitmentScheme.Create(
                 CodeSeed, Curve, QueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-                ScalarRandom, HashToScalar, DigestSizeBytes),
+                ScalarRandom, HashToScalar, pool, DigestSizeBytes),
             "whir" => WhirPolynomialCommitmentScheme.Create(
                 Curve, WhirInitialRateLog2, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
                 securityLevelBits: WhirSecurityLevelBits),

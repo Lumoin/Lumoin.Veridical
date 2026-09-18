@@ -85,12 +85,13 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     //Commits and opens correctly, sanity-checks the intact opening verifies,
     //then replays the verify with the opening cut to the selected length and
     //asserts a clean false verdict.
+    /// <summary>Checks that an opening truncated to the selected length is rejected.</summary>
     private static void AssertTruncatedOpeningRejected(TruncationLengthSelector truncatedLengthSelector)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, ExtraVariableCount);
+            Random, HashToScalar, ExtraVariableCount, pool);
 
         using MultilinearExtension witness = BuildDeterministicMle(RealVariableCount, salt: 41, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 43, pool);

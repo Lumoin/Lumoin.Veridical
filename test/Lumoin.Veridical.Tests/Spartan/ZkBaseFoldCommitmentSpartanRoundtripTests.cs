@@ -113,7 +113,7 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
     [TestMethod]
     public void XyEquals15RoundTripsThroughTheSaltedProvider()
     {
-        AssertRoundTrips(BuildSaltedProvider);
+        AssertRoundTrips(() => BuildSaltedProvider(BaseMemoryPool.Shared));
     }
 
 
@@ -125,7 +125,7 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
     [TestMethod]
     public void XyEquals15RoundTripsThroughTheLiftedProvider()
     {
-        AssertRoundTrips(BuildLiftedProvider);
+        AssertRoundTrips(() => BuildLiftedProvider(BaseMemoryPool.Shared));
     }
 
 
@@ -136,7 +136,7 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
     [TestMethod]
     public void XyEquals15RoundTripsThroughTheFullZeroKnowledgeProvider()
     {
-        AssertRoundTrips(BuildFullZeroKnowledgeProvider);
+        AssertRoundTrips(() => BuildFullZeroKnowledgeProvider(BaseMemoryPool.Shared));
     }
 
 
@@ -193,7 +193,7 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
     [TestMethod]
     public void PreparingFromARawInstanceRefusesAHidingProvider()
     {
-        using PolynomialCommitmentProvider provider = BuildFullZeroKnowledgeProvider();
+        using PolynomialCommitmentProvider provider = BuildFullZeroKnowledgeProvider(BaseMemoryPool.Shared);
         using RawR1csInstance raw = R1csTestCircuits.BuildMultiplyCircuit();
 
         Assert.ThrowsExactly<InvalidOperationException>(
@@ -214,20 +214,32 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
-        using IMemoryOwner<byte> publishedOwner = RentPublishedErrorCommitment(BuildFullZeroKnowledgeProvider, pool, out int commitmentLength);
+        using IMemoryOwner<byte> publishedOwner = RentPublishedErrorCommitment(() => BuildFullZeroKnowledgeProvider(pool), pool, out int commitmentLength);
         Span<byte> publishedErrorCommitment = publishedOwner.Memory.Span[..commitmentLength];
 
-        using CommitmentSpartanProof proof = Prove(BuildFullZeroKnowledgeProvider, publishedErrorCommitment, pool);
+        using CommitmentSpartanProof proof = Prove(() => BuildFullZeroKnowledgeProvider(pool), publishedErrorCommitment, pool);
 
-        PolynomialCommitmentProvider provider = BuildFullZeroKnowledgeProvider();
-        var verifyingKey = new SpartanVerifyingKey(provider);
-        using var verifier = new SpartanVerifier(verifyingKey);
-        using RawR1csInstance raw = R1csTestCircuits.BuildMultiplyCircuit();
-        using FiatShamirTranscript transcript = FreshTranscript(pool);
+        PolynomialCommitmentProvider? providerOwner = BuildFullZeroKnowledgeProvider(pool);
+        SpartanVerifyingKey? verifyingKey = null;
+        try
+        {
+            PolynomialCommitmentProvider provider = providerOwner;
+            verifyingKey = new SpartanVerifyingKey(provider);
+            providerOwner = null;
+            using var verifier = new SpartanVerifier(verifyingKey);
+            verifyingKey = null;
+            using RawR1csInstance raw = R1csTestCircuits.BuildMultiplyCircuit();
+            using FiatShamirTranscript transcript = FreshTranscript(pool);
 
-        Assert.ThrowsExactly<InvalidOperationException>(
-            () => verifier.VerifyCommitted(proof, raw, transcript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool),
-            "An honest proof under a hiding provider must not come back as an ordinary rejection.");
+            Assert.ThrowsExactly<InvalidOperationException>(
+                () => verifier.VerifyCommitted(proof, raw, transcript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool),
+                "An honest proof under a hiding provider must not come back as an ordinary rejection.");
+        }
+        finally
+        {
+            verifyingKey?.Dispose();
+            providerOwner?.Dispose();
+        }
     }
 
 
@@ -252,15 +264,16 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
 
     //The same round-trip with one byte flipped in the wire bytes, at the offset
     //the caller derives from the proof's own section lengths.
+    /// <summary>Checks that modifying the selected proof section causes verification to reject it.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The proof and the rented buffers are disposed through using declarations.")]
     private static void AssertTamperingIsRejected(TamperOffsetSelector chooseOffset)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
-        using IMemoryOwner<byte> publishedOwner = RentPublishedErrorCommitment(BuildFullZeroKnowledgeProvider, pool, out int commitmentLength);
+        using IMemoryOwner<byte> publishedOwner = RentPublishedErrorCommitment(() => BuildFullZeroKnowledgeProvider(pool), pool, out int commitmentLength);
         Span<byte> publishedErrorCommitment = publishedOwner.Memory.Span[..commitmentLength];
 
-        using CommitmentSpartanProof proof = Prove(BuildFullZeroKnowledgeProvider, publishedErrorCommitment, pool);
+        using CommitmentSpartanProof proof = Prove(() => BuildFullZeroKnowledgeProvider(pool), publishedErrorCommitment, pool);
 
         int proofLength = proof.AsReadOnlySpan().Length;
         using IMemoryOwner<byte> wireOwner = pool.Rent(proofLength);
@@ -268,7 +281,7 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
         proof.AsReadOnlySpan().CopyTo(wireBytes);
         wireBytes[chooseOffset(proof)] ^= 0x01;
 
-        bool verified = Verify(wireBytes, publishedErrorCommitment, BuildFullZeroKnowledgeProvider, pool);
+        bool verified = Verify(wireBytes, publishedErrorCommitment, () => BuildFullZeroKnowledgeProvider(pool), pool);
         Assert.IsFalse(verified, "A tampered proof section must be rejected.");
     }
 
@@ -288,60 +301,86 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
     //proves against the relaxed instance that carries them. The blind stays
     //private: it is the error-opening witness, and the raw entry point's
     //zero placeholder would not open a salted commitment.
+    /// <summary>Produces the test proof and releases provider storage through the owning prover.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider transfers to the proving key, which the prover disposes; every other intermediate is disposed through using declarations, and the returned proof transfers to the caller.")]
     private static CommitmentSpartanProof Prove(ProviderFactory buildProvider, Span<byte> publishedErrorCommitment, BaseMemoryPool pool)
     {
-        PolynomialCommitmentProvider provider = buildProvider();
-        var provingKey = new SpartanProvingKey(provider);
-        using var prover = new SpartanProver(provingKey);
-
-        using MultilinearExtension zeroError = MultilinearExtension.Zero(OuterRoundCount, Curve, pool);
-        (PolynomialCommitment errorCommitment, PolynomialCommitmentBlind errorOpeningWitness) = provider.Commit(zeroError, pool);
-
-        using(errorCommitment)
-        using(errorOpeningWitness)
+        PolynomialCommitmentProvider? providerOwner = buildProvider();
+        SpartanProvingKey? provingKey = null;
+        try
         {
-            errorCommitment.AsReadOnlySpan().CopyTo(publishedErrorCommitment);
+            PolynomialCommitmentProvider provider = providerOwner;
+            provingKey = new SpartanProvingKey(provider);
+            providerOwner = null;
+            using var prover = new SpartanProver(provingKey);
+            provingKey = null;
 
-            using RelaxedR1csInstance instance = BuildInstance(publishedErrorCommitment, provider.Scheme, pool);
-            using RelaxedR1csWitness witness = BuildWitness(pool);
-            using FiatShamirTranscript transcript = FreshTranscript(pool);
+            using MultilinearExtension zeroError = MultilinearExtension.Zero(OuterRoundCount, Curve, pool);
+            (PolynomialCommitment errorCommitment, PolynomialCommitmentBlind errorOpeningWitness) = provider.Commit(zeroError, pool);
 
-            ScalarRandomDelegate random = new DeterministicScalarRandom(SpartanRandomSeed).AsDelegate();
+            using(errorCommitment)
+            using(errorOpeningWitness)
+            {
+                errorCommitment.AsReadOnlySpan().CopyTo(publishedErrorCommitment);
 
-            return prover.ProveCommitted(
-                instance, witness, errorOpeningWitness, transcript,
-                Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
-                G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
+                using RelaxedR1csInstance instance = BuildInstance(publishedErrorCommitment, provider.Scheme, pool);
+                using RelaxedR1csWitness witness = BuildWitness(pool);
+                using FiatShamirTranscript transcript = FreshTranscript(pool);
+
+                ScalarRandomDelegate random = new DeterministicScalarRandom(SpartanRandomSeed).AsDelegate();
+
+                return prover.ProveCommitted(
+                    instance, witness, errorOpeningWitness, transcript,
+                    Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
+                    G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
+            }
+        }
+        finally
+        {
+            provingKey?.Dispose();
+            providerOwner?.Dispose();
         }
     }
 
 
     //Reassembles the wire bytes from the verifier's own provider figures and
     //verifies against the published error commitment.
+    /// <summary>Verifies the test proof and releases provider storage through the owning verifier.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider transfers to the verifying key, which the verifier disposes; every other intermediate is disposed through using declarations.")]
     private static bool Verify(ReadOnlySpan<byte> wireBytes, ReadOnlySpan<byte> publishedErrorCommitment, ProviderFactory buildProvider, BaseMemoryPool pool)
     {
-        PolynomialCommitmentProvider provider = buildProvider();
-        var verifyingKey = new SpartanVerifyingKey(provider);
-        using var verifier = new SpartanVerifier(verifyingKey);
+        PolynomialCommitmentProvider? providerOwner = buildProvider();
+        SpartanVerifyingKey? verifyingKey = null;
+        try
+        {
+            PolynomialCommitmentProvider provider = providerOwner;
+            verifyingKey = new SpartanVerifyingKey(provider);
+            providerOwner = null;
+            using var verifier = new SpartanVerifier(verifyingKey);
+            verifyingKey = null;
 
-        //The witness is committed and opened over the column variables and the
-        //error over the row variables, so the commitment and the two openings
-        //are sized at the inner, outer, and inner round counts in turn.
-        PolynomialOpeningSizeDelegate openingSize = provider.EvaluationProofSizeBytes!;
-        PolynomialCommitmentSizeDelegate commitmentSize = provider.CommitmentSizeBytes!;
+            //The witness is committed and opened over the column variables and the
+            //error over the row variables, so the commitment and the two openings
+            //are sized at the inner, outer, and inner round counts in turn.
+            PolynomialOpeningSizeDelegate openingSize = provider.EvaluationProofSizeBytes!;
+            PolynomialCommitmentSizeDelegate commitmentSize = provider.CommitmentSizeBytes!;
 
-        using CommitmentSpartanProof received = CommitmentSpartanProof.FromBytes(
-            wireBytes, provider.Scheme, OuterRoundCount, InnerRoundCount,
-            commitmentSize(InnerRoundCount), openingSize(OuterRoundCount), openingSize(InnerRoundCount), Curve, pool);
+            using CommitmentSpartanProof received = CommitmentSpartanProof.FromBytes(
+                wireBytes, provider.Scheme, OuterRoundCount, InnerRoundCount,
+                commitmentSize(InnerRoundCount), openingSize(OuterRoundCount), openingSize(InnerRoundCount), Curve, pool);
 
-        using RelaxedR1csInstance instance = BuildInstance(publishedErrorCommitment, provider.Scheme, pool);
-        using FiatShamirTranscript transcript = FreshTranscript(pool);
+            using RelaxedR1csInstance instance = BuildInstance(publishedErrorCommitment, provider.Scheme, pool);
+            using FiatShamirTranscript transcript = FreshTranscript(pool);
 
-        return verifier.VerifyCommitted(
-            received, instance, transcript,
-            Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
+            return verifier.VerifyCommitted(
+                received, instance, transcript,
+                Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
+        }
+        finally
+        {
+            verifyingKey?.Dispose();
+            providerOwner?.Dispose();
+        }
     }
 
 
@@ -371,38 +410,41 @@ internal sealed class ZkBaseFoldCommitmentSpartanRoundtripTests
 
 
     //The hiding-commitment flavour: salted Merkle leaves, ordinary opening.
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the caller or the Spartan key that consumes it disposes it.")]
-    private static PolynomialCommitmentProvider BuildSaltedProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider BuildSaltedProvider(BaseMemoryPool pool)
     {
         ScalarRandomDelegate providerRandom = new DeterministicScalarRandom(ProviderRandomSeed).AsDelegate();
 
         return ZkBaseFoldPolynomialCommitmentScheme.Create(
             CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            providerRandom, HashToScalar, DigestSizeBytes);
+            providerRandom, HashToScalar, pool, DigestSizeBytes);
     }
 
 
     //The dimension-lift flavour: the opening is query and base-oracle hiding.
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the caller or the Spartan key that consumes it disposes it.")]
-    private static PolynomialCommitmentProvider BuildLiftedProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider BuildLiftedProvider(BaseMemoryPool pool)
     {
         ScalarRandomDelegate providerRandom = new DeterministicScalarRandom(ProviderRandomSeed).AsDelegate();
 
         return ZkBaseFoldPolynomialCommitmentScheme.CreateZeroKnowledge(
             CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            providerRandom, HashToScalar, ExtraVariableCount, DigestSizeBytes);
+            providerRandom, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes);
     }
 
 
     //The lift plus the CFS-2017 sumcheck mask: the opening is simulatable.
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the caller or the Spartan key that consumes it disposes it.")]
-    private static PolynomialCommitmentProvider BuildFullZeroKnowledgeProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider BuildFullZeroKnowledgeProvider(BaseMemoryPool pool)
     {
         ScalarRandomDelegate providerRandom = new DeterministicScalarRandom(ProviderRandomSeed).AsDelegate();
 
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            providerRandom, HashToScalar, ExtraVariableCount, DigestSizeBytes);
+            providerRandom, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes);
     }
 
 
