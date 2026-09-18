@@ -163,11 +163,12 @@ public static class SpartanProverExtensions
         /// <remarks>
         /// The error opening witness is a zero placeholder, which is sound only
         /// where the provider's opening ignores the blind. A hiding provider's
-        /// does not: handing it a zero blind would produce an opening that
-        /// verifies while revealing what the blind exists to conceal. This
-        /// refuses a hiding provider rather than silently degrading it, so a
-        /// hiding scheme must go through the relaxed entry point with a blind
-        /// the caller sampled.
+        /// does not: its opening needs the blind sampled when the error vector
+        /// was committed, which a zero placeholder cannot match, so the proof
+        /// could not be completed. This refuses a hiding provider up front with
+        /// that reason instead of an opaque failure inside the opening, so a
+        /// hiding scheme goes through the relaxed entry point with a blind the
+        /// caller sampled.
         /// </remarks>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
         /// <exception cref="InvalidOperationException">When the provider is hiding.</exception>
@@ -201,7 +202,7 @@ public static class SpartanProverExtensions
             if(pcs.IsHiding)
             {
                 throw new InvalidOperationException(
-                    $"The {pcs.Scheme} provider is hiding, so the zero error-opening blind this overload supplies would defeat its hiding. Prepare the relaxed instance and pass a sampled blind instead.");
+                    $"The {pcs.Scheme} provider is hiding, and its opening needs the blind sampled when the error vector was committed, which the zero placeholder this overload supplies cannot match. Prepare the relaxed instance and pass a sampled blind instead.");
             }
 
             RelaxedR1csInstance relaxedInstance = instance.Prepare(pcs, pool);
