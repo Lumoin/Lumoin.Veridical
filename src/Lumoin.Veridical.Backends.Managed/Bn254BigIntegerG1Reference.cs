@@ -61,7 +61,7 @@ internal static class Bn254BigIntegerG1Reference
     /// The BN254 base field prime
     /// <c>q = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47</c>
     /// — a 254-bit prime, the modulus of <c>Fp</c> over which the curve is
-    /// defined. Per the U.2 decision this is the single home of the BN254
+    /// defined. This is the single home of the BN254
     /// base-field prime; the Fp2 tower reference reads it from here, mirroring
     /// how the BLS12-381 references share
     /// <see cref="Bls12Curve381BigIntegerG1Reference.BaseFieldPrime"/>.
@@ -101,14 +101,12 @@ internal static class Bn254BigIntegerG1Reference
     private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
 
-    //RFC 9380 §6.6.1 Shallue–van de Woestijne map constants for BN254 G1
-    //(y² = x³ + 3, so A = 0, B = 3). Z = 1 is the value the RFC's find_z_svdw
-    //selection (Appendix H.1) returns for this curve; the required square root
-    //c3 = sqrt(-g(Z)·(3Z² + 4A)) = sqrt(-12) exists because -12 is a quadratic
-    //residue mod q. The constants are derived from the formulas here rather than
-    //transcribed, so they cannot drift from the modulus.
-
-    /// <summary>The SvdW parameter <c>Z = 1</c>.</summary>
+    /// <summary>
+    /// The RFC 9380 §6.6.1 Shallue–van de Woestijne map parameter <c>Z = 1</c> for BN254 G1
+    /// (<c>y² = x³ + 3</c>, so <c>A = 0</c>, <c>B = 3</c>), the value the RFC's find_z_svdw
+    /// selection (Appendix H.1) returns for this curve. Every SvdW constant in this group is
+    /// derived from the formulas here rather than transcribed, so none can drift from the modulus.
+    /// </summary>
     private static BigInteger SvdwZ { get; } = BigInteger.One;
 
     /// <summary>The SvdW constant <c>c1 = g(Z) = Z³ + 3</c>.</summary>
@@ -120,7 +118,10 @@ internal static class Bn254BigIntegerG1Reference
     /// <summary>The SvdW constant <c>c2 = -Z / 2</c>.</summary>
     private static BigInteger SvdwC2 { get; } = Mod(-SvdwZ * ModInverse(2), BaseFieldPrime);
 
-    /// <summary>The SvdW constant <c>c3 = sqrt(-g(Z)·(3Z² + 4A))</c> with <c>sgn0(c3) = 0</c>.</summary>
+    /// <summary>
+    /// The SvdW constant <c>c3 = sqrt(-g(Z)·(3Z² + 4A)) = sqrt(-12)</c> with <c>sgn0(c3) = 0</c>;
+    /// this root exists because -12 is a quadratic residue mod q.
+    /// </summary>
     private static BigInteger SvdwC3 { get; } = ComputeSvdwC3();
 
     /// <summary>The SvdW constant <c>c4 = -4·g(Z) / (3Z² + 4A)</c>.</summary>
@@ -135,18 +136,25 @@ internal static class Bn254BigIntegerG1Reference
     private const int HashToFieldElementBytes = 48;
 
 
+    /// <summary>The provenance identity of this assembly, stamped onto every hash-to-curve provenance tag this reference returns.</summary>
     private static ProviderLibrary ProviderLibraryIdentity { get; } = new(
         Name: "Lumoin.Veridical.Backends.Managed",
         Version: typeof(Bn254BigIntegerG1Reference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
+    /// <summary>The provenance identity of the underlying arithmetic library, stamped onto every hash-to-curve provenance tag this reference returns.</summary>
     private static CryptoLibrary CryptoLibraryIdentity { get; } = new(
         Name: "System.Numerics.BigInteger",
         Version: typeof(BigInteger).Assembly.GetName().Version?.ToString() ?? "unknown");
 
+    /// <summary>The provenance identity of this reference class, stamped onto every hash-to-curve provenance tag it returns.</summary>
     private static ProviderClass ProviderClassIdentity { get; } = new(
         Name: nameof(Bn254BigIntegerG1Reference));
 
 
+    /// <summary>
+    /// Computes the SvdW constant <see cref="SvdwC3"/>: the square root of <c>-g(Z)·(3Z² + 4A)</c>,
+    /// flipped to the even root so that <c>sgn0(c3) = 0</c> as RFC 9380 §6.6.1 requires.
+    /// </summary>
     private static BigInteger ComputeSvdwC3()
     {
         BigInteger value = Mod(-SvdwGz * SvdwThreeZsquared, BaseFieldPrime);
@@ -194,6 +202,7 @@ internal static class Bn254BigIntegerG1Reference
     public static G1HashToCurveDelegate GetHashToCurve() => HashToCurve;
 
 
+    /// <summary>Decodes both operands, adds them with the affine formulas, and encodes the sum.</summary>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1Add, curve);
@@ -205,6 +214,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Decodes the operand, negates it, and encodes the result.</summary>
     private static void Negate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1Negate, curve);
@@ -215,6 +225,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Decodes the point and the big-endian scalar, multiplies via the Jacobian double-and-add loop, and encodes the product.</summary>
     private static void ScalarMultiply(ReadOnlySpan<byte> point, ReadOnlySpan<byte> scalar, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1ScalarMultiply, curve);
@@ -226,6 +237,11 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Decodes <paramref name="count"/> concatenated points and scalars, accumulates their
+    /// scalar-multiple sum by repeated single-point scalar multiplication and addition, and
+    /// encodes the total.
+    /// </summary>
     private static void MultiScalarMultiply(
         ReadOnlySpan<byte> pointsConcatenated,
         ReadOnlySpan<byte> scalarsConcatenated,
@@ -269,6 +285,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Returns whether the encoded point decodes successfully, meaning it is a valid, on-curve BN254 G1 encoding.</summary>
     private static bool IsOnCurve(ReadOnlySpan<byte> point, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1IsOnCurve, curve);
@@ -277,6 +294,10 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Returns whether the encoded point is on the curve and, since the cofactor is 1, whether
+    /// multiplying it by the group order <see cref="ScalarFieldOrder"/> yields the identity.
+    /// </summary>
     private static bool IsInPrimeOrderSubgroup(ReadOnlySpan<byte> point, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1IsInPrimeOrderSubgroup, curve);
@@ -301,6 +322,12 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Hashes a message to a BN254 G1 point via the RFC 9380 random-oracle construction: expands
+    /// the message to two base-field elements, maps each with the Shallue–van de Woestijne map, adds
+    /// the results (the cofactor-1 curve needs no further clearing), encodes the point, and stamps
+    /// this reference's provenance onto the returned tag.
+    /// </summary>
     private static Tag HashToCurve(
         ReadOnlySpan<byte> message,
         ReadOnlySpan<byte> domainSeparationTag,
@@ -412,12 +439,15 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>An affine BN254 G1 point over the base field, or the point at infinity when <c>IsInfinity</c> is set.</summary>
     internal readonly record struct AffinePoint(BigInteger X, BigInteger Y, bool IsInfinity)
     {
+        /// <summary>The point at infinity, the group identity.</summary>
         public static AffinePoint Identity { get; } = new(BigInteger.Zero, BigInteger.Zero, IsInfinity: true);
     }
 
 
+    /// <summary>Adds two affine points with the textbook formulas, handling the identity and doubling special cases.</summary>
     private static AffinePoint PointAdd(AffinePoint a, AffinePoint b)
     {
         if(a.IsInfinity)
@@ -451,6 +481,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Doubles an affine point with the textbook formula for curve parameter a = 0.</summary>
     private static AffinePoint PointDouble(AffinePoint a)
     {
         if(a.IsInfinity || a.Y.IsZero)
@@ -469,6 +500,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Negates an affine point by negating its y-coordinate; the identity negates to itself.</summary>
     private static AffinePoint PointNegate(AffinePoint a)
     {
         if(a.IsInfinity)
@@ -491,12 +523,19 @@ internal static class Bn254BigIntegerG1Reference
     /// </summary>
     internal readonly record struct JacobianPoint(BigInteger X, BigInteger Y, BigInteger Z)
     {
+        /// <summary>Whether this point is the identity, which Jacobian coordinates represent by <c>Z = 0</c>.</summary>
         public bool IsIdentity => Z.IsZero;
 
+        /// <summary>The Jacobian identity, with <c>Z = 0</c> and the conventional placeholder <c>X = Y = 1</c>.</summary>
         public static JacobianPoint Identity { get; } = new(BigInteger.One, BigInteger.One, BigInteger.Zero);
     }
 
 
+    /// <summary>
+    /// Multiplies an affine point by a scalar with a double-and-add loop over Jacobian coordinates,
+    /// negating the base point for a negative scalar and converting back to affine at the end so
+    /// only one modular inversion is paid per call.
+    /// </summary>
     private static AffinePoint ScalarMultiplyPoint(BigInteger scalar, AffinePoint point)
     {
         if(scalar.IsZero || point.IsInfinity)
@@ -532,6 +571,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Doubles a Jacobian point with the a = 0 formula shared with the BLS12-381 reference (only the modulus differs).</summary>
     internal static JacobianPoint JacobianDouble(JacobianPoint p)
     {
         //For y² = x³ + b with a = 0 (BN254 G1): S = 4 X Y², M = 3 X²,
@@ -553,6 +593,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Adds a Jacobian accumulator to an affine point (mixed addition), handling the identity and doubling special cases.</summary>
     internal static JacobianPoint JacobianAddMixed(JacobianPoint p, AffinePoint q)
     {
         if(p.IsIdentity)
@@ -600,6 +641,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Converts a Jacobian point back to affine coordinates with the one modular inversion the whole scalar multiplication pays.</summary>
     internal static AffinePoint JacobianToAffine(JacobianPoint j)
     {
         if(j.IsIdentity)
@@ -617,6 +659,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Decodes a compressed BN254 G1 point, throwing when the bytes do not encode a valid point.</summary>
     internal static AffinePoint Decode(ReadOnlySpan<byte> bytes)
     {
         if(!TryDecode(bytes, out AffinePoint result))
@@ -629,6 +672,10 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Decodes the gnark-style compressed encoding: validates length and tag, recovers the identity
+    /// or the x-coordinate and its root's sign, and rejects any non-canonical or off-curve encoding.
+    /// </summary>
     private static bool TryDecode(ReadOnlySpan<byte> bytes, out AffinePoint result)
     {
         result = default;
@@ -695,6 +742,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Encodes a point into the gnark-style 32-byte compressed form, tagging infinity or the chosen root's sign.</summary>
     internal static void Encode(AffinePoint point, Span<byte> destination)
     {
         if(destination.Length != WellKnownCurves.Bn254G1CompressedSizeBytes)
@@ -726,6 +774,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Writes a non-negative integer as a fixed-width big-endian byte span, zero-padded on the left.</summary>
     private static void WriteBigEndianFixed(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -743,6 +792,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Computes the non-negative remainder of value modulo modulus, unlike <see cref="BigInteger"/>'s <c>%</c> operator which can return a negative result.</summary>
     internal static BigInteger Mod(BigInteger value, BigInteger modulus)
     {
         BigInteger result = value % modulus;
@@ -756,6 +806,7 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>Computes the modular inverse of a nonzero base-field element by Fermat's little theorem.</summary>
     private static BigInteger ModInverse(BigInteger value)
     {
         //q is prime, so Fermat's little theorem gives the inverse as
@@ -764,6 +815,10 @@ internal static class Bn254BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Computes a square root of a modulo the base field prime when one exists, using the
+    /// <c>q ≡ 3 (mod 4)</c> exponentiation formula and verifying the candidate by squaring it.
+    /// </summary>
     private static bool TrySqrt(BigInteger a, out BigInteger root)
     {
         //q ≡ 3 (mod 4), so a quadratic residue's root is a^((q+1)/4) mod q.

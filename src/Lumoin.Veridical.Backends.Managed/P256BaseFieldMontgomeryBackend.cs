@@ -25,21 +25,26 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// (base-field arithmetic is not curve-routed); callers pass
 /// <see cref="CurveParameterSet.None"/>.
 /// </para>
+/// <para>
+/// The specialized reduction's signed-sparse limb offsets follow from
+/// <c>p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1</c>: with the quotient digit <c>r = t[0]</c> (because <c>N' = 1</c>),
+/// <c>r·p = r·2²⁵⁶ − r·2²²⁴ + r·2¹⁹² + r·2⁹⁶ − r</c>. The whole-limb <c>2²⁵⁶</c>/<c>2¹⁹²</c>/<c>2⁰</c> terms
+/// land on limbs <c>{4, 3, 0}</c>; the half-limb <c>2²²⁴</c> and <c>2⁹⁶</c> terms straddle two adjacent 64-bit
+/// limbs, splitting into <c>(r&lt;&lt;32)</c> in the lower limb and <c>(r&gt;&gt;32)</c> in the next. The
+/// reference 64-bit <c>Fp256Reduce::reduction_step</c> encodes these as <c>negaccum l = {r, 0, 0, r&lt;&lt;32,
+/// r&gt;&gt;32}</c> and <c>accum h = {r&lt;&lt;32, r&gt;&gt;32, r, r}</c> starting one limb up.
+/// </para>
 /// </remarks>
 internal static class P256BaseFieldMontgomeryBackend
 {
+    /// <summary>The number of 64-bit limbs a field element occupies, taken from the shared <see cref="PrimeField256"/> limb core.</summary>
     private const int LimbCount = PrimeField256.LimbCount;
+
+    /// <summary>The bit width of the Fermat inversion exponent <c>p − 2</c>, driving the windowed exponentiation ladder: <see cref="LimbCount"/> limbs of 64 bits each.</summary>
     private const int ExponentBitCount = LimbCount * 64;
 
     /// <summary>The number of accumulator limbs in the CIOS window: <see cref="LimbCount"/> plus two headroom limbs.</summary>
     private const int AccumulatorLimbCount = LimbCount + 2;
-
-    //Signed-sparse limb offsets of p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1 in the 64-bit-limb specialized reduction.
-    //With the quotient digit r = t[0] (because N' = 1), r·p = r·2²⁵⁶ − r·2²²⁴ + r·2¹⁹² + r·2⁹⁶ − r. The whole-limb
-    //2²⁵⁶/2¹⁹²/2⁰ terms land on limbs {4, 3, 0}; the half-limb 2²²⁴ and 2⁹⁶ terms straddle two adjacent 64-bit
-    //limbs, splitting into (r<<32) in the lower limb and (r>>32) in the next. The reference 64-bit
-    //Fp256Reduce::reduction_step encodes these as negaccum l = {r, 0, 0, r<<32, r>>32} and accum h = {r<<32,
-    //r>>32, r, r} starting one limb up.
 
     /// <summary>The limb where the specialized reduction subtracts <c>r</c> for the <c>−2⁰</c> term.</summary>
     private const int SparseSubtractWholeLimb = 0;
@@ -62,35 +67,48 @@ internal static class P256BaseFieldMontgomeryBackend
     /// <summary>The limb where the specialized reduction adds <c>r</c> for the <c>+2²⁵⁶</c> term.</summary>
     private const int SparseAddWholeLimbHigh = 4;
 
+    /// <summary>The base-field modulus <c>p</c> as little-endian 64-bit limbs, derived once at static init.</summary>
     private static ulong[] ModulusLimbValues { get; } = ComputeModulusLimbs();
+    /// <summary>The Montgomery reduction constant <c>N' = −p⁻¹ mod 2⁶⁴</c>, derived once at static init.</summary>
     private static ulong NPrimeValue { get; } = ComputeNPrime();
+    /// <summary>The Montgomery constant <c>R² mod p</c> as little-endian 64-bit limbs, used to lift a canonical value into the Montgomery domain.</summary>
     private static ulong[] RSquaredLimbValues { get; } = ComputeRSquared();
+    /// <summary>The Montgomery representation of 1, <c>R mod p</c>, as little-endian 64-bit limbs: the multiplicative identity for exponentiation entirely in the Montgomery domain.</summary>
     private static ulong[] OneMontgomeryLimbValues { get; } = ComputeOneMontgomery();
+    /// <summary>The Fermat inversion exponent <c>p − 2</c> as little-endian 64-bit limbs, derived once at static init.</summary>
     private static ulong[] InversionExponentLimbValues { get; } = ComputeInversionExponent();
 
+    /// <summary>The base-field modulus as a read-only limb span, for the delegate calls that take a modulus operand.</summary>
     private static ReadOnlySpan<ulong> ModulusLimbs => ModulusLimbValues;
 
 
+    /// <summary>Returns the canonical-domain scalar-add delegate.</summary>
     public static ScalarAddDelegate GetAdd() => Add;
 
+    /// <summary>Returns the canonical-domain scalar-subtract delegate.</summary>
     public static ScalarSubtractDelegate GetSubtract() => Subtract;
 
+    /// <summary>Returns the canonical-domain scalar-multiply delegate (two CIOS: lift to Montgomery, then multiply).</summary>
     public static ScalarMultiplyDelegate GetMultiply() => Multiply;
 
+    /// <summary>Returns the canonical-domain scalar-invert delegate (Fermat exponentiation entirely in the Montgomery domain).</summary>
     public static ScalarInvertDelegate GetInvert() => Invert;
 
+    /// <summary>Returns the scalar-reduce delegate, reducing an up-to-512-bit input modulo the base-field prime.</summary>
     public static ScalarReduceDelegate GetReduce() => Reduce;
 
 
-    //Montgomery-domain delegate family (Perf Increment 1).
-    //The canonical delegates above lift to/from the Montgomery domain inside every multiply/invert (2 CIOS).
-    //The Montgomery-domain delegates treat the 32-byte values as Montgomery residues (aR mod p), so a
-    //multiply is a SINGLE CIOS (mont(a)·mont(b)·R⁻¹ = mont(ab)). Add/Subtract are domain-linear (residues
-    //mod p), so the canonical Add/Subtract serve both domains unchanged. Values cross canonical<->Montgomery
-    //only at the profile/witness/template/FFT-root boundaries via ToMontgomery/FromMontgomery.
-
+    /// <summary>
+    /// Returns the Montgomery-domain scalar-multiply delegate: both operands and the result are Montgomery
+    /// residues (<c>aR mod p</c>), so a multiply is a single CIOS (<c>mont(a)·mont(b)·R⁻¹ = mont(ab)</c>)
+    /// versus the canonical delegate's two. Add and Subtract are domain-linear (residues mod p), so the
+    /// canonical <see cref="GetAdd"/> and <see cref="GetSubtract"/> delegates serve both domains unchanged;
+    /// values cross canonical&lt;-&gt;Montgomery only at the profile/witness/template/FFT-root boundaries via
+    /// <see cref="ToMontgomery"/> and <see cref="FromMontgomery"/>.
+    /// </summary>
     public static ScalarMultiplyDelegate GetMultiplyMontgomery() => MultiplyMontgomery;
 
+    /// <summary>Returns the Montgomery-domain scalar-invert delegate: the input and result are Montgomery residues, so the Fermat ladder runs with no lift in or drop out.</summary>
     public static ScalarInvertDelegate GetInvertMontgomery() => InvertMontgomery;
 
 
@@ -135,6 +153,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Adds two canonical base-field values.</summary>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -148,6 +167,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Subtracts two canonical base-field values.</summary>
     private static void Subtract(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -161,6 +181,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Multiplies two canonical base-field values by lifting into the Montgomery domain, multiplying, and returning the canonical product (two CIOS).</summary>
     private static void Multiply(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -178,6 +199,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Inverts a canonical base-field value via Fermat exponentiation (<c>a^(p−2)</c>) entirely in the Montgomery domain, throwing for zero.</summary>
     private static void Invert(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -206,8 +228,10 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //Reduces an up-to-512-bit canonical big-endian input mod p. Splits the input as
-    //hi·2²⁵⁶ + lo; hi·2²⁵⁶ mod p is MontMul(hi, R²) (since R = 2²⁵⁶), then add lo.
+    /// <summary>
+    /// Reduces an up-to-512-bit canonical big-endian input modulo <c>p</c>. Splits the input as <c>hi·2²⁵⁶ +
+    /// lo</c>; <c>hi·2²⁵⁶ mod p</c> is <c>MontMul(hi, R²)</c> (since <c>R = 2²⁵⁶</c>), then adds <c>lo</c>.
+    /// </summary>
     private static void Reduce(ReadOnlySpan<byte> input, Span<byte> result, CurveParameterSet curve)
     {
         if(input.Length > 2 * LimbCount * 8)
@@ -238,8 +262,11 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //Montgomery-domain multiply: both operands are Montgomery residues (aR, bR); MontMul(aR, bR) = abR =
-    //mont(ab) in ONE CIOS (no R²-lift, the saving vs the canonical Multiply's two CIOS).
+    /// <summary>
+    /// Montgomery-domain multiply: both operands are Montgomery residues (<c>aR</c>, <c>bR</c>);
+    /// <c>MontMul(aR, bR) = abR = mont(ab)</c> in one CIOS (no <c>R²</c>-lift, the saving versus the
+    /// canonical <see cref="Multiply"/>'s two CIOS).
+    /// </summary>
     private static void MultiplyMontgomery(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve) =>
         MultiplyMontgomeryCore(a, b, result);
 
@@ -294,9 +321,11 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //Montgomery-domain inversion: the input is a Montgomery residue (aR), so the Fermat ladder runs with the
-    //base ALREADY in the domain (no R²-lift) and the result a^(p−2)·R = mont(a⁻¹) is returned WITHOUT the
-    //final drop to canonical — Montgomery in, Montgomery out.
+    /// <summary>
+    /// Montgomery-domain inversion: the input is a Montgomery residue (<c>aR</c>), so the Fermat ladder runs
+    /// with the base already in the domain (no <c>R²</c>-lift) and the result <c>a^(p−2)·R = mont(a⁻¹)</c> is
+    /// returned without the final drop to canonical — Montgomery in, Montgomery out.
+    /// </summary>
     private static void InvertMontgomery(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         Span<ulong> baseMontgomery = stackalloc ulong[LimbCount];
@@ -312,28 +341,14 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //CIOS Montgomery multiply: two reduction strategies over the shared multiply-accumulate column
-    //
-    //Both compute result = a·b·R⁻¹ mod p; inputs are assumed < p and the output is reduced by one
-    //constant-time conditional subtraction. The two methods share the identical multiply-accumulate half
-    //(the a·b[i] column sum and the high-limb carry-out into the (LimbCount+2)-limb accumulator window); they
-    //differ only in the per-outer-step CIOS reduction that adds the modulus multiple before the divide-by-2⁶⁴.
-    //Montgomery reduction is unique given (p, R), so both emit the SAME canonical residue (the agreement test
-    //pins live(generic) == specialized == BigInteger).
-    //
-    //MontgomeryMultiply is the generic CIOS reduction and the one the live Fp256 path runs: it forms the
-    //per-step term r·p through the full m·n[j] modulus product (the textbook reduction, mirroring FpGeneric).
-    //MontgomeryMultiplySpecializedReduce is the P-256-specialized signed-sparse reduction: because
-    //p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1 is signed-sparse, the same r·p (with quotient digit r = t[0], since
-    //N' = 1) is formed by subtracting/adding r at a handful of limb positions with no multiply by the modulus.
-    //It is retained as the comparison/oracle counterpart (see its summary for why the generic form is the live
-    //managed path). Both mirror Fp256Reduce in lib/algebra/fp_p256.h / fp_generic.h respectively.
-
-
-    //Generic CIOS Montgomery multiply (the live sig-prove reduction). Each outer step accumulates the a·b[i]
-    //column, then forms the quotient digit m = t[0]·N' (here N' = 1) and adds m·p through the full per-limb
-    //modulus product before shifting the window down one limb. Textbook generic Montgomery reduction; mirrors
-    //FpGeneric's reduction.
+    /// <summary>
+    /// Generic CIOS Montgomery multiply (the live sig-prove reduction): computes <c>result = a·b·R⁻¹ mod
+    /// p</c>. Inputs are assumed <c>&lt; p</c> and the output is reduced by one constant-time conditional
+    /// subtraction. Each outer step accumulates the <c>a·b[i]</c> column, then forms the quotient digit
+    /// <c>m = t[0]·N'</c> (here <c>N' = 1</c>) and adds <c>m·p</c> through the full per-limb modulus product
+    /// before shifting the window down one limb — the textbook generic Montgomery reduction, mirroring
+    /// <c>FpGeneric</c>'s reduction.
+    /// </summary>
     private static void MontgomeryMultiply(ReadOnlySpan<ulong> a, ReadOnlySpan<ulong> b, Span<ulong> result)
     {
         ReadOnlySpan<ulong> n = ModulusLimbs;
@@ -379,16 +394,22 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //Adds r·p for r = t[0] via the signed-sparse form of p, then shifts the accumulator window down one limb
-    //(the CIOS divide by 2⁶⁴). With p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1 and N' = 1, the quotient digit is r = t[0]
-    //and r·p = r·2²⁵⁶ − r·2²²⁴ + r·2¹⁹² + r·2⁹⁶ − r. In 64-bit limbs the whole-limb terms land on limbs
-    //{0, 3, 4} and the half-limb 2²²⁴/2⁹⁶ terms split into (r<<32)/(r>>32) across adjacent limbs:
-    //  negaccum: subtract {r@0, (r<<32)@3, (r>>32)@4}, borrow up through the full window (reference l = {r, 0,
-    //            0, r<<32, r>>32} over width 6).
-    //  accum:    add {(r<<32)@1, (r>>32)@2, r@3, r@4}, carry up through the window from limb 1 (reference
-    //            h = {r<<32, r>>32, r, r} over width 5 starting one limb up).
-    //Limb 0 cancels to zero after the r@0 subtraction, so the subsequent window shift discards it. Borrow/carry
-    //ride bit 64 of the UInt128 difference/sum, matching the multiply-accumulate carry style above.
+    /// <summary>
+    /// Adds <c>r·p</c> for <c>r = t[0]</c> via the signed-sparse form of <c>p</c>, then shifts the
+    /// accumulator window down one limb (the CIOS divide by <c>2⁶⁴</c>).
+    /// </summary>
+    /// <remarks>
+    /// With <c>p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1</c> and <c>N' = 1</c>, the quotient digit is <c>r = t[0]</c>
+    /// and <c>r·p = r·2²⁵⁶ − r·2²²⁴ + r·2¹⁹² + r·2⁹⁶ − r</c>. In 64-bit limbs the whole-limb terms land on
+    /// limbs <c>{0, 3, 4}</c> and the half-limb <c>2²²⁴</c>/<c>2⁹⁶</c> terms split into
+    /// <c>(r&lt;&lt;32)</c>/<c>(r&gt;&gt;32)</c> across adjacent limbs: the subtraction pass removes
+    /// <c>{r@0, (r&lt;&lt;32)@3, (r&gt;&gt;32)@4}</c> with the borrow riding up through the full window, and
+    /// the addition pass adds <c>{(r&lt;&lt;32)@1, (r&gt;&gt;32)@2, r@3, r@4}</c> with the carry riding up
+    /// through the window from limb 1. Limb 0 cancels to zero after the <c>r@0</c> subtraction, so the
+    /// subsequent window shift discards it. Borrow and carry ride bit 64 of the <see cref="UInt128"/>
+    /// difference/sum, matching the multiply-accumulate carry style of
+    /// <see cref="MontgomeryMultiplySpecializedReduce"/>.
+    /// </remarks>
     private static void SpecializedReduceStep(Span<ulong> t)
     {
         ulong r = t[0];
@@ -479,8 +500,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
-    //Constant derivation from the base-field prime (static-init only)
-
+    /// <summary>Derives the base-field modulus as little-endian 64-bit limbs from the BigInteger reference prime.</summary>
     private static ulong[] ComputeModulusLimbs()
     {
         ulong[] limbs = new ulong[LimbCount];
@@ -490,6 +510,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Derives the Montgomery reduction constant <c>N' = −p⁻¹ mod 2⁶⁴</c> from the modulus's low limb.</summary>
     private static ulong ComputeNPrime()
     {
         BigInteger twoTo64 = BigInteger.One << 64;
@@ -499,6 +520,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Derives the Montgomery constant <c>R² mod p</c> as little-endian 64-bit limbs.</summary>
     private static ulong[] ComputeRSquared()
     {
         BigInteger modulus = P256BigIntegerG1Reference.BaseFieldPrime;
@@ -511,6 +533,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Derives the Montgomery representation of 1, <c>R mod p</c>, as little-endian 64-bit limbs.</summary>
     private static ulong[] ComputeOneMontgomery()
     {
         BigInteger modulus = P256BigIntegerG1Reference.BaseFieldPrime;
@@ -523,6 +546,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Derives the Fermat inversion exponent <c>p − 2</c> as little-endian 64-bit limbs.</summary>
     private static ulong[] ComputeInversionExponent()
     {
         ulong[] limbs = new ulong[LimbCount];
@@ -532,6 +556,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Splits a non-negative <see cref="BigInteger"/> into little-endian 64-bit limbs.</summary>
     private static void BigIntegerToLimbs(BigInteger value, Span<ulong> limbs)
     {
         BigInteger mask = (BigInteger.One << 64) - 1;
@@ -542,6 +567,7 @@ internal static class P256BaseFieldMontgomeryBackend
     }
 
 
+    /// <summary>Computes the modular inverse of <paramref name="value"/> modulo <paramref name="modulus"/> via the extended Euclidean algorithm.</summary>
     private static BigInteger ModularInverse(BigInteger value, BigInteger modulus)
     {
         BigInteger t = BigInteger.Zero;

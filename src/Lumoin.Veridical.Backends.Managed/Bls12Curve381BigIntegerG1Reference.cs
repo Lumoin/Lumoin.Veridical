@@ -54,19 +54,16 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// delegates.
 /// </para>
 /// <para>
-/// Hash-to-curve uses RFC 9380 <c>expand_message_xmd</c> with SHA-256 to
-/// derive one base-field element, then a try-and-increment scan for the
-/// first x whose <c>x^3 + 4</c> is a quadratic residue. The resulting curve
-/// point is moved into the prime-order subgroup by scalar multiplication
-/// with the BLS12-381 G1 cofactor
-/// <c>h = 0x396c8c005555e1568c00aaab0000aaab</c>. The output is therefore
-/// always in the prime-order subgroup and always passes
-/// <see cref="IsInPrimeOrderSubgroup"/>. This deliberately does not follow
-/// the RFC 9380 §8.8.1 simplified-SWU + 11-isogeny construction; the
-/// reference favours brevity and direct readability over conformance with
-/// the production wire-level path, since its only consumer is the test
-/// suite that exercises algebraic laws, on-curve membership, and subgroup
-/// membership.
+/// Hash-to-curve implements RFC 9380 §8.8.1's <c>BLS12381G1_XMD:SHA-256_SSWU_RO_</c> suite:
+/// <c>expand_message_xmd</c> with SHA-256 derives two base-field elements, each is mapped onto the
+/// isogenous curve <c>E'</c> with the simplified SWU map, the two images are added on <c>E'</c>,
+/// the sum is carried back to BLS12-381 G1 through the 11-isogeny (RFC 9380 §E.2), and the cofactor
+/// is cleared by scalar multiplication with the RFC's <c>h_eff</c> constant
+/// (<c>0x0d201000000010001</c>) rather than the full G1 cofactor <c>h</c>, since <c>h_eff</c> is
+/// the cheaper multiplier the RFC allows for clearing an SSWU-mapped point. The output is
+/// therefore always in the prime-order subgroup and always passes
+/// <see cref="IsInPrimeOrderSubgroup"/>. <see cref="GetHashToCurveShake256"/> runs the identical
+/// pipeline with a SHAKE-256-based <c>expand_message_xof</c> in place of <c>expand_message_xmd</c>.
 /// </para>
 /// <para>
 /// The wiring shown in <see cref="GetAdd"/>, <see cref="GetScalarMultiply"/>,
@@ -135,14 +132,17 @@ internal static class Bls12Curve381BigIntegerG1Reference
     private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
 
+    /// <summary>The provenance identity of this assembly, stamped onto every hash-to-curve provenance tag this reference returns.</summary>
     private static ProviderLibrary ProviderLibraryIdentity { get; } = new(
         Name: "Lumoin.Veridical.Backends.Managed",
         Version: typeof(Bls12Curve381BigIntegerG1Reference).Assembly.GetName().Version?.ToString() ?? "unknown");
 
+    /// <summary>The provenance identity of the underlying arithmetic library, stamped onto every hash-to-curve provenance tag this reference returns.</summary>
     private static CryptoLibrary CryptoLibraryIdentity { get; } = new(
         Name: "System.Numerics.BigInteger",
         Version: typeof(BigInteger).Assembly.GetName().Version?.ToString() ?? "unknown");
 
+    /// <summary>The provenance identity of this reference class, stamped onto every hash-to-curve provenance tag it returns.</summary>
     private static ProviderClass ProviderClassIdentity { get; } = new(
         Name: nameof(Bls12Curve381BigIntegerG1Reference));
 
@@ -182,6 +182,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     public static G1IsInPrimeOrderSubgroupDelegate GetIsInPrimeOrderSubgroup() => IsInPrimeOrderSubgroup;
 
 
+    /// <summary>Decodes both operands, adds them with the affine formulas, and encodes the sum.</summary>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1Add, curve);
@@ -193,6 +194,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Decodes the operand, negates it, and encodes the result.</summary>
     private static void Negate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1Negate, curve);
@@ -203,6 +205,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Decodes the point and the big-endian scalar, multiplies via the Jacobian double-and-add loop, and encodes the product.</summary>
     private static void ScalarMultiply(ReadOnlySpan<byte> point, ReadOnlySpan<byte> scalar, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1ScalarMultiply, curve);
@@ -214,6 +217,11 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Decodes <paramref name="count"/> concatenated points and scalars, accumulates their
+    /// scalar-multiple sum by repeated single-point scalar multiplication and addition, and
+    /// encodes the total.
+    /// </summary>
     private static void MultiScalarMultiply(
         ReadOnlySpan<byte> pointsConcatenated,
         ReadOnlySpan<byte> scalarsConcatenated,
@@ -257,6 +265,11 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Hashes a message to a BLS12-381 G1 point via <c>BLS12381G1_XMD:SHA-256_SSWU_RO_</c>
+    /// (RFC 9380 §8.8.1), expanding the message with <c>expand_message_xmd</c> over SHA-256 and
+    /// stamping this reference's provenance onto the returned tag.
+    /// </summary>
     private static Tag HashToCurve(
         ReadOnlySpan<byte> message,
         ReadOnlySpan<byte> domainSeparationTag,
@@ -283,6 +296,11 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Hashes a message to a BLS12-381 G1 point via <c>BLS12381G1_XOF:SHAKE-256_SSWU_RO_</c>
+    /// (IETF draft-10 Appendix A.1), expanding the message with <c>expand_message_xof</c> over
+    /// SHAKE-256 and stamping this reference's provenance onto the returned tag.
+    /// </summary>
     private static Tag HashToCurveShake256(
         ReadOnlySpan<byte> message,
         ReadOnlySpan<byte> domainSeparationTag,
@@ -466,8 +484,6 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
-    //RFC 9380 §8.8.1 + §E.2 constants for BLS12-381 G1 SSWU + 11-isogeny.
-
     /// <summary>The simplified-SWU map parameter Z = 11.</summary>
     private static BigInteger SswuZ { get; } = new(11);
 
@@ -490,6 +506,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
         CultureInfo.InvariantCulture);
 
 
+    /// <summary>The 11-isogeny's x-numerator polynomial coefficients, constant term first (RFC 9380 §E.2).</summary>
     private static BigInteger[] IsogenyXNumCoeffs { get; } = new[]
     {
         "011a05f2b1e833340b809101dd99815856b303e88a2d7005ff2627b56cdb4e2c85610c2d5f2e62d6eaeac1662734649b7",
@@ -506,6 +523,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
         "006e08c248e260e70bd1e962381edee3d31d79d7e22c837bc23c0bf1bc24c6b68c24b1b80b64d391fa9c8ba2e8ba2d229",
     }.Select(h => BigInteger.Parse(h, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
 
+    /// <summary>The 11-isogeny's x-denominator polynomial coefficients, constant term first (RFC 9380 §E.2).</summary>
     private static BigInteger[] IsogenyXDenCoeffs { get; } = new[]
     {
         "008ca8d548cff19ae18b2e62f4bd3fa6f01d5ef4ba35b48ba9c9588617fc8ac62b558d681be343df8993cf9fa40d21b1c",
@@ -521,6 +539,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
         "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
     }.Select(h => BigInteger.Parse(h, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
 
+    /// <summary>The 11-isogeny's y-numerator polynomial coefficients, constant term first (RFC 9380 §E.2).</summary>
     private static BigInteger[] IsogenyYNumCoeffs { get; } = new[]
     {
         "0090d97c81ba24ee0259d1f094980dcfa11ad138e48a869522b52af6c956543d3cd0c7aee9b3ba3c2be9845719707bb33",
@@ -541,6 +560,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
         "015e6be4e990f03ce4ea50b3b42df2eb5cb181d8f84965a3957add4fa95af01b2b665027efec01c7704b456be69c8b604",
     }.Select(h => BigInteger.Parse(h, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
 
+    /// <summary>The 11-isogeny's y-denominator polynomial coefficients, constant term first (RFC 9380 §E.2).</summary>
     private static BigInteger[] IsogenyYDenCoeffs { get; } = new[]
     {
         "016112c4c3a9c98b252181140fad0eae9601a6de578980be6eec3232b5be72e7a07f3688ef60c206d01479253b03663c1",
@@ -562,6 +582,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }.Select(h => BigInteger.Parse(h, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToArray();
 
 
+    /// <summary>Returns whether the encoded point decodes successfully, meaning it is a valid, on-curve BLS12-381 G1 encoding.</summary>
     private static bool IsOnCurve(ReadOnlySpan<byte> point, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1IsOnCurve, curve);
@@ -570,6 +591,10 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Returns whether the encoded point is on the curve and, after scalar multiplication by
+    /// <see cref="ScalarFieldOrder"/>, yields the identity.
+    /// </summary>
     private static bool IsInPrimeOrderSubgroup(ReadOnlySpan<byte> point, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G1IsInPrimeOrderSubgroup, curve);
@@ -590,12 +615,15 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>An affine BLS12-381 G1 point over the base field, or the point at infinity when <c>IsInfinity</c> is set.</summary>
     internal readonly record struct AffinePoint(BigInteger X, BigInteger Y, bool IsInfinity)
     {
+        /// <summary>The point at infinity, the group identity.</summary>
         public static AffinePoint Identity { get; } = new(BigInteger.Zero, BigInteger.Zero, IsInfinity: true);
     }
 
 
+    /// <summary>Adds two affine points with the textbook formulas, handling the identity and doubling special cases.</summary>
     private static AffinePoint PointAdd(AffinePoint a, AffinePoint b)
     {
         if(a.IsInfinity)
@@ -629,6 +657,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Doubles an affine point with the textbook formula for curve parameter a = 0.</summary>
     private static AffinePoint PointDouble(AffinePoint a)
     {
         if(a.IsInfinity || a.Y.IsZero)
@@ -646,6 +675,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Negates an affine point by negating its y-coordinate; the identity negates to itself.</summary>
     internal static AffinePoint PointNegate(AffinePoint a)
     {
         if(a.IsInfinity)
@@ -675,12 +705,19 @@ internal static class Bls12Curve381BigIntegerG1Reference
     /// </remarks>
     internal readonly record struct JacobianPoint(BigInteger X, BigInteger Y, BigInteger Z)
     {
+        /// <summary>Whether this point is the identity, which Jacobian coordinates represent by <c>Z = 0</c>.</summary>
         public bool IsIdentity => Z.IsZero;
 
+        /// <summary>The Jacobian identity, with <c>Z = 0</c> and the conventional placeholder <c>X = Y = 1</c>.</summary>
         public static JacobianPoint Identity { get; } = new(BigInteger.One, BigInteger.One, BigInteger.Zero);
     }
 
 
+    /// <summary>
+    /// Multiplies an affine point by a scalar with a double-and-add loop over Jacobian coordinates,
+    /// negating the base point for a negative scalar and converting back to affine at the end so
+    /// only one modular inversion is paid per call.
+    /// </summary>
     internal static AffinePoint ScalarMultiplyPoint(BigInteger scalar, AffinePoint point)
     {
         if(scalar.IsZero || point.IsInfinity)
@@ -723,6 +760,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Doubles a Jacobian point with the standard 3M + 5S explicit formula for curve parameter a = 0.</summary>
     internal static JacobianPoint JacobianDouble(JacobianPoint p)
     {
         //For y^2 = x^3 + b with curve parameter a = 0 (BLS12-381 G1):
@@ -746,6 +784,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Adds a Jacobian accumulator to an affine point (mixed addition), handling the identity and doubling special cases.</summary>
     internal static JacobianPoint JacobianAddMixed(JacobianPoint p, AffinePoint q)
     {
         //Mixed addition: q is in affine form so its implicit Z is 1, which
@@ -796,6 +835,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Converts a Jacobian point back to affine coordinates with the one modular inversion the whole scalar multiplication pays.</summary>
     internal static AffinePoint JacobianToAffine(JacobianPoint j)
     {
         //The one inversion the Jacobian path pays per scalar multiplication.
@@ -816,6 +856,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Decodes a compressed BLS12-381 G1 point, throwing when the bytes do not encode a valid point.</summary>
     internal static AffinePoint Decode(ReadOnlySpan<byte> bytes)
     {
         if(!TryDecode(bytes, out AffinePoint result))
@@ -828,6 +869,11 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Decodes the RFC 9380 Appendix M.5.3.1 compressed encoding: validates length and the
+    /// compression flag, recovers the identity or the x-coordinate and its root's sign, and rejects
+    /// any non-canonical, uncompressed, or off-curve encoding.
+    /// </summary>
     internal static bool TryDecode(ReadOnlySpan<byte> bytes, out AffinePoint result)
     {
         result = default;
@@ -843,7 +889,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
 
         if(!isCompressed)
         {
-            //Uncompressed encoding is not supported in batch B.
+            //Uncompressed encoding is not supported; this decoder handles the compressed form only.
             return false;
         }
 
@@ -894,6 +940,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Encodes a point into the canonical 48-byte compressed form, tagging infinity or the chosen root's sign.</summary>
     internal static void Encode(AffinePoint point, Span<byte> destination)
     {
         if(destination.Length != WellKnownCurves.Bls12Curve381G1CompressedSizeBytes)
@@ -926,6 +973,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Writes a non-negative integer as a fixed-width big-endian byte span, zero-padded on the left.</summary>
     private static void WriteBigEndianFixed(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -943,6 +991,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Computes the non-negative remainder of value modulo modulus, unlike <see cref="BigInteger"/>'s <c>%</c> operator which can return a negative result.</summary>
     internal static BigInteger Mod(BigInteger value, BigInteger modulus)
     {
         BigInteger result = value % modulus;
@@ -956,6 +1005,7 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>Computes the modular inverse of a nonzero base-field element by Fermat's little theorem.</summary>
     private static BigInteger ModInverse(BigInteger value)
     {
         //BLS12-381's base field prime is prime, so Fermat's little theorem
@@ -964,6 +1014,10 @@ internal static class Bls12Curve381BigIntegerG1Reference
     }
 
 
+    /// <summary>
+    /// Computes a square root of a modulo the base field prime when one exists, using the
+    /// <c>p ≡ 3 (mod 4)</c> exponentiation formula and verifying the candidate by squaring it.
+    /// </summary>
     private static bool TrySqrt(BigInteger a, out BigInteger root)
     {
         //The BLS12-381 base field prime satisfies p ≡ 3 mod 4, so when a is a

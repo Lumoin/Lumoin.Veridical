@@ -44,10 +44,10 @@ jobs:
     name: Run the slow proof gates
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - name: Harden Runner
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
       with:
         disable-sudo: true
         egress-policy: block
@@ -70,10 +70,14 @@ jobs:
       run: dotnet build --tl --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
       timeout-minutes: 15
 
+    - name: Locate the test build output
+      shell: pwsh
+      run: '"TESTS_TARGET_DIR=$(dotnet msbuild test/${{ env.VERIDICAL_TESTS }}/${{ env.VERIDICAL_TESTS }}.csproj -getProperty:TargetDir -property:Configuration=${{ env.BUILD_CONFIGURATION }})" >> $env:GITHUB_ENV'
+
     # The Slow category only; the regular build already runs everything else on
     # every push. The timeout is about triple the measured hosted-runner duration
     # of the full category, so a wedged run fails long before it burns a weekly
     # slot's worth of minutes.
     - name: Run the slow proof gates
-      run: '${{ github.workspace }}/test/${{ env.VERIDICAL_TESTS }}/bin/${{ env.BUILD_CONFIGURATION }}/net10.0/${{ env.VERIDICAL_TESTS }} --filter "TestCategory=Slow"'
+      run: '${{ env.TESTS_TARGET_DIR }}${{ env.VERIDICAL_TESTS }} --filter "TestCategory=Slow"'
       timeout-minutes: 120

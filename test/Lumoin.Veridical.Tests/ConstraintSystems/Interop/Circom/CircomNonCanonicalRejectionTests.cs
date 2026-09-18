@@ -13,70 +13,97 @@ using System.Threading;
 namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 
 /// <summary>
-/// End-to-end rejection tests for the Circom binary readers against the two
-/// non-canonical categories recently closed:
+/// End-to-end rejection tests for the Circom binary readers against two non-canonical
+/// categories:
 /// (1) witness elements at or above the scalar field order — a non-canonical
 /// second encoding that must not reach the transcript or arithmetic;
-/// (2) the unchecked-uint32 wrap in the R1CS header consistency sum that let
-/// a crafted nPubOut = 0xFFFFFFFF, nPubIn = 1 header slip past the
-/// nPubOut + nPubIn + nPrvIn + 1 &lt;= nWires check before the fix promoted the
-/// sum to ulong.
+/// (2) an R1CS header whose nPubOut + nPubIn + nPrvIn + 1 consistency sum must be computed in
+/// ulong, so a crafted nPubOut = 0xFFFFFFFF, nPubIn = 1 header cannot wrap a 32-bit accumulator
+/// and slip past the nWires check.
 /// </summary>
 [TestClass]
 internal sealed class CircomNonCanonicalRejectionTests
 {
-    //The .wtns file layout (version 2, BLS12-381, per FIXTURES.md):
-    // File header: magic(4) + version(4) + sectionCount(4)          = 12 bytes
-    // Section 1:  type(4)  + size(8)   + fieldSize(4) + prime(32)
-    //                                  + nWitness(4)                = 52 bytes
-    // Section 2:  type(4)  + size(8)   + witness data (nWitness×32) = 12 + 128 bytes
-    // All multi-byte integers are little-endian.
-    private const int WtnsFileHeaderBytes = 12;      //magic + version + sectionCount
-    private const int WtnsSectionPrefixBytes = 12;   //type(4) + size(8)
+    /// <summary>
+    /// Byte length of the .wtns file header: magic(4) + version(4) + sectionCount(4). In the
+    /// version-2 BLS12-381 .wtns layout, the header is followed by a 52-byte section 1 of
+    /// fieldSize(4) + prime(32) + nWitness(4), then a section 2 of a 12-byte prefix plus witness
+    /// data of nWitness×32 bytes; all multi-byte integers are little-endian.
+    /// </summary>
+    private const int WtnsFileHeaderBytes = 12;
+
+    /// <summary>Byte length of a .wtns section prefix: type(4) + size(8).</summary>
+    private const int WtnsSectionPrefixBytes = 12;
+
+    /// <summary>Byte length of the field-size field in a .wtns section 1 payload.</summary>
     private const int WtnsFieldSizeBytes = 4;
-    private const int WtnsScalarSizeBytes = 32;      //BLS12-381 field element width
+
+    /// <summary>Byte width of a BLS12-381 scalar field element, and of the prime field in a .wtns section 1 payload.</summary>
+    private const int WtnsScalarSizeBytes = 32;
+
+    /// <summary>Byte length of the prime field in a .wtns section 1 payload; equal to the scalar width.</summary>
     private const int WtnsPrimeSizeBytes = WtnsScalarSizeBytes;
+
+    /// <summary>Byte length of the witness-count field in a .wtns section 1 payload.</summary>
     private const int WtnsNWitnessBytes = 4;
-    //Section 1 payload = fieldSize + prime + nWitness = 40 bytes.
+
+    /// <summary>Byte length of the .wtns section 1 payload: fieldSize + prime + nWitness.</summary>
     private const int WtnsSection1PayloadBytes =
         WtnsFieldSizeBytes + WtnsPrimeSizeBytes + WtnsNWitnessBytes;
 
-    //Byte offset of nWitness in the file (inside section 1 payload).
+    /// <summary>Byte offset of nWitness within the .wtns file, inside the section 1 payload.</summary>
     private const int WtnsNWitnessOffset =
         WtnsFileHeaderBytes + WtnsSectionPrefixBytes + WtnsFieldSizeBytes + WtnsPrimeSizeBytes;
 
-    //Byte offset of the witness data payload (section 2 payload start).
+    /// <summary>Byte offset of the witness data payload within the .wtns file: the start of the section 2 payload.</summary>
     private const int WtnsDataPayloadOffset =
         WtnsFileHeaderBytes + WtnsSectionPrefixBytes + WtnsSection1PayloadBytes + WtnsSectionPrefixBytes;
 
 
-    //The .r1cs file layout (version 1, per FIXTURES.md):
-    // File header: magic(4) + version(4) + sectionCount(4)          = 12 bytes
-    // Section 1:  type(4)  + size(8)  = 12-byte prefix, then 64-byte payload:
-    //   fieldSize(4) + prime(32) + nWires(4) + nPubOut(4) + nPubIn(4)
-    //   + nPrvIn(4) + nLabels(8) + nConstraints(4)
-    // All multi-byte integers are little-endian.
+    /// <summary>
+    /// Byte length of the .r1cs file header: magic(4) + version(4) + sectionCount(4). In the
+    /// version-1 layout, the header is followed by a section 1 with a 12-byte prefix and a
+    /// 64-byte payload of fieldSize(4) + prime(32) + nWires(4) + nPubOut(4) + nPubIn(4) +
+    /// nPrvIn(4) + nLabels(8) + nConstraints(4); all multi-byte integers are little-endian.
+    /// </summary>
     private const int R1csFileHeaderBytes = 12;
+
+    /// <summary>Byte length of the .r1cs section 1 prefix: type(4) + size(8).</summary>
     private const int R1csSectionPrefixBytes = 12;
+
+    /// <summary>Byte length of the field-size field in the .r1cs section 1 payload.</summary>
     private const int R1csFieldSizeBytes = 4;
+
+    /// <summary>Byte width of a BLS12-381 scalar field element, and of the prime field in the .r1cs section 1 payload.</summary>
     private const int R1csScalarSizeBytes = 32;
+
+    /// <summary>Byte length of the prime field in the .r1cs section 1 payload; equal to the scalar width.</summary>
     private const int R1csPrimeSizeBytes = R1csScalarSizeBytes;
+
+    /// <summary>Byte length of the nWires field in the .r1cs section 1 payload.</summary>
     private const int R1csNWiresSizeBytes = 4;
 
-    //Byte offset of nPubOut in the file (header section payload).
+    /// <summary>Byte offset of nPubOut within the .r1cs file, in the section 1 header payload.</summary>
     private const int R1csNPubOutOffset =
         R1csFileHeaderBytes + R1csSectionPrefixBytes +
         R1csFieldSizeBytes + R1csPrimeSizeBytes + R1csNWiresSizeBytes;
 
-    //nPubIn immediately follows nPubOut (each 4 bytes).
+    /// <summary>Byte offset of nPubIn within the .r1cs file; immediately follows nPubOut.</summary>
     private const int R1csNPubInOffset = R1csNPubOutOffset + sizeof(uint);
+
+    /// <summary>Byte offset of nPrvIn within the .r1cs file; immediately follows nPubIn.</summary>
     private const int R1csNPrvInOffset = R1csNPubInOffset + sizeof(uint);
 
 
+    /// <summary>
+    /// A .wtns witness whose last element equals the BLS12-381 scalar field order — a
+    /// non-canonical second encoding of zero — is rejected end to end by the Circom witness
+    /// reader rather than reaching the transcript or arithmetic.
+    /// </summary>
     [TestMethod]
     public void WitnessNonCanonicalElementIsRejectedEndToEnd()
     {
-        //Baseline: the committed multiplier2 .wtns fixture parses cleanly.
+        //Baseline: the multiplier2 .wtns fixture parses cleanly.
         byte[] fixture = CircomWitnessFixtures.Multiplier2Bytes;
         using RawR1csWitness baseline = ReadWitness(fixture);
         //The reader drops z[0] = 1; the remaining elements are z[1..3].
@@ -126,14 +153,19 @@ internal sealed class CircomNonCanonicalRejectionTests
     }
 
 
+    /// <summary>
+    /// An R1CS header with nPubOut = 0xFFFFFFFF, nPubIn = 1, nPrvIn = 0 is rejected: the
+    /// consistency sum nPubOut + nPubIn + nPrvIn + 1 must be computed in ulong so it cannot wrap
+    /// a 32-bit accumulator and slip past the nWires check.
+    /// </summary>
     [TestMethod]
     public void HeaderNPubOutWrapRegressionIsRejected()
     {
-        //Regression for the unchecked-uint32 wrap: a header with
-        //nPubOut = 0xFFFFFFFF, nPubIn = 1, nPrvIn = 0 produced the sum
-        //0xFFFFFFFF + 1 + 0 + 1 = 0x100000001, which truncated to 1 mod 2^32,
-        //passing the nWires check with any nWires >= 1. The fix promotes the
-        //summation to ulong so 0x100000001 > any uint32 nWires.
+        //Regression guard for the unchecked-uint32 wrap: a header with
+        //nPubOut = 0xFFFFFFFF, nPubIn = 1, nPrvIn = 0 produces the sum
+        //0xFFFFFFFF + 1 + 0 + 1 = 0x100000001, which truncates to 1 mod 2^32 if computed in
+        //uint32, passing the nWires check with any nWires >= 1. The reader must sum in ulong so
+        //0x100000001 > any uint32 nWires.
         byte[] mutated = (byte[])CircomR1csFixtures.Multiplier2Bytes.Clone();
 
         //Overwrite nPubOut = 0xFFFFFFFF, nPubIn = 1, nPrvIn = 0 in little-endian.
@@ -151,6 +183,7 @@ internal sealed class CircomNonCanonicalRejectionTests
     }
 
 
+    /// <summary>Reads a Circom witness from <paramref name="bytes"/> over the BLS12-381 scalar field.</summary>
     private static RawR1csWitness ReadWitness(byte[] bytes)
     {
         var stream = new MemoryStream(bytes, writable: false);
@@ -161,10 +194,12 @@ internal sealed class CircomNonCanonicalRejectionTests
             WellKnownR1csFormatLabel.CircomWitness,
             CurveParameterSet.Bls12Curve381,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 
 
+    /// <summary>Reads a Circom R1CS instance from <paramref name="bytes"/> over the BLS12-381 scalar field.</summary>
     private static RawR1csInstance ReadR1cs(byte[] bytes)
     {
         var stream = new MemoryStream(bytes, writable: false);
@@ -175,6 +210,7 @@ internal sealed class CircomNonCanonicalRejectionTests
             WellKnownR1csFormatLabel.CircomBinary,
             CurveParameterSet.Bls12Curve381,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 }

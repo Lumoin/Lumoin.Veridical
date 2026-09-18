@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// Pedersen vector commitment and prove the inner product
 /// <c>v = ⟨vector, W⟩</c> against a <em>public</em> weight vector <c>W</c> —
 /// the Pedersen/IPA analogue of BaseFold's <c>ProveWeightedSum</c> /
-/// <c>VerifyWeightedSum</c> (SM.1). An evaluation opening factors its
+/// <c>VerifyWeightedSum</c>. An evaluation opening factors its
 /// <c>eq</c> weights through the matrix split <c>L ⊗ R</c>; an arbitrary
 /// public weight vector does not factor, so the weighted opening commits the
 /// whole vector as one row (the row combination is trivially the identity)
@@ -21,9 +21,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is how the statistical-mask construction binds its sumcheck-mask
-/// coefficients over the Hyrax path (the statistical-mask design notes,
-/// §2 v3): the committed vector is <c>C* = (mask coefficients ‖ filler)</c> and
+/// This is how the statistical sumcheck mask binds its coefficients over the
+/// Hyrax path: the committed vector is <c>C* = (mask coefficients ‖ filler)</c> and
 /// the weights are the mask basis's monomials at the bound challenges with
 /// field one on the filler block. The weight vector must be public and known
 /// to the verifier — the protocol neither commits nor transmits it, exactly
@@ -40,14 +39,17 @@ namespace Lumoin.Veridical.Core.Commitments;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class HyraxWeightedOpeningExtensions
 {
+    /// <summary>The transcript label prefix for this protocol's per-round Fiat-Shamir challenges, domain-separating them from the evaluation-opening IPA's rounds.</summary>
     private const string WeightedIpaRoundLabelPrefix = "hyrax.weighted.ipa.round";
+
+    /// <summary>The transcript label for the freshly computed vector commitment <c>C_f</c> this protocol absorbs before its IPA rounds.</summary>
     private const string WeightedFCommitmentLabel = "hyrax.weighted.f-commitment";
 
-    //A single-row commitment: the vector is one Pedersen row, so the row
-    //combination step of the evaluation path degenerates to the identity.
+    /// <summary>The row count a weighted-opening commitment must have: the vector is one Pedersen row, so the row-combination step of the evaluation path degenerates to the identity.</summary>
     private const int SingleRowCount = 1;
 
 
+    /// <summary>Extension members hung off <see cref="HyraxCommitment"/> for the single-row weighted-opening protocol.</summary>
     extension(HyraxCommitment commitment)
     {
         /// <summary>
@@ -355,6 +357,7 @@ public static class HyraxWeightedOpeningExtensions
     }
 
 
+    /// <summary>Throws when the commitment, witness, vector, weight vector and key do not share a curve; when the commitment or witness is not single-row; when the vector's or weight vector's coordinate count does not match the commitment's column count; or when the key does not carry enough generators for the commitment.</summary>
     private static void ValidateWeightedOpenShape(
         HyraxCommitment commitment,
         HyraxOpeningWitness witness,
@@ -400,6 +403,7 @@ public static class HyraxWeightedOpeningExtensions
     }
 
 
+    /// <summary>Throws when the commitment, proof, weight vector and key do not share a curve; when the commitment is not single-row; when the weight vector's coordinate count does not match the commitment's column count; when the proof's IPA round count does not match the column count; or when the key does not carry enough generators for the commitment.</summary>
     private static void ValidateWeightedVerifyShape(
         HyraxCommitment commitment,
         HyraxOpeningProof proof,

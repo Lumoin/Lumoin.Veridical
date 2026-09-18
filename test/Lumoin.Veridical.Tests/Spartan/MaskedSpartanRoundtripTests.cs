@@ -18,6 +18,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class MaskedSpartanRoundtripTests
 {
+    /// <summary>Pins that the masked prover and verifier round-trip successfully for a single-multiplication instance with a two-element Hyrax vector length.</summary>
     [TestMethod]
     public void TrivialInstanceRoundtrip()
     {
@@ -25,6 +26,7 @@ internal sealed class MaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Pins that the masked prover and verifier round-trip successfully for a two-multiplication instance with a four-element Hyrax vector length.</summary>
     [TestMethod]
     public void LargerInstanceRoundtrip()
     {
@@ -32,6 +34,7 @@ internal sealed class MaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Pins that the round trip also succeeds for a second, different satisfying witness of the same instance, so the prover's masking-polynomial sampling and the verifier's terminating-identity derivation are not over-fitted to one specific witness's algebra.</summary>
     [TestMethod]
     public void TrivialInstanceWithAlternativeWitnessRoundtrip()
     {
@@ -43,6 +46,7 @@ internal sealed class MaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Pins that two independent prove-verify cycles for the same witness both succeed, so no hidden state in the prover or verifier — a static cache, an unreset transcript, a missing fresh-random draw — leaks from the first call into the second.</summary>
     [TestMethod]
     public void TwoSequentialProofsForSameWitnessBothVerify()
     {
@@ -55,10 +59,19 @@ internal sealed class MaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Produces a fresh <see cref="RawR1csInstance"/> for one round-trip exercise.</summary>
+    /// <returns>The instance to prove and verify.</returns>
     private delegate RawR1csInstance RawInstanceFactory();
+
+    /// <summary>Produces a fresh <see cref="RawR1csWitness"/> satisfying the matching <see cref="RawInstanceFactory"/> instance.</summary>
+    /// <returns>The satisfying witness.</returns>
     private delegate RawR1csWitness RawWitnessFactory();
 
 
+    /// <summary>Builds a masked prover and verifier sized to <paramref name="hyraxVectorLength"/>, proves the instance from <paramref name="instanceFactory"/> against the witness from <paramref name="witnessFactory"/> with a fresh transcript on each side, and asserts the verifier accepts the resulting proof.</summary>
+    /// <param name="instanceFactory">Produces the R1CS instance to prove.</param>
+    /// <param name="witnessFactory">Produces the satisfying witness.</param>
+    /// <param name="hyraxVectorLength">The Hyrax commitment vector length the prover and verifier are built for.</param>
     private static void ExerciseRoundtrip(
         RawInstanceFactory instanceFactory,
         RawWitnessFactory witnessFactory,
@@ -67,7 +80,7 @@ internal sealed class MaskedSpartanRoundtripTests
         using MaskedSpartanProver prover = BuildMaskedProver(hyraxVectorLength);
         using MaskedSpartanVerifier verifier = BuildMaskedVerifier(hyraxVectorLength);
 
-        //The instance is now a Prove/Verify parameter, not part of the key;
+        //The instance is a Prove/Verify parameter, not part of the key;
         //the prover and verifier each take their own copy built from
         //identical inputs.
         using RawR1csInstance proverInstance = instanceFactory();

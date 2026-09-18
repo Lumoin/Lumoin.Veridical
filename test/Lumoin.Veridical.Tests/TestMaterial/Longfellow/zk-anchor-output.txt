@@ -1,31 +1,19 @@
-Wire-format-conformant FULL ZK PROOF ground truth from google/longfellow-zk (conformance step C.8).
-Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
-
-Produced by zk_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
-reference implementation in its own build environment via development tooling outside this repository:
-
-  docker run --rm \
-    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
-    -v "<repo>/tempdocs/longfellow-anchors:/anchor" \
-    longfellow-ref bash -c \
-    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/zk_anchor.cc /src/lib/util/log.cc -lcrypto -o /tmp/a && /tmp/a"
-
-The harness compiles the same small GF2_128<4> circuit C.7 used through the real compiler. The full
-field is 16-byte GF(2^128) (matching the C.2-C.7 Ligero stack); the subfield is GF(2^16). The circuit
+The wire-format full ZK proof for a small GF2_128<4> circuit, sharing its field with the commitment
+and sumcheck-segment anchors: the full field is 16-byte GF(2^128), the subfield is GF(2^16). The circuit
 is the field-satisfiable relation w == (x + y) * (x + z) * x (x public, y/z/w private), chosen so
 logc = 0 (no copies) and nl = 3 (a genuine multi-layer walk with per-layer logw of 2, 3, 3). The fixed
-witnesses are x = of_scalar(3), y = of_scalar(5), z = of_scalar(7), w = the field product; W[0] is the
+witnesses are x = 3, y = 5, z = 7, w = the field product; W[0] is the
 constant-one wire. The deterministic Fiat-Shamir seed is "zk8" (ASCII), the pad/commitment randomness
-the counter RandomEngine (k-th byte = k & 0xFF), the Ligero rate (rateinv) 4 and nreq 2.
+is the counter sequence (k-th byte = k & 0xFF), the Ligero rate (rateinv) is 4 and nreq is 2.
 
-The harness runs the real ZkProver (commit + prove), serializes the whole ZkProof envelope
-(write_com || write_sc_proof || write_com_proof), then runs the reference ZkVerifier::verify over the
-parsed bytes. It dumps:
+The full ZK proof envelope serializes as three concatenated segments — the commitment root, the
+sumcheck transcript, then the Ligero proof — verified as a whole over the parsed bytes. The recorded
+fields are:
 
   - the circuit shape (nv, logv, nc, logc, nl, ninputs, npub_in, subfield_boundary; per-layer
     nw/logw/nterms; id);
-  - the Quad wiring terms per layer (L<ly>_t<i>_g / _h0 / _h1 / _v): the (g, h0, h1, v) corners
-    Quad::bind_gh_all iterates, in iteration order. v is to_bytes_field; g/h0/h1 are decimal indices;
+  - the quadratic-gate wiring terms per layer (L<ly>_t<i>_g / _h0 / _h1 / _v): the (g, h0, h1, v)
+    corners of each gate, in iteration order. v is to_bytes_field; g/h0/h1 are decimal indices;
   - the input element bytes (input0..input4, to_bytes_field) = the witness column W;
   - the derived LigeroParam (param_*): nw = (ninputs - npub_in) + pad_size(c), nq = nl, plus the full
     layout (block_enc, block, dblock, block_ext, r, w, nwrow, nqtriples, nwqrow, nrow); pad_size,
@@ -33,45 +21,44 @@ parsed bytes. It dumps:
   - the commitment root (com_root) and proved flag;
   - the full proof bytes (proof_bytes, proof_len) and the segment lengths (seg_com_len, seg_sc_len);
     com_proof_len = proof_len - seg_com_len - seg_sc_len;
-  - the verifier_constraints output: cn (constraint count), the A sparse term count (vc_a_size /
+  - the linear-constraint-system output: cn (constraint count), the A sparse term count (vc_a_size /
     vc_a_terms), the b vector (vc_b<i>), and every A term (vc_a<i>_c, vc_a<i>_w, vc_a<i>_k);
   - the per-layer alpha/beta and hand challenges (vc_L<ly>_alpha / _beta / _hb0_<r> / _hb1_<r>) and the
     per-layer bind_quad / eqv / eqq (vc_L<ly>_bindquad / _eqv / _eqq); and
-  - the reference ZkVerifier accept over the parsed full proof (ref_parsed, ref_zk_verify).
+  - the recorded verification accept over the parsed full proof (ref_parsed, ref_zk_verify).
 
-The verifier_constraints / bind_quad dumps are computed on a transcript that FIRST absorbs the
-commitment root (LigeroVerifier::receive_commitment) THEN performs the Fiat-Shamir setup, exactly as the
-real ZkVerifier orders recv_commitment before verify. The root absorb is what makes the dumped A/b match
-the verifier's; a transcript without it derives a different (inconsistent) challenge stream.
+The linear-constraint-system and bind_quad values are computed on a transcript that FIRST absorbs the
+commitment root THEN performs the Fiat-Shamir setup — the verifier always absorbs the root before
+checking the transcript. The root absorb is what makes the recorded A/b match the verifier's; a
+transcript without it derives a different (inconsistent) challenge stream.
 
-verifier_constraints (lib/zk/zk_common.h) turns the sumcheck claims into the Ligero linear-constraint
-system A*w = b over the committed witness (the private inputs followed by the proof pad). Per layer it
-builds a symbolic Expression for the running sumcheck claim through ConstraintBuilder.first/next, then
-finalize emits one constraint: the quadratic relation claim = eqq * W[R,C] * W[L,C] rearranged into
-A*w = b form, where eqq = Eq[Q,C] * QUAD[R,L] = eqv * bind_quad. bind_quad (Quad::bind_gh_all) binds
-the layer's Quad at the output point (g0, g1, alpha, beta) and the hand challenges (hb[0], hb[1]); eqv
-(Eq::eval over logc copy variables) is 1 here since logc = 0. The pad layout (PadLayout) places each
-layer's claim/poly pads at consecutive witness indices starting at n_witness (the first pad index pi);
-adjacent layers' claim pads overlap. After the layers, input_constraint adds one more constraint
-binding the witness inputs: <eq0 + alpha.eq1, witness> = (wc[0] + alpha*wc[1]) - public_binding, with
+Turning the sumcheck claims into the Ligero linear-constraint system A*w = b (over the committed
+witness — the private inputs followed by the proof pad) builds, per layer, a symbolic expression for
+the running sumcheck claim, then emits one constraint: the quadratic relation claim = eqq * W[R,C] *
+W[L,C] rearranged into A*w = b form, where eqq = Eq[Q,C] * QUAD[R,L] = eqv * bind_quad. bind_quad binds
+the layer's quadratic gate at the output point (g0, g1, alpha, beta) and the hand challenges (hb[0],
+hb[1]); eqv (the equality-polynomial evaluation over logc copy variables) is 1 here since logc = 0. The
+pad layout places each layer's claim/poly pads at consecutive witness indices starting at n_witness
+(the first pad index pi); adjacent layers' claim pads overlap. After the layers, one more constraint
+binds the witness inputs: <eq0 + alpha.eq1, witness> = (wc[0] + alpha*wc[1]) - public_binding, with
 the public binding folded out using the public inputs.
 
-The composition order the ZK verifier runs (lib/zk/zk_verifier.h):
-  1. ZkCommon::initialize_sumcheck_fiat_shamir (id, public inputs, zero, nterms zero bytes);
-  2. verifier_constraints: replay the sumcheck (begin_circuit Q/G; per layer begin_layer alpha/beta,
-     the round-polynomial/challenge walk, the wc claims) building A/b, ending with input_alpha and the
-     input constraint; returns cn;
-  3. LigeroVerifier::verify with the circuit-derived LigeroParam, hash_of_A = {de,ad,be,ef}, the lqc
-     (the per-layer claim-pad product triples setup_lqc lays out), the A/b system, and b.
+The composition order the ZK verifier runs:
+  1. the Fiat-Shamir setup (id, public inputs, zero, nterms zero bytes);
+  2. replay the sumcheck (squeeze Q/G; per layer squeeze alpha/beta, the round-polynomial/challenge
+     walk, the wc claims) building A/b, ending with input_alpha and the input constraint; returns cn;
+  3. the Ligero verification with the circuit-derived LigeroParam, hash_of_A = {de,ad,be,ef}, the lqc
+     (the per-layer claim-pad product triples), the A/b system, and b.
 
-The commitment root is absorbed (recv_commitment) BEFORE verify, exactly as the Ligero layer's
-receive_commitment does its write_commitment; the sc segment and com_proof segment follow the C.6/C.7
-wire layouts. The lqc quadratic constraints come from setup_lqc: per layer the claim pad triple
+The commitment root is absorbed BEFORE verification, matching how the Ligero layer itself orders
+its own commitment step first; the sc segment and com_proof segment follow their respective
+sumcheck-segment and Ligero-proof wire layouts. The lqc quadratic
+constraints come from the per-layer claim pad triple
 (x = claim_pad(0), y = claim_pad(1), z = claim_pad(2)) at consecutive pad indices, asserting the
 product dWC[0]*dWC[1] = dWC[0]*dWC[1] over the committed pad.
 
 The ZK PROVER side (our engine emitting this wire) and the mdoc envelope are above this segment and out
-of scope for C.8.
+of scope for the end-to-end ZK verify step.
 
 nv=1 logv=0 nc=1 logc=0 nl=3 ninputs=5 npub_in=2 subfield_boundary=0
 layer0_nw=4 layer0_logw=2 layer0_nterms=2

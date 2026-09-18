@@ -8,7 +8,8 @@ namespace Lumoin.Veridical.Core.Algebraic;
 
 /// <summary>
 /// Extension members on <see cref="Polynomial"/> that produce a new
-/// polynomial or scalar by dispatching to a BLS12-381 backend delegate.
+/// polynomial or scalar by dispatching to a BLS12-381 or BN254 backend
+/// delegate.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,8 +17,8 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <see cref="MultilinearExtensionArithmeticExtensions"/>, and likewise
 /// curve-broad: the receiver polynomial's <see cref="Polynomial.Curve"/>
 /// is threaded through the backend delegate and into the result's tag,
-/// and a guard rejects curves that are not yet wired (Bls12Curve381,
-/// Bn254). Binary verbs additionally require both operands to share a
+/// and a guard accepts only BLS12-381 and BN254, rejecting every other
+/// curve. Binary verbs additionally require both operands to share a
 /// curve. Inputs and outputs typed as <see cref="Scalar"/> carry the
 /// curve identity statically.
 /// </para>
@@ -25,6 +26,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class PolynomialArithmeticExtensions
 {
+    /// <summary>Evaluation and arithmetic members added to every <see cref="Polynomial"/> instance.</summary>
     extension(Polynomial polynomial)
     {
         /// <summary>
@@ -35,7 +37,7 @@ public static class PolynomialArithmeticExtensions
         /// <param name="pool">The pool to rent the destination buffer from.</param>
         /// <returns>A scalar wrapping the evaluation result.</returns>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the receiver's <see cref="Polynomial.Curve"/> is not BLS12-381.</exception>
+        /// <exception cref="ArgumentException">When the receiver's <see cref="Polynomial.Curve"/> is neither BLS12-381 nor BN254.</exception>
         public Scalar Evaluate(
             Scalar point,
             PolynomialEvaluateDelegate evaluate,
@@ -69,7 +71,7 @@ public static class PolynomialArithmeticExtensions
         /// <param name="add">The backend implementation of polynomial addition.</param>
         /// <param name="pool">The pool to rent the destination buffer from.</param>
         /// <returns>A polynomial wrapping the coefficient-wise sum, with storage degree equal to both inputs'.</returns>
-        /// <exception cref="ArgumentException">When the receiver is not over BLS12-381, when <paramref name="other"/>'s curve does not match, or when storage degrees differ.</exception>
+        /// <exception cref="ArgumentException">When the receiver's curve is neither BLS12-381 nor BN254, when <paramref name="other"/>'s curve does not match, or when storage degrees differ.</exception>
         public Polynomial Add(
             Polynomial other,
             PolynomialAddDelegate add,
@@ -117,7 +119,7 @@ public static class PolynomialArithmeticExtensions
         /// <param name="multiply">The backend implementation of polynomial multiplication.</param>
         /// <param name="pool">The pool to rent the destination buffer from.</param>
         /// <returns>A polynomial wrapping the canonical-form product.</returns>
-        /// <exception cref="ArgumentException">When either polynomial is not over BLS12-381.</exception>
+        /// <exception cref="ArgumentException">When either polynomial's curve is neither BLS12-381 nor BN254.</exception>
         public Polynomial Multiply(
             Polynomial other,
             PolynomialMultiplyDelegate multiply,

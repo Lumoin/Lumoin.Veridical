@@ -27,6 +27,7 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BaseFoldIoppVerifier
 {
+    /// <summary>The byte width of a canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -141,6 +142,13 @@ public static class BaseFoldIoppVerifier
             //k0 = 1 repetition code that means all n_0 entries are equal.
             return BaseFoldQueryPhase.FinalOracleIsValidBaseCodeword(proof.FinalOracle, baseUnit);
         }
+        catch(ArgumentException)
+        {
+            //A structurally malformed proof (for example a query domain that
+            //is not a power of two) is a rejection, not a fault — the
+            //exception safety this type's remarks promise.
+            return false;
+        }
         finally
         {
             foreach(Scalar challenge in challengesForLevel)
@@ -151,6 +159,7 @@ public static class BaseFoldIoppVerifier
     }
 
 
+    /// <summary>The element count of the layer-<paramref name="level"/> codeword: <c>baseUnit·2^level</c>.</summary>
     private static int LayerLength(int baseUnit, int level)
     {
         return baseUnit << level;

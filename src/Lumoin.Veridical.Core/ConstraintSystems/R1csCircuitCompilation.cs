@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core.Memory;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -15,6 +16,11 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class R1csCircuitCompilation
 {
+    /// <summary>
+    /// Extension members for <see cref="R1csCircuit"/>: compiling it against concrete bindings into
+    /// a provable instance/witness pair, or building the verifier-side instance alone from the
+    /// public inputs.
+    /// </summary>
     extension(R1csCircuit circuit)
     {
         /// <summary>
@@ -44,7 +50,7 @@ public static class R1csCircuitCompilation
         /// </para>
         /// </remarks>
         /// <param name="inputs">The name→value bindings for every declared public, witness, and intermediate variable.</param>
-        /// <param name="pool">The pool the instance, witness, and matrices rent their buffers from.</param>
+        /// <param name="pool">The pool the instance, witness, and matrices rent their storage and staging buffers from.</param>
         /// <returns>The public instance and the satisfying witness.</returns>
         /// <exception cref="ArgumentNullException">When <paramref name="inputs"/> or <paramref name="pool"/> is null.</exception>
         /// <exception cref="R1csCircuitCompilationException">When an input is missing, the circuit has no constraints or witness variables, or the assignment does not satisfy the constraints.</exception>
@@ -87,52 +93,35 @@ public static class R1csCircuitCompilation
             VerifySatisfaction(constraints, assignment, fieldOrder);
 
             int columnCount = circuit.VariableCount;
-            R1csMatrix a = BuildMatrix(constraints, static c => c.Left, columnCount, fieldOrder, scalarSize, curve, pool);
-            R1csMatrix b;
-            R1csMatrix c;
+            //The instance owns the three matrices from the moment it exists, so each local is
+            //cleared as soon as its ownership moves on; whatever is still held when this block
+            //exits, on any path, is disposed here.
+            R1csMatrix? a = null;
+            R1csMatrix? b = null;
+            R1csMatrix? c = null;
+            RawR1csInstance? instance = null;
             try
             {
+                a = BuildMatrix(constraints, static op => op.Left, columnCount, fieldOrder, scalarSize, curve, pool);
                 b = BuildMatrix(constraints, static op => op.Middle, columnCount, fieldOrder, scalarSize, curve, pool);
-            }
-            catch
-            {
-                a.Dispose();
-                throw;
-            }
-
-            try
-            {
                 c = BuildMatrix(constraints, static op => op.Right, columnCount, fieldOrder, scalarSize, curve, pool);
-            }
-            catch
-            {
-                a.Dispose();
-                b.Dispose();
-                throw;
-            }
-
-            RawR1csInstance instance;
-            try
-            {
                 instance = BuildInstance(circuit, assignment, a, b, c, scalarSize, pool);
-            }
-            catch
-            {
-                a.Dispose();
-                b.Dispose();
-                c.Dispose();
-                throw;
-            }
+                a = null;
+                b = null;
+                c = null;
 
-            try
-            {
                 RawR1csWitness witness = BuildWitness(circuit, assignment, scalarSize, curve, pool);
-                return (instance, witness);
+                var result = (instance, witness);
+                instance = null;
+
+                return result;
             }
-            catch
+            finally
             {
-                instance.Dispose();
-                throw;
+                a?.Dispose();
+                b?.Dispose();
+                c?.Dispose();
+                instance?.Dispose();
             }
         }
 
@@ -162,7 +151,7 @@ public static class R1csCircuitCompilation
         /// </para>
         /// </remarks>
         /// <param name="publicInputs">The canonical big-endian bytes of the public-input scalars, in declaration order; length must be <c>PublicInputCount × scalarSize</c>.</param>
-        /// <param name="pool">The pool the matrices and instance rent their buffers from.</param>
+        /// <param name="pool">The pool the matrices and instance rent their storage and coefficient staging buffers from.</param>
         /// <returns>The public instance a verifier checks a proof against.</returns>
         /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is null.</exception>
         /// <exception cref="R1csCircuitCompilationException">When the circuit has no constraints.</exception>
@@ -242,6 +231,7 @@ public static class R1csCircuitCompilation
     }
 
 
+    /// <summary>Binds each declared variable to its reduced input value, fixing the constant-one variable to one.</summary>
     private static BigInteger[] BindVariables(R1csCircuit circuit, R1csCircuitInputs inputs, BigInteger fieldOrder)
     {
         var assignment = new BigInteger[circuit.VariableCount];
@@ -266,6 +256,7 @@ public static class R1csCircuitCompilation
     }
 
 
+    /// <summary>Checks every constraint modulo the scalar field order and rejects the first unsatisfied row.</summary>
     private static void VerifySatisfaction(IReadOnlyList<AddConstraintOp> constraints, BigInteger[] assignment, BigInteger fieldOrder)
     {
         for(int row = 0; row < constraints.Count; row++)
@@ -284,6 +275,7 @@ public static class R1csCircuitCompilation
     }
 
 
+    /// <summary>Evaluates a linear combination against the assignment modulo the scalar field order.</summary>
     private static BigInteger Evaluate(R1csLinearCombination combination, BigInteger[] assignment, BigInteger fieldOrder)
     {
         BigInteger accumulator = combination.Constant;
@@ -296,6 +288,12 @@ public static class R1csCircuitCompilation
     }
 
 
+    /// <summary>Combines and reduces coefficients into sorted triples, supplying one zero entry for an all-zero matrix.</summary>
+    /// <remarks>
+    /// Accumulated coefficients are staged in a pooled buffer and copied into the matrix's own storage by
+    /// <see cref="R1csMatrix.FromSortedTriples"/>. The staging rental is disposed when this method exits.
+    /// The all-zero matrix's single placeholder coefficient uses stack storage.
+    /// </remarks>
     private static R1csMatrix BuildMatrix(
         IReadOnlyList<AddConstraintOp> constraints,
         Func<AddConstraintOp, R1csLinearCombination> select,
@@ -347,14 +345,17 @@ public static class R1csCircuitCompilation
             Span<int> singleColumn = stackalloc int[] { 0 };
             Span<byte> zeroValue = stackalloc byte[scalarSize];
             zeroValue.Clear();
+
             return R1csMatrix.FromSortedTriples(singleRow, singleColumn, zeroValue, constraints.Count, columnCount, curve, pool);
         }
 
         int nonzeroCount = rows.Count;
-        byte[] valueBytes = new byte[nonzeroCount * scalarSize];
+        int valueBytesLength = nonzeroCount * scalarSize;
+        using IMemoryOwner<byte> valueBytesOwner = pool.Rent(valueBytesLength);
+        Span<byte> valueBytes = valueBytesOwner.Memory.Span[..valueBytesLength];
         for(int i = 0; i < nonzeroCount; i++)
         {
-            WriteCanonical(values[i], valueBytes.AsSpan(i * scalarSize, scalarSize));
+            WriteCanonical(values[i], valueBytes.Slice(i * scalarSize, scalarSize));
         }
 
         return R1csMatrix.FromSortedTriples(
@@ -368,6 +369,12 @@ public static class R1csCircuitCompilation
     }
 
 
+    /// <summary>Encodes the public-input assignment and constructs an instance owning the supplied matrices.</summary>
+    /// <remarks>
+    /// Canonical public inputs are staged in a pooled buffer and copied into the instance's own storage by
+    /// <see cref="RawR1csInstance.Create"/>. The staging rental is disposed when this method exits.
+    /// A circuit with no public inputs supplies an empty span to the factory without a rental, since the pool rents only positive lengths.
+    /// </remarks>
     private static RawR1csInstance BuildInstance(
         R1csCircuit circuit,
         BigInteger[] assignment,
@@ -380,16 +387,30 @@ public static class R1csCircuitCompilation
         //Public inputs occupy indices 1..1+PublicInputCount by the builder's
         //contiguity guarantee.
         int publicInputCount = circuit.PublicInputCount;
-        byte[] publicInputBytes = new byte[publicInputCount * scalarSize];
+        if(publicInputCount == 0)
+        {
+            //The pool rents only positive lengths, so a circuit without public inputs hands the
+            //instance an empty span directly.
+            return RawR1csInstance.Create(a, b, c, ReadOnlySpan<byte>.Empty, pool);
+        }
+
+        int publicInputBytesLength = publicInputCount * scalarSize;
+        using IMemoryOwner<byte> publicInputBytesOwner = pool.Rent(publicInputBytesLength);
+        Span<byte> publicInputBytes = publicInputBytesOwner.Memory.Span[..publicInputBytesLength];
         for(int i = 0; i < publicInputCount; i++)
         {
-            WriteCanonical(assignment[1 + i], publicInputBytes.AsSpan(i * scalarSize, scalarSize));
+            WriteCanonical(assignment[1 + i], publicInputBytes.Slice(i * scalarSize, scalarSize));
         }
 
         return RawR1csInstance.Create(a, b, c, publicInputBytes, pool);
     }
 
 
+    /// <summary>Encodes the private assignment following the public-input block into a witness.</summary>
+    /// <remarks>
+    /// Canonical scalars are staged in a pooled buffer and copied into the witness's own storage by
+    /// <see cref="RawR1csWitness.FromCanonical"/>. The staging rental is disposed when this method exits.
+    /// </remarks>
     private static RawR1csWitness BuildWitness(
         R1csCircuit circuit,
         BigInteger[] assignment,
@@ -400,16 +421,19 @@ public static class R1csCircuitCompilation
         //Witness variables occupy the positions after the public-input block.
         int witnessCount = circuit.WitnessVariableCount;
         int witnessStart = 1 + circuit.PublicInputCount;
-        byte[] witnessBytes = new byte[witnessCount * scalarSize];
+        int witnessBytesLength = witnessCount * scalarSize;
+        using IMemoryOwner<byte> witnessBytesOwner = pool.Rent(witnessBytesLength);
+        Span<byte> witnessBytes = witnessBytesOwner.Memory.Span[..witnessBytesLength];
         for(int i = 0; i < witnessCount; i++)
         {
-            WriteCanonical(assignment[witnessStart + i], witnessBytes.AsSpan(i * scalarSize, scalarSize));
+            WriteCanonical(assignment[witnessStart + i], witnessBytes.Slice(i * scalarSize, scalarSize));
         }
 
         return RawR1csWitness.FromCanonical(witnessBytes, curve, pool);
     }
 
 
+    /// <summary>Adds a coefficient to the running total for its column.</summary>
     private static void Accumulate(SortedDictionary<int, BigInteger> perColumn, int column, BigInteger coefficient)
     {
         perColumn[column] = perColumn.TryGetValue(column, out BigInteger existing)
@@ -418,17 +442,23 @@ public static class R1csCircuitCompilation
     }
 
 
+    /// <summary>Returns the nonnegative representative of a value modulo the scalar field order.</summary>
     private static BigInteger Reduce(BigInteger value, BigInteger fieldOrder)
     {
         BigInteger remainder = value % fieldOrder;
+
         return remainder.Sign < 0 ? remainder + fieldOrder : remainder;
     }
 
 
+    /// <summary>Writes a reduced scalar as right-aligned canonical big-endian bytes with zero padding.</summary>
     private static void WriteCanonical(BigInteger reducedValue, Span<byte> destination)
     {
         //reducedValue is already in [0, r); write it big-endian, right-aligned.
         destination.Clear();
+        //reducedValue is reduced modulo the field order and destination is sized from the same curve, so the two
+        //agree by construction; the check stays so a curve wired with a mismatched canonical width fails loudly
+        //here instead of writing a truncated field element into a proof.
         if(!reducedValue.TryWriteBytes(destination, out int written, isUnsigned: true, isBigEndian: true))
         {
             throw new R1csCircuitCompilationException(

@@ -15,8 +15,8 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for <see cref="WhirPolynomialCommitmentScheme"/> (4.2 phase B): the
-/// WHIR IOPP behind the scheme-agnostic
+/// Tests for <see cref="WhirPolynomialCommitmentScheme"/>: the WHIR IOPP
+/// behind the scheme-agnostic
 /// <see cref="PolynomialCommitmentProvider"/> surface. These drive
 /// commit → open → verify end to end through the broad
 /// <see cref="PolynomialCommitment"/> / <see cref="PolynomialOpening"/> leaf
@@ -70,7 +70,26 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     /// <summary>The curve every artifact is tagged with.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
+    /// <summary>
+    /// The widest digest the Merkle surface admits — twice the scalar width,
+    /// so the coset fold genuinely produces node-wide digests instead of
+    /// taking the verbatim scalar-wide path.
+    /// </summary>
+    private const int WideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
 
+    /// <summary>
+    /// One byte past the widest digest the Merkle surface admits: the smallest
+    /// width whose authentication walk would throw rather than mismatch, so a
+    /// rejection proves the funnel refused it before the walk.
+    /// </summary>
+    private const int OverCapCommitmentWidthBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes + 1;
+
+
+    /// <summary>
+    /// Verifies that an honest commit→open→verify round trip stamps the commitment
+    /// <see cref="CommitmentScheme.Whir"/>, opens to the value the independent big-integer MLE
+    /// reference computes, produces an opening of the schedule-derived length, and verifies.
+    /// </summary>
     [TestMethod]
     [DataRow(8)]
     [DataRow(9)]
@@ -120,6 +139,7 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that flipping the opening's first byte, a folded-oracle root, makes verification reject it.</summary>
     [TestMethod]
     public void TamperedOpeningIsRejected()
     {
@@ -160,6 +180,7 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that a commitment copy with its first byte flipped is rejected against a genuine opening.</summary>
     [TestMethod]
     public void TamperedCommitmentIsRejected()
     {
@@ -199,6 +220,7 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that a claimed value one off from the true evaluation is rejected against a genuine opening.</summary>
     [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
@@ -238,6 +260,7 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that an opening truncated by its last byte is rejected as malformed wire input rather than thrown on.</summary>
     [TestMethod]
     public void TruncatedOpeningIsRejected()
     {
@@ -278,6 +301,114 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>
+    /// The digest width is a real capability, not a label: at a node width
+    /// other than the scalar width the coset fold produces node-wide leaf
+    /// digests, the commitment root and every oracle root carry the
+    /// configured width, the opening fills exactly the budget the wire
+    /// layout prices, and verification recomputes the coset leaf at the
+    /// root's width.
+    /// </summary>
+    [TestMethod]
+    public void CommitOpenVerifyRoundTripsAtAWideDigest()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 8;
+        using PolynomialCommitmentProvider provider = NewProvider(WideDigestSizeBytes);
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 12, pool);
+        Scalar[] point = BuildPoint(VariableCount, 13, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                Assert.HasCount(WideDigestSizeBytes, commitment.AsReadOnlySpan(), "The commitment is one Merkle root at the configured node width.");
+
+                PolynomialCommitmentSizeDelegate? commitmentSeam = provider.CommitmentSizeBytes;
+                Assert.IsNotNull(commitmentSeam, "A hash-tree provider must state its commitment width.");
+                Assert.AreEqual(WideDigestSizeBytes, commitmentSeam(VariableCount), "The commitment seam must state the width Commit produces.");
+
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    int expectedOpeningBytes = WhirPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
+                        VariableCount, Curve, FastInitialRateLog2, securityLevelBits: FastSecurityLevelBits, digestSizeBytes: WideDigestSizeBytes);
+                    Assert.HasCount(expectedOpeningBytes, opening.AsReadOnlySpan(), "The opening must fill exactly the wide-digest budget.");
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    Assert.IsTrue(
+                        provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
+                        "An honest commit→open→verify must round-trip at the wide digest.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>
+    /// A commitment is one Merkle root at the provider's configured node
+    /// width, so a commitment of any other width was never made by this
+    /// provider and verification must reject it as a non-match. Past the
+    /// Merkle surface's widest admissible digest the authentication walk would
+    /// throw instead, so the refusal must land before the walk: malformed wire
+    /// input is a rejection, not a fault.
+    /// </summary>
+    [TestMethod]
+    public void VerificationRejectsACommitmentWidthTheSchemeNeverProduces()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 8;
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 14, pool);
+        Scalar[] point = BuildPoint(VariableCount, 15, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    using PolynomialCommitment atCap = CommitmentOfWidth(WideDigestSizeBytes, pool);
+                    using FiatShamirTranscript atCapTx = NewTranscript();
+                    Assert.IsFalse(
+                        provider.VerifyEvaluation(atCap, point, claimedValue, opening, atCapTx, pool),
+                        "A commitment at the Merkle surface's widest admissible digest is still not one this scheme produces and must be rejected.");
+
+                    using PolynomialCommitment overCap = CommitmentOfWidth(OverCapCommitmentWidthBytes, pool);
+                    using FiatShamirTranscript overCapTx = NewTranscript();
+                    Assert.IsFalse(
+                        provider.VerifyEvaluation(overCap, point, claimedValue, opening, overCapTx, pool),
+                        "A commitment wider than the Merkle surface admits must be rejected as malformed wire input, not thrown on.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>Verifies that a plain WHIR provider reports no weighted-opening support, no hiding, and no additive homomorphism.</summary>
     [TestMethod]
     public void ProviderRefusesWeightedOpening()
     {
@@ -290,9 +421,157 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
 
 
     /// <summary>
-    /// The WHIR provider at the fast figures.
+    /// The provider answers the opening-length question from the schedule it
+    /// was built with, and answers it identically to the public sizing
+    /// function. A consumer laying out a fixed-format proof reads the seam
+    /// rather than reassembling the arithmetic, so the two must not drift.
     /// </summary>
+    [TestMethod]
+    [DataRow(8)]
+    [DataRow(9)]
+    [DataRow(12)]
+    public void ProviderSizingSeamAgreesWithThePublicSizingFunction(int variableCount)
+    {
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        PolynomialOpeningSizeDelegate? seam = provider.EvaluationProofSizeBytes;
+        Assert.IsNotNull(seam, "A WHIR provider must expose the opening-length seam; its query counts vary per round, so no repetition count can stand in for it.");
+
+        int expected = WhirPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
+            variableCount,
+            Curve,
+            FastInitialRateLog2,
+            securityLevelBits: FastSecurityLevelBits);
+
+        Assert.AreEqual(expected, seam(variableCount), "The provider's opening length must match the public sizing function at the same figures.");
+    }
+
+
+    /// <summary>
+    /// The scheme-specific sizing figures the other providers carry cannot
+    /// describe WHIR, so a consumer that reads them instead of the seam gets
+    /// nothing to work with. Stating it here keeps a future change from
+    /// quietly populating <see cref="PolynomialCommitmentProvider.QueryCount"/>
+    /// with one round's count and making the omission look like an oversight.
+    /// </summary>
+    [TestMethod]
+    public void ProviderCarriesNoSingleQueryCount()
+    {
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        Assert.IsNull(provider.QueryCount, "WHIR's query count varies per round; no single value describes the scheme.");
+        Assert.IsNotNull(provider.EvaluationProofSizeBytes, "The seam is what replaces it.");
+    }
+
+
+    /// <summary>The pinned test's MLE variable count.</summary>
+    private const int PinnedVariableCount = 8;
+
+    /// <summary>
+    /// The evaluation-table salt: with <see cref="PinnedPointSalt"/>, it fully determines the commit
+    /// and open below by fixed integer arithmetic, and a non-hiding commit draws no randomness at any
+    /// step. That determinism is what makes a content pin meaningful here, and it is why a hiding
+    /// scheme can only be pinned by length.
+    /// </summary>
+    private const int PinnedMleSalt = 1;
+
+    /// <summary>The evaluation-point salt, paired with <see cref="PinnedMleSalt"/> to fully determine the commit and open below.</summary>
+    private const int PinnedPointSalt = 5;
+
+    /// <summary>
+    /// The pinned commitment's digest rather than its serialized bytes: an opening runs to
+    /// kilobytes, and a digest reports one flipped byte exactly as loudly at a fraction of the size.
+    /// </summary>
+    private const string PinnedCommitmentDigest = "D9FC4E1023A9984604E8D59577AE936D05A97F9F2BCF3150D7C1474312FA3CFA";
+
+    /// <summary>
+    /// The pinned opening's digest rather than its serialized bytes: an opening runs to kilobytes,
+    /// and a digest reports one flipped byte exactly as loudly at a fraction of the size.
+    /// </summary>
+    private const string PinnedOpeningDigest = "9B23FC1E877B6AE006F2057EDCA0CDA793850DDBED5B73AA2D1AE3D6D5C62876";
+
+
+    /// <summary>
+    /// Pins the exact bytes an honest commit and open produce at the wired
+    /// digest size, so a change to the serialized form is a decision rather
+    /// than a side effect. The commitment and the opening are published
+    /// artifacts: they travel inside packaged proof files and across the
+    /// command-line surface, so a reader on the far side of a version boundary
+    /// parses whatever this test lets through.
+    /// </summary>
+    /// <remarks>
+    /// Widths are the reason this pin earns its place. A hash-tree commitment
+    /// is one Merkle node wide and its authentication paths are priced by the
+    /// configured digest size; those two figures agree under the wired pairing
+    /// of a 32-byte hash with a 32-byte scalar, so a change that redefined
+    /// either in terms of the other would leave every shipped byte where it is
+    /// and stay invisible to a round-trip test, which proves only that the
+    /// writer and the reader still agree with each other. Updating a constant
+    /// here is correct only once the format change it reports has been shown
+    /// to be intended.
+    /// </remarks>
+    [TestMethod]
+    public void CommitmentAndOpeningBytesAreUnchangedAtTheWiredDigestSize()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        using MultilinearExtension mle = BuildRandomMle(PinnedVariableCount, PinnedMleSalt, pool);
+        Scalar[] point = BuildPoint(PinnedVariableCount, PinnedPointSalt, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    Assert.AreEqual(
+                        PinnedCommitmentDigest,
+                        PinnedDigestOf(commitment.AsReadOnlySpan()),
+                        "The serialized commitment bytes changed; the wire format moved.");
+
+                    Assert.AreEqual(
+                        PinnedOpeningDigest,
+                        PinnedDigestOf(opening.AsReadOnlySpan()),
+                        "The serialized opening bytes changed; the wire format moved.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>Hashes a serialized artifact down to the constant the pin above carries.</summary>
+    private static string PinnedDigestOf(ReadOnlySpan<byte> serialized)
+    {
+        Span<byte> digest = stackalloc byte[WellKnownMerkleHashParameters.DefaultDigestSizeBytes];
+        Blake3.Hash(serialized, digest);
+
+        return Convert.ToHexString(digest);
+    }
+
+
+    /// <summary>The WHIR provider at the fast figures.</summary>
     private static PolynomialCommitmentProvider NewProvider()
+    {
+        return NewProvider(WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// The WHIR provider at the fast figures and an explicit digest size.
+    /// </summary>
+    private static PolynomialCommitmentProvider NewProvider(int digestSizeBytes)
     {
         return WhirPolynomialCommitmentScheme.Create(
             Curve,
@@ -305,7 +584,20 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
             Subtract,
             Multiply,
             Invert,
-            securityLevelBits: FastSecurityLevelBits);
+            securityLevelBits: FastSecurityLevelBits,
+            digestSizeBytes: digestSizeBytes);
+    }
+
+
+    /// <summary>
+    /// A syntactically valid commitment of an arbitrary width; the content is
+    /// immaterial because the width alone must already reject it.
+    /// </summary>
+    private static PolynomialCommitment CommitmentOfWidth(int widthBytes, BaseMemoryPool pool)
+    {
+        Span<byte> bytes = stackalloc byte[widthBytes];
+
+        return PolynomialCommitment.FromBytes(bytes, Curve, CommitmentScheme.Whir, pool);
     }
 
 
@@ -400,11 +692,15 @@ internal sealed class WhirPolynomialCommitmentSchemeTests
 
 
     /// <summary>
-    /// The two-to-one compression: BLAKE3 over the concatenated children.
+    /// The two-to-one compression: BLAKE3 over the concatenated children,
+    /// buffered for the widest node the Merkle surface admits and sliced to
+    /// the actual input widths, so the same compression serves the default
+    /// and the wide-digest providers; BLAKE3 writes exactly the output's
+    /// length.
     /// </summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * ScalarSize];
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

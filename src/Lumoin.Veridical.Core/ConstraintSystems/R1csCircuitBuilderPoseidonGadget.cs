@@ -39,11 +39,14 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class R1csCircuitBuilderPoseidonGadget
 {
-    //A Merkle two-to-one compression hashes two inputs, so its Poseidon state
-    //is three lanes wide (two inputs plus the capacity lane).
+    /// <summary>
+    /// A Merkle two-to-one compression hashes two inputs, so its Poseidon state
+    /// is three lanes wide (two inputs plus the capacity lane).
+    /// </summary>
     private const int MerkleStateWidth = 3;
 
 
+    /// <summary>Poseidon gadget members added to every <see cref="R1csCircuitBuilder"/> instance.</summary>
     extension(R1csCircuitBuilder builder)
     {
         /// <summary>
@@ -241,8 +244,14 @@ public static class R1csCircuitBuilderPoseidonGadget
     }
 
 
-    //The x^5 S-box as three multiplication constraints over intermediate wires,
-    //returning the output as a single-wire linear combination.
+    /// <summary>
+    /// Emits the x^5 S-box as three multiplication constraints over intermediate wires,
+    /// returning the output as a single-wire linear combination.
+    /// </summary>
+    /// <param name="builder">The circuit builder to add the S-box's constraints to.</param>
+    /// <param name="x">The input linear combination to raise to the fifth power.</param>
+    /// <param name="name">The unique name prefix for this S-box's intermediate wires.</param>
+    /// <returns>The linear combination of the single wire holding <c>x^5</c>.</returns>
     private static R1csLinearCombination AppendSBox(R1csCircuitBuilder builder, R1csLinearCombination x, string name)
     {
         R1csVariableIndex x2 = builder.DeclareIntermediateVariable($"{name}_x2");
@@ -258,9 +267,13 @@ public static class R1csCircuitBuilderPoseidonGadget
     }
 
 
+    /// <summary>Interprets <paramref name="canonicalBigEndian"/> as the unsigned big-endian encoding of a field element.</summary>
+    /// <param name="canonicalBigEndian">The canonical big-endian scalar bytes.</param>
+    /// <returns>The non-negative integer value the bytes encode.</returns>
     private static BigInteger ToFieldElement(ReadOnlySpan<byte> canonicalBigEndian) =>
         new(canonicalBigEndian, isUnsigned: true, isBigEndian: true);
 
 
+    /// <summary>The constant linear combination equal to one, used as the multiplier that binds an accumulated linear combination to a single materialised wire.</summary>
     private static R1csLinearCombination One => R1csLinearCombination.FromConstant(BigInteger.One);
 }

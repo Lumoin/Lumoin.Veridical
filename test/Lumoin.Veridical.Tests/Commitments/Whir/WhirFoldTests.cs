@@ -9,7 +9,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR folding operator (4.2 phase A): the encode/fold
+/// Tests for the WHIR folding operator: the encode/fold
 /// commutation gate — butterfly-folding every encoded coset block must equal
 /// encoding the coefficient-folded polynomial on the squared domain, the
 /// content of WHIR Claim 4.15 — plus the partial-evaluation identity
@@ -48,6 +48,8 @@ internal sealed class WhirFoldTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies WHIR Claim 4.15's encode/fold commutation: butterfly-folding every encoded coset block equals encoding the coefficient-folded polynomial on the squared domain, at several fold depths.</summary>
+    /// <param name="foldDepth">The number of fold rounds to apply.</param>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -127,6 +129,7 @@ internal sealed class WhirFoldTests
     }
 
 
+    /// <summary>Verifies the partial-evaluation identity <c>Fold(f, α)(z) = f̂(α, pow(z, m−k))</c> WHIR Claim 4.15 states: every butterfly-folded block's value equals the multilinear extension's partial evaluation at the matching point.</summary>
     [TestMethod]
     public void FoldedBlockEqualsPartialEvaluationOfTheExtension()
     {
@@ -195,6 +198,7 @@ internal sealed class WhirFoldTests
     }
 
 
+    /// <summary>Verifies that folding coefficients in place, into the source buffer's first half, produces the same result as folding into a separate destination buffer.</summary>
     [TestMethod]
     public void InPlaceCoefficientFoldMatchesSeparateDestination()
     {

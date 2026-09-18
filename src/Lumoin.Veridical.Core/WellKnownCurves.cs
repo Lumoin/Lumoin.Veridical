@@ -33,6 +33,12 @@ namespace Lumoin.Veridical.Core;
 /// All sizes assume the canonical big-endian byte layout declared in
 /// <see cref="WellKnownEncodings"/>.
 /// </para>
+/// <para>
+/// The canonical compressed encodings of each wired curve's distinguished group generator and
+/// identity point are curve-definition data, the same kind of constant as the size and modulus
+/// values above, so they are collected here too; the broad <c>G1Point</c>/<c>G2Point</c> wrapper
+/// types look them up rather than embedding any one curve's bytes.
+/// </para>
 /// </remarks>
 public static class WellKnownCurves
 {
@@ -447,7 +453,7 @@ public static class WellKnownCurves
     /// <summary>
     /// Returns the compressed G1-point byte size for the specified curve.
     /// </summary>
-    /// <exception cref="ArgumentException">Thrown when the curve is not recognised or not yet wired.</exception>
+    /// <exception cref="ArgumentException">Thrown when the curve is none of Bls12Curve381, Bn254, or P256, the curves with a known G1 compressed size.</exception>
     public static int GetG1CompressedSizeBytes(CurveParameterSet curve) =>
         curve.Code == CurveParameterSet.Bls12Curve381.Code
             ? Bls12Curve381G1CompressedSizeBytes
@@ -500,14 +506,14 @@ public static class WellKnownCurves
         CultureInfo.InvariantCulture);
 
 
-    //Pre-calculated canonical big-endian byte forms of the scalar field orders
-    //above, stored directly (like the compressed generator constants below) so
-    //IsCanonicalScalar compares allocation-free. Each is the byte spelling of the
-    //same-named *ScalarFieldOrderValue hex literal; to regenerate, write the
-    //BigInteger with TryWriteBytes(destination, out _, isUnsigned: true,
-    //isBigEndian: true) at that curve's scalar width. The canonicity gates in the
-    //rejection tests pin these against GetScalarFieldOrder, so drift fails loudly.
-
+    /// <summary>The BLS12-381 scalar-field order in canonical big-endian bytes, one scalar wide.</summary>
+    /// <remarks>
+    /// Stored directly, like the compressed generator constants below, so <c>IsCanonicalScalar</c> compares
+    /// allocation-free. This is the byte spelling of <see cref="Bls12Curve381ScalarFieldOrderValue"/>; to
+    /// regenerate, write the BigInteger with <c>TryWriteBytes(destination, out _, isUnsigned: true,
+    /// isBigEndian: true)</c> at this curve's scalar width. The canonicity gates in the rejection tests pin
+    /// this against <see cref="GetScalarFieldOrder"/>, so drift fails loudly.
+    /// </remarks>
     private static byte[] Bls12Curve381ScalarFieldOrderBytes { get; } =
     [
         0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48,
@@ -516,6 +522,14 @@ public static class WellKnownCurves
         0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01
     ];
 
+    /// <summary>The BN254 scalar-field order in canonical big-endian bytes, one scalar wide.</summary>
+    /// <remarks>
+    /// Stored directly, like the compressed generator constants below, so <c>IsCanonicalScalar</c> compares
+    /// allocation-free. This is the byte spelling of <see cref="Bn254ScalarFieldOrderValue"/>; to regenerate,
+    /// write the BigInteger with <c>TryWriteBytes(destination, out _, isUnsigned: true, isBigEndian:
+    /// true)</c> at this curve's scalar width. The canonicity gates in the rejection tests pin this against
+    /// <see cref="GetScalarFieldOrder"/>, so drift fails loudly.
+    /// </remarks>
     private static byte[] Bn254ScalarFieldOrderBytes { get; } =
     [
         0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
@@ -524,6 +538,14 @@ public static class WellKnownCurves
         0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01
     ];
 
+    /// <summary>The P-256 scalar-field order in canonical big-endian bytes, one scalar wide.</summary>
+    /// <remarks>
+    /// Stored directly, like the compressed generator constants below, so <c>IsCanonicalScalar</c> compares
+    /// allocation-free. This is the byte spelling of <see cref="P256ScalarFieldOrderValue"/>; to regenerate,
+    /// write the BigInteger with <c>TryWriteBytes(destination, out _, isUnsigned: true, isBigEndian:
+    /// true)</c> at this curve's scalar width. The canonicity gates in the rejection tests pin this against
+    /// <see cref="GetScalarFieldOrder"/>, so drift fails loudly.
+    /// </remarks>
     private static byte[] P256ScalarFieldOrderBytes { get; } =
     [
         0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
@@ -551,6 +573,22 @@ public static class WellKnownCurves
 
 
     /// <summary>
+    /// Returns the scalar-field order in canonical big-endian bytes, one scalar wide, for the specified curve.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar-field order is requested.</param>
+    /// <returns>The canonical big-endian scalar-field order, one scalar wide.</returns>
+    /// <exception cref="ArgumentException">When <paramref name="curve"/> has no wired scalar-field order.</exception>
+    internal static ReadOnlySpan<byte> GetScalarFieldOrderBytes(CurveParameterSet curve) =>
+        curve.Code == CurveParameterSet.Bls12Curve381.Code
+            ? Bls12Curve381ScalarFieldOrderBytes
+            : curve.Code == CurveParameterSet.Bn254.Code
+                ? Bn254ScalarFieldOrderBytes
+                : curve.Code == CurveParameterSet.P256.Code
+                    ? P256ScalarFieldOrderBytes
+                    : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+
+
+    /// <summary>
     /// Returns <see langword="true"/> when <paramref name="canonicalBytes"/> is a
     /// canonical scalar encoding for <paramref name="curve"/>: exactly the scalar
     /// size in canonical big-endian layout and strictly less than the scalar field
@@ -565,13 +603,7 @@ public static class WellKnownCurves
     /// <exception cref="ArgumentException">When the curve has no scalar field order entry.</exception>
     public static bool IsCanonicalScalar(ReadOnlySpan<byte> canonicalBytes, CurveParameterSet curve)
     {
-        ReadOnlySpan<byte> order = curve.Code == CurveParameterSet.Bls12Curve381.Code
-            ? Bls12Curve381ScalarFieldOrderBytes
-            : curve.Code == CurveParameterSet.Bn254.Code
-                ? Bn254ScalarFieldOrderBytes
-                : curve.Code == CurveParameterSet.P256.Code
-                    ? P256ScalarFieldOrderBytes
-                    : throw new ArgumentException($"No scalar field order known for {curve}; add a WellKnownCurves entry when wiring this curve.", nameof(curve));
+        ReadOnlySpan<byte> order = GetScalarFieldOrderBytes(curve);
 
         if(canonicalBytes.Length != order.Length)
         {
@@ -626,12 +658,7 @@ public static class WellKnownCurves
     }
 
 
-    //Canonical compressed encodings of the distinguished group constants.
-    //These are curve-definition data (fixed by the curve standard / RFC 9380),
-    //the same kind of constant as the size and modulus values above; the broad
-    //G1Point/G2Point wrapper types look them up rather than embedding any one
-    //curve's bytes. Per-curve entries are added as each curve is wired.
-
+    /// <summary>The canonical compressed encoding of the BLS12-381 G1 generator point, curve-definition data fixed by the curve standard and RFC 9380.</summary>
     private static byte[] Bls12Curve381G1GeneratorCompressed { get; } =
     [
         0x97, 0xf1, 0xd3, 0xa7, 0x31, 0x97, 0xd7, 0x94,
@@ -642,6 +669,7 @@ public static class WellKnownCurves
         0xfb, 0x3a, 0xf0, 0x0a, 0xdb, 0x22, 0xc6, 0xbb
     ];
 
+    /// <summary>The canonical compressed encoding of the BLS12-381 G1 identity (point at infinity).</summary>
     private static byte[] Bls12Curve381G1IdentityCompressed { get; } =
     [
         0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -652,6 +680,7 @@ public static class WellKnownCurves
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     ];
 
+    /// <summary>The canonical compressed encoding of the BLS12-381 G2 generator point, curve-definition data fixed by the curve standard and RFC 9380.</summary>
     private static byte[] Bls12Curve381G2GeneratorCompressed { get; } =
     [
         0x93, 0xe0, 0x2b, 0x60, 0x52, 0x71, 0x9f, 0x60,
@@ -668,6 +697,7 @@ public static class WellKnownCurves
         0xd4, 0x80, 0x56, 0xc8, 0xc1, 0x21, 0xbd, 0xb8
     ];
 
+    /// <summary>The canonical compressed encoding of the BLS12-381 G2 identity (point at infinity).</summary>
     private static byte[] Bls12Curve381G2IdentityCompressed { get; } =
     [
         0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -685,14 +715,13 @@ public static class WellKnownCurves
     ];
 
 
-    //BN254 G1 distinguished constants in the gnark big-endian compressed
-    //convention (gnark bn254/marshal.go): the most-significant two bits of
-    //byte 0 tag the point (0b10 = smaller-y, 0b11 = larger-y, 0b01 = infinity)
-    //and the remaining 254 bits hold the big-endian x-coordinate. The generator
-    //is the affine point (1, 2); y = 2 is the smaller root, so its tag is 0b10
-    //(0x80) and the encoding is 0x80 followed by x = 1. The identity carries
-    //the 0b01 (0x40) infinity tag with all x bits zero.
-
+    /// <summary>
+    /// The BN254 G1 generator's canonical compressed encoding in the gnark big-endian convention
+    /// (gnark <c>bn254/marshal.go</c>): the most-significant two bits of byte 0 tag the point (<c>0b10</c>
+    /// = smaller-y, <c>0b11</c> = larger-y, <c>0b01</c> = infinity) and the remaining 254 bits hold the
+    /// big-endian x-coordinate. The generator is the affine point <c>(1, 2)</c>; <c>y = 2</c> is the
+    /// smaller root, so its tag is <c>0b10</c> (<c>0x80</c>), followed by <c>x = 1</c>.
+    /// </summary>
     private static byte[] Bn254G1GeneratorCompressed { get; } =
     [
         0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -701,6 +730,7 @@ public static class WellKnownCurves
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01
     ];
 
+    /// <summary>The BN254 G1 identity's canonical compressed encoding in the same gnark convention: the <c>0b01</c> (<c>0x40</c>) infinity tag with all x bits zero.</summary>
     private static byte[] Bn254G1IdentityCompressed { get; } =
     [
         0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -710,28 +740,31 @@ public static class WellKnownCurves
     ];
 
 
-    //BN254 G2 distinguished constants in the same gnark big-endian compressed
-    //convention as G1 (64 bytes): the imaginary component x.c1 first, then the
-    //real component x.c0, with the 2-bit tag in byte 0. The generator is the
-    //canonical alt_bn128 G2 point (py_ecc / EIP-197); its y is the smaller root,
-    //so its tag is 0b10 (0x80). The identity carries the 0b01 (0x40) tag.
-
+    /// <summary>
+    /// The BN254 G2 generator's canonical compressed encoding (64 bytes) in the same gnark big-endian
+    /// convention as G1: the imaginary component <c>x.c1</c> first, then the real component <c>x.c0</c>,
+    /// with the 2-bit tag in byte 0. This is the canonical alt_bn128 G2 point (py_ecc / EIP-197); its y
+    /// is the smaller root, so its tag is <c>0b10</c> (<c>0x80</c>).
+    /// </summary>
     private static byte[] Bn254G2GeneratorCompressed { get; } = Convert.FromHexString(
         "998e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2"
         + "1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed");
 
+    /// <summary>The BN254 G2 identity's canonical compressed encoding: the <c>0b01</c> (<c>0x40</c>) infinity tag with all bits otherwise zero.</summary>
     private static byte[] Bn254G2IdentityCompressed { get; } = Convert.FromHexString(
         "40" + new string('0', 126));
 
 
-    //P-256 (secp256r1) G1 distinguished constants in the SEC1 compressed
-    //convention (33 bytes): a 0x02/0x03 prefix carrying the y-parity followed
-    //by the 32-byte big-endian x, or a 0x00 prefix with zero padding for the
-    //point at infinity. The generator's y (SEC 2 v2.0 §2.4.2) is odd, so its
-    //prefix is 0x03; x is the standard P-256 Gx.
+    /// <summary>
+    /// The P-256 G1 generator's canonical compressed encoding in the SEC1 convention (33 bytes): a
+    /// <c>0x02</c>/<c>0x03</c> prefix carrying the y-parity followed by the 32-byte big-endian x. The
+    /// generator's y (SEC 2 v2.0 §2.4.2) is odd, so its prefix is <c>0x03</c>, and x is the standard
+    /// P-256 <c>Gx</c>.
+    /// </summary>
     private static byte[] P256G1GeneratorCompressed { get; } = Convert.FromHexString(
         "03" + "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
 
+    /// <summary>The P-256 G1 identity's canonical compressed encoding in the SEC1 convention: a <c>0x00</c> prefix with zero padding for the point at infinity.</summary>
     private static byte[] P256G1IdentityCompressed { get; } = Convert.FromHexString(
         "00" + new string('0', 64));
 
@@ -780,11 +813,7 @@ public static class WellKnownCurves
                 : throw new ArgumentException($"No G2 identity wired for {curve}.", nameof(curve));
 
 
-    //Field-tower element byte sizes: Fp_k = k * base-field size. The
-    //pairing tower for BLS12-381 is Fp ⊂ Fp2 ⊂ Fp6 ⊂ Fp12; Fp12 equals the
-    //GT element size.
-
-    /// <summary>BLS12-381 Fp2 element size: two base-field components.</summary>
+    /// <summary>BLS12-381 Fp2 element size: two base-field components, the first extension in the pairing tower Fp ⊂ Fp2 ⊂ Fp6 ⊂ Fp12 (each field-tower size is <c>k</c> times the base-field size).</summary>
     public const int Bls12Curve381Fp2SizeBytes = 2 * Bls12Curve381BaseFieldSizeBytes;
 
     /// <summary>BLS12-381 Fp6 element size: three Fp2 components.</summary>

@@ -26,7 +26,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// Add, subtract, and the batch forms are implemented here; multiplication and
-/// inversion are the shared Montgomery path (a separate sub-batch). Only the modulus
+/// inversion are the shared Montgomery path. Only the modulus
 /// constants differ from the BLS12-381 AVX-512 backend.
 /// </para>
 /// </remarks>
@@ -62,10 +62,16 @@ internal static class Bn254Avx512ScalarBackend
     ];
 
 
-    /// <summary>Per-lane broadcasts of the four limbs of <c>r</c>. Each <see cref="Vector512{T}"/> has the same limb value in all eight 64-bit lanes.</summary>
+    /// <summary>The broadcast of r's least-significant 64-bit limb into all eight lanes of a <see cref="Vector512{T}"/>.</summary>
     private static Vector512<ulong> FieldOrderLane0 { get; } = Vector512.Create(0x43e1f593f0000001UL);
+
+    /// <summary>The broadcast of r's second 64-bit limb into all eight lanes of a <see cref="Vector512{T}"/>.</summary>
     private static Vector512<ulong> FieldOrderLane1 { get; } = Vector512.Create(0x2833e84879b97091UL);
+
+    /// <summary>The broadcast of r's third 64-bit limb into all eight lanes of a <see cref="Vector512{T}"/>.</summary>
     private static Vector512<ulong> FieldOrderLane2 { get; } = Vector512.Create(0xb85045b68181585dUL);
+
+    /// <summary>The broadcast of r's most-significant 64-bit limb into all eight lanes of a <see cref="Vector512{T}"/>.</summary>
     private static Vector512<ulong> FieldOrderLane3 { get; } = Vector512.Create(0x30644e72e131a029UL);
 
 
@@ -99,6 +105,7 @@ internal static class Bn254Avx512ScalarBackend
     public static ScalarBatchMultiplyDelegate GetBatchMultiply() => BatchMultiply;
 
 
+    /// <summary>Scalar addition: increments the operation counter, then delegates to <see cref="AddCore"/>.</summary>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -108,6 +115,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Adds two canonical scalars modulo r via a carry chain and a speculative reduction, selected without a data-dependent branch.</summary>
     private static void AddCore(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -128,6 +136,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Scalar subtraction: increments the operation counter, then delegates to <see cref="SubtractCore"/>.</summary>
     private static void Subtract(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -137,6 +146,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Subtracts two canonical scalars modulo r via a borrow chain and a speculative correction, selected without a data-dependent branch.</summary>
     private static void SubtractCore(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -157,6 +167,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Scalar multiplication: increments the operation counter, then delegates to the shared serial Montgomery multiply.</summary>
     private static void Multiply(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -169,6 +180,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Scalar inversion: increments the operation counter, then delegates to the shared Fermat inversion.</summary>
     private static void Invert(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -178,6 +190,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Scalar negation: increments the operation counter, then delegates to <see cref="NegateCore"/>.</summary>
     private static void Negate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -198,6 +211,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Adds scalar pairs in SIMD octets, falling back to <see cref="AddCore"/> for the trailing 1–7 elements.</summary>
     private static void BatchAdd(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -235,6 +249,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Subtracts scalar pairs in SIMD octets, falling back to <see cref="SubtractCore"/> for the trailing 1–7 elements.</summary>
     private static void BatchSubtract(
         ReadOnlySpan<byte> minuendsConcatenated,
         ReadOnlySpan<byte> subtrahendsConcatenated,
@@ -323,6 +338,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>SIMD inner loop: subtracts eight scalars in parallel using AVX-512 lane-interleaved arithmetic.</summary>
     private static void SubtractOctet(
         ReadOnlySpan<byte> aOctet,
         ReadOnlySpan<byte> bOctet,
@@ -365,6 +381,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Adds one 64-bit limb across all eight lanes with an incoming carry, returning the sum and the outgoing carry mask.</summary>
     private static void AddLimbWithCarry(
         Vector512<ulong> a,
         Vector512<ulong> b,
@@ -380,6 +397,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Subtracts one 64-bit limb across all eight lanes with an incoming borrow, returning the difference and the outgoing borrow mask.</summary>
     private static void SubtractLimbWithBorrow(
         Vector512<ulong> a,
         Vector512<ulong> b,
@@ -403,6 +421,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Reads a canonical big-endian scalar into little-endian 64-bit limbs.</summary>
     private static void LoadCanonicalToLimbs(ReadOnlySpan<byte> canonical, Span<ulong> limbs)
     {
         for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
@@ -413,6 +432,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Writes little-endian 64-bit limbs back out as a canonical big-endian scalar.</summary>
     private static void StoreLimbsToCanonical(ReadOnlySpan<ulong> limbs, Span<byte> canonical)
     {
         for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
@@ -423,6 +443,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Adds two 256-bit limb tuples with carry propagation, returning whether the sum overflowed.</summary>
     private static bool AddWithCarry256(ReadOnlySpan<ulong> a, ReadOnlySpan<ulong> b, Span<ulong> result)
     {
         UInt128 carry = UInt128.Zero;
@@ -437,6 +458,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Subtracts one 256-bit limb tuple from another in place with borrow propagation, returning whether the result underflowed.</summary>
     private static bool SubtractWithBorrow256(Span<ulong> a, ReadOnlySpan<ulong> b)
     {
         ulong borrow = 0UL;
@@ -476,6 +498,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Loads eight canonical scalars into four limb-major <see cref="Vector512{T}"/> vectors, one vector per limb position across all eight scalars.</summary>
     private static void LoadOctetToLimbVectors(
         ReadOnlySpan<byte> octetBytes,
         out Vector512<ulong> limb0,
@@ -509,6 +532,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Writes four limb-major <see cref="Vector512{T}"/> vectors back out as eight canonical scalars.</summary>
     private static void StoreLimbVectorsToOctet(
         Vector512<ulong> limb0,
         Vector512<ulong> limb1,
@@ -529,6 +553,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Throws when a batched operand or result buffer is not exactly <paramref name="count"/> times <paramref name="stride"/> bytes.</summary>
     private static void ValidateBatchedLengths(
         ReadOnlySpan<byte> first,
         ReadOnlySpan<byte> second,
@@ -545,6 +570,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Throws when the host CPU does not support AVX-512F.</summary>
     private static void EnsureSupported()
     {
         if(!Avx512F.IsSupported)
@@ -555,16 +581,23 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
-    //Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS, 8-wide)
-
+    /// <summary>The number of 32-bit limbs that compose a BN254 scalar for the lane-interleaved batch Montgomery multiply (256 bits / 32 bits per limb).</summary>
     private const int Limb32Count = 8;
 
+    /// <summary>The per-lane mask that keeps the low 32 bits of a 64-bit lane, discarding the carry bits a 32×32→64 product or a limb sum accumulates above bit 31.</summary>
     private static Vector512<ulong> Low32Mask { get; } = Vector512.Create(0xFFFFFFFFUL);
+
+    /// <summary>The Montgomery reduction constant <c>n'</c> for the 32-bit-limb CIOS scheme, broadcast into all eight lanes.</summary>
     private static Vector512<ulong> NPrime32Broadcast { get; } = Vector512.Create((ulong)Bn254MontgomeryParameters.NPrime32);
+
+    /// <summary>The BN254 modulus's 32-bit limbs, each broadcast into its own per-lane <see cref="Vector512{T}"/>.</summary>
     private static Vector512<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
+
+    /// <summary>The Montgomery constant <c>R² mod r</c>'s 32-bit limbs, each broadcast into its own per-lane <see cref="Vector512{T}"/>, used to lift an operand into the Montgomery domain.</summary>
     private static Vector512<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
 
 
+    /// <summary>Broadcasts each 32-bit limb of a limb array into its own per-lane <see cref="Vector512{T}"/>.</summary>
     private static Vector512<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)
     {
         var vectors = new Vector512<ulong>[Limb32Count];
@@ -577,6 +610,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Multiplies scalar pairs in SIMD octets via the lane-interleaved 32-bit-limb CIOS Montgomery multiply, falling back to the shared serial Montgomery multiply for the trailing 1–7 elements.</summary>
     private static void BatchMultiply(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -614,6 +648,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>SIMD inner loop: multiplies eight scalar pairs in parallel by lifting the left operand into the Montgomery domain and then performing one Montgomery multiply against the right operand.</summary>
     private static void MultiplyOctet(
         ReadOnlySpan<byte> aOctet,
         ReadOnlySpan<byte> bOctet,
@@ -634,6 +669,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>The lane-interleaved 32-bit-limb CIOS Montgomery multiply: computes <c>x·y·R⁻¹ mod r</c> across all eight lanes at once, each 32×32→64 partial product a single <c>vpmuludq</c>.</summary>
     private static void MontgomeryMultiplyOctet(
         ReadOnlySpan<Vector512<ulong>> x,
         ReadOnlySpan<Vector512<ulong>> y,
@@ -681,6 +717,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Speculatively subtracts the modulus from the CIOS accumulator across all eight lanes and selects the reduced or unreduced result per lane without a data-dependent branch.</summary>
     private static void ConditionalSubtractModulusOctet(ReadOnlySpan<Vector512<ulong>> t, Span<Vector512<ulong>> result)
     {
         Vector512<ulong> mask = Low32Mask;
@@ -706,6 +743,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Loads eight canonical scalars into eight limb-major <see cref="Vector512{T}"/> vectors of 32-bit limbs stored in 64-bit lanes, one vector per limb position across all eight scalars.</summary>
     private static void LoadOctetTo32LimbVectors(ReadOnlySpan<byte> octetBytes, Span<Vector512<ulong>> limbVectors)
     {
         Span<uint> s = stackalloc uint[ScalarsPerOctet * Limb32Count];
@@ -724,6 +762,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Writes eight limb-major 32-bit-limb <see cref="Vector512{T}"/> vectors back out as eight canonical scalars.</summary>
     private static void Store32LimbVectorsToOctet(ReadOnlySpan<Vector512<ulong>> limbVectors, Span<byte> octetBytes)
     {
         int stride = Scalar.SizeBytes;
@@ -740,6 +779,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Reads a canonical big-endian scalar into little-endian 32-bit limbs.</summary>
     private static void LoadCanonicalTo32Limbs(ReadOnlySpan<byte> canonical, Span<uint> limbs)
     {
         for(int i = 0; i < Limb32Count; i++)
@@ -749,6 +789,7 @@ internal static class Bn254Avx512ScalarBackend
     }
 
 
+    /// <summary>Writes little-endian 32-bit limbs back out as a canonical big-endian scalar.</summary>
     private static void StoreCanonicalFrom32Limbs(ReadOnlySpan<uint> limbs, Span<byte> canonical)
     {
         for(int i = 0; i < Limb32Count; i++)

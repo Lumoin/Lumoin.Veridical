@@ -25,43 +25,86 @@ namespace Lumoin.Veridical.Tests.Cryptography.Wycheproof;
 [TestClass]
 internal sealed class WycheproofEcdsaP1363Tests
 {
-    //P-256 field size is 32 bytes; IEEE P1363 concatenates r‖s each 32 bytes.
+    /// <summary>
+    /// The IEEE P1363 signature size in bytes: the P-256 field size is 32
+    /// bytes, and P1363 concatenates <c>r‖s</c> each 32 bytes.
+    /// </summary>
     private const int P1363SignatureSizeBytes = 64;
 
-    //SHA-256 output is 256 bits.
+    /// <summary>
+    /// The SHA-256 digest size in bytes: 256 bits.
+    /// </summary>
     private const int DigestSizeBytes = 32;
 
-    //Mismatches list cap for the failure message; avoids enormous output on widespread breakage.
+    /// <summary>
+    /// The cap on mismatches listed in a failure message, to keep the
+    /// output readable when verification breaks widely.
+    /// </summary>
     private const int MaxPrintedMismatches = 20;
 
-    //Pinned file hashes — must match FIXTURES.md.
+    /// <summary>
+    /// The expected SHA-256 hash of the P1363 fixture file; see
+    /// <c>Fixtures/FIXTURES.md</c>.
+    /// </summary>
     private const string PinnedP1363Sha256 = "c60de693930e386c3a5472d08081623ef8504decc54b38ac01ec6b2a2575c986";
+
+    /// <summary>
+    /// The expected SHA-256 hash of the ASN.1 fixture file; see
+    /// <c>Fixtures/FIXTURES.md</c>.
+    /// </summary>
     private const string PinnedAsn1Sha256 = "182db4f3e230f6f9fa9f800d2a614dede30284b8e8438bbfe1171905402e9332";
 
-    //BigInteger reference delegates — wired once; mirror SecdsaSplitSignTests convention.
+    /// <summary>
+    /// The BigInteger-backed scalar multiplication delegate, wired once per
+    /// test run.
+    /// </summary>
     private static ScalarMultiplyDelegate BigIntegerScalarMultiply { get; } =
         P256BigIntegerScalarReference.GetMultiply();
 
+    /// <summary>
+    /// The BigInteger-backed scalar inversion delegate, wired once per
+    /// test run.
+    /// </summary>
     private static ScalarInvertDelegate BigIntegerScalarInvert { get; } =
         P256BigIntegerScalarReference.GetInvert();
 
+    /// <summary>
+    /// The BigInteger-backed scalar reduction delegate, wired once per
+    /// test run.
+    /// </summary>
     private static ScalarReduceDelegate BigIntegerScalarReduce { get; } =
         P256BigIntegerScalarReference.GetReduce();
 
+    /// <summary>
+    /// The BigInteger-backed G1 scalar multiplication delegate, wired once
+    /// per test run.
+    /// </summary>
     private static G1ScalarMultiplyDelegate BigIntegerG1ScalarMultiply { get; } =
         P256BigIntegerG1Reference.GetScalarMultiply();
 
+    /// <summary>
+    /// The BigInteger-backed G1 addition delegate, wired once per test run.
+    /// </summary>
     private static G1AddDelegate BigIntegerG1Add { get; } =
         P256BigIntegerG1Reference.GetAdd();
 
-    //Constant-time bundles — wired once per test run.
+    /// <summary>
+    /// The constant-time scalar-arithmetic backend, wired once per test run.
+    /// </summary>
     private static ScalarArithmeticBackend CtScalarBackend { get; } =
         P256ManagedScalarBackend.Create();
 
+    /// <summary>
+    /// The constant-time G1-arithmetic backend, wired once per test run.
+    /// </summary>
     private static G1ArithmeticBackend CtG1Backend { get; } =
         P256ManagedG1Backend.Create();
 
 
+    /// <summary>
+    /// Every P1363 vector in the catalogue matches the in-repo BigInteger
+    /// reference verifier's accept/reject verdict.
+    /// </summary>
     [TestMethod]
     public void EveryP1363VectorMatchesTheReferenceVerifier()
     {
@@ -69,7 +112,7 @@ internal sealed class WycheproofEcdsaP1363Tests
         if(file is null)
         {
             Assert.Inconclusive(
-                "P1363 fixture file not found. See Cryptography/Wycheproof/Fixtures/FIXTURES.md for provenance and regeneration instructions.");
+                "P1363 fixture file not found. See Cryptography/Wycheproof/Fixtures/FIXTURES.md.");
         }
 
         var mismatches = new List<string>();
@@ -88,6 +131,11 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// Every P1363 vector in the catalogue matches
+    /// <see cref="SecdsaAlgorithm.Verify"/>'s verdict when wired with
+    /// BigInteger reference delegates.
+    /// </summary>
     [TestMethod]
     public void EveryP1363VectorMatchesSecdsaAlgorithmWithBigIntegerDelegates()
     {
@@ -95,7 +143,7 @@ internal sealed class WycheproofEcdsaP1363Tests
         if(file is null)
         {
             Assert.Inconclusive(
-                "P1363 fixture file not found. See Cryptography/Wycheproof/Fixtures/FIXTURES.md for provenance and regeneration instructions.");
+                "P1363 fixture file not found. See Cryptography/Wycheproof/Fixtures/FIXTURES.md.");
         }
 
         var mismatches = new List<string>();
@@ -114,6 +162,11 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// Every P1363 vector in the catalogue matches
+    /// <see cref="SecdsaAlgorithm.Verify"/>'s verdict when wired with the
+    /// constant-time backend bundles.
+    /// </summary>
     [TestMethod]
     public void EveryP1363VectorMatchesSecdsaAlgorithmWithConstantTimeBundles()
     {
@@ -121,7 +174,7 @@ internal sealed class WycheproofEcdsaP1363Tests
         if(file is null)
         {
             Assert.Inconclusive(
-                "P1363 fixture file not found. See Cryptography/Wycheproof/Fixtures/FIXTURES.md for provenance and regeneration instructions.");
+                "P1363 fixture file not found. See Cryptography/Wycheproof/Fixtures/FIXTURES.md.");
         }
 
         var mismatches = new List<string>();
@@ -140,10 +193,15 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// The on-disk fixture files hash to the pinned values in
+    /// <see cref="PinnedP1363Sha256"/> and <see cref="PinnedAsn1Sha256"/>.
+    /// A missing file fails the assertion rather than reporting zero
+    /// vectors processed.
+    /// </summary>
     [TestMethod]
     public void FixtureIntegrityMatchesPinnedHashes()
     {
-        //Fail-closed sentinel for the fixture-copy pipeline: missing files → hard error.
         string actualP1363 = WycheproofEcdsaFixtures.ComputeFileSha256Hex(WycheproofEcdsaFixtures.P1363FileName);
         string actualAsn1 = WycheproofEcdsaFixtures.ComputeFileSha256Hex(WycheproofEcdsaFixtures.Asn1FileName);
 
@@ -160,6 +218,11 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// Verifies one vector against the in-repo BigInteger reference
+    /// verifier, treating a non-64-byte signature and an
+    /// argument-validation rejection alike as a failed verification.
+    /// </summary>
     private static bool RunReferenceVerifier(WycheproofVector v)
     {
         if(v.Signature.Length != P1363SignatureSizeBytes)
@@ -186,6 +249,12 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// Verifies one vector through <see cref="SecdsaAlgorithm.Verify"/>
+    /// wired with BigInteger reference delegates, treating a non-64-byte
+    /// signature and an argument-validation rejection alike as a failed
+    /// verification.
+    /// </summary>
     private static bool RunSecdsaVerifierBigInteger(WycheproofVector v)
     {
         if(v.Signature.Length != P1363SignatureSizeBytes)
@@ -214,6 +283,12 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// Verifies one vector through <see cref="SecdsaAlgorithm.Verify"/>
+    /// wired with the constant-time backend bundles, treating a
+    /// non-64-byte signature and an argument-validation rejection alike as
+    /// a failed verification.
+    /// </summary>
     private static bool RunSecdsaVerifierConstantTime(WycheproofVector v)
     {
         if(v.Signature.Length != P1363SignatureSizeBytes)
@@ -242,11 +317,15 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// Records a mismatch when a vector's actual verification result
+    /// differs from its declared expectation. A non-64-byte P1363
+    /// signature makes the runner return false, which is correct when the
+    /// vector expects rejection and a recorded mismatch when it expects
+    /// acceptance.
+    /// </summary>
     private static void RecordResult(WycheproofVector v, bool actual, List<string> mismatches)
     {
-        //For non-64-byte P1363 signatures the runner returns false; if the vector
-        //is expected-invalid this is correct (no mismatch). If expected-valid and
-        //wrong length, the mismatch is recorded here.
         if(actual == v.ExpectedValid)
         {
             return;
@@ -258,6 +337,11 @@ internal sealed class WycheproofEcdsaP1363Tests
     }
 
 
+    /// <summary>
+    /// Fails the test with every recorded mismatch listed against
+    /// <paramref name="target"/>, capped at
+    /// <see cref="MaxPrintedMismatches"/> entries.
+    /// </summary>
     private static void AssertNoMismatches(List<string> mismatches, string target)
     {
         if(mismatches.Count == 0)

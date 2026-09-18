@@ -16,7 +16,7 @@ using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The self-consistent Fp256 end-to-end ZK PROVE + VERIFY gate (conformance step C.12, the field-generic
+/// The self-consistent Fp256 end-to-end ZK PROVE + VERIFY gate (the field-generic
 /// prover seam). It exercises the FULL prover+verifier over the 32-byte P-256 base field through the
 /// field-generic <c>LongfellowZkProver.Prove</c>
 /// entry (the prime-field analogue of the GF(2^128) convenience overload), then verifies the produced
@@ -24,10 +24,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is NOT a byte-for-byte conformance gate against a reference dump — the byte-exact Fp256 envelope
-/// against a reference run lands with the Docker dump harness in a later step. This gate proves the two
-/// halves are mutually consistent: OUR prover's Fp256 proof verifies in OUR verifier over the 32-byte
-/// field, and any tamper (a flipped proof byte or a flipped public input) is rejected.
+/// This gate does not check byte-for-byte conformance against reference-computed values. It instead
+/// proves the two halves are mutually consistent: OUR prover's Fp256 proof verifies in OUR verifier
+/// over the 32-byte field, and any tamper (a flipped proof byte or a flipped public input) is rejected.
 /// </para>
 /// <para>
 /// The circuit is the same small field-satisfiable relation the GF(2^128) anchor compiles
@@ -42,62 +41,110 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// prover and the verifier derive the identical challenge stream.
 /// </para>
 /// <para>
-/// A companion GF(2^128) gate proves the existing hash circuit through the SAME new field-generic entry
+/// A companion GF(2^128) gate proves the existing hash circuit through the same field-generic entry
 /// (with the GF encoding/codec built from the additive-FFT engine) and confirms the envelope is
-/// byte-identical to the GF convenience <c>Prove</c> — the proof that splitting the prover left the GF
-/// bytes untouched.
+/// byte-identical to the GF convenience <c>Prove</c>, so the field-generic entry and the convenience
+/// overload are interchangeable for the GF(2^128) circuit's wire envelope.
 /// </para>
 /// <para>
 /// The Fp256 base field is BigInteger-backed and slow; the prove+verify is marked
-/// <see cref="TestCategoryAttribute"/> <c>Slow</c> (it runs in low single-digit seconds on a developer machine) and
+/// <see cref="TestCategoryAttribute"/> <c>Slow</c> (it runs in low single-digit seconds) and
 /// is gated out of the default suite. The GF byte-identity check below it is fast and stays in the default
 /// suite.
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowFp256ZkProveTests
+internal sealed class LongfellowFp256ZkProveTests: IDisposable
 {
-    private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
 
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
+    /// <summary>The path, relative to the test project directory, to the GF(2^128) end-to-end ZK anchor file this test cross-checks against.</summary>
+    private const string ZkAnchorRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+
+    /// <summary>The canonical scalar width in bytes, shared by both fields' witness columns.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The on-wire element width, in bytes, for the P-256 base field.</summary>
     private const int Fp256ElementBytes = 32;
+
+    /// <summary>The on-wire element width, in bytes, for the GF(2^128) field.</summary>
     private const int GfElementBytes = 16;
+
+    /// <summary>The SHA-256 digest width in bytes, matching the commitment root size in both proof envelopes.</summary>
     private const int DigestSize = 32;
+
+    /// <summary>The transcript wire-format version (6, the deployed mdoc flow's value) the prover and verifier must agree on to derive the identical challenge stream.</summary>
     private const int TranscriptVersion = 6;
 
-    //The Ligero rate / opened-column count the GF anchor flow uses; reused for both fields.
+    /// <summary>The Ligero code's inverse rate, fixed the same for both the GF and the Fp256 gates so the two proofs are structurally comparable.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of Ligero columns opened per proof, fixed the same for both the GF and the Fp256 gates.</summary>
     private const int OpenedColumnCount = 2;
 
-    //GF(2^128) full/subfield widths (the binary hash circuit).
+    /// <summary>The GF(2^128) field element width in bytes, for the binary hash circuit.</summary>
     private const int GfFieldBytes = 16;
+
+    /// <summary>The GF(2^128) subfield element width in bytes that the additive-FFT engine operates over.</summary>
     private const int GfSubFieldBytes = 2;
+
+    /// <summary>The subfield-run boundary (rebased to start at the public-input count) this test's circuit passes to the GF(2^128) entries; zero, so no witness row falls below it.</summary>
     private const int GfSubfieldBoundary = 0;
 
+    /// <summary>The transcript seed for the Fp256 end-to-end gates.</summary>
     private static byte[] Fp256TranscriptSeed { get; } = Encoding.ASCII.GetBytes("fp256-zk-e2e");
+
+    /// <summary>The transcript seed for the GF(2^128) field-generic-vs-convenience byte-identity gate.</summary>
     private static byte[] GfTranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
+    /// <summary>The P-256 base field's prime modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The P-256 base field addition delegate.</summary>
     private static ScalarAddDelegate Fp256Add { get; } = P256BaseFieldReference.GetAdd();
 
+    /// <summary>The P-256 base field subtraction delegate.</summary>
     private static ScalarSubtractDelegate Fp256Subtract { get; } = P256BaseFieldReference.GetSubtract();
 
+    /// <summary>The P-256 base field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate Fp256Multiply { get; } = P256BaseFieldReference.GetMultiply();
 
+    /// <summary>The P-256 base field inversion delegate.</summary>
     private static ScalarInvertDelegate Fp256Invert { get; } = P256BaseFieldReference.GetInvert();
 
+    /// <summary>The GF(2^128) addition delegate (XOR).</summary>
     private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) subtraction delegate (coincides with addition).</summary>
     private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) multiplication delegate.</summary>
     private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) inversion delegate.</summary>
     private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
-    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
+    /// <summary>The parsed key/value map loaded from the GF(2^128) end-to-end ZK anchor file.</summary>
+    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkAnchorRelativePath);
 
 
+    /// <summary>Verifies that a genuine Fp256 witness proves through the field-generic prover and is accepted by the field-generic verifier over the 32-byte P-256 base field.</summary>
     [TestMethod]
     public void OurVerifierAcceptsOurFp256Proof()
     {
@@ -117,6 +164,7 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
+    /// <summary>Verifies that flipping a byte inside the sumcheck segment of a valid Fp256 proof, or flipping a byte of the public inputs, makes verification fail.</summary>
     [TestMethod]
     public void ATamperedFp256ProofIsRejected()
     {
@@ -144,13 +192,13 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
+    /// <summary>Verifies that proving the GF(2^128) hash circuit through the field-generic entry produces the byte-identical envelope the GF convenience <c>Prove</c> overload produces, and that both match the reference's pinned proof bytes.</summary>
     [TestMethod]
     public void TheFieldGenericEntryReproducesTheGfConvenienceBytes()
     {
-        //Proving the GF(2^128) hash circuit through the NEW field-generic entry (with the GF encoding,
+        //Proving the GF(2^128) hash circuit through the field-generic entry (with the GF encoding,
         //row-encoder factory and subfield-run codec built from the additive-FFT engine) must produce the
-        //byte-identical envelope the GF convenience Prove produces — the proof the split did not change the
-        //GF bytes. Fast; stays in the default suite.
+        //byte-identical envelope the GF convenience Prove produces. Fast; stays in the default suite.
         LongfellowSumcheckCircuit circuit = BuildCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, GfFieldBytes, GfSubFieldBytes);
@@ -168,11 +216,15 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //Proves a satisfying Fp256 witness column through the field-generic prover with the Fp256 encoding.
-    //Returns the pooled proof envelope; the caller disposes it.
+    /// <summary>
+    /// Proves a satisfying Fp256 witness column through the field-generic prover with the Fp256 encoding,
+    /// retaining the FFT through every encoder callback.
+    /// </summary>
+    /// <returns>The pooled proof envelope; the caller disposes it.</returns>
     private static LongfellowZkProofEnvelope ProveFp256(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
     {
-        Fp256RealFft fft = NewFp256Fft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFp256Fft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -203,8 +255,11 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //Proves the GF circuit through the GF convenience Prove (the unchanged signature; the byte baseline).
-    //Returns the pooled proof envelope; the caller disposes it.
+    /// <summary>
+    /// Proves the GF circuit through the GF convenience <c>Prove</c> overload, the byte baseline the
+    /// field-generic entry's output is checked against.
+    /// </summary>
+    /// <returns>The pooled proof envelope; the caller disposes it.</returns>
     private static LongfellowZkProofEnvelope ProveGfConvenience(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
     {
         using Lch14AdditiveFft fft = NewGfFft();
@@ -232,9 +287,11 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //Proves the GF circuit through the field-generic Prove, building the GF encoding/codec from the FFT
-    //exactly as the convenience overload does internally.
-    //Returns the pooled proof envelope; the caller disposes it.
+    /// <summary>
+    /// Proves the GF circuit through the field-generic <c>Prove</c>, building the GF encoding/codec from
+    /// the FFT exactly as the convenience overload does internally.
+    /// </summary>
+    /// <returns>The pooled proof envelope; the caller disposes it.</returns>
     private static LongfellowZkProofEnvelope ProveGfFieldGeneric(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] seed)
     {
         using Lch14AdditiveFft fft = NewGfFft();
@@ -267,10 +324,14 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //Reconstructs the circuit shape with its per-layer Quad terms from the anchor's dumped parameters. The
-    //wiring is shared between GF and Fp256 because every coefficient v is the field ONE (01000...), which is
-    //the same canonical value in both fields, and the gate indices are field-independent.
-    private static LongfellowSumcheckCircuit BuildCircuit()
+    /// <summary>
+    /// Reconstructs the circuit shape with its per-layer Quad terms from the anchor's parameters.
+    /// The wiring is shared between GF and Fp256 because every coefficient <c>v</c> is the field ONE
+    /// (01000...), the same canonical value in both fields, and the gate indices are field-independent.
+    /// Circuit owners are released at test cleanup.
+    /// </summary>
+    /// <returns>The reconstructed circuit, owned by this test's circuit scope.</returns>
+    private LongfellowSumcheckCircuit BuildCircuit()
     {
         int nl = Anchor("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -295,7 +356,7 @@ internal sealed class LongfellowFp256ZkProveTests
 
         byte[] id = Convert.FromHexString(Anchors["id"]);
 
-        return new LongfellowSumcheckCircuit(
+        return CircuitScope.CreateCircuit(
             Anchor("nv"),
             Anchor("logv"),
             Anchor("nc"),
@@ -307,8 +368,13 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //The GF witness column (all ninputs) as canonical scalars, from the anchor's input0..input(n-1). This is
-    //the reference's fixed satisfying column for the GF byte-identity check.
+    /// <summary>
+    /// Builds the GF witness column (all <c>ninputs</c>) as canonical scalars, from the anchor's
+    /// <c>input0..input(n-1)</c> values: the reference's fixed satisfying column for the GF byte-identity
+    /// check.
+    /// </summary>
+    /// <param name="circuit">The circuit whose <see cref="LongfellowSumcheckCircuit.InputCount"/> sizes the column.</param>
+    /// <returns>The canonical-scalar witness column, one element per input wire.</returns>
     private static byte[] BuildGfWitnessColumn(LongfellowSumcheckCircuit circuit)
     {
         byte[] column = new byte[circuit.InputCount * ScalarSize];
@@ -322,11 +388,18 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //Builds a satisfying Fp256 witness column [one, x, y, z, w] for the anchor's three-layer wiring. Tracing
-    //the gates (every coefficient v is one), the circuit output is out[0] = w + x·(x + y)·(x + z), so the
-    //assert-zero relation requires w = −x·(x + y)·(x + z) mod p. Over GF(2^128) negation is the identity, so
-    //the same column degenerates to the GF gate's w = x·(x + y)·(x + z); over Fp256 the negation is genuine.
-    //x is public, y/z/w private; the constant-one wire is the field one.
+    /// <summary>
+    /// Builds a satisfying Fp256 witness column <c>[one, x, y, z, w]</c> for the anchor's three-layer
+    /// wiring. Tracing the gates (every coefficient <c>v</c> is one), the circuit output is
+    /// <c>out[0] = w + x·(x + y)·(x + z)</c>, so the assert-zero relation requires
+    /// <c>w = −x·(x + y)·(x + z) mod p</c>. Over GF(2^128) negation is the identity, so the same column
+    /// degenerates to the GF gate's <c>w = x·(x + y)·(x + z)</c>; over Fp256 the negation is genuine.
+    /// <c>x</c> is public, <c>y</c>/<c>z</c>/<c>w</c> private; the constant-one wire is the field one.
+    /// </summary>
+    /// <param name="x">The public witness value.</param>
+    /// <param name="y">A private witness value.</param>
+    /// <param name="z">A private witness value.</param>
+    /// <returns>The five-element canonical-scalar witness column <c>[1, x, y, z, w]</c>.</returns>
     private static byte[] BuildSatisfyingColumn(uint x, uint y, uint z)
     {
         byte[] column = new byte[5 * ScalarSize];
@@ -359,8 +432,13 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //The public input element bytes (little-endian to_bytes_field): the first npub_in witness elements, each
-    //framed at the Fp256 element width (32 bytes).
+    /// <summary>
+    /// Produces the public-input element bytes (little-endian <c>to_bytes_field</c>): the first
+    /// <c>npub_in</c> witness elements, each framed at the Fp256 element width (32 bytes).
+    /// </summary>
+    /// <param name="circuit">The circuit whose <see cref="LongfellowSumcheckCircuit.PublicInputCount"/> bounds the slice.</param>
+    /// <param name="witnessColumn">The full canonical-scalar witness column.</param>
+    /// <returns>The public inputs, little-endian and Fp256-element-width framed.</returns>
     private static byte[] PublicInputBytes(LongfellowSumcheckCircuit circuit, byte[] witnessColumn)
     {
         byte[] publicInputs = new byte[circuit.PublicInputCount * Fp256ElementBytes];
@@ -373,8 +451,12 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //A fresh deterministic counter source: the k-th byte produced is (k & 0xFF), identical to the GF
-    //oracle's CounterRandomEngine. Each call returns a new source so a test restarts the stream at 0.
+    /// <summary>
+    /// Creates a fresh deterministic counter source: the k-th byte produced is <c>k &amp; 0xFF</c>,
+    /// identical to the GF reference's <c>CounterRandomEngine</c>. Each call returns a new source so a test
+    /// restarts the stream at zero.
+    /// </summary>
+    /// <returns>A deterministic counter-based random byte source.</returns>
     private static LongfellowRandomByteSource NewCounterSource()
     {
         ulong counter = 0;
@@ -390,8 +472,12 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //A deterministic source whose every 32-byte draw is below p: the most significant little-endian byte is
-    //zeroed, so the integer is < 2^248 < p and of_bytes_field accepts it. The established seam-test pattern.
+    /// <summary>
+    /// Creates a deterministic source whose every 32-byte draw is below <c>p</c>: the most significant
+    /// little-endian byte is zeroed, so the integer is <c>&lt; 2^248 &lt; p</c> and <c>of_bytes_field</c>
+    /// accepts it every time.
+    /// </summary>
+    /// <returns>A deterministic random byte source whose draws are always below the P-256 field modulus.</returns>
     private static LongfellowRandomByteSource NewBelowModulusSource()
     {
         ulong counter = 0;
@@ -412,16 +498,22 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //of_scalar(u) over Fp256: the integer u reduced mod p as a canonical big-endian scalar.
+    /// <summary>Computes <c>of_scalar(u)</c> over Fp256: <paramref name="coordinate"/> reduced mod <c>p</c>, written as a canonical big-endian scalar.</summary>
+    /// <param name="coordinate">The integer to reduce.</param>
+    /// <param name="destination">Receives the canonical big-endian scalar.</param>
     private static void OfScalarFp256(uint coordinate, Span<byte> destination) =>
         Canonical(new BigInteger(coordinate) % Prime).CopyTo(destination);
 
 
-    //fits(an): the canonical big-endian integer is below the modulus.
+    /// <summary>Computes <c>fits(an)</c>: <see langword="true"/> when the canonical big-endian integer is below the P-256 field modulus.</summary>
+    /// <param name="canonical">The canonical big-endian scalar to test.</param>
+    /// <returns><see langword="true"/> when the value is below the modulus.</returns>
     private static bool InRangeFp256(ReadOnlySpan<byte> canonical) => ReadCanonicalBigEndian(canonical) < Prime;
 
 
-    //to_bytes_field over Fp256: the 32 canonical big-endian bytes reversed to 32 little-endian element bytes.
+    /// <summary>Computes <c>to_bytes_field</c> over Fp256: reverses the 32 canonical big-endian bytes into 32 little-endian element bytes.</summary>
+    /// <param name="canonical">The canonical big-endian scalar.</param>
+    /// <param name="littleEndian">Receives the little-endian element bytes.</param>
     private static void ToBytesFieldFp256(ReadOnlySpan<byte> canonical, Span<byte> littleEndian)
     {
         for(int i = 0; i < Fp256ElementBytes; i++)
@@ -431,8 +523,13 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //The Quad coefficient v, dumped as to_bytes_field little-endian; parse it into a canonical big-endian
-    //scalar. Every coefficient in this circuit is the field one, identical in GF and Fp256.
+    /// <summary>
+    /// Parses a Quad coefficient <c>v</c>, encoded as <c>to_bytes_field</c> little-endian hex, into a
+    /// canonical big-endian scalar. Every coefficient in this circuit is the field one, identical in GF
+    /// and Fp256.
+    /// </summary>
+    /// <param name="hex">The little-endian element bytes, hex-encoded.</param>
+    /// <returns>The canonical big-endian scalar.</returns>
     private static byte[] ParseCoefficient(string hex)
     {
         byte[] littleEndian = Convert.FromHexString(hex);
@@ -446,7 +543,9 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
-    //Parses a 16-byte little-endian GF element into a 32-byte big-endian canonical scalar.
+    /// <summary>Parses a 16-byte little-endian GF element, hex-encoded, into a 32-byte big-endian canonical scalar.</summary>
+    /// <param name="hex">The little-endian GF element bytes, hex-encoded.</param>
+    /// <returns>The canonical big-endian scalar.</returns>
     private static byte[] ParseGfElement(string hex)
     {
         byte[] littleEndian = Convert.FromHexString(hex);
@@ -460,29 +559,48 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
+    /// <summary>Parses the anchor file's <paramref name="key"/> value as a base-10 integer.</summary>
+    /// <param name="key">The anchor key to look up.</param>
+    /// <returns>The parsed integer value.</returns>
     private static int Anchor(string key) => int.Parse(Anchors[key], CultureInfo.InvariantCulture);
 
 
+    /// <summary>Creates a transcript seeded and sized the way the reference seeds the prover's.</summary>
+    /// <param name="seed">The transcript seed bytes.</param>
+    /// <param name="elementBytes">The field element width the transcript is baked at.</param>
+    /// <returns>The new transcript.</returns>
     private static LongfellowTranscript NewTranscript(byte[] seed, int elementBytes) =>
         new(seed, TranscriptVersion, elementBytes, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
-    private static Fp256RealFft NewFp256Fft()
+    /// <summary>Creates a caller-owned P-256 FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFp256Fft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, pool);
     }
 
 
+    /// <summary>Creates the LCH14 additive-FFT engine over the GF(2^128) production subfield.</summary>
+    /// <returns>The new additive-FFT engine.</returns>
     private static Lch14AdditiveFft NewGfFft() =>
         new(Lch14Subfield.Production16, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
+    /// <summary>Computes a one-shot SHA-256 digest of <paramref name="input"/>; <paramref name="hashFunction"/> is accepted for signature compatibility and unused, since this delegate is always bound to SHA-256.</summary>
+    /// <param name="input">The bytes to hash.</param>
+    /// <param name="output">Receives the 32-byte digest.</param>
+    /// <param name="hashFunction">The requested hash algorithm name; ignored.</param>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction) => SHA256.HashData(input, output);
 
 
+    /// <summary>Computes the two-to-one Merkle compression <c>SHA256(left ‖ right)</c>.</summary>
+    /// <param name="left">The left digest.</param>
+    /// <param name="right">The right digest.</param>
+    /// <param name="output">Receives the 32-byte combined digest.</param>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSize];
@@ -492,6 +610,10 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
+    /// <summary>Encrypts one block with AES-256 in ECB mode and no padding: the transcript's PRF squeezes through this primitive.</summary>
+    /// <param name="key">The 32-byte AES key.</param>
+    /// <param name="input">The plaintext block.</param>
+    /// <param name="output">Receives the ciphertext block.</param>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = Aes.Create();
@@ -500,6 +622,9 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
+    /// <summary>Writes <paramref name="value"/> as a canonical big-endian, unsigned scalar, left-padding with zero bytes.</summary>
+    /// <param name="value">The non-negative integer to encode.</param>
+    /// <returns>The canonical big-endian scalar bytes.</returns>
     private static byte[] Canonical(BigInteger value)
     {
         byte[] canonical = new byte[ScalarSize];
@@ -515,9 +640,19 @@ internal sealed class LongfellowFp256ZkProveTests
     }
 
 
+    /// <summary>Reads a canonical big-endian, unsigned scalar as a <see cref="BigInteger"/>.</summary>
+    /// <param name="bytes">The canonical big-endian scalar bytes.</param>
+    /// <returns>The decoded non-negative integer.</returns>
     private static BigInteger ReadCanonicalBigEndian(ReadOnlySpan<byte> bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 
 
+    /// <summary>
+    /// Loads the anchor file at <paramref name="relativePath"/> (resolved from the test binary's output
+    /// directory) into a flat key/value map, splitting each non-empty line on spaces and each token on its
+    /// first <c>=</c>.
+    /// </summary>
+    /// <param name="relativePath">The anchor file's path, relative to the test project directory.</param>
+    /// <returns>The parsed key/value map.</returns>
     private static Dictionary<string, string> LoadAnchors(string relativePath)
     {
         string path = $"../../../{relativePath}";

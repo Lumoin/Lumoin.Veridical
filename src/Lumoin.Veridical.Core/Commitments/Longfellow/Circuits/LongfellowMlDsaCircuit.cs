@@ -1,3 +1,5 @@
+using System.Buffers;
+using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Collections.Generic;
 
@@ -150,7 +152,8 @@ internal sealed class LongfellowMlDsaSignatureWires
     /// <summary>The hint polynomials (the reference's <c>h</c>).</summary>
     public LongfellowMlDsaPolynomialWires[] Hints { get; }
 
-    private readonly LongfellowMlDsaParameters parameters;
+    /// <summary>The parameter set this bundle was allocated for, retained to size <see cref="Input"/>'s loops.</summary>
+    private LongfellowMlDsaParameters Parameters { get; }
 
 
     /// <summary>Allocates the bundle for a parameter set.</summary>
@@ -159,7 +162,7 @@ internal sealed class LongfellowMlDsaSignatureWires
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
-        this.parameters = parameters;
+        this.Parameters = parameters;
         CommitmentHash = new LongfellowBitWire[parameters.CommitmentBytes][];
         Z = LongfellowMlDsaPublicKeyWires.NewPolynomials(parameters.ColumnCount);
         ZBits = new LongfellowBitWire[parameters.ColumnCount][][];
@@ -178,25 +181,25 @@ internal sealed class LongfellowMlDsaSignatureWires
     {
         ArgumentNullException.ThrowIfNull(logic);
 
-        for(int i = 0; i < parameters.CommitmentBytes; i++)
+        for(int i = 0; i < Parameters.CommitmentBytes; i++)
         {
             CommitmentHash[i] = logic.InputVector(LongfellowLogic.BitWidth8);
         }
 
-        for(int i = 0; i < parameters.ColumnCount; i++)
+        for(int i = 0; i < Parameters.ColumnCount; i++)
         {
             Z[i].Input(logic);
         }
 
-        for(int i = 0; i < parameters.ColumnCount; i++)
+        for(int i = 0; i < Parameters.ColumnCount; i++)
         {
             for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
             {
-                ZBits[i][j] = logic.InputVector(parameters.ResponseBitWidth);
+                ZBits[i][j] = logic.InputVector(Parameters.ResponseBitWidth);
             }
         }
 
-        for(int i = 0; i < parameters.RowCount; i++)
+        for(int i = 0; i < Parameters.RowCount; i++)
         {
             Hints[i].Input(logic);
         }
@@ -222,7 +225,8 @@ internal sealed class LongfellowMlDsaSampleInBallWitnessWires
     /// <summary>The shuffle position trace (the reference's <c>position_trace</c>): step <c>s</c> holds <c>s + 1</c> positions.</summary>
     public LongfellowBitWire[][][] PositionTrace { get; }
 
-    private readonly LongfellowMlDsaParameters parameters;
+    /// <summary>The parameter set this bundle was allocated for, retained to size <see cref="Input"/>'s loops.</summary>
+    private LongfellowMlDsaParameters Parameters { get; }
 
 
     /// <summary>Allocates the bundle for a parameter set.</summary>
@@ -231,7 +235,7 @@ internal sealed class LongfellowMlDsaSampleInBallWitnessWires
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
-        this.parameters = parameters;
+        this.Parameters = parameters;
         JValues = new LongfellowBitWire[parameters.ChallengeWeight][];
         JIndices = new LongfellowBitWire[parameters.ChallengeWeight][];
         PositionTrace = new LongfellowBitWire[parameters.ChallengeWeight][][];
@@ -248,7 +252,7 @@ internal sealed class LongfellowMlDsaSampleInBallWitnessWires
     {
         ArgumentNullException.ThrowIfNull(logic);
 
-        for(int i = 0; i < parameters.ChallengeWeight; i++)
+        for(int i = 0; i < Parameters.ChallengeWeight; i++)
         {
             JValues[i] = logic.InputVector(LongfellowLogic.BitWidth8);
             JIndices[i] = logic.InputVector(LongfellowLogic.BitWidth16);
@@ -256,7 +260,7 @@ internal sealed class LongfellowMlDsaSampleInBallWitnessWires
 
         BlockWitness.Input(logic);
 
-        for(int s = 0; s < parameters.ChallengeWeight; s++)
+        for(int s = 0; s < Parameters.ChallengeWeight; s++)
         {
             for(int k = 0; k <= s; k++)
             {
@@ -318,7 +322,8 @@ internal sealed class LongfellowMlDsaWitnessWires
     /// <summary>The hint-weight sum bits (the reference's <c>h_sum_bits_</c>); assignable because the evaluation harness interns its value directly, as the reference's converters write the struct field.</summary>
     public LongfellowBitWire[] HintSumBits { get; set; } = [];
 
-    private readonly LongfellowMlDsaParameters parameters;
+    /// <summary>The parameter set this bundle was allocated for, retained to size <see cref="Input"/>'s loops.</summary>
+    private LongfellowMlDsaParameters Parameters { get; }
 
 
     /// <summary>Allocates the bundle for a parameter set and a commitment sponge witness count.</summary>
@@ -328,7 +333,7 @@ internal sealed class LongfellowMlDsaWitnessWires
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
-        this.parameters = parameters;
+        this.Parameters = parameters;
         SampleInBall = new LongfellowMlDsaSampleInBallWitnessWires(parameters);
         WPrimeApprox = LongfellowMlDsaPublicKeyWires.NewPolynomials(parameters.RowCount);
         W1 = LongfellowMlDsaPublicKeyWires.NewPolynomials(parameters.RowCount);
@@ -354,28 +359,28 @@ internal sealed class LongfellowMlDsaWitnessWires
 
         SampleInBall.Input(logic);
         Challenge.Input(logic);
-        for(int i = 0; i < parameters.RowCount; i++)
+        for(int i = 0; i < Parameters.RowCount; i++)
         {
             WPrimeApprox[i].Input(logic);
             W1[i].Input(logic);
             for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
             {
-                W1Bits[i][j] = logic.InputVector(parameters.HighBitsWidth);
+                W1Bits[i][j] = logic.InputVector(Parameters.HighBitsWidth);
             }
 
             for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
             {
-                HintAuxBits[i][j] = logic.InputVector(parameters.LowBitsWidth + 1);
+                HintAuxBits[i][j] = logic.InputVector(Parameters.LowBitsWidth + 1);
             }
 
             WPrime1[i].Input(logic);
             for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
             {
-                WPrime1Bits[i][j] = logic.InputVector(parameters.HighBitsWidth);
+                WPrime1Bits[i][j] = logic.InputVector(Parameters.HighBitsWidth);
             }
         }
 
-        for(int i = 0; i < parameters.ColumnCount; i++)
+        for(int i = 0; i < Parameters.ColumnCount; i++)
         {
             NttZ[i].Input(logic);
         }
@@ -391,7 +396,7 @@ internal sealed class LongfellowMlDsaWitnessWires
             CommitmentBlockWitnesses[i].Input(logic);
         }
 
-        HintSumBits = logic.InputVector(parameters.HintWeightBitWidth);
+        HintSumBits = logic.InputVector(Parameters.HintWeightBitWidth);
     }
 
 
@@ -451,11 +456,20 @@ internal sealed class LongfellowMlDsaVerifyCircuit
     /// <summary>The final padding byte.</summary>
     private const byte PadLast = 0x80;
 
-    private readonly LongfellowLogic logic;
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowLogicFieldOperations field;
-    private readonly LongfellowMlDsaParameters parameters;
-    private readonly int subfieldBitCount;
+    /// <summary>The gadget layer every assertion in this circuit is built on.</summary>
+    private LongfellowLogic Logic { get; }
+
+    /// <summary>The field-agnostic arithmetic backend underlying <see cref="Logic"/>, read once for convenience.</summary>
+    private LongfellowLogicBackend Backend { get; }
+
+    /// <summary>The field operations underlying <see cref="Logic"/>, read once for convenience.</summary>
+    private LongfellowLogicFieldOperations Field { get; }
+
+    /// <summary>The ML-DSA parameter set (row/column counts, bit widths, bounds) this circuit instance is compiled for.</summary>
+    private LongfellowMlDsaParameters Parameters { get; }
+
+    /// <summary>The field's subfield bit width, forwarded to the SHAKE256 gadget's re-anchoring assertion split.</summary>
+    private int SubfieldBitCount { get; }
 
 
     /// <summary>
@@ -470,11 +484,11 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(logic);
         ArgumentNullException.ThrowIfNull(parameters);
 
-        this.logic = logic;
-        backend = logic.Backend;
-        field = logic.Field;
-        this.parameters = parameters;
-        this.subfieldBitCount = subfieldBitCount;
+        this.Logic = logic;
+        Backend = logic.Backend;
+        Field = logic.Field;
+        this.Parameters = parameters;
+        this.SubfieldBitCount = subfieldBitCount;
     }
 
 
@@ -488,18 +502,18 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(x);
         ArgumentNullException.ThrowIfNull(y);
 
-        for(int i = 0; i < parameters.RowCount; i++)
+        for(int i = 0; i < Parameters.RowCount; i++)
         {
             for(int c = 0; c < LongfellowMlDsaParameters.CoefficientCount; c++)
             {
-                y[i].Coefficients[c] = backend.Constant(field.Compiler.Zero.Span);
+                y[i].Coefficients[c] = Backend.Constant(Field.Compiler.Zero.Span);
             }
 
-            for(int j = 0; j < parameters.ColumnCount; j++)
+            for(int j = 0; j < Parameters.ColumnCount; j++)
             {
                 for(int c = 0; c < LongfellowMlDsaParameters.CoefficientCount; c++)
                 {
-                    y[i].Coefficients[c] = backend.Add(y[i].Coefficients[c], backend.Mul(matrix.Rows[i][j].Coefficients[c], x[j].Coefficients[c]));
+                    y[i].Coefficients[c] = Backend.Add(y[i].Coefficients[c], Backend.Mul(matrix.Rows[i][j].Coefficients[c], x[j].Coefficients[c]));
                 }
             }
         }
@@ -516,11 +530,11 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(x);
         ArgumentNullException.ThrowIfNull(y);
 
-        for(int i = 0; i < parameters.RowCount; i++)
+        for(int i = 0; i < Parameters.RowCount; i++)
         {
             for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
             {
-                y[i].Coefficients[k] = backend.Mul(c.Coefficients[k], x[i].Coefficients[k]);
+                y[i].Coefficients[k] = Backend.Mul(c.Coefficients[k], x[i].Coefficients[k]);
             }
         }
     }
@@ -538,6 +552,13 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(c);
         ArgumentNullException.ThrowIfNull(cPrime);
 
+        //Positive and negative twiddles require separate delegate inputs and outputs.
+        const int TwiddleScalarCount = 2;
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(TwiddleScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(TwiddleScalarCount * Scalar.SizeBytes)];
+        Span<byte> zeta = buffer[..Scalar.SizeBytes];
+        Span<byte> negatedZeta = buffer[Scalar.SizeBytes..];
+
         var p = new int[LongfellowMlDsaParameters.CoefficientCount];
         c.Coefficients.CopyTo(p, 0);
 
@@ -547,13 +568,13 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         {
             for(int start = 0; start < LongfellowMlDsaParameters.CoefficientCount; start += 2 * length)
             {
-                ReadOnlyMemory<byte> zeta = field.OfScalar(LongfellowMlDsaConstants.NttZetas[k]);
-                ReadOnlyMemory<byte> negatedZeta = field.Negate(zeta.Span);
+                Field.OfScalar(LongfellowMlDsaConstants.NttZetas[k], zeta);
+                Field.Negate(zeta, negatedZeta);
                 k++;
                 for(int j = start; j < start + length; j++)
                 {
-                    int t = backend.Axpy(p[j], zeta.Span, p[j + length]);
-                    p[j + length] = backend.Axpy(p[j], negatedZeta.Span, p[j + length]);
+                    int t = Backend.Axpy(p[j], zeta, p[j + length]);
+                    p[j + length] = Backend.Axpy(p[j], negatedZeta, p[j + length]);
                     p[j] = t;
                 }
             }
@@ -563,7 +584,7 @@ internal sealed class LongfellowMlDsaVerifyCircuit
 
         for(int i = 0; i < LongfellowMlDsaParameters.CoefficientCount; i++)
         {
-            _ = logic.AssertEqual(p[i], cPrime.Coefficients[i]);
+            _ = Logic.AssertEqual(p[i], cPrime.Coefficients[i]);
         }
     }
 
@@ -581,6 +602,13 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(c);
         ArgumentNullException.ThrowIfNull(cPrime);
 
+        //Positive and negative twiddles require separate delegate inputs and outputs.
+        const int TwiddleScalarCount = 2;
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(TwiddleScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(TwiddleScalarCount * Scalar.SizeBytes)];
+        Span<byte> zeta = buffer[..Scalar.SizeBytes];
+        Span<byte> negatedZeta = buffer[Scalar.SizeBytes..];
+
         var p = new int[LongfellowMlDsaParameters.CoefficientCount];
         c.Coefficients.CopyTo(p, 0);
 
@@ -591,24 +619,25 @@ internal sealed class LongfellowMlDsaVerifyCircuit
             for(int start = 0; start < LongfellowMlDsaParameters.CoefficientCount; start += 2 * length)
             {
                 k--;
-                ReadOnlyMemory<byte> negatedZeta = field.Negate(field.OfScalar(LongfellowMlDsaConstants.NttZetas[k]).Span);
+                Field.OfScalar(LongfellowMlDsaConstants.NttZetas[k], zeta);
+                Field.Negate(zeta, negatedZeta);
                 for(int j = start; j < start + length; j++)
                 {
                     int t = p[j];
-                    p[j] = backend.Add(t, p[j + length]);
-                    int difference = backend.Sub(t, p[j + length]);
-                    p[j + length] = backend.MultiplyScaled(negatedZeta.Span, difference);
+                    p[j] = Backend.Add(t, p[j + length]);
+                    int difference = Backend.Sub(t, p[j + length]);
+                    p[j + length] = Backend.MultiplyScaled(negatedZeta, difference);
                 }
             }
 
             length *= 2;
         }
 
-        int scale = backend.Constant(field.OfScalar(LongfellowMlDsaParameters.InverseTransformScale).Span);
+        int scale = Backend.ScalarConstant(LongfellowMlDsaParameters.InverseTransformScale);
         for(int i = 0; i < LongfellowMlDsaParameters.CoefficientCount; i++)
         {
-            p[i] = backend.Mul(scale, p[i]);
-            _ = logic.AssertEqual(p[i], cPrime.Coefficients[i]);
+            p[i] = Backend.Mul(scale, p[i]);
+            _ = Logic.AssertEqual(p[i], cPrime.Coefficients[i]);
         }
     }
 
@@ -639,54 +668,54 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(hintRemainderBits);
         ArgumentNullException.ThrowIfNull(hintedHighBits);
 
-        int twoGamma2 = backend.Constant(field.OfScalar(2UL * parameters.RoundingRange).Span);
-        int shiftValue = backend.Constant(field.OfScalar(parameters.RoundingRange).Span);
-        int zero = backend.Constant(field.Compiler.Zero.Span);
+        int twoGamma2 = Backend.ScalarConstant(2UL * Parameters.RoundingRange);
+        int shiftValue = Backend.ScalarConstant(Parameters.RoundingRange);
+        int zero = Backend.Constant(Field.Compiler.Zero.Span);
 
-        _ = logic.AssertIsBit(hintWire);
+        _ = Logic.AssertIsBit(hintWire);
 
-        int rawHighReconstructed = logic.AsScalar(rawHighBits);
-        _ = logic.AssertEqual(rawHighWire, rawHighReconstructed);
-        LongfellowBitWire[] highBound = logic.BitVector(parameters.HighBitsWidth, parameters.HintModulus - 1);
-        LongfellowBitWire isRawHighValid = logic.LessThanOrEqual(rawHighBits, highBound);
-        _ = logic.AssertOne(isRawHighValid);
+        int rawHighReconstructed = Logic.AsScalar(rawHighBits);
+        _ = Logic.AssertEqual(rawHighWire, rawHighReconstructed);
+        LongfellowBitWire[] highBound = Logic.BitVector(Parameters.HighBitsWidth, Parameters.HintModulus - 1);
+        LongfellowBitWire isRawHighValid = Logic.LessThanOrEqual(rawHighBits, highBound);
+        _ = Logic.AssertOne(isRawHighValid);
 
-        int shiftedRemainder = logic.AsScalar(LongfellowLogic.Slice(hintRemainderBits, 0, parameters.LowBitsWidth));
+        int shiftedRemainder = Logic.AsScalar(LongfellowLogic.Slice(hintRemainderBits, 0, Parameters.LowBitsWidth));
 
-        LongfellowBitWire[] remainderBound = logic.BitVector(parameters.LowBitsWidth, 2UL * parameters.RoundingRange);
-        LongfellowBitWire isRemainderBounded = logic.LessThanOrEqual(LongfellowLogic.Slice(hintRemainderBits, 0, parameters.LowBitsWidth), remainderBound);
-        _ = logic.AssertOne(isRemainderBounded);
+        LongfellowBitWire[] remainderBound = Logic.BitVector(Parameters.LowBitsWidth, 2UL * Parameters.RoundingRange);
+        LongfellowBitWire isRemainderBounded = Logic.LessThanOrEqual(LongfellowLogic.Slice(hintRemainderBits, 0, Parameters.LowBitsWidth), remainderBound);
+        _ = Logic.AssertOne(isRemainderBounded);
 
-        LongfellowBitWire signBit = hintRemainderBits[parameters.LowBitsWidth];
+        LongfellowBitWire signBit = hintRemainderBits[Parameters.LowBitsWidth];
 
-        LongfellowBitWire[] shiftedRemainderBits = LongfellowLogic.Slice(hintRemainderBits, 0, parameters.LowBitsWidth);
-        LongfellowBitWire isLowHalf = logic.LessThanOrEqual(shiftedRemainderBits, parameters.RoundingRange);
-        _ = logic.AssertEqual(logic.Eval(signBit), logic.Eval(isLowHalf));
+        LongfellowBitWire[] shiftedRemainderBits = LongfellowLogic.Slice(hintRemainderBits, 0, Parameters.LowBitsWidth);
+        LongfellowBitWire isLowHalf = Logic.LessThanOrEqual(shiftedRemainderBits, Parameters.RoundingRange);
+        _ = Logic.AssertEqual(Logic.Eval(signBit), Logic.Eval(isLowHalf));
 
-        int negatedHint = backend.Sub(zero, hintWire);
-        int shiftIndicator = logic.Mux(signBit, negatedHint, hintWire);
+        int negatedHint = Backend.Sub(zero, hintWire);
+        int shiftIndicator = Logic.Mux(signBit, negatedHint, hintWire);
 
-        int delta = backend.Sub(shiftedRemainder, shiftValue);
+        int delta = Backend.Sub(shiftedRemainder, shiftValue);
 
-        int highTerm = backend.Mul(rawHighWire, twoGamma2);
-        int reconstructed = backend.Add(highTerm, delta);
-        _ = logic.AssertEqual(rWire, reconstructed);
+        int highTerm = Backend.Mul(rawHighWire, twoGamma2);
+        int reconstructed = Backend.Add(highTerm, delta);
+        _ = Logic.AssertEqual(rWire, reconstructed);
 
-        int hintedHighReconstructed = logic.AsScalar(hintedHighBits);
-        _ = logic.AssertEqual(hintedHighWire, hintedHighReconstructed);
-        LongfellowBitWire isHintedHighValid = logic.LessThanOrEqual(hintedHighBits, highBound);
-        _ = logic.AssertOne(isHintedHighValid);
+        int hintedHighReconstructed = Logic.AsScalar(hintedHighBits);
+        _ = Logic.AssertEqual(hintedHighWire, hintedHighReconstructed);
+        LongfellowBitWire isHintedHighValid = Logic.LessThanOrEqual(hintedHighBits, highBound);
+        _ = Logic.AssertOne(isHintedHighValid);
 
-        int difference = backend.Sub(rawHighWire, hintedHighWire);
-        int shiftDifference = backend.Add(difference, shiftIndicator);
+        int difference = Backend.Sub(rawHighWire, hintedHighWire);
+        int shiftDifference = Backend.Add(difference, shiftIndicator);
 
-        int hintModulus = backend.Constant(field.OfScalar(parameters.HintModulus).Span);
-        int differenceMinusModulus = backend.Sub(shiftDifference, hintModulus);
-        int differencePlusModulus = backend.Add(shiftDifference, hintModulus);
+        int hintModulus = Backend.ScalarConstant(Parameters.HintModulus);
+        int differenceMinusModulus = Backend.Sub(shiftDifference, hintModulus);
+        int differencePlusModulus = Backend.Add(shiftDifference, hintModulus);
 
-        int product = backend.Mul(shiftDifference, differenceMinusModulus);
-        product = backend.Mul(product, differencePlusModulus);
-        _ = logic.AssertZero(product);
+        int product = Backend.Mul(shiftDifference, differenceMinusModulus);
+        product = Backend.Mul(product, differencePlusModulus);
+        _ = Logic.AssertZero(product);
     }
 
 
@@ -721,8 +750,8 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(wPrime1Bits);
         ArgumentNullException.ThrowIfNull(hintSumBits);
 
-        int sum = backend.Constant(field.Compiler.Zero.Span);
-        for(int i = 0; i < parameters.RowCount; i++)
+        int sum = Backend.Constant(Field.Compiler.Zero.Span);
+        for(int i = 0; i < Parameters.RowCount; i++)
         {
             for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
             {
@@ -734,15 +763,15 @@ internal sealed class LongfellowMlDsaVerifyCircuit
                     hintAuxBits[i][k],
                     wPrime1[i].Coefficients[k],
                     wPrime1Bits[i][k]);
-                sum = backend.Add(sum, hints[i].Coefficients[k]);
+                sum = Backend.Add(sum, hints[i].Coefficients[k]);
             }
         }
 
-        LongfellowBitWire isValidWeight = logic.LessThanOrEqual(hintSumBits, (ulong)parameters.HintWeightBound);
-        _ = logic.AssertOne(isValidWeight);
+        LongfellowBitWire isValidWeight = Logic.LessThanOrEqual(hintSumBits, (ulong)Parameters.HintWeightBound);
+        _ = Logic.AssertOne(isValidWeight);
 
-        int reconstructedSum = logic.AsScalar(hintSumBits);
-        _ = logic.AssertEqual(sum, reconstructedSum);
+        int reconstructedSum = Logic.AsScalar(hintSumBits);
+        _ = Logic.AssertEqual(sum, reconstructedSum);
     }
 
 
@@ -763,13 +792,13 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         {
             for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
             {
-                int reconstructed = logic.AsScalar(vectorBits[i][j]);
+                int reconstructed = Logic.AsScalar(vectorBits[i][j]);
 
-                int shifted = backend.Add(vector[i].Coefficients[j], backend.Constant(field.OfScalar(bound - 1).Span));
-                _ = logic.AssertEqual(shifted, reconstructed);
+                int shifted = Backend.Add(vector[i].Coefficients[j], Backend.ScalarConstant(bound - 1));
+                _ = Logic.AssertEqual(shifted, reconstructed);
 
-                LongfellowBitWire isBounded = logic.LessThanOrEqual(vectorBits[i][j], logic.BitVector(vectorBits[i][j].Length, (2 * bound) - 2));
-                _ = logic.AssertOne(isBounded);
+                LongfellowBitWire isBounded = Logic.LessThanOrEqual(vectorBits[i][j], Logic.BitVector(vectorBits[i][j].Length, (2 * bound) - 2));
+                _ = Logic.AssertOne(isBounded);
             }
         }
     }
@@ -787,11 +816,11 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(wPrime1Bits);
         ArgumentNullException.ThrowIfNull(putativeW1Tilde);
 
-        int bitsPerCoefficient = parameters.HighBitsWidth;
-        int totalBytes = parameters.RowCount * parameters.HighBitsBytes;
+        int bitsPerCoefficient = Parameters.HighBitsWidth;
+        int totalBytes = Parameters.RowCount * Parameters.HighBitsBytes;
 
-        var allBits = new List<LongfellowBitWire>(parameters.RowCount * LongfellowMlDsaParameters.CoefficientCount * bitsPerCoefficient);
-        for(int k = 0; k < parameters.RowCount; k++)
+        var allBits = new List<LongfellowBitWire>(Parameters.RowCount * LongfellowMlDsaParameters.CoefficientCount * bitsPerCoefficient);
+        for(int k = 0; k < Parameters.RowCount; k++)
         {
             for(int i = 0; i < LongfellowMlDsaParameters.CoefficientCount; i++)
             {
@@ -807,10 +836,10 @@ internal sealed class LongfellowMlDsaVerifyCircuit
             var packedByte = new LongfellowBitWire[LongfellowLogic.BitWidth8];
             for(int b = 0; b < LongfellowLogic.BitWidth8; b++)
             {
-                packedByte[b] = (i * LongfellowLogic.BitWidth8) + b < allBits.Count ? allBits[(i * LongfellowLogic.BitWidth8) + b] : logic.Bit(0);
+                packedByte[b] = (i * LongfellowLogic.BitWidth8) + b < allBits.Count ? allBits[(i * LongfellowLogic.BitWidth8) + b] : Logic.Bit(0);
             }
 
-            logic.AssertEqual(putativeW1Tilde[i], packedByte);
+            Logic.AssertEqual(putativeW1Tilde[i], packedByte);
         }
     }
 
@@ -830,109 +859,109 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(cPrime);
         ArgumentNullException.ThrowIfNull(witness);
 
-        var sha3 = new LongfellowSha3Circuit(logic, subfieldBitCount);
+        var sha3 = new LongfellowSha3Circuit(Logic, SubfieldBitCount);
         LongfellowBitWire[][] stream = sha3.AssertShake256(rho, LongfellowMlDsaReference.SampleInBallHashBytes, [witness.BlockWitness]);
 
-        LongfellowBitWire[] previousIndex = logic.BitVector(LongfellowLogic.BitWidth16, LongfellowMlDsaReference.SampleInBallStreamStart);
+        LongfellowBitWire[] previousIndex = Logic.BitVector(LongfellowLogic.BitWidth16, LongfellowMlDsaReference.SampleInBallStreamStart);
 
-        for(int s = 0; s < parameters.ChallengeWeight; s++)
+        for(int s = 0; s < Parameters.ChallengeWeight; s++)
         {
-            int i = LongfellowMlDsaParameters.CoefficientCount - parameters.ChallengeWeight + s;
+            int i = LongfellowMlDsaParameters.CoefficientCount - Parameters.ChallengeWeight + s;
             LongfellowBitWire[] j = witness.JValues[s];
             LongfellowBitWire[] streamIndex = witness.JIndices[s];
 
-            LongfellowBitWire isInBounds = logic.LessThanOrEqual(streamIndex, (ulong)(stream.Length - 1));
-            _ = logic.AssertOne(isInBounds);
+            LongfellowBitWire isInBounds = Logic.LessThanOrEqual(streamIndex, (ulong)(stream.Length - 1));
+            _ = Logic.AssertOne(isInBounds);
 
-            LongfellowBitWire isIncreasing = logic.LessThanOrEqual(previousIndex, streamIndex);
-            _ = logic.AssertOne(isIncreasing);
+            LongfellowBitWire isIncreasing = Logic.LessThanOrEqual(previousIndex, streamIndex);
+            _ = Logic.AssertOne(isIncreasing);
 
-            LongfellowBitWire[] jExtended = logic.BitVector(LongfellowLogic.BitWidth16, 0);
+            LongfellowBitWire[] jExtended = Logic.BitVector(LongfellowLogic.BitWidth16, 0);
             for(int b = 0; b < LongfellowLogic.BitWidth8; b++)
             {
                 jExtended[b] = j[b];
             }
 
-            LongfellowBitWire[] targetVector = logic.BitVector(LongfellowLogic.BitWidth16, (ulong)i);
-            LongfellowBitWire isSampleValid = logic.LessThanOrEqual(jExtended, targetVector);
-            _ = logic.AssertOne(isSampleValid);
+            LongfellowBitWire[] targetVector = Logic.BitVector(LongfellowLogic.BitWidth16, (ulong)i);
+            LongfellowBitWire isSampleValid = Logic.LessThanOrEqual(jExtended, targetVector);
+            _ = Logic.AssertOne(isSampleValid);
 
             for(int k = 0; k < stream.Length; k++)
             {
-                LongfellowBitWire[] currentIndex = logic.BitVector(LongfellowLogic.BitWidth16, (ulong)k);
-                LongfellowBitWire isTarget = logic.Equal(currentIndex, streamIndex);
+                LongfellowBitWire[] currentIndex = Logic.BitVector(LongfellowLogic.BitWidth16, (ulong)k);
+                LongfellowBitWire isTarget = Logic.Equal(currentIndex, streamIndex);
 
-                LongfellowBitWire matchesSample = logic.Equal(stream[k], j);
-                _ = logic.AssertImplies(isTarget, matchesSample);
+                LongfellowBitWire matchesSample = Logic.Equal(stream[k], j);
+                _ = Logic.AssertImplies(isTarget, matchesSample);
 
-                LongfellowBitWire atOrAfterPrevious = logic.LessThanOrEqual(previousIndex, currentIndex);
-                LongfellowBitWire beforeTarget = logic.LessThan(currentIndex, streamIndex);
-                LongfellowBitWire inSkippedRange = logic.And(atOrAfterPrevious, beforeTarget);
+                LongfellowBitWire atOrAfterPrevious = Logic.LessThanOrEqual(previousIndex, currentIndex);
+                LongfellowBitWire beforeTarget = Logic.LessThan(currentIndex, streamIndex);
+                LongfellowBitWire inSkippedRange = Logic.And(atOrAfterPrevious, beforeTarget);
 
-                LongfellowBitWire[] streamByteExtended = logic.BitVector(LongfellowLogic.BitWidth16, 0);
+                LongfellowBitWire[] streamByteExtended = Logic.BitVector(LongfellowLogic.BitWidth16, 0);
                 for(int b = 0; b < LongfellowLogic.BitWidth8; b++)
                 {
                     streamByteExtended[b] = stream[k][b];
                 }
 
-                LongfellowBitWire wasRejected = logic.LessThan(targetVector, streamByteExtended);
-                _ = logic.AssertImplies(inSkippedRange, wasRejected);
+                LongfellowBitWire wasRejected = Logic.LessThan(targetVector, streamByteExtended);
+                _ = Logic.AssertImplies(inSkippedRange, wasRejected);
             }
 
-            previousIndex = logic.Add(streamIndex, 1UL);
+            previousIndex = Logic.Add(streamIndex, 1UL);
         }
 
-        logic.AssertEqual(witness.PositionTrace[0][0], witness.JValues[0]);
+        Logic.AssertEqual(witness.PositionTrace[0][0], witness.JValues[0]);
 
-        for(int s = 1; s < parameters.ChallengeWeight; s++)
+        for(int s = 1; s < Parameters.ChallengeWeight; s++)
         {
-            int i = LongfellowMlDsaParameters.CoefficientCount - parameters.ChallengeWeight + s;
+            int i = LongfellowMlDsaParameters.CoefficientCount - Parameters.ChallengeWeight + s;
             LongfellowBitWire[] j = witness.JValues[s];
 
             LongfellowBitWire[][] previousPositions = witness.PositionTrace[s - 1];
             LongfellowBitWire[][] currentPositions = witness.PositionTrace[s];
 
-            logic.AssertEqual(currentPositions[s], j);
+            Logic.AssertEqual(currentPositions[s], j);
 
             for(int k = 0; k < s; k++)
             {
                 LongfellowBitWire[] position = previousPositions[k];
-                LongfellowBitWire isSwapped = logic.Equal(position, j);
-                LongfellowBitWire[] targetIndex = logic.BitVector(LongfellowLogic.BitWidth8, (ulong)i);
+                LongfellowBitWire isSwapped = Logic.Equal(position, j);
+                LongfellowBitWire[] targetIndex = Logic.BitVector(LongfellowLogic.BitWidth8, (ulong)i);
                 var expected = new LongfellowBitWire[LongfellowLogic.BitWidth8];
                 for(int b = 0; b < LongfellowLogic.BitWidth8; b++)
                 {
-                    expected[b] = logic.Mux(isSwapped, targetIndex[b], position[b]);
+                    expected[b] = Logic.Mux(isSwapped, targetIndex[b], position[b]);
                 }
 
-                logic.AssertEqual(currentPositions[k], expected);
+                Logic.AssertEqual(currentPositions[k], expected);
             }
         }
 
-        LongfellowBitWire[][] finalPositions = witness.PositionTrace[parameters.ChallengeWeight - 1];
-        int one = backend.Constant(field.Compiler.One.Span);
-        int minusOne = backend.Constant(field.Compiler.MinusOne.Span);
-        int zero = backend.Constant(field.Compiler.Zero.Span);
+        LongfellowBitWire[][] finalPositions = witness.PositionTrace[Parameters.ChallengeWeight - 1];
+        int one = Backend.Constant(Field.Compiler.One.Span);
+        int minusOne = Backend.Constant(Field.Compiler.MinusOne.Span);
+        int zero = Backend.Constant(Field.Compiler.Zero.Span);
 
-        var traceValues = new int[parameters.ChallengeWeight];
-        for(int s = 0; s < parameters.ChallengeWeight; s++)
+        var traceValues = new int[Parameters.ChallengeWeight];
+        for(int s = 0; s < Parameters.ChallengeWeight; s++)
         {
             LongfellowBitWire signBit = stream[s / LongfellowLogic.BitWidth8][s % LongfellowLogic.BitWidth8];
-            traceValues[s] = logic.Mux(signBit, minusOne, one);
+            traceValues[s] = Logic.Mux(signBit, minusOne, one);
         }
 
         for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
         {
-            LongfellowBitWire[] coefficientIndex = logic.BitVector(LongfellowLogic.BitWidth8, (ulong)k);
+            LongfellowBitWire[] coefficientIndex = Logic.BitVector(LongfellowLogic.BitWidth8, (ulong)k);
 
-            int contribution = logic.Add(0, parameters.ChallengeWeight, s =>
+            int contribution = Logic.Add(0, Parameters.ChallengeWeight, s =>
             {
-                LongfellowBitWire isMatch = logic.Equal(finalPositions[s], coefficientIndex);
+                LongfellowBitWire isMatch = Logic.Equal(finalPositions[s], coefficientIndex);
 
-                return logic.Mux(isMatch, traceValues[s], zero);
+                return Logic.Mux(isMatch, traceValues[s], zero);
             });
 
-            _ = logic.AssertEqual(cPrime.Coefficients[k], contribution);
+            _ = Logic.AssertEqual(cPrime.Coefficients[k], contribution);
         }
     }
 
@@ -966,18 +995,18 @@ internal sealed class LongfellowMlDsaVerifyCircuit
 
         if(paddingLength == 1)
         {
-            inputBytes.Add(logic.BitVector(LongfellowLogic.BitWidth8, ShakePadSingle));
+            inputBytes.Add(Logic.BitVector(LongfellowLogic.BitWidth8, ShakePadSingle));
         }
         else
         {
-            inputBytes.Add(logic.BitVector(LongfellowLogic.BitWidth8, ShakePadFirst));
+            inputBytes.Add(Logic.BitVector(LongfellowLogic.BitWidth8, ShakePadFirst));
 
             for(int i = 0; i < paddingLength - 2; i++)
             {
-                inputBytes.Add(logic.BitVector(LongfellowLogic.BitWidth8, 0));
+                inputBytes.Add(Logic.BitVector(LongfellowLogic.BitWidth8, 0));
             }
 
-            inputBytes.Add(logic.BitVector(LongfellowLogic.BitWidth8, PadLast));
+            inputBytes.Add(Logic.BitVector(LongfellowLogic.BitWidth8, PadLast));
         }
 
         if(inputBytes.Count % Rate != 0)
@@ -1008,14 +1037,14 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(muBlockWitnesses);
         ArgumentNullException.ThrowIfNull(mu);
 
-        var sha3 = new LongfellowSha3Circuit(logic, subfieldBitCount);
+        var sha3 = new LongfellowSha3Circuit(Logic, SubfieldBitCount);
         var state = new LongfellowBitWire[GridSize][][];
         for(int x = 0; x < GridSize; x++)
         {
             state[x] = new LongfellowBitWire[GridSize][];
             for(int y = 0; y < GridSize; y++)
             {
-                state[x][y] = logic.BitVector(LaneBits, 0);
+                state[x][y] = Logic.BitVector(LaneBits, 0);
             }
         }
 
@@ -1043,7 +1072,7 @@ internal sealed class LongfellowMlDsaVerifyCircuit
                     }
                 }
 
-                state[x][y] = logic.Xor(state[x][y], lane);
+                state[x][y] = Logic.Xor(state[x][y], lane);
                 x++;
                 if(x == GridSize)
                 {
@@ -1090,7 +1119,7 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         {
             for(int b = 0; b < LongfellowLogic.BitWidth8; b++)
             {
-                _ = logic.AssertEqual(squeezed[i][b], mu[i][b]);
+                _ = Logic.AssertEqual(squeezed[i][b], mu[i][b]);
             }
         }
     }
@@ -1110,24 +1139,24 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(signature);
         ArgumentNullException.ThrowIfNull(witness);
 
-        for(int i = 0; i < parameters.ColumnCount; i++)
+        for(int i = 0; i < Parameters.ColumnCount; i++)
         {
             AssertNtt(signature.Z[i], witness.NttZ[i]);
         }
 
         AssertNtt(witness.Challenge, witness.NttC);
 
-        LongfellowMlDsaPolynomialWires[] az = LongfellowMlDsaPublicKeyWires.NewPolynomials(parameters.RowCount);
-        LongfellowMlDsaPolynomialWires[] ct1 = LongfellowMlDsaPublicKeyWires.NewPolynomials(parameters.RowCount);
+        LongfellowMlDsaPolynomialWires[] az = LongfellowMlDsaPublicKeyWires.NewPolynomials(Parameters.RowCount);
+        LongfellowMlDsaPolynomialWires[] ct1 = LongfellowMlDsaPublicKeyWires.NewPolynomials(Parameters.RowCount);
         MatrixVectorMultiply(publicKey.MatrixA, witness.NttZ, az);
         ScalarVectorMultiply(witness.NttC, publicKey.NttT1, ct1);
 
-        for(int i = 0; i < parameters.RowCount; i++)
+        for(int i = 0; i < Parameters.RowCount; i++)
         {
             var difference = new LongfellowMlDsaPolynomialWires();
             for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
             {
-                difference.Coefficients[k] = backend.Sub(az[i].Coefficients[k], ct1[i].Coefficients[k]);
+                difference.Coefficients[k] = Backend.Sub(az[i].Coefficients[k], ct1[i].Coefficients[k]);
             }
 
             AssertInverseNtt(difference, witness.WPrimeApprox[i]);
@@ -1154,17 +1183,17 @@ internal sealed class LongfellowMlDsaVerifyCircuit
         ArgumentNullException.ThrowIfNull(commitmentBlockWitnesses);
         ArgumentNullException.ThrowIfNull(commitmentHash);
 
-        var sha3 = new LongfellowSha3Circuit(logic, subfieldBitCount);
+        var sha3 = new LongfellowSha3Circuit(Logic, SubfieldBitCount);
 
         var inputBytes = new LongfellowBitWire[mu.Length + w1TildeBytes.Length][];
         mu.CopyTo(inputBytes, 0);
         w1TildeBytes.CopyTo(inputBytes, mu.Length);
 
-        LongfellowBitWire[][] squeezed = sha3.AssertShake256(inputBytes, parameters.CommitmentBytes, commitmentBlockWitnesses);
+        LongfellowBitWire[][] squeezed = sha3.AssertShake256(inputBytes, Parameters.CommitmentBytes, commitmentBlockWitnesses);
 
-        for(int i = 0; i < parameters.CommitmentBytes; i++)
+        for(int i = 0; i < Parameters.CommitmentBytes; i++)
         {
-            logic.AssertEqual(squeezed[i], commitmentHash[i]);
+            Logic.AssertEqual(squeezed[i], commitmentHash[i]);
         }
     }
 
@@ -1205,7 +1234,7 @@ internal sealed class LongfellowMlDsaVerifyCircuit
 
         AssertW1Encode(witness.WPrime1Bits, witness.W1Tilde);
 
-        AssertInfinityNorm(signature.Z, signature.ZBits, parameters.MaskingBound - parameters.RejectionBound);
+        AssertInfinityNorm(signature.Z, signature.ZBits, Parameters.MaskingBound - Parameters.RejectionBound);
 
         AssertCtilde(mu, witness.W1Tilde, witness.CommitmentBlockWitnesses, signature.CommitmentHash);
     }

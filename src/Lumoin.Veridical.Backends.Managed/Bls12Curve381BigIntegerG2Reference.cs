@@ -33,8 +33,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// Hash-to-curve to G2 is intentionally not implemented in this
-/// reference; it ships in a follow-up sub-batch alongside its own
-/// RFC 9380 §8.8.2 KAT vectors. BBS+ over BLS12-381 only uses G2 via
+/// reference. BBS+ over BLS12-381 only uses G2 via
 /// scalar multiplication of the canonical generator, so the BBS+
 /// path does not require hash-to-G2.
 /// </para>
@@ -57,9 +56,13 @@ internal static class Bls12Curve381BigIntegerG2Reference
         CultureInfo.InvariantCulture);
 
 
+    /// <summary>The Fp2 inversion exponent (<c>p - 2</c>), used by <see cref="Fp2Invert"/> via Fermat's little theorem.</summary>
     private static BigInteger ModInverseExponent { get; } = BaseFieldPrime - 2;
 
+    /// <summary>The byte width of one Fp2 component (c0 or c1) in the compressed wire encoding.</summary>
     private const int ComponentSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
+
+    /// <summary>The byte width of a compressed G2 point: two Fp2 components, <see cref="ComponentSize"/> bytes each.</summary>
     private const int CompressedSize = WellKnownCurves.Bls12Curve381G2CompressedSizeBytes;
 
 
@@ -79,6 +82,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     public static G2IsInPrimeOrderSubgroupDelegate GetIsInPrimeOrderSubgroup() => IsInPrimeOrderSubgroup;
 
 
+    /// <summary>Adds two compressed G2 points, decoding, adding in affine coordinates, and re-encoding the sum.</summary>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G2Add, curve);
@@ -90,6 +94,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Negates a compressed G2 point, decoding, negating in affine coordinates, and re-encoding the result.</summary>
     private static void Negate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G2Negate, curve);
@@ -100,6 +105,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Multiplies a compressed G2 point by a big-endian scalar, decoding, scalar-multiplying in affine coordinates, and re-encoding the product.</summary>
     private static void ScalarMultiply(ReadOnlySpan<byte> point, ReadOnlySpan<byte> scalar, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G2ScalarMultiply, curve);
@@ -111,6 +117,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Returns whether the compressed bytes decode to a valid point on the G2 curve.</summary>
     private static bool IsOnCurve(ReadOnlySpan<byte> point, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G2IsOnCurve, curve);
@@ -119,6 +126,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Returns whether the compressed bytes decode to a point in the prime-order subgroup, checked by scalar-multiplying by the subgroup order and testing for the identity.</summary>
     private static bool IsInPrimeOrderSubgroup(ReadOnlySpan<byte> point, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.G2IsInPrimeOrderSubgroup, curve);
@@ -139,22 +147,33 @@ internal static class Bls12Curve381BigIntegerG2Reference
 
 
     /// <summary>An Fp2 element represented as a (c0, c1) BigInteger pair.</summary>
+    /// <param name="C0">The real component.</param>
+    /// <param name="C1">The imaginary component, the coefficient of the non-residue u.</param>
     internal readonly record struct Fp2Value(BigInteger C0, BigInteger C1)
     {
+        /// <summary>The Fp2 additive identity, (0, 0).</summary>
         public static Fp2Value Zero { get; } = new(BigInteger.Zero, BigInteger.Zero);
+
+        /// <summary>The Fp2 multiplicative identity, (1, 0).</summary>
         public static Fp2Value One { get; } = new(BigInteger.One, BigInteger.Zero);
 
+        /// <summary>Whether this element is the Fp2 additive identity.</summary>
         public bool IsZero => C0.IsZero && C1.IsZero;
     }
 
 
     /// <summary>An affine G2 point over Fp2. The identity is represented by <see cref="IsInfinity"/>.</summary>
+    /// <param name="X">The affine x-coordinate; meaningless when <paramref name="IsInfinity"/> is <see langword="true"/>.</param>
+    /// <param name="Y">The affine y-coordinate; meaningless when <paramref name="IsInfinity"/> is <see langword="true"/>.</param>
+    /// <param name="IsInfinity">Whether this value represents the point at infinity (the group identity) rather than an affine coordinate pair.</param>
     internal readonly record struct AffinePoint(Fp2Value X, Fp2Value Y, bool IsInfinity)
     {
+        /// <summary>The G2 point at infinity, the group identity.</summary>
         public static AffinePoint Identity { get; } = new(Fp2Value.Zero, Fp2Value.Zero, IsInfinity: true);
     }
 
 
+    /// <summary>Adds two affine G2 points using the standard chord-and-tangent group law, handling the identity and doubling cases.</summary>
     private static AffinePoint PointAdd(AffinePoint a, AffinePoint b)
     {
         if(a.IsInfinity)
@@ -192,6 +211,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Doubles an affine G2 point using the tangent-line formula.</summary>
     private static AffinePoint PointDouble(AffinePoint a)
     {
         if(a.IsInfinity || a.Y.IsZero)
@@ -219,6 +239,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Negates an affine G2 point by negating its y-coordinate; the identity negates to itself.</summary>
     private static AffinePoint PointNegate(AffinePoint a)
     {
         if(a.IsInfinity)
@@ -231,6 +252,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Multiplies an affine G2 point by a scalar using double-and-add, negating the point first when the scalar is negative.</summary>
     private static AffinePoint ScalarMultiplyPoint(BigInteger scalar, AffinePoint point)
     {
         if(scalar.IsZero || point.IsInfinity)
@@ -269,28 +291,28 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
-    //Fp2 arithmetic helpers — inlined here over (c0, c1) BigInteger pairs for
-    //compactness with the G2 group law. Mirrors the Fp2 reference's algebra; not
-    //performance-tuned.
-
+    /// <summary>Adds two Fp2 elements component-wise modulo the base field prime.</summary>
     private static Fp2Value Fp2Add(Fp2Value a, Fp2Value b)
     {
         return new(Mod(a.C0 + b.C0), Mod(a.C1 + b.C1));
     }
 
 
+    /// <summary>Subtracts two Fp2 elements component-wise modulo the base field prime.</summary>
     private static Fp2Value Fp2Sub(Fp2Value a, Fp2Value b)
     {
         return new(Mod(a.C0 - b.C0), Mod(a.C1 - b.C1));
     }
 
 
+    /// <summary>Negates an Fp2 element component-wise modulo the base field prime.</summary>
     private static Fp2Value Fp2Negate(Fp2Value a)
     {
         return new(Mod(-a.C0), Mod(-a.C1));
     }
 
 
+    /// <summary>Multiplies two Fp2 elements using the non-residue relation u² = -1.</summary>
     private static Fp2Value Fp2Mul(Fp2Value a, Fp2Value b)
     {
         //(a0 + a1·u)(b0 + b1·u) = (a0·b0 − a1·b1) + (a0·b1 + a1·b0)·u, using u² = −1.
@@ -300,6 +322,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Inverts a non-zero Fp2 element via the norm trick (multiplying by the conjugate over the Fp norm), throwing for zero.</summary>
     private static Fp2Value Fp2Invert(Fp2Value a)
     {
         if(a.IsZero)
@@ -317,6 +340,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Returns whether two Fp2 elements are component-wise equal.</summary>
     private static bool Fp2Equals(Fp2Value a, Fp2Value b)
     {
         return a.C0 == b.C0 && a.C1 == b.C1;
@@ -435,8 +459,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     /// compressed form predates RFC 9380 and uses the lex rule. The
     /// existing G1 reference uses the analogous <c>2y &gt; p</c> rule
     /// for its parity flag, so this G2 convention matches the
-    /// codebase's overall encoding posture. The RFC 9380 sgn0 will
-    /// land separately in the hash-to-curve sub-batch.
+    /// codebase's overall encoding posture.
     /// </remarks>
     private static int Fp2YParityZcash(Fp2Value a)
     {
@@ -572,6 +595,7 @@ internal static class Bls12Curve381BigIntegerG2Reference
     }
 
 
+    /// <summary>Writes a non-negative value into <paramref name="destination"/> as fixed-width big-endian bytes, zero-padding the leading bytes, throwing if it does not fit.</summary>
     private static void WriteBigEndianFixed(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

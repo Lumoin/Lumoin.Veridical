@@ -9,8 +9,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// The per-proof-path security-level calculator: it unifies the scattered
 /// documented boundaries — the Ligero opened-column soundness
 /// (<see cref="WellKnownLigeroParameters"/>), the BaseFold IOPP query soundness
-/// (<see cref="WellKnownBaseFoldIoppParameters"/>) and the field-size terms the
-/// per-scheme docs previously carried only as prose — into one computed
+/// (<see cref="WellKnownBaseFoldIoppParameters"/>), and the field-size terms
+/// that per-scheme docs otherwise carry only as prose — into one computed
 /// <see cref="SecurityLevelLedger"/> per Spartan path, so a deployment can read
 /// the bottleneck (effective) knowledge-soundness bits its parameters actually
 /// realise instead of the target its query count nominally aims at.
@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <remarks>
 /// <para>
 /// Every term is computed conservatively within the Johnson-radius pricing
-/// convention documented in the security-bits design notes (the per-column proximity
+/// convention this ledger applies uniformly (the per-column proximity
 /// figure is the <c>η → 0</c> limit of the proximity-gap theorem's provable
 /// range; any concrete <c>η</c> shaves a fraction of a bit and adds a
 /// far-larger-exponent field-side error term). Field-size terms use the floor
@@ -26,7 +26,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// low-order field events are weighted deliberately loosely (see
 /// <see cref="LigeroFieldTermBits"/>) — those terms exist to show they never
 /// approach the query-term bottleneck for the shapes this library commits, not
-/// to be tight. Design note: the security-bits design notes.
+/// to be tight.
 /// </para>
 /// <para>
 /// The dominant practical hazard the ledger surfaces is the per-polynomial
@@ -67,19 +67,20 @@ public static class WellKnownSecurityLevels
     /// <summary>
     /// The per-round weight multiplier of the one-and-a-half-Johnson regime's
     /// commit-phase failure bound <c>3d/(εη·|F|)</c>. Three is the bound the
-    /// Khatam theorem's algebra supports (the constant published with the
-    /// CRYPTO 2026 revision; the 2025-06-26 revision's smaller constant does
-    /// not survive its own Lemma-3 expansion), and the ledger uses the larger,
-    /// safe value.
+    /// Khatam theorem's algebra supports (the CRYPTO 2026 published constant;
+    /// a smaller constant does not survive the theorem's own Lemma-3
+    /// expansion), and the ledger uses the larger, safe value.
     /// </summary>
     public const int OneAndAHalfJohnsonCommitFailureWeight = 3;
 
-    //The deliberately loose exponent of the low-order field-event weight: the
-    //bad-event weight is taken as codewordLength³, which dominates the
-    //polynomial factors of the published proximity-gap error bounds (linear for
-    //unique decoding, quadratic with small multipliers in the Johnson range)
-    //for every code length this library commits, while still leaving the term
-    //hundreds of bits above the query-term bottleneck.
+    /// <summary>
+    /// The deliberately loose exponent of the low-order field-event weight: the
+    /// bad-event weight is taken as codewordLength³, which dominates the
+    /// polynomial factors of the published proximity-gap error bounds (linear for
+    /// unique decoding, quadratic with small multipliers in the Johnson range)
+    /// for every code length this library commits, while still leaving the term
+    /// hundreds of bits above the query-term bottleneck.
+    /// </summary>
     private const int FieldEventWeightExponent = 3;
 
 
@@ -631,10 +632,15 @@ public static class WellKnownSecurityLevels
     }
 
 
-    //The BaseFold low-order field events over a d-variable opening: the
-    //evaluation argument's internal quadratic sumcheck (at most 2d/r) plus the
-    //commit-phase bad event (2d/(3r), BaseFold paper Theorem 3), summed as
-    //(8/3)·d/r.
+    /// <summary>
+    /// The BaseFold low-order field events over a d-variable opening: the
+    /// evaluation argument's internal quadratic sumcheck (at most 2d/r) plus the
+    /// commit-phase bad event (2d/(3r), BaseFold paper Theorem 3), summed as
+    /// (8/3)·d/r.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the argument works in.</param>
+    /// <param name="variableCount">The opened polynomial's (lifted) variable count.</param>
+    /// <returns>The conservative field-side soundness in bits.</returns>
     private static double BaseFoldFieldTermBits(CurveParameterSet curve, int variableCount)
     {
         double weight = Math.Max(8.0 * variableCount / 3.0, 2.0);
@@ -643,10 +649,16 @@ public static class WellKnownSecurityLevels
     }
 
 
-    //The regime-aware field term: the one-and-a-half-Johnson regime replaces
-    //the Theorem-3 commit-phase event with the Khatam slack bound 3d/(εη·|F|),
-    //which is far larger than the (8/3)·d/r bundle, so the path's field term
-    //is the weaker of the two; every other regime keeps the bundle alone.
+    /// <summary>
+    /// The regime-aware field term: the one-and-a-half-Johnson regime replaces
+    /// the Theorem-3 commit-phase event with the Khatam slack bound 3d/(εη·|F|),
+    /// which is far larger than the (8/3)·d/r bundle, so the path's field term
+    /// is the weaker of the two; every other regime keeps the bundle alone.
+    /// </summary>
+    /// <param name="curve">The curve whose scalar field the argument works in.</param>
+    /// <param name="variableCount">The opened polynomial's (lifted) variable count.</param>
+    /// <param name="regime">The BaseFold soundness regime.</param>
+    /// <returns>The conservative field-side soundness in bits under <paramref name="regime"/>.</returns>
     private static double BaseFoldRegimeFieldTermBits(CurveParameterSet curve, int variableCount, BaseFoldSoundnessRegime regime)
     {
         double bundleBits = BaseFoldFieldTermBits(curve, variableCount);

@@ -14,6 +14,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class R1csMatrixExtensions
 {
+    /// <summary>Matrix-vector product members added to every <see cref="R1csMatrix"/> instance.</summary>
     extension(R1csMatrix matrix)
     {
         /// <summary>

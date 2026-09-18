@@ -26,42 +26,58 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// The signature circuit's Ligero commits over <c>Fp256Base</c>, whose subfield IS the base field
 /// (<c>fp_generic.h</c>: <c>kSubFieldBytes = kBytes = 32</c> at line 47, <c>in_subfield(e) ≡ true</c> at
 /// line 284, <c>to_bytes_subfield ≡ to_bytes_field</c> at lines 386–388). The circuit reports
-/// <c>subfield_boundary = 0</c> (the dumped <c>sig_subfield_boundary</c>), so no witness row is
-/// subfield-only and every padding draw is a full 32-byte field draw — the commit's subfield-draw path
+/// <c>subfield_boundary = 0</c>, the value the reference format's <c>sig_subfield_boundary</c> carries, so
+/// no witness row is subfield-only and every padding draw is a full 32-byte field draw — the commit's
+/// subfield-draw path
 /// stays dormant for the signature circuit. <see cref="SignatureSubFieldBytes"/> and
 /// <see cref="SignatureSubfieldBoundary"/> carry those two values for the commit/serialize callers.
 /// </para>
 /// </remarks>
 internal static class LongfellowFp256Encoding
 {
-    //The diagnostic tag the Fp256 row encoders carry.
+    /// <summary>The diagnostic tag every Fp256 row encoder built by <see cref="CreateEncoderFactory"/> carries, identifying it in <see cref="LongfellowRowEncoder"/> diagnostics.</summary>
     private const string EncoderTag = "Fp256 RS";
 
-    //The multiplicative order of the production root of unity: mdoc_zk.cc:479 builds the
-    //FftExtConvolutionFactory with 1ull << 31.
+    /// <summary>
+    /// The multiplicative order of the production root of unity: google/longfellow-zk's
+    /// <c>mdoc_zk.cc:479</c> builds its <c>FftExtConvolutionFactory</c> with <c>1ull &lt;&lt; 31</c>.
+    /// </summary>
     public const ulong OmegaOrder = 1UL << 31;
 
-    //Fp256Base::kSubFieldBytes == kBytes == 32 (fp_generic.h:47): the prime field's subfield is itself.
+    /// <summary>
+    /// The P-256 signature circuit's subfield element width in bytes. In the reference,
+    /// <c>Fp256Base::kSubFieldBytes == kBytes == 32</c> (<c>fp_generic.h:47</c>): the prime field's
+    /// subfield is the field itself.
+    /// </summary>
     public const int SignatureSubFieldBytes = Scalar.SizeBytes;
 
-    //The P-256 signature circuit's subfield_boundary, as dumped (sig_subfield_boundary=0). With it zero,
-    //layout_witness_rows' subfield_only is never satisfied, so the commit never draws a subfield element.
+    /// <summary>
+    /// The P-256 signature circuit's subfield boundary, matching the reference implementation's own
+    /// value (<c>sig_subfield_boundary = 0</c>). With it zero, <c>layout_witness_rows</c>' <c>subfield_only</c>
+    /// is never satisfied, so the commit never draws a subfield element for this circuit.
+    /// </summary>
     public const int SignatureSubfieldBoundary = 0;
 
-    //The production root of unity (mdoc_zk.cc:83-88), parsed by the reference as the extension element
-    //kRootX + i·kRootY. The two coordinates are pinned as canonical 32-byte big-endian bytes; the decimal
-    //sources are quoted here and the gate re-parses them to confirm the pin.
-    //
-    //  kRootX =
-    //    "112649224146410281873500457609690258373018840430489408729223714171582664680802"
-    //  kRootY =
-    //    "84087994358540907695740461427818660560182168997182378749313018254450460212908"
+    /// <summary>
+    /// The production root of unity's real coordinate <c>kRootX</c> (google/longfellow-zk's
+    /// <c>mdoc_zk.cc:83-88</c>, parsed by the reference as part of the <c>Fp256^2</c> extension element
+    /// <c>kRootX + i·kRootY</c>), pinned as its canonical 32-byte big-endian bytes from the decimal source
+    /// <c>"112649224146410281873500457609690258373018840430489408729223714171582664680802"</c>; the
+    /// <c>LongfellowFp256EncodingTests</c> gate re-parses that decimal value to confirm the pin.
+    /// </summary>
     private static ReadOnlySpan<byte> RootRealBigEndian =>
     [
         0xf9, 0x0d, 0x33, 0x8e, 0xbd, 0x84, 0xf5, 0x66, 0x5c, 0xfc, 0x85, 0xc6, 0x79, 0x90, 0xe3, 0x37,
         0x9f, 0xc9, 0x56, 0x3b, 0x38, 0x2a, 0x4a, 0x4c, 0x98, 0x5a, 0x65, 0x32, 0x4b, 0x24, 0x25, 0x62
     ];
 
+    /// <summary>
+    /// The production root of unity's imaginary coordinate <c>kRootY</c> (google/longfellow-zk's
+    /// <c>mdoc_zk.cc:83-88</c>, parsed by the reference as part of the <c>Fp256^2</c> extension element
+    /// <c>kRootX + i·kRootY</c>), pinned as its canonical 32-byte big-endian bytes from the decimal source
+    /// <c>"84087994358540907695740461427818660560182168997182378749313018254450460212908"</c>; the
+    /// <c>LongfellowFp256EncodingTests</c> gate re-parses that decimal value to confirm the pin.
+    /// </summary>
     private static ReadOnlySpan<byte> RootImaginaryBigEndian =>
     [
         0xb9, 0xe8, 0x1e, 0x42, 0xbc, 0x97, 0xcc, 0x4d, 0xa0, 0x4f, 0xc2, 0xe2, 0x01, 0x06, 0xe3, 0x40,
@@ -89,7 +105,7 @@ internal static class LongfellowFp256Encoding
 
     /// <summary>
     /// Writes the production root of unity into <paramref name="destination"/> already lifted into the working
-    /// domain (Perf Increment 1): the canonical <c>re ‖ im</c> coordinates are each converted through
+    /// domain: the canonical <c>re ‖ im</c> coordinates are each converted through
     /// <paramref name="toWorking"/> SEPARATELY. The root is the <c>Fp256^2</c> extension element
     /// <c>kRootX + i·kRootY</c>, so the lift is a BASE-field conversion applied per coordinate (the extension's
     /// real and imaginary parts are each a base-field residue; the Montgomery lift does not commute with the
@@ -162,7 +178,7 @@ internal static class LongfellowFp256Encoding
 
 
     /// <summary>
-    /// Builds the Montgomery-domain Fp256 row-encoder factory (Perf Increment 1): the clean entry point the Fp
+    /// Builds the Montgomery-domain Fp256 row-encoder factory: the clean entry point the Fp
     /// callers use so the RS engine's field constants are sourced through the SAME Montgomery profile that the
     /// prover/verifier read and emit through. The of_scalar handed to the RS engine is
     /// <paramref name="montgomeryProfile"/>'s <see cref="LongfellowFieldProfile.OfScalar"/> (which lifts each
@@ -207,7 +223,7 @@ internal static class LongfellowFp256Encoding
 
 
     /// <summary>
-    /// Builds the Montgomery-domain Fp256 field profile (Perf Increment 1). Wire behaviour is byte-identical
+    /// Builds the Montgomery-domain Fp256 field profile. Wire behaviour is byte-identical
     /// to <see cref="CreateProfile"/>, but the working domain is the Montgomery residue: the converters lift
     /// canonical-&gt;Montgomery at the read/of_scalar/sample seams and drop Montgomery-&gt;canonical at the
     /// emit seam, so the 1-CIOS Montgomery multiply can run across the whole Fp computation. The converters

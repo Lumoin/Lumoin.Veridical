@@ -1,16 +1,12 @@
 namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 
 /// <summary>
-/// Hand-constructed Circom <c>.wtns</c> witness fixtures, byte-faithful
-/// to what <c>snarkjs</c>'s witness generator emits. The .wtns format
-/// has no separate specification document; the encoder source at
-/// <c>https://github.com/iden3/snarkjs/blob/master/src/wtns_utils.js</c>
-/// is the de-facto reference.
+/// Hand-constructed Circom <c>.wtns</c> witness fixtures. The .wtns format
+/// has no separate specification document, so byte-for-byte fidelity to
+/// the real file shape below — magic, version, section types, field size,
+/// and witness count, in this order — is itself the interop contract these
+/// fixtures exist to exercise.
 /// </summary>
-/// <remarks>
-/// Regeneration steps for the fixtures land in
-/// <c>FIXTURES.md</c> alongside the <c>.r1cs</c> fixture notes.
-/// </remarks>
 internal static class CircomWitnessFixtures
 {
     /// <summary>

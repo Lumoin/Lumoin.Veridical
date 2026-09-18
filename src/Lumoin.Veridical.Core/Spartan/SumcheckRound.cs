@@ -31,8 +31,8 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// <para>
 /// The type is broad in the rules-document sense — one
 /// <see cref="SumcheckRound"/> can carry any curve's bytes, with the
-/// curve identity in the <see cref="Tag"/>. Only BLS12-381 is wired
-/// today; the <see cref="GetFieldElementSizeBytes"/> dispatch grows
+/// curve identity in the <see cref="Tag"/>. BLS12-381 and BN254 are
+/// wired; the <see cref="GetFieldElementSizeBytes"/> dispatch grows
 /// when more curves are added.
 /// </para>
 /// <para>
@@ -59,6 +59,17 @@ public sealed class SumcheckRound: SensitiveMemory
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>
+    /// Wraps an already-populated, pool-rented buffer as a round, recording its
+    /// dimensions and curve alongside the inherited byte ownership. Callers reach
+    /// this only through <see cref="Create"/>, which lays the buffer out first.
+    /// </summary>
+    /// <param name="owner">The pool-rented buffer already holding the compressed round polynomial followed by the challenge scalar.</param>
+    /// <param name="roundIndex">The zero-based round index.</param>
+    /// <param name="degree">The algebraic degree of the round polynomial.</param>
+    /// <param name="fieldElementSizeBytes">The byte size of one field element for <paramref name="curve"/>.</param>
+    /// <param name="curve">The curve identifying the scalar field.</param>
+    /// <param name="tag">The provenance tag to attach to the underlying buffer.</param>
     internal SumcheckRound(
         IMemoryOwner<byte> owner,
         int roundIndex,
@@ -89,7 +100,7 @@ public sealed class SumcheckRound: SensitiveMemory
     /// <returns>A round wrapping a pool-rented copy of both inputs' bytes.</returns>
     /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="roundIndex"/> is negative.</exception>
-    /// <exception cref="ArgumentException">When the polynomial and challenge curves disagree, or either is not over BLS12-381.</exception>
+    /// <exception cref="ArgumentException">When the polynomial and challenge curves disagree, or either curve is neither BLS12-381 nor BN254.</exception>
     public static SumcheckRound Create(
         int roundIndex,
         CompressedRoundPolynomial roundPolynomial,
@@ -164,6 +175,14 @@ public sealed class SumcheckRound: SensitiveMemory
     }
 
 
+    /// <summary>
+    /// Builds a fresh provenance tag for a round created without a caller-supplied
+    /// tag, recording the sumcheck-round algebraic role together with the curve and
+    /// round dimensions.
+    /// </summary>
+    /// <param name="dimensions">The round index and degree to record on the tag.</param>
+    /// <param name="curve">The curve identifying the scalar field to record on the tag.</param>
+    /// <returns>The composed provenance tag.</returns>
     private static Tag ComposeAlgebraicTag(SumcheckRoundDimensions dimensions, CurveParameterSet curve)
     {
         return Tag.Create(AlgebraicRole.SumcheckRound)
@@ -172,6 +191,15 @@ public sealed class SumcheckRound: SensitiveMemory
     }
 
 
+    /// <summary>
+    /// Merges the sumcheck-round algebraic role, the curve and the round
+    /// dimensions into a caller-supplied tag, so a caller's own provenance entries
+    /// are preserved alongside the algebraic-identity entries.
+    /// </summary>
+    /// <param name="tag">The caller-supplied tag to merge the algebraic-identity entries into.</param>
+    /// <param name="dimensions">The round index and degree to record on the tag.</param>
+    /// <param name="curve">The curve identifying the scalar field to record on the tag.</param>
+    /// <returns>The merged provenance tag.</returns>
     private static Tag MergeWithAlgebraicTag(Tag tag, SumcheckRoundDimensions dimensions, CurveParameterSet curve)
     {
         return tag.With(AlgebraicRole.SumcheckRound)

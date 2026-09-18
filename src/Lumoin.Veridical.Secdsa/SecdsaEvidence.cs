@@ -24,15 +24,18 @@ namespace Lumoin.Veridical.Secdsa;
 /// <para>
 /// <b>Deployment note for the control relation.</b> When the blinding key <c>aU</c> lives in a PKCS#11 HSM that
 /// cannot produce a Schnorr NIZK, the control relation is instead proven with the ECDH-MAC interactive Protocol 2
-/// or its transferable variant (Verheul Algorithms 21–23) — that orchestration, together with the signed
+/// or its transferable variant (Verheul Algorithms 22–24) — that orchestration, together with the signed
 /// transaction record, the transparency log, and PID issuance, belongs to the application layer (VerifableSystem).
 /// The method here is the software-prover / verifier form of the same statement.
 /// </para>
 /// </remarks>
 public static class SecdsaEvidence
 {
+    /// <summary>The byte length of one SEC1-compressed P-256 point.</summary>
     private const int CompressedPointSizeBytes = WellKnownCurves.P256CompressedSizeBytes;
+    /// <summary>The number of points in a DL-equality pair: the generator and its image.</summary>
     private const int PairCount = 2;
+    /// <summary>The byte length of two concatenated compressed points, the shape <see cref="DlEqualityNizk"/> takes for a generators or public-keys argument.</summary>
     private const int ConcatSizeBytes = PairCount * CompressedPointSizeBytes;
 
 
@@ -214,7 +217,7 @@ public static class SecdsaEvidence
     }
 
 
-    //Prove-side assembly: a wrong-length point is a programmer error and throws (consistent with DlEqualityNizk.Prove).
+    /// <summary>Prove-side assembly: concatenates two compressed points. A wrong-length point is a programmer error and throws, consistent with <c>DlEqualityNizk.Prove</c>.</summary>
     private static void AssemblePair(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second, Span<byte> destination)
     {
         RequirePoint(first, nameof(first));
@@ -224,7 +227,7 @@ public static class SecdsaEvidence
     }
 
 
-    //Verify-side assembly: a wrong-length point is adversarial wire input and rejects (returns false) rather than throwing.
+    /// <summary>Verify-side assembly: concatenates two compressed points. A wrong-length point is adversarial wire input and rejects (returns <see langword="false"/>) rather than throwing.</summary>
     private static bool TryAssemblePair(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second, out byte[] destination)
     {
         if(first.Length != CompressedPointSizeBytes || second.Length != CompressedPointSizeBytes)
@@ -242,6 +245,7 @@ public static class SecdsaEvidence
     }
 
 
+    /// <summary>Throws when a point is not exactly <see cref="CompressedPointSizeBytes"/> bytes.</summary>
     private static void RequirePoint(ReadOnlySpan<byte> point, string name)
     {
         if(point.Length != CompressedPointSizeBytes)

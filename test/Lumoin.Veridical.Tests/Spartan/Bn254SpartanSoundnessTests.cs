@@ -19,36 +19,58 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// rejected at prove time (base and masked provers), and a valid proof with a
 /// single flipped byte is rejected by the verifier. The BN254 counterparts of
 /// the BLS <see cref="SpartanFailureTests"/> / <see cref="MaskedSpartanSoundnessTests"/>
-/// legs, confirming the U.10 curve-broadened prove/verify path keeps the
-/// soundness contract over a second curve.
+/// legs, confirming that the prove/verify path is generic in the curve's
+/// scalar and group arithmetic: the soundness contract holds over BN254 just
+/// as it does over BLS12-381.
 /// </summary>
 [TestClass]
 internal sealed class Bn254SpartanSoundnessTests
 {
+    /// <summary>The Fiat–Shamir hash delegate this test's transcripts use, backed by the BLAKE3 reference.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    /// <summary>The Fiat–Shamir squeeze delegate this test's transcripts use, backed by the BLAKE3 reference.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    /// <summary>The BN254 scalar-field canonical-reduction delegate this test proves and verifies over.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
+    /// <summary>The BN254 scalar-field addition delegate this test proves and verifies over.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bn254.Add;
+    /// <summary>The BN254 scalar-field subtraction delegate this test proves and verifies over.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bn254.Subtract;
+    /// <summary>The BN254 scalar-field multiplication delegate this test proves and verifies over.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bn254.Multiply;
+    /// <summary>The BN254 scalar-field inversion delegate this test proves and verifies over.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bn254.Invert;
+    /// <summary>The BN254 scalar-field random-sampling delegate this test's prover draws blinding scalars from.</summary>
     private static ScalarRandomDelegate Random { get; } = Bn254BigIntegerScalarReference.GetRandom();
+    /// <summary>The BN254 G1 point-addition delegate this test's commitment scheme uses.</summary>
     private static G1AddDelegate G1Add { get; } = Bn254BigIntegerG1Reference.GetAdd();
+    /// <summary>The BN254 G1 scalar-multiplication delegate this test's commitment scheme uses.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bn254BigIntegerG1Reference.GetScalarMultiply();
+    /// <summary>The BN254 G1 multi-scalar-multiplication delegate this test's commitment scheme uses.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bn254Msm;
+    /// <summary>The BN254 G1 on-curve check delegate the Hyrax commitment scheme uses.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+    /// <summary>The BN254 G1 prime-order-subgroup check delegate the Hyrax commitment scheme uses.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+    /// <summary>The BN254 G1 hash-to-curve delegate used to derive the Hyrax commitment key's generators.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bn254BigIntegerG1Reference.GetHashToCurve();
+    /// <summary>The multilinear-extension evaluation delegate this test's Spartan prover and verifier use.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+    /// <summary>The multilinear-extension folding delegate this test's Spartan prover and verifier use.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
+    /// <summary>The BN254 scalar-field order, used to reduce test witness values into canonical form.</summary>
     private static BigInteger Order { get; } = Bn254BigIntegerScalarReference.FieldOrder;
+    /// <summary>The curve this test's circuits, witnesses, and commitment scheme operate over.</summary>
     private static CurveParameterSet Curve => CurveParameterSet.Bn254;
+    /// <summary>The memory pool this test's circuits, proofs, and commitment keys are allocated from.</summary>
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 
+    /// <summary>The Hyrax commitment key's vector length, sized for this test's small one-multiplication witness.</summary>
     private const int HyraxVectorLength = 2;
 
 
+    /// <summary>Verifies that the base Spartan prover throws at prove time when the witness does not satisfy the R1CS instance.</summary>
     [TestMethod]
     public void BaseSpartanUnsatisfyingWitnessThrowsAtProveTime()
     {
@@ -69,6 +91,7 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
+    /// <summary>Verifies that the masked Spartan prover throws at prove time when the witness does not satisfy the R1CS instance.</summary>
     [TestMethod]
     public void MaskedSpartanUnsatisfyingWitnessThrowsAtProveTime()
     {
@@ -87,6 +110,7 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
+    /// <summary>Verifies that flipping the leading byte of the proof's witness-commitment region causes verification to fail.</summary>
     [TestMethod]
     public void WitnessCommitmentBitFlipRejected()
     {
@@ -95,6 +119,7 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the proof's claim_Az region, which breaks the outer sumcheck's terminating identity, causes verification to fail.</summary>
     [TestMethod]
     public void ClaimAzBitFlipRejected()
     {
@@ -107,6 +132,9 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
+    /// <summary>Proves a valid BN254 proof, flips one byte at the given offset, and asserts that verification rejects the tampered proof.</summary>
+    /// <param name="offsetSelector">Computes the byte offset to flip from the original proof.</param>
+    /// <param name="regionDescription">A human-readable name for the flipped region, used in the assertion message.</param>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; disposal happens before the assertion completes.")]
     private static void VerifyBitFlipRejected(Func<SpartanProof, int> offsetSelector, string regionDescription)
     {
@@ -137,6 +165,7 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
+    /// <summary>Reconstructs a <see cref="SpartanProof"/> from raw bytes, reusing a template proof's round and row counts and curve.</summary>
     private static SpartanProof RehydrateProof(byte[] proofBytes, SpartanProof template)
     {
         return SpartanProof.FromBytes(
@@ -151,27 +180,32 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
+    /// <summary>Builds a base Spartan prover over a fresh Hyrax-backed proving key.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanProver.")]
     private static SpartanProver BuildBaseProver() =>
         new(new SpartanProvingKey(BuildProvider()));
 
 
+    /// <summary>Builds a base Spartan verifier over a fresh Hyrax-backed verifying key.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanVerifier.")]
     private static SpartanVerifier BuildBaseVerifier() =>
         new(new SpartanVerifyingKey(BuildProvider()));
 
 
+    /// <summary>Builds a masked Spartan prover over a fresh Hyrax-backed proving key.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned MaskedSpartanProver.")]
     private static MaskedSpartanProver BuildMaskedProver() =>
         new(new SpartanProvingKey(BuildProvider()));
 
 
+    /// <summary>Derives the Hyrax commitment key this test's provider commits through.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the derived key transfers to the caller.")]
     private static HyraxCommitmentKey BuildCommitmentKey() =>
         HyraxCommitmentKey.Derive(
             HyraxVectorLength, WellKnownHyraxDomainLabels.CanonicalSeedV1, Curve, HashToCurve, Pool);
 
 
+    /// <summary>Builds the Hyrax polynomial commitment provider this test's Spartan prover and verifier commit through.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider takes ownership of the key (ownsKey: true) and transfers to the Spartan key that consumes it.")]
     private static PolynomialCommitmentProvider BuildProvider() =>
         HyraxPolynomialCommitmentScheme.Create(
@@ -182,13 +216,14 @@ internal sealed class Bn254SpartanSoundnessTests
             ownsKey: true);
 
 
+    /// <summary>Creates a fresh Fiat–Shamir transcript for one prove or verify run, seeded with the Spartan domain label.</summary>
     private static FiatShamirTranscript FreshTranscript() =>
         FiatShamirTranscript.Initialise(
             new FiatShamirDomainLabel(WellKnownSpartanDomainLabels.SpartanV1),
             ReadOnlySpan<byte>.Empty, WellKnownHashAlgorithms.Blake3, Hash, Pool);
 
 
-    //One multiplication plus padding: c0 z[1]·z[2]=z[3], c1 z[0]·z[0]=z[0]. (m=2, n=4).
+    /// <summary>Builds a two-constraint R1CS instance — <c>c0: z[1]·z[2]=z[3]</c>, a padding constraint <c>c1: z[0]·z[0]=z[0]</c> — sized <c>m=2, n=4</c>.</summary>
     private static RawR1csInstance BuildOneMultiplyInstance()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -208,7 +243,7 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
-    //z = (1, 3, 5, 15): satisfies c0 (3·5=15) and c1 (1·1=1).
+    /// <summary>Builds the witness <c>z = (1, 3, 5, 15)</c>, which satisfies <c>c0</c> (<c>3·5=15</c>) and <c>c1</c> (<c>1·1=1</c>).</summary>
     private static RawR1csWitness BuildOneMultiplyWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -220,7 +255,7 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
-    //z = (1, 3, 5, 99): violates c0 (3·5 != 99).
+    /// <summary>Builds the witness <c>z = (1, 3, 5, 99)</c>, which violates <c>c0</c> (<c>3·5 ≠ 99</c>).</summary>
     private static RawR1csWitness BuildUnsatisfyingWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -232,6 +267,7 @@ internal sealed class Bn254SpartanSoundnessTests
     }
 
 
+    /// <summary>Reduces a <see cref="BigInteger"/> modulo <see cref="Order"/> and writes it as a canonical big-endian scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

@@ -25,15 +25,30 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 [TestClass]
 internal sealed class R1csInstanceCanonicityTests
 {
-    //One constraint over four wires — the smallest shape that admits a
-    //public input (public-input count + 1 constant must fit the columns).
+    /// <summary>The constraint-row count: one constraint, the smallest shape that admits a public input.</summary>
     private const int RowCount = 1;
+    /// <summary>The witness-column count: four wires, so the public-input count plus the 1-constant still fits.</summary>
     private const int ColumnCount = 4;
 
+    /// <summary>The byte width of one canonical scalar this test's public inputs and relaxation scalar use.</summary>
     private const int ScalarSize = 32;
+    /// <summary>The curve this test's instances and matrices operate over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
+    /// <summary>Two public inputs, so a non-canonical input can sit behind a canonical one.</summary>
+    private const int PublicInputPairCount = 2;
 
+    /// <summary>The index of the non-canonical input in the pair, which the refusal names.</summary>
+    private const int SecondPublicInputIndex = 1;
+
+    /// <summary>The offset from the scalar field order that gives the largest canonical value.</summary>
+    private const int LargestCanonicalOffset = -1;
+
+    /// <summary>The offset from the scalar field order that gives the smallest non-canonical value, the order itself.</summary>
+    private const int SmallestNonCanonicalOffset = 0;
+
+
+    /// <summary>Verifies that <see cref="RawR1csInstance.Create"/> rejects a public input encoding the scalar-field order itself, naming the offending input's index.</summary>
     [TestMethod]
     public void RawInstanceRejectsAPublicInputAtTheScalarFieldOrder()
     {
@@ -61,6 +76,7 @@ internal sealed class R1csInstanceCanonicityTests
     }
 
 
+    /// <summary>Verifies that <see cref="RawR1csInstance.Create"/> accepts a public input encoding the largest canonical value, one below the scalar-field order.</summary>
     [TestMethod]
     [SuppressMessage("Reliability", "CA2000", Justification = "RawR1csInstance.Create takes ownership of the matrices and disposes them through its own Dispose chain.")]
     public void RawInstanceAcceptsAPublicInputAtOrderMinusOne()
@@ -76,6 +92,39 @@ internal sealed class R1csInstanceCanonicityTests
     }
 
 
+    /// <summary>
+    /// Each public input is checked at its own offset, so a non-canonical input behind a canonical one is refused
+    /// and the refusal names its index. The first input is the largest canonical value and the second is the scalar
+    /// field order itself: a check that read the first slot for every index would accept the pair. The two inputs are
+    /// whole scalars and leave room for the constant in four columns, so only the canonicity check can refuse them.
+    /// </summary>
+    [TestMethod]
+    public void RawInstanceRejectsANonCanonicalSecondPublicInput()
+    {
+        using IMemoryOwner<byte> publicOwner = BaseMemoryPool.Shared.Rent(PublicInputPairCount * ScalarSize);
+        WriteOrderPlus(LargestCanonicalOffset, publicOwner.Memory.Span[..ScalarSize]);
+        WriteOrderPlus(SmallestNonCanonicalOffset, publicOwner.Memory.Span.Slice(SecondPublicInputIndex * ScalarSize, ScalarSize));
+
+        R1csMatrix a = BuildOneEntryMatrix();
+        R1csMatrix b = BuildOneEntryMatrix();
+        R1csMatrix c = BuildOneEntryMatrix();
+
+        try
+        {
+            ArgumentException ex = Assert.ThrowsExactly<ArgumentException>(() =>
+                RawR1csInstance.Create(a, b, c, publicOwner.Memory.Span[..(PublicInputPairCount * ScalarSize)], BaseMemoryPool.Shared).Dispose());
+            Assert.Contains($"Public input {SecondPublicInputIndex} encodes", ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            a.Dispose();
+            b.Dispose();
+            c.Dispose();
+        }
+    }
+
+
+    /// <summary>Verifies that <see cref="RelaxedR1csInstance.Create"/> rejects a relaxation scalar <c>u</c> encoding the scalar-field order itself.</summary>
     [TestMethod]
     public void RelaxedInstanceRejectsUAtTheScalarFieldOrder()
     {
@@ -104,6 +153,7 @@ internal sealed class R1csInstanceCanonicityTests
     }
 
 
+    /// <summary>Verifies that <see cref="RelaxedR1csInstance.Create"/> rejects a public input encoding the scalar-field order itself, even with a canonical <c>u</c>.</summary>
     [TestMethod]
     public void RelaxedInstanceRejectsAPublicInputAtTheScalarFieldOrder()
     {
@@ -136,6 +186,7 @@ internal sealed class R1csInstanceCanonicityTests
     }
 
 
+    /// <summary>Verifies that <see cref="RelaxedR1csInstance.Create"/> accepts a canonical public input and a canonical relaxation scalar <c>u</c>.</summary>
     [TestMethod]
     [SuppressMessage("Reliability", "CA2000", Justification = "RelaxedR1csInstance.Create takes ownership of the matrices and the commitment and disposes them through its own Dispose chain.")]
     public void RelaxedInstanceAcceptsCanonicalUAndPublicInput()
@@ -156,9 +207,7 @@ internal sealed class R1csInstanceCanonicityTests
     }
 
 
-    //Writes the BLS12-381 scalar field order plus the (possibly negative)
-    //offset as 32 canonical big-endian bytes; offset 0 yields the first
-    //non-canonical value, -1 the largest canonical one.
+    /// <summary>Writes the BLS12-381 scalar-field order plus the (possibly negative) offset as 32 canonical big-endian bytes; offset 0 yields the first non-canonical value, -1 the largest canonical one.</summary>
     private static void WriteOrderPlus(int offset, Span<byte> destination)
     {
         destination.Clear();
@@ -167,6 +216,7 @@ internal sealed class R1csInstanceCanonicityTests
     }
 
 
+    /// <summary>Builds a single-entry matrix (coefficient 1 at row 0, column 0) of this test's shape, for the instance factories to bind.</summary>
     private static R1csMatrix BuildOneEntryMatrix()
     {
         ReadOnlySpan<int> rows = [0];
@@ -179,6 +229,7 @@ internal sealed class R1csInstanceCanonicityTests
     }
 
 
+    /// <summary>Builds a shape-only error commitment (a compressed-G1-sized row with the BLS infinity flag set) for the relaxed-instance factory, which stores the commitment opaquely.</summary>
     private static PolynomialCommitment BuildDummyCommitment()
     {
         //One compressed-G1-sized row with the BLS infinity flag set — enough

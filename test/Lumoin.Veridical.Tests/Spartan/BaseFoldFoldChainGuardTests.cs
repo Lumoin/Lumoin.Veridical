@@ -17,7 +17,7 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
-/// Confirms the fold chain rejects a BaseFold provider up front (AB.5 Stage C).
+/// Confirms the fold chain rejects a BaseFold provider up front.
 /// Nova-style folding combines error and cross-term commitments homomorphically,
 /// which a hash-based BaseFold commitment cannot support, so
 /// <see cref="FoldChain.Start"/> throws a clear error rather than failing deep
@@ -27,29 +27,54 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class BaseFoldFoldChainGuardTests
 {
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF (squeeze) backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BLS12-381 scalar reduction delegate (wide bytes to a canonical scalar), from the BigInteger reference.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 scalar field addition delegate, from the reference backend.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar field subtraction delegate, from the reference backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar field multiplication delegate, from the reference backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar field inversion delegate, from the reference backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BLS12-381 hash-to-scalar delegate deriving the foldable code's basis, from the BigInteger reference.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The BLS12-381 G1 multi-scalar-multiplication delegate, from the test backend.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The Merkle two-to-one compression the BaseFold provider's trees use, <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The Merkle tree's node/digest width in bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The fixed domain-separation seed the BaseFold provider's foldable code is derived from.</summary>
     private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.foldchain.guard.v1");
+
+    /// <summary>The curve every gate in this file runs over: BLS12-381.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that <see cref="FoldChain.Start"/> rejects a BaseFold (non-additively-homomorphic) commitment provider up front, with a message naming the homomorphic-commitment requirement.</summary>
     [TestMethod]
     public void StartRejectsNonHomomorphicBaseFoldProvider()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
         using PolynomialCommitmentProvider provider = BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, 8, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, 8, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
 
         Assert.IsFalse(provider.IsAdditivelyHomomorphic, "A BaseFold provider must report itself as non-homomorphic.");
 
@@ -67,6 +92,7 @@ internal sealed class BaseFoldFoldChainGuardTests
     }
 
 
+    /// <summary>Builds a small (m=2, n=4) one-public-input R1CS instance, sufficient to attempt starting a fold chain over.</summary>
     private static RawR1csInstance BuildInstance()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -92,6 +118,7 @@ internal sealed class BaseFoldFoldChainGuardTests
     }
 
 
+    /// <summary>Creates a fresh transcript under this file's fixed domain label, seeded with no extra context bytes.</summary>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -103,6 +130,7 @@ internal sealed class BaseFoldFoldChainGuardTests
     }
 
 
+    /// <summary>Computes the two-to-one BLAKE3 compression of <paramref name="left"/> concatenated with <paramref name="right"/> into <paramref name="output"/>, this file's Merkle node hash.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -112,6 +140,7 @@ internal sealed class BaseFoldFoldChainGuardTests
     }
 
 
+    /// <summary>Reduces <paramref name="value"/> modulo the BLS12-381 scalar field order into a nonnegative representative and writes it as a big-endian canonical scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

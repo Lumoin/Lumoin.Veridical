@@ -87,12 +87,12 @@ jobs:
   build:
     name: Build Lumoin.Veridical packages
     permissions:
-      # Most legs need only contents:read. The ubuntu-latest leg
+      # Most legs need only contents:read. The ubuntu-24.04 leg
       # additionally writes checks/pull-request comments (test summary,
       # coverage) and produces signed artifact attestations via
       # Sigstore (id-token, attestations). GitHub does not support
       # per-matrix-leg permissions, so all legs carry the elevated set
-      # — the step `if: matrix.os == 'ubuntu-latest'` guards keep the
+      # — the step `if: matrix.os == 'ubuntu-24.04'` guards keep the
       # elevated capabilities from being exercised on the other runners.
       checks: write
       pull-requests: write
@@ -103,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # x64: ubuntu-latest, windows-latest exercise the AVX2 scalar
+        # x64: ubuntu-24.04, windows-latest exercise the AVX2 scalar
         # backend via the SIMD dispatch facade.
         # ARM64: ubuntu-24.04-arm and macos-latest (Apple Silicon)
         # exercise the AArch64 NEON scalar backend through the same
@@ -111,15 +111,15 @@ jobs:
         # this list; the existing agreement tests automatically
         # exercise whichever SIMD path the host CPU supports.
         os:
-          - ubuntu-latest
+          - ubuntu-24.04
           - windows-latest
           - macos-latest
           - ubuntu-24.04-arm
 
     steps:
     - name: Harden Runner
-      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm' }}
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
+      if: ${{ matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-24.04-arm' }}
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
       with:
         disable-sudo: true
         egress-policy: block
@@ -186,14 +186,20 @@ jobs:
       run: dotnet build --binaryLogger --tl --graphBuild -isolate:MessageUponIsolationViolation --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore --property:ContinuousIntegrationBuild=true --property:Version=${{ env.VERSION }} --property:InformationalVersion=${{ env.PACKAGE_VERSION }} --property:AssemblyVersion=${{ env.TAG_VERSION }} --property:FileVersion=${{ env.TAG_VERSION }}
       timeout-minutes: 5
 
+    - name: Locate the test build output
+      shell: pwsh
+      run: '"TESTS_TARGET_DIR=$(dotnet msbuild test/${{ env.VERIDICAL_TESTS }}/${{ env.VERIDICAL_TESTS }}.csproj -getProperty:TargetDir -property:Configuration=${{ env.BUILD_CONFIGURATION }})" >> $env:GITHUB_ENV'
+
     # dotnet-coverage runs the test binary as a child process and
     # records cobertura coverage + a TRX report. The test executable
     # has no extension on Linux/macOS, so the same command works
     # everywhere — the host shell finds the right binary by name.
     # The multi-minute proof gates carry [TestCategory("Slow")] and are
     # excluded here — they run on demand via the slow-tests workflow.
+    # The test executable's folder comes from MSBuild's TargetDir, read
+    # by the step above.
     - name: Test
-      run: dotnet tool run dotnet-coverage collect --output '${{ github.workspace }}/reports/coverage.cobertura.xml' --output-format cobertura '${{ github.workspace }}/test/${{ env.VERIDICAL_TESTS }}/bin/${{ env.BUILD_CONFIGURATION }}/net10.0/${{ env.VERIDICAL_TESTS }}' --filter "TestCategory!=Slow" --report-trx --report-trx-filename testresults.trx --results-directory '${{ github.workspace }}/reports'
+      run: dotnet tool run dotnet-coverage collect --output '${{ github.workspace }}/reports/coverage.cobertura.xml' --output-format cobertura '${{ env.TESTS_TARGET_DIR }}${{ env.VERIDICAL_TESTS }}' --filter "TestCategory!=Slow" --report-trx --report-trx-filename testresults.trx --results-directory '${{ github.workspace }}/reports'
       timeout-minutes: 20
 
     # ReportGenerator and the coverage PR comment depend on the
@@ -206,11 +212,11 @@ jobs:
     # commented until then.
     #
     # - name: ReportGenerator
-    #   if: ${{ matrix.os == 'ubuntu-latest' }}
+    #   if: ${{ matrix.os == 'ubuntu-24.04' }}
     #   run: dotnet reportgenerator -filefilters:'-**/obj/**;-**/*.g.cs' -assemblyfilters:'+Lumoin.Veridical*' -reports:'${{ github.workspace }}/reports/coverage.cobertura.xml' -targetdir:'${{ github.workspace }}/reports/coverage/' -reporttypes:'HtmlInline;Cobertura;MarkdownSummary'
     #
     # - name: Publish coverage summary
-    #   if: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
+    #   if: ${{ matrix.os == 'ubuntu-24.04' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
     #   uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88
     #   with:
     #     header: Report
@@ -218,17 +224,17 @@ jobs:
     #     recreate: true
 
     - name: Create test summary
-      if: ${{ matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
       uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3
       with:
         trx_files: '${{ github.workspace }}/reports/**/*.trx'
 
-    # Pack runs on ubuntu-latest only. The other legs are there to
+    # Pack runs on ubuntu-24.04 only. The other legs are there to
     # prove the code builds and tests pass on x64 Windows, macOS, and
     # ARM64 Linux — packing is canonical, one canonical package per
     # release rather than one per matrix leg.
     - name: Pack library NuGet packages
-      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' && github.repository_owner == 'lumoin' }}
       run: |
         for project in $LIBRARY_PROJECTS; do
           path="src/$project/$project.csproj"
@@ -254,8 +260,12 @@ jobs:
     # build parallelism and per-invocation compilers keep the rebuild's peak memory
     # plus the AOT compile inside the hosted runner's budget, and the step timeout
     # turns any future overrun into a clean step failure instead of a runner death.
+    # The pointer pack sets CreateRidSpecificToolPackages=false so the SDK packs the
+    # pointer alone; left on, it would also try to pack the host's native RID package,
+    # which the aot-conformance legs own and which this RID-less restore does not
+    # cover.
     - name: Pack and verify the veridical tool packages (pointer + any)
-      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' && github.repository_owner == 'lumoin' }}
       timeout-minutes: 25
       run: |
         TOOL_VERSION="${PACKAGE_VERSION%%+*}"
@@ -270,6 +280,7 @@ jobs:
           --property:PackageVersion="$TOOL_VERSION" \
           --property:ContinuousIntegrationBuild=true --property:Version=$VERSION --property:InformationalVersion=$PACKAGE_VERSION --property:AssemblyVersion=$TAG_VERSION --property:FileVersion=$TAG_VERSION \
           -p:PublishAot=true \
+          -p:CreateRidSpecificToolPackages=false \
           src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
         dotnet pack --verbosity normal \
           --configuration "$BUILD_CONFIGURATION" \
@@ -282,7 +293,8 @@ jobs:
           src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
         mkdir anycheck
         unzip -q "nupkgs/Lumoin.Veridical.Cli.any.$TOOL_VERSION.nupkg" -d anycheck
-        OUT="$(dotnet anycheck/tools/net10.0/any/Lumoin.Veridical.Cli.dll selftest)"
+        TOOL_TFM="$(dotnet msbuild src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj -getProperty:TargetFramework)"
+        OUT="$(dotnet "anycheck/tools/$TOOL_TFM/any/Lumoin.Veridical.Cli.dll" selftest)"
         echo "$OUT"
         echo "$OUT" | grep -q 'All conformance vectors passed.'
         rm -rf anycheck
@@ -293,7 +305,7 @@ jobs:
     # to enable this validation step.
     #
     # - name: Validate generated NuGet files
-    #   if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' }}
+    #   if: ${{ matrix.os == 'ubuntu-24.04' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' }}
     #   run: |
     #     for file in ./nupkgs/*.nupkg; do
     #       dotnet dotnet-validate package local "$file"
@@ -307,13 +319,13 @@ jobs:
     # then. (A null repository.private on some event payloads evaluates
     # to "not false", so the step stays safely skipped by default.)
     - name: Generate artifact attestation
-      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' && github.event.repository.private == false }}
+      if: ${{ matrix.os == 'ubuntu-24.04' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' && github.event.repository.private == false }}
       uses: lumoin/trusted-devsecops/.github/actions/sign-artifact@bd2b7f91e73d758f3126562d6a569fc0f31814ee
       with:
         subject-path: './nupkgs/*.nupkg'
 
     - name: Upload library NuGet packages
-      if: ${{ matrix.os == 'ubuntu-latest' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: nupkg-libraries
@@ -355,7 +367,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             rid: linux-x64
           - os: ubuntu-24.04-arm
             rid: linux-arm64
@@ -363,17 +375,18 @@ jobs:
             rid: osx-arm64
           - os: windows-latest
             rid: win-x64
-          - os: windows-11-arm
+          # Native AOT on .NET 10+ links with the Visual Studio 2026 toolset; this image carries it.
+          - os: windows-11-vs2026-arm
             rid: win-arm64
 
     steps:
     - name: Harden Runner
-      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-24.04-arm' }}
       # disable-sudo is omitted: the native AOT toolchain prerequisites below need
       # apt-get + sudo. clang is NOT pre-present on the runner image, so apt fetches it
       # from the Ubuntu mirrors (azure.archive/ports.ubuntu.com, security.ubuntu.com) —
       # those are allow-listed in COMMON_ALLOWED_ENDPOINTS so the egress block permits them.
-      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
       with:
         egress-policy: block
         allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
@@ -394,7 +407,7 @@ jobs:
     # Native AOT on Linux needs clang and zlib headers. Each runner compiles only
     # its native RID, so no cross-compilation toolchain is required.
     - name: Install native AOT prerequisites (Linux)
-      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-24.04-arm' }}
       run: sudo apt-get install -y clang zlib1g-dev
 
     # The same version rules as the build job; one run produces one coherent version
@@ -427,6 +440,9 @@ jobs:
     # package is uploaded; the canonical pointer ships from the build job. The
     # RID-specific restore pulls the ILCompiler runtime package, so it is not run in
     # --locked-mode here.
+    # Its throwaway pointer is packed with CreateRidSpecificToolPackages=false for the
+    # same reason: without a RID the SDK would otherwise pack the host's native package
+    # again, against a restore that no longer covers that RID.
     - name: Pack and verify the native tool package (${{ matrix.rid }})
       shell: bash
       timeout-minutes: 25
@@ -445,6 +461,7 @@ jobs:
           --output toolcheck-src \
           --property:PackageVersion="$TOOL_VERSION" \
           -p:PublishAot=true \
+          -p:CreateRidSpecificToolPackages=false \
           src/Lumoin.Veridical.Cli/Lumoin.Veridical.Cli.csproj
         cp nupkgs/Lumoin.Veridical.Cli.${{ matrix.rid }}.$TOOL_VERSION.nupkg toolcheck-src/
         # The repository NuGet.config enables package source mapping, which the NuGet client refuses to
@@ -475,10 +492,10 @@ jobs:
       packages: write
     needs: [ build, aot-conformance ]
     if: ${{ github.ref == 'refs/heads/develop' && github.repository_owner == 'lumoin' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
         with:
           disable-sudo: true
           egress-policy: block
@@ -512,13 +529,13 @@ jobs:
       id-token: write
     needs: [ build, aot-conformance ]
     if: ${{ github.event_name == 'release' && github.repository_owner == 'lumoin' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Bind publishing to the "Release" deployment environment so the OIDC token carries the
     # environment claim and deployments are recorded against it.
     environment: Release
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
         with:
           disable-sudo: true
           egress-policy: block

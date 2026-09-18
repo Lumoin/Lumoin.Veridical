@@ -13,7 +13,7 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Gkr;
 
 /// <summary>
-/// E2E.1 — the SHA-256 of a REAL ISO 18013-5 credential's COSE <c>Sig_structure</c> proven over
+/// The SHA-256 of a REAL ISO 18013-5 credential's COSE <c>Sig_structure</c> proven over
 /// <c>GF(2^128)</c> at full multi-block scale, with the private digest MAC-bound into an Fp256
 /// commitment. This is the deployed Longfellow shape on genuine bytes: the Sig_structure of
 /// <c>mdoc-00.cbor</c> (whose SHA-256 is the <c>e</c> the issuer's ES256 signature verifies
@@ -27,38 +27,64 @@ namespace Lumoin.Veridical.Tests.Gkr;
 [TestClass]
 internal sealed class GkrMdocDigestTests
 {
+    /// <summary>The byte width of one GF(2^128) scalar.</summary>
     private const int ScalarSize = GkrGf2kShaSupport.ScalarSize;
+
+    /// <summary>The bit width of one half of a split MAC value.</summary>
     private const int HalfBits = GkrGf2kMacSupport.HalfBits;
+
+    /// <summary>The number of halves a MAC value is split into.</summary>
     private const int Halves = GkrGf2kMacSupport.CopyCount;
+
+    /// <summary>The byte width of a SHA-256 digest.</summary>
     private const int DigestBytes = GkrShaRoundSupport.DigestBytes;
 
+    /// <summary>The Reed-Solomon code rate's inverse used by the test Ligero parameters.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of columns the Ligero verifier opens per proof.</summary>
     private const int OpenedColumns = 4;
+
+    /// <summary>The Ligero block size shared by the Fp and GF parameter sets.</summary>
     private const int Block = 64;
 
+    /// <summary>The Fiat-Shamir domain label that scopes every transcript this file builds.</summary>
     private static FiatShamirDomainLabel Domain { get; } = new("veridical.gkr.mdoc.digest.test");
 
+    /// <summary>The Fiat-Shamir label under which the Fp proving seed is squeezed from the shared transcript.</summary>
     private static FiatShamirOperationLabel FpSeedLabel { get; } = new("veridical.gkr.mdoc.fp.seed");
 
+    /// <summary>The fixed seed for the Fp commitment's deterministic randomness source.</summary>
     private static byte[] FpRandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.mdoc.fp.rng.v1");
 
+    /// <summary>The fixed seed for the GF commitment's deterministic randomness source.</summary>
     private static byte[] GfRandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.mdoc.gf.rng.v1");
 
+    /// <summary>The fixed seed for the Fp witness's masking randomness.</summary>
     private static byte[] MaskSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.mdoc.mask.v1");
 
+    /// <summary>The two fixed MAC key shares the tests combine into the verifier's probe key.</summary>
     private static byte[][] KeyShares { get; } =
     [
         GkrCrossFieldMacSupport.Element(0x243f6a8885a308d3UL, 0x13198a2e03707344UL),
         GkrCrossFieldMacSupport.Element(0xa4093822299f31d0UL, 0x082efa98ec4e6c89UL),
     ];
 
-    //The real credential's signed payload: the COSE Sig_structure whose SHA-256 the issuer's
-    //ES256 signature verifies against.
+    /// <summary>
+    /// The real credential's signed payload: the COSE Sig_structure whose SHA-256 the issuer's
+    /// ES256 signature verifies against.
+    /// </summary>
     private static byte[] SignedStructure { get; } = LoadSignedStructure();
 
+    /// <summary>The GF(2^128) circuit support built over the real signed structure and key shares, shared by every test.</summary>
     private static GkrMdocSupport Support { get; } = new(SignedStructure, KeyShares);
 
 
+    /// <summary>
+    /// Verifies that the in-circuit chained oracle digest of the real Sig_structure matches
+    /// .NET's <see cref="SHA256"/>, and that every SHA instance closes to an all-zero output while
+    /// the MAC instance closes to the macs of that digest, all on the honest flat witness.
+    /// </summary>
     [TestMethod]
     public void TheRealSigStructureClosesEveryInstanceAndMatchesDotNetSha256()
     {
@@ -90,6 +116,10 @@ internal sealed class GkrMdocDigestTests
     }
 
 
+    /// <summary>
+    /// Verifies end to end that the real Sig_structure's in-circuit digest MAC-binds to the Fp
+    /// commitment: a genuine proof pair verifies, and a mac differing by one byte is rejected.
+    /// </summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void TheRealCredentialDigestIsMacBoundAcrossFields()
@@ -127,10 +157,11 @@ internal sealed class GkrMdocDigestTests
     }
 
 
-    //The full prover protocol, the cross-field MAC's transcript order with the SHA instance set
-    //in place of the bare MAC: commit Fp, commit GF (both roots absorbed), squeeze the verifier
-    //key, compute the macs, prove all GF instances under the glue statement, then prove the Fp
-    //parity statement.
+    /// <summary>
+    /// Runs the full prover protocol with the SHA instance set in place of a bare MAC: commits Fp,
+    /// commits GF with both roots absorbed, squeezes the verifier key, computes the macs, proves
+    /// every GF instance under the glue statement, then proves the Fp parity statement.
+    /// </summary>
     private static (LigeroProof FpProof, GkrCommittedProof GfProof) ProveCrossField(
         ReadOnlySpan<byte> fpWitness,
         ReadOnlySpan<byte> gfWitness,
@@ -196,8 +227,10 @@ internal sealed class GkrMdocDigestTests
     }
 
 
-    //The full verifier protocol, mirroring the prover's transcript order exactly. The digest
-    //appears nowhere: only the macs and the masked quotients are public.
+    /// <summary>
+    /// Runs the full verifier protocol, mirroring the prover's transcript order exactly. The digest
+    /// appears nowhere: only the macs and the masked quotients are public.
+    /// </summary>
     private static bool VerifyCrossField(LigeroProof fpProof, GkrCommittedProof gfProof, ReadOnlySpan<byte> macs, ulong[] maskedQuotients)
     {
         LigeroQuadraticConstraint[] fpQuadratics = GkrCrossFieldMacSupport.BuildFpQuadratics();
@@ -239,6 +272,7 @@ internal sealed class GkrMdocDigestTests
     }
 
 
+    /// <summary>Reads the real mdoc credential fixture from disk and extracts its signed Sig_structure bytes.</summary>
     private static byte[] LoadSignedStructure()
     {
         //A static initializer feeds this, so the read stays synchronous (it cannot await).
@@ -249,6 +283,7 @@ internal sealed class GkrMdocDigestTests
     }
 
 
+    /// <summary>Builds a fresh Fiat-Shamir transcript scoped to this file's fixed domain and seed.</summary>
     private static FiatShamirTranscript NewTranscript() =>
         GkrGf2kTestSupport.NewTranscript(Domain, "veridical.gkr.mdoc.digest.seed"u8, []);
 }

@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Core.Lookup;
 
 /// <summary>
 /// The wire format of a <see cref="LogUpProof"/> whose polynomial-commitment
-/// scheme is Ligero: the LogUp sibling of <see cref="Spartan.LigeroSpartanProof"/>'s
+/// scheme is Ligero: the LogUp sibling of <see cref="Spartan.CommitmentSpartanProof"/>'s
 /// layout doctrine. Every section size is a pure function of the argument
 /// dimensions — the variable count, the witness-column count, the opened-column
 /// query count, the inverse code rate and the Merkle digest size — all known to
@@ -43,6 +43,7 @@ namespace Lumoin.Veridical.Core.Lookup;
 /// </remarks>
 public static class LogUpLigeroProofSerialization
 {
+    /// <summary>The in-memory canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
     /// <summary>
@@ -293,6 +294,12 @@ public static class LogUpLigeroProofSerialization
     /// every LogUp column spans the same hypercube, so all openings share one
     /// size.
     /// </summary>
+    /// <param name="variableCount">The hypercube variable count.</param>
+    /// <param name="curve">The curve whose scalar field the argument runs over.</param>
+    /// <param name="queryCount">The Ligero opened-column query count.</param>
+    /// <param name="inverseRate">The Ligero inverse code rate.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes.</param>
+    /// <returns>The shared per-column opening size in bytes.</returns>
     private static int OpeningSizeBytes(int variableCount, CurveParameterSet curve, int queryCount, int inverseRate, int digestSizeBytes)
     {
         return LigeroPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes, inverseRate);
@@ -306,6 +313,11 @@ public static class LogUpLigeroProofSerialization
     /// shape stays near 270 MB — so only the final section sum needs the
     /// widened total check in <see cref="GetBufferSizeBytes"/>.
     /// </summary>
+    /// <param name="variableCount">The hypercube variable count to check.</param>
+    /// <param name="witnessColumnCount">The witness-column count to check.</param>
+    /// <param name="queryCount">The Ligero opened-column query count to check.</param>
+    /// <param name="inverseRate">The Ligero inverse code rate to check.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes to check.</param>
     /// <exception cref="ArgumentOutOfRangeException">When a dimension is out of range.</exception>
     private static void ValidateDimensions(int variableCount, int witnessColumnCount, int queryCount, int inverseRate, int digestSizeBytes)
     {

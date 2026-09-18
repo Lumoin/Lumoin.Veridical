@@ -28,23 +28,54 @@ namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 [TestClass]
 internal sealed class LigeroPolynomialCommitmentSchemeTests
 {
+    /// <summary>The byte width of one scalar in this test's canonical scratch buffers, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The default Merkle digest width this provider is wired at.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The Ligero query count these round-trip tests commit and open at by default.</summary>
     private const int TestQueryCount = 12;
 
+    /// <summary>
+    /// The widest digest the Merkle surface admits — twice the scalar width,
+    /// so the column hash genuinely writes node-wide leaves instead of
+    /// scalar-wide ones.
+    /// </summary>
+    private const int WideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes;
+
+    /// <summary>The curve parameter set selecting the BN254 instantiation throughout this class.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bn254;
 
+    /// <summary>The BN254 scalar-field addition delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarAddDelegate Add { get; } = Bn254BigIntegerScalarReference.GetAdd();
+
+    /// <summary>The BN254 scalar-field subtraction delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Bn254BigIntegerScalarReference.GetSubtract();
+
+    /// <summary>The BN254 scalar-field multiplication delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Bn254BigIntegerScalarReference.GetMultiply();
+
+    /// <summary>The BN254 scalar-field inversion delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarInvertDelegate Invert { get; } = Bn254BigIntegerScalarReference.GetInvert();
+
+    /// <summary>The BN254 scalar-field reduction delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The multilinear-extension evaluation delegate from the BigInteger-backed reference implementation.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir hash delegate driving both the prover's and verifier's transcripts.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir squeeze delegate drawing challenges from the transcript.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The Merkle two-to-one compression delegate, backed by <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
+    /// <summary>Verifies that commit, open and verify round-trip over real BN254 arithmetic and production BLAKE3 for variable counts 1 through 5, at the default-wired inverse rate.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -94,6 +125,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that flipping one byte in each of the three opening regions (the proximity response, an opened column, and a Merkle path) makes verification reject the opening.</summary>
     [TestMethod]
     [DataRow(0, "proximity response u")]
     [DataRow(256, "opened column")]
@@ -225,6 +257,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that flipping the first byte of a commitment makes verification reject it, even against an otherwise-honest opening.</summary>
     [TestMethod]
     public void TamperedCommitmentIsRejected()
     {
@@ -264,6 +297,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that commit, open and verify round-trip at the wired inverse-rate-16 / query-count-64 shape, where a small circuit still opens the full 64-column target.</summary>
     [TestMethod]
     public void CommitOpenVerifyRoundTripsAtInverseRateSixteen()
     {
@@ -312,6 +346,61 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>
+    /// The digest width is a real capability, not a label: at a node width
+    /// other than the scalar width the column hash writes node-wide leaves,
+    /// the commitment root carries the configured width, the opening fills
+    /// exactly the budget the length arithmetic prices, and verification
+    /// recomputes the column hash at that width.
+    /// </summary>
+    [TestMethod]
+    public void CommitOpenVerifyRoundTripsAtAWideDigest()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        const int VariableCount = 3;
+        using PolynomialCommitmentProvider provider = NewProvider(TestQueryCount, WellKnownLigeroParameters.DefaultInverseRate, WideDigestSizeBytes);
+
+        using MultilinearExtension mle = BuildRandomMle(VariableCount, 12, pool);
+        Scalar[] point = BuildPoint(VariableCount, 13, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                Assert.HasCount(WideDigestSizeBytes, commitment.AsReadOnlySpan(), "The commitment is one Merkle root at the configured node width.");
+
+                PolynomialCommitmentSizeDelegate? commitmentSeam = provider.CommitmentSizeBytes;
+                Assert.IsNotNull(commitmentSeam, "A hash-tree provider must state its commitment width.");
+                Assert.AreEqual(WideDigestSizeBytes, commitmentSeam(VariableCount), "The commitment seam must state the width Commit produces.");
+
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    int expectedOpeningBytes = LigeroPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
+                        VariableCount, Curve, TestQueryCount, WideDigestSizeBytes, WellKnownLigeroParameters.DefaultInverseRate);
+                    Assert.HasCount(expectedOpeningBytes, opening.AsReadOnlySpan(), "The opening must fill exactly the wide-digest budget.");
+
+                    using FiatShamirTranscript verifyTx = NewTranscript();
+                    Assert.IsTrue(
+                        provider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
+                        "An honest commit→open→verify must round-trip at the wide digest.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>Verifies that supplying a wrong claimed value to verification makes it reject an otherwise-honest opening.</summary>
     [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
@@ -351,13 +440,152 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>The variable count of the multilinear extension this byte-pin fixes.</summary>
+    private const int PinnedVariableCount = 3;
+
+    /// <summary>
+    /// The deterministic fill salt for the pinned evaluation table. Together with
+    /// <see cref="PinnedPointSalt"/>, it determines the commit and open below by fixed integer
+    /// arithmetic alone — a non-hiding commit draws no randomness at any step — which is the
+    /// determinism a content pin needs; a hiding scheme could only be pinned by length instead.
+    /// </summary>
+    private const int PinnedMleSalt = 1;
+
+    /// <summary>The deterministic fill salt for the pinned evaluation point, paired with <see cref="PinnedMleSalt"/>.</summary>
+    private const int PinnedPointSalt = 5;
+
+    /// <summary>
+    /// The BLAKE3 digest of the pinned commitment's serialized bytes, rather than the bytes
+    /// themselves: an opening runs to kilobytes, and a digest reports one flipped byte exactly as
+    /// loudly at a fraction of the size.
+    /// </summary>
+    private const string PinnedCommitmentDigest = "A750469A96F3AAB71DBADAF20D4066731E2FE01DB076F2F93882FE3AAA27CD7B";
+
+    /// <summary>The BLAKE3 digest of the pinned opening's serialized bytes, for the same reason as <see cref="PinnedCommitmentDigest"/>.</summary>
+    private const string PinnedOpeningDigest = "C98D6F265D86DE830B5F899DFA1D3C37818FF0577376AADC8DBF2F2B57743B03";
+
+
+    /// <summary>
+    /// Pins the exact bytes an honest commit and open produce at the wired
+    /// digest size, so a change to the serialized form is a decision rather
+    /// than a side effect. The commitment and the opening are published
+    /// artifacts: they travel inside packaged proof files and across the
+    /// command-line surface, so a reader on the far side of a version boundary
+    /// parses whatever this test lets through.
+    /// </summary>
+    /// <remarks>
+    /// Widths are the reason this pin earns its place. A hash-tree commitment
+    /// is one Merkle node wide and its authentication paths are priced by the
+    /// configured digest size; those two figures agree under the wired pairing
+    /// of a 32-byte hash with a 32-byte scalar, so a change that redefined
+    /// either in terms of the other would leave every shipped byte where it is
+    /// and stay invisible to a round-trip test, which proves only that the
+    /// writer and the reader still agree with each other. Updating a constant
+    /// here is correct only once the format change it reports has been shown
+    /// to be intended.
+    /// </remarks>
+    [TestMethod]
+    public void CommitmentAndOpeningBytesAreUnchangedAtTheWiredDigestSize()
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        using PolynomialCommitmentProvider provider = NewProvider();
+
+        using MultilinearExtension mle = BuildRandomMle(PinnedVariableCount, PinnedMleSalt, pool);
+        Scalar[] point = BuildPoint(PinnedVariableCount, PinnedPointSalt, pool);
+
+        try
+        {
+            (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(mle, pool);
+
+            using(commitment)
+            using(blind)
+            {
+                using FiatShamirTranscript openTx = NewTranscript();
+                (PolynomialOpening opening, Scalar claimedValue) = provider.Open(commitment, blind, mle, point, openTx, pool);
+
+                using(opening)
+                using(claimedValue)
+                {
+                    Assert.AreEqual(
+                        PinnedCommitmentDigest,
+                        PinnedDigestOf(commitment.AsReadOnlySpan()),
+                        "The serialized commitment bytes changed; the wire format moved.");
+
+                    Assert.AreEqual(
+                        PinnedOpeningDigest,
+                        PinnedDigestOf(opening.AsReadOnlySpan()),
+                        "The serialized opening bytes changed; the wire format moved.");
+                }
+            }
+        }
+        finally
+        {
+            DisposePoint(point);
+        }
+    }
+
+
+    /// <summary>Hashes a serialized artifact down to the constant the pin above carries.</summary>
+    private static string PinnedDigestOf(ReadOnlySpan<byte> serialized)
+    {
+        Span<byte> digest = stackalloc byte[WellKnownMerkleHashParameters.DefaultDigestSizeBytes];
+        Blake3.Hash(serialized, digest);
+
+        return Convert.ToHexString(digest);
+    }
+
+
+    /// <summary>One byte past the widest digest the path verifier reserves stack space for, which is where a configuration stops being serviceable at all.</summary>
+    private const int TooWideDigestSizeBytes = WellKnownMerkleHashParameters.MaximumDigestSizeBytes + 1;
+
+
+    /// <summary>
+    /// Bounds the configured digest width where the provider is wired. The
+    /// authentication-path verifier recomputes a node into a stack buffer
+    /// reserved at <see cref="WellKnownMerkleHashParameters.MaximumDigestSizeBytes"/>,
+    /// so a wider digest has nowhere to land, and the failure would otherwise
+    /// surface as a slice fault raised from inside a verification, far from the
+    /// wiring that caused it. Refusing it at construction names the mistake
+    /// where it was made, and leaves the widest supported digest legal.
+    /// </summary>
+    [TestMethod]
+    public void CreateRefusesADigestWiderThanTheVerifierReservesFor()
+    {
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => LigeroPolynomialCommitmentScheme.Create(
+                Curve,
+                TestQueryCount,
+                Add,
+                Subtract,
+                Multiply,
+                Invert,
+                Reduce,
+                Hash,
+                Squeeze,
+                Hash,
+                Merkle,
+                WellKnownHashAlgorithms.Blake3,
+                digestSizeBytes: TooWideDigestSizeBytes),
+            "A digest wider than the verifier's reserved stack space must be refused where the provider is wired.");
+    }
+
+
+    /// <summary>Builds a Ligero provider at the default query count and default inverse rate, with the default digest size.</summary>
     private static PolynomialCommitmentProvider NewProvider()
     {
         return NewProvider(TestQueryCount, WellKnownLigeroParameters.DefaultInverseRate);
     }
 
 
+    /// <summary>Builds a Ligero provider at the given query count and inverse rate, with the default digest size.</summary>
     private static PolynomialCommitmentProvider NewProvider(int queryCount, int inverseRate)
+    {
+        return NewProvider(queryCount, inverseRate, DigestSizeBytes);
+    }
+
+
+    /// <summary>Builds a Ligero provider at the given query count, inverse rate, and an explicit digest size.</summary>
+    private static PolynomialCommitmentProvider NewProvider(int queryCount, int inverseRate, int digestSizeBytes)
     {
         return LigeroPolynomialCommitmentScheme.Create(
             Curve,
@@ -372,10 +600,12 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
             Hash,
             Merkle,
             WellKnownHashAlgorithms.Blake3,
+            digestSizeBytes: digestSizeBytes,
             inverseRate: inverseRate);
     }
 
 
+    /// <summary>Flips the first byte of a commitment's serialized bytes and rebuilds a commitment from the tampered bytes.</summary>
     private static PolynomialCommitment TamperFirstByte(PolynomialCommitment commitment, BaseMemoryPool pool)
     {
         Span<byte> bytes = stackalloc byte[commitment.AsReadOnlySpan().Length];
@@ -386,6 +616,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random multilinear extension over the given variable count, seeded by <paramref name="salt"/> so different salts produce different but reproducible evaluation tables.</summary>
     private static MultilinearExtension BuildRandomMle(int variableCount, int salt, BaseMemoryPool pool)
     {
         int evaluationCount = 1 << variableCount;
@@ -404,6 +635,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random evaluation point over the given variable count, seeded by <paramref name="salt"/> so different salts produce different but reproducible points.</summary>
     private static Scalar[] BuildPoint(int variableCount, int salt, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -422,6 +654,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Returns a new scalar equal to <paramref name="value"/> plus one, the smallest perturbation that makes a claimed value wrong.</summary>
     private static Scalar AddOne(Scalar value, BaseMemoryPool pool)
     {
         Span<byte> one = stackalloc byte[ScalarSize];
@@ -447,6 +680,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Disposes every coordinate scalar in a point built by <see cref="BuildPoint"/>.</summary>
     private static void DisposePoint(Scalar[] point)
     {
         foreach(Scalar coordinate in point)
@@ -456,6 +690,7 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Initializes a fresh Fiat-Shamir transcript under the Ligero evaluation domain label, for either a prover's or a verifier's independent run.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -467,9 +702,13 @@ internal sealed class LigeroPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Computes the Merkle two-to-one compression of <paramref name="left"/> and <paramref name="right"/> via BLAKE3, buffered for the widest digest the Merkle surface admits and sliced to the actual input widths.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
-        Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
+        //Buffered for the widest node the Merkle surface admits and sliced to
+        //the actual input widths, so the same compression serves the default
+        //and the wide-digest providers; BLAKE3 writes exactly output.Length.
+        Span<byte> combined = stackalloc byte[2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         left.CopyTo(combined[..left.Length]);
         right.CopyTo(combined.Slice(left.Length, right.Length));
         Blake3.Hash(combined[..(left.Length + right.Length)], output);

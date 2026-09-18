@@ -11,12 +11,15 @@ namespace Lumoin.Veridical.Benchmarks.Bn254;
 
 /// <summary>
 /// Per-call timing of the BN254 scalar-field primitives on the BigInteger
-/// reference backend — the only BN254 scalar backend in the codebase. This is a
-/// correctness-first <em>baseline marker</em>: BN254 has no SIMD backend yet
-/// (unlike BLS12-381's experimental AVX-512/NEON scalar backends in the test
-/// project), so there is nothing to compare against here. The rows record where
-/// BN254 field arithmetic stands before any acceleration work, so a future SIMD
-/// effort has a reference point and a regression gate.
+/// reference backend. This class measures the reference backend alone; the
+/// SIMD comparison for BN254 lives in
+/// <see cref="Lumoin.Veridical.Benchmarks.Scalar.ScalarMultiplyInvertBenchmarks"/>,
+/// which times <see cref="Bn254SimdScalarBackend"/>, the dispatch facade over
+/// the per-ISA AVX-512, AVX2, NEON and WebAssembly backends in
+/// <c>Lumoin.Veridical.Backends.Managed</c>, for multiply and invert against
+/// this same reference. The rows here are that comparison's fixed point: the
+/// reference-backend timing every BN254 SIMD row in this namespace is read
+/// against.
 /// </summary>
 /// <remarks>
 /// Operation counters are disabled in <see cref="Setup"/> so the timing reflects
@@ -26,18 +29,35 @@ namespace Lumoin.Veridical.Benchmarks.Bn254;
 [SimpleJob(RunStrategy.Throughput)]
 public class Bn254ScalarBenchmarks
 {
+    /// <summary>The byte width of one BN254 scalar.</summary>
     private const int ScalarBytes = 32;
+
+    /// <summary>The fixed seed for the benchmark's pseudo-random operand generator, so successive runs measure the same input distribution.</summary>
     private const int BenchmarkSeed = 0x5EED5EED;
+
+    /// <summary>The BN254 curve tag every delegate call in this benchmark routes over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bn254;
 
 
+    /// <summary>The first reduced scalar operand, prepared once in <see cref="Setup"/>.</summary>
     private byte[] aBytes = null!;
+
+    /// <summary>The second reduced scalar operand, prepared once in <see cref="Setup"/>.</summary>
     private byte[] bBytes = null!;
+
+    /// <summary>The scratch buffer every benchmarked operation writes its result into.</summary>
     private byte[] resultBytes = null!;
 
+    /// <summary>The BN254 BigInteger scalar addition delegate under benchmark.</summary>
     private ScalarAddDelegate add = null!;
+
+    /// <summary>The BN254 BigInteger scalar subtraction delegate under benchmark.</summary>
     private ScalarSubtractDelegate subtract = null!;
+
+    /// <summary>The BN254 BigInteger scalar multiplication delegate under benchmark.</summary>
     private ScalarMultiplyDelegate multiply = null!;
+
+    /// <summary>The BN254 BigInteger scalar inversion delegate under benchmark.</summary>
     private ScalarInvertDelegate invert = null!;
 
 

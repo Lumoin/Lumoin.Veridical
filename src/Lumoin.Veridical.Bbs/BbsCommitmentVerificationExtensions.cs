@@ -20,6 +20,7 @@ namespace Lumoin.Veridical.Bbs;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BbsCommitmentVerificationExtensions
 {
+    /// <summary>Commitment verification members added to every <see cref="BbsCommitmentWithProof"/> instance.</summary>
     extension(BbsCommitmentWithProof commitmentWithProof)
     {
         /// <summary>

@@ -13,7 +13,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// binding in the non-ZK verifier, or by the Ligero opening in the ZK verifier (the
 /// <c>ZkCommon::verifier_constraints</c> → <c>LigeroVerifier</c> composition, above this replay). A
 /// tampered round polynomial or claim is caught here only indirectly: it diverges the squeezed challenge
-/// stream, which a conformance gate detects against the reference's dumped challenges.
+/// stream, which a conformance gate detects against the reference's recorded challenges.
 /// </para>
 /// <para>
 /// The replay therefore returns <see cref="Accepted"/> for any well-formed walk over a parseable proof;

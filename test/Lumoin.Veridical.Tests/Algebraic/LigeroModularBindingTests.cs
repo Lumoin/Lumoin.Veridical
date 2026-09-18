@@ -6,6 +6,7 @@ using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
@@ -30,25 +31,39 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LigeroModularBindingTests
 {
+    /// <summary>The byte width of a canonical P-256 base-field scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+    /// <summary>The byte width of a BLAKE3 digest, as used by the Merkle and Ligero commitments in these tests.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
+    /// <summary>The Ligero code's inverse rate these tests use.</summary>
     private const int InverseRate = 4;
+    /// <summary>The number of Ligero columns opened per proof in these tests.</summary>
     private const int OpenedColumns = 4;
+    /// <summary>The Ligero code's block length these tests use.</summary>
     private const int Block = 64;
 
+    /// <summary>The P-256 base-field prime.</summary>
     private static BigInteger P { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
+    /// <summary>The P-256 scalar-field order — the modulus <see cref="LigeroConstraintSystemBuilder.AddReduceModOrder"/> reduces against.</summary>
     private static BigInteger N { get; } = WellKnownCurves.GetScalarFieldOrder(CurveParameterSet.P256);
+    /// <summary>The canonical big-endian encoding of <see cref="N"/>.</summary>
     private static byte[] NBytes { get; } = Bytes(N);
 
+    /// <summary>The Fiat–Shamir transcript seed shared by every proof and verification in this test class.</summary>
     private static byte[] TranscriptSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.modbind.v1");
+    /// <summary>The seed for the deterministic prover-randomness source these tests share.</summary>
     private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.modbind.rng.v1");
 
+    /// <summary>The BLAKE3 Fiat–Shamir hash delegate this test's transcripts and proofs use.</summary>
     private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+    /// <summary>The BLAKE3 Fiat–Shamir squeeze delegate this test's transcripts and proofs use.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+    /// <summary>The two-to-one Merkle compression function, delegated to <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
+    /// <summary>Verifies that a nonzero wire satisfies and proves the nonzero check end to end, that forcing the checked wire to zero violates <c>wire·inv = 1</c>, and that a wire already known to be zero cannot even have the check built against it.</summary>
     [TestMethod]
     public void NonzeroCheckPassesForNonzeroAndRejectsZero()
     {
@@ -72,6 +87,7 @@ internal sealed class LigeroModularBindingTests
     }
 
 
+    /// <summary>Verifies that a scalar below <c>n</c> pins canonically through <c>AddPublicScalarBits</c>, that its most-significant-first bit decomposition recomposes to the scalar and proves end to end, and that a scalar equal to <c>n</c> violates the <c>&lt; n</c> bound.</summary>
     [TestMethod]
     public void PublicScalarBitsBindCanonicalValueAndRejectAtOrAboveLimit()
     {
@@ -93,6 +109,7 @@ internal sealed class LigeroModularBindingTests
     }
 
 
+    /// <summary>Verifies that <c>AddReduceModOrder</c> pins the public remainder to <c>value mod n</c> for witnessed values spanning both the quotient-0 and quotient-1 regimes.</summary>
     [TestMethod]
     public void ReduceModOrderBindsRemainderAcrossTheRange()
     {
@@ -110,6 +127,7 @@ internal sealed class LigeroModularBindingTests
     }
 
 
+    /// <summary>Verifies one full-width end-to-end proof and verification of the modular-reduction binding (the ripple-carry adder over about 1.5k quadratics), for a value in the quotient-1 regime.</summary>
     [TestMethod]
     public void ReduceModOrderHonestProvesAndVerifies()
     {
@@ -127,6 +145,7 @@ internal sealed class LigeroModularBindingTests
     }
 
 
+    /// <summary>Verifies that the mod-p alias attack — a false remainder that satisfies a naive field tie but not the integer identity — is rejected under both the honest quotient and a maliciously forced quotient.</summary>
     [TestMethod]
     public void ReduceModOrderRejectsTheModpAlias()
     {
@@ -149,6 +168,7 @@ internal sealed class LigeroModularBindingTests
     }
 
 
+    /// <summary>Verifies that a plainly wrong remainder is rejected in both the quotient-0 and quotient-1 regimes.</summary>
     [TestMethod]
     public void ReduceModOrderRejectsAWrongRemainder()
     {
@@ -165,9 +185,11 @@ internal sealed class LigeroModularBindingTests
     }
 
 
+    /// <summary>Adds a wire to <paramref name="builder"/> pinned to <paramref name="value"/>.</summary>
     private static int Wire(LigeroConstraintSystemBuilder builder, BigInteger value) => builder.AddWire(Bytes(value));
 
 
+    /// <summary>Encodes <paramref name="value"/> as a canonical big-endian scalar, zero-padded on the left.</summary>
     private static byte[] Bytes(BigInteger value)
     {
         byte[] result = new byte[ScalarSize];
@@ -183,50 +205,67 @@ internal sealed class LigeroModularBindingTests
     }
 
 
-    private readonly List<LigeroConstraintSystemBuilder> builders = [];
+    /// <summary>Every builder created by <see cref="NewBuilder"/> in the current test, disposed at cleanup.</summary>
+    private List<LigeroConstraintSystemBuilder> Builders { get; } = [];
 
 
+    /// <summary>Disposes every builder this test created.</summary>
     [TestCleanup]
     public void DisposeBuilders()
     {
-        foreach(LigeroConstraintSystemBuilder builder in builders)
+        foreach(LigeroConstraintSystemBuilder builder in Builders)
         {
             builder.Dispose();
         }
     }
 
 
+    /// <summary>Creates a P-256 base-field constraint-system builder and tracks it for disposal at test cleanup.</summary>
     private LigeroConstraintSystemBuilder NewBuilder()
     {
         var builder = new LigeroConstraintSystemBuilder(
             P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
             P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
             CurveParameterSet.None, InverseRate, OpenedColumns, Block, BaseMemoryPool.Shared);
-        builders.Add(builder);
+        Builders.Add(builder);
 
         return builder;
     }
 
 
-    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder) => LigeroProver.Prove(
-        builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), TranscriptSeed,
-        new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Proves with pooled snapshots that remain owned until the prover returns.</summary>
+    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder)
+    {
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroProver.Prove(
+            builder.BuildParameters(), (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), TranscriptSeed,
+            new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
-    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof) => LigeroVerifier.Verify(
-        builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), TranscriptSeed,
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
+    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof)
+    {
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroVerifier.Verify(
+            builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), TranscriptSeed,
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
+    /// <summary>Computes the two-to-one Merkle compression of <paramref name="left"/> and <paramref name="right"/> using BLAKE3.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -236,22 +275,26 @@ internal sealed class LigeroModularBindingTests
     }
 
 
-    //A reproducible Fp256 randomness source: BLAKE3-XOF of seed‖counter reduced
-    //modulo the base-field prime.
+    /// <summary>A reproducible Fp256 randomness source: BLAKE3 of <c>seed ‖ counter</c> reduced modulo the base-field prime.</summary>
     private sealed class DeterministicFp256Random
     {
-        private readonly byte[] seed;
+        /// <summary>The fixed seed mixed with the call counter to derive each output.</summary>
+        private byte[] Seed { get; }
+        /// <summary>The number of outputs produced so far; mixed into the hash input so consecutive calls differ.</summary>
         private int counter;
 
-        public DeterministicFp256Random(ReadOnlySpan<byte> seed) => this.seed = seed.ToArray();
+        /// <summary>Captures the seed this instance will draw reduced randomness from.</summary>
+        public DeterministicFp256Random(ReadOnlySpan<byte> seed) => this.Seed = seed.ToArray();
 
+        /// <summary>Exposes this instance's <see cref="Fill"/> method as a <see cref="ScalarRandomDelegate"/>.</summary>
         public ScalarRandomDelegate AsDelegate() => Fill;
 
+        /// <summary>Derives the next output by hashing the seed and call counter with BLAKE3 and reducing the wide result modulo the base-field prime, then advances the counter.</summary>
         private Tag Fill(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
         {
-            Span<byte> input = stackalloc byte[seed.Length + sizeof(int)];
-            seed.CopyTo(input);
-            BinaryPrimitives.WriteInt32BigEndian(input[seed.Length..], counter);
+            Span<byte> input = stackalloc byte[Seed.Length + sizeof(int)];
+            Seed.CopyTo(input);
+            BinaryPrimitives.WriteInt32BigEndian(input[Seed.Length..], counter);
             counter++;
 
             Span<byte> wide = stackalloc byte[64];

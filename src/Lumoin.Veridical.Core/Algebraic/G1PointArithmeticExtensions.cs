@@ -29,6 +29,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class G1PointArithmeticExtensions
 {
+    /// <summary>Arithmetic and validation members added to every <see cref="G1Point"/> instance.</summary>
     extension(G1Point p)
     {
         /// <summary>
@@ -160,6 +161,10 @@ public static class G1PointArithmeticExtensions
     }
 
 
+    /// <summary>Throws when <paramref name="left"/> and <paramref name="right"/> do not identify the same curve.</summary>
+    /// <param name="left">The first operand's curve.</param>
+    /// <param name="right">The second operand's curve.</param>
+    /// <exception cref="ArgumentException">When <paramref name="left"/> and <paramref name="right"/> have different curve codes.</exception>
     private static void ThrowIfCurveMismatch(CurveParameterSet left, CurveParameterSet right)
     {
         if(left.Code != right.Code)

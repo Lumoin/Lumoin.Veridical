@@ -26,6 +26,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class PedersenVectorCommitmentExtensions
 {
+    /// <summary>Pedersen vector-commitment members added to every <see cref="HyraxCommitmentKey"/> instance.</summary>
     extension(HyraxCommitmentKey key)
     {
         /// <summary>

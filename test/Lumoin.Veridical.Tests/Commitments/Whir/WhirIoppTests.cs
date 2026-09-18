@@ -14,9 +14,9 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR IOPP prover and verifier (4.2 phase A): honest
-/// round-trips on both wired curves for the two phase-A statement shapes —
-/// an evaluation claim (<c>ŵ = Z·eq(z, ·)</c>) and plain proximity
+/// Tests for the WHIR IOPP prover and verifier: honest
+/// round-trips on both wired curves for the two statement shapes the IOPP
+/// supports — an evaluation claim (<c>ŵ = Z·eq(z, ·)</c>) and plain proximity
 /// (<c>ŵ = 0</c>, <c>σ = 0</c>) — a full-λ round-trip with the schedule's
 /// pinned query counts, and a tamper wall: a flipped commitment, oracle root,
 /// opening value or claimed target must each break verification. The real
@@ -86,7 +86,11 @@ internal sealed class WhirIoppTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
 
+
+    /// <summary>Verifies that an honest evaluation-claim proof for the fast shape verifies on BLS12-381.</summary>
     [TestMethod]
     public void HonestEvaluationClaimRoundTripsOnBls12Curve381()
     {
@@ -100,6 +104,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest evaluation-claim proof for the fast shape verifies on BN254.</summary>
     [TestMethod]
     public void HonestEvaluationClaimRoundTripsOnBn254()
     {
@@ -113,6 +118,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest plain-proximity proof (no constraints, a zero target) verifies on BLS12-381, where the queries alone bind the oracles to the fold chain.</summary>
     [TestMethod]
     public void HonestPlainProximityRoundTripsOnBls12Curve381()
     {
@@ -136,7 +142,7 @@ internal sealed class WhirIoppTests
 
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (WhirIoppProof proof, MerkleRoot commitment) = WhirIoppProver.Prove(
-            schedule, coefficients, [], [], target, proverTranscript, Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
+            schedule, coefficients, [], [], target, proverTranscript, TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
         using(proof)
         using(commitment)
         using(FiatShamirTranscript verifierTranscript = NewTranscript())
@@ -149,6 +155,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest evaluation-claim proof verifies when the schedule leaves a non-constant, two-variable final polynomial.</summary>
     [TestMethod]
     public void NonConstantFinalPolynomialRoundTrips()
     {
@@ -163,6 +170,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies the schedule's pinned per-round query counts for the classical 128-bit full-λ shape and that an honest evaluation-claim proof under it verifies.</summary>
     [TestMethod]
     [TestCategory("Slow")]
     public void FullSecurityEvaluationClaimRoundTrips()
@@ -181,6 +189,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest evaluation-claim proof verifies when the schedule collapses to a single iteration (message variable count equal to the folding parameter), with the final queries landing directly on the input oracle.</summary>
     [TestMethod]
     public void SingleIterationShapeRoundTrips()
     {
@@ -202,6 +211,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest evaluation-claim proof verifies under a folding parameter narrower than the paper's constant, exercising a fold width the default schedules never touch.</summary>
     [TestMethod]
     public void NonDefaultFoldingParameterRoundTrips()
     {
@@ -221,6 +231,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest proof of a two-constraint evaluation statement (<c>σ = λ_1·f̂(z_1) + λ_2·f̂(z_2)</c>) verifies.</summary>
     [TestMethod]
     public void TwoConstraintStatementRoundTrips()
     {
@@ -272,7 +283,7 @@ internal sealed class WhirIoppTests
 
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (WhirIoppProof proof, MerkleRoot commitment) = WhirIoppProver.Prove(
-            schedule, coefficients, scales, points, target, proverTranscript, Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
+            schedule, coefficients, scales, points, target, proverTranscript, TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
         using(proof)
         using(commitment)
         using(FiatShamirTranscript verifierTranscript = NewTranscript())
@@ -285,6 +296,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that a proof produced under one schedule is rejected by a verifier using a schedule with a different per-round target, since the resulting query-count mismatch must be refused by the structural shape check before any transcript work.</summary>
     [TestMethod]
     public void MismatchedScheduleShapeIsRejected()
     {
@@ -313,7 +325,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -348,6 +360,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the input commitment breaks verification.</summary>
     [TestMethod]
     public void TamperedInputCommitmentIsRejected()
     {
@@ -358,6 +371,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of a folded-oracle root breaks verification.</summary>
     [TestMethod]
     public void TamperedOracleRootIsRejected()
     {
@@ -368,6 +382,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of an opening value breaks verification.</summary>
     [TestMethod]
     public void TamperedOpeningValueIsRejected()
     {
@@ -378,6 +393,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that a proof verified against a different target than the one it was proved for is rejected.</summary>
     [TestMethod]
     public void WrongTargetIsRejected()
     {
@@ -397,7 +413,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -436,6 +452,7 @@ internal sealed class WhirIoppTests
     }
 
 
+    /// <summary>Verifies that the prover throws when asked to prove a target inconsistent with the statement, before any oracle work.</summary>
     [TestMethod]
     public void ProverRejectsInconsistentTarget()
     {
@@ -471,7 +488,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             wrongTarget,
             transcript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -494,29 +511,32 @@ internal sealed class WhirIoppTests
     /// </summary>
     private sealed class EvaluationStatement: IDisposable
     {
-        private readonly IMemoryOwner<byte> owner;
-        private readonly int messageBytes;
-        private readonly int pointBytes;
+        /// <summary>The rented buffer backing every section below.</summary>
+        private IMemoryOwner<byte> Owner { get; }
+        /// <summary>The byte length of the coefficient section.</summary>
+        private int MessageBytes { get; }
+        /// <summary>The byte length of one constraint point's coordinates.</summary>
+        private int PointBytes { get; }
 
         /// <summary>The multilinear coefficient vector.</summary>
-        public ReadOnlySpan<byte> Coefficients => owner.Memory.Span[..messageBytes];
+        public ReadOnlySpan<byte> Coefficients => Owner.Memory.Span[..MessageBytes];
 
         /// <summary>The single constraint's scale, one element.</summary>
-        public ReadOnlySpan<byte> ConstraintCoefficients => owner.Memory.Span.Slice(messageBytes, ScalarSize);
+        public ReadOnlySpan<byte> ConstraintCoefficients => Owner.Memory.Span.Slice(MessageBytes, ScalarSize);
 
         /// <summary>The single constraint's point coordinates.</summary>
-        public ReadOnlySpan<byte> ConstraintPoints => owner.Memory.Span.Slice(messageBytes + ScalarSize, pointBytes);
+        public ReadOnlySpan<byte> ConstraintPoints => Owner.Memory.Span.Slice(MessageBytes + ScalarSize, PointBytes);
 
         /// <summary>The honestly evaluated target <c>σ</c>, one element.</summary>
-        public ReadOnlySpan<byte> Target => owner.Memory.Span.Slice(messageBytes + ScalarSize + pointBytes, ScalarSize);
+        public ReadOnlySpan<byte> Target => Owner.Memory.Span.Slice(MessageBytes + ScalarSize + PointBytes, ScalarSize);
 
 
         /// <summary>Wraps the populated statement buffer; the statement takes ownership.</summary>
         private EvaluationStatement(IMemoryOwner<byte> owner, int messageBytes, int pointBytes)
         {
-            this.owner = owner;
-            this.messageBytes = messageBytes;
-            this.pointBytes = pointBytes;
+            this.Owner = owner;
+            this.MessageBytes = messageBytes;
+            this.PointBytes = pointBytes;
         }
 
 
@@ -550,7 +570,7 @@ internal sealed class WhirIoppTests
         public void Dispose()
         {
             //The pool zeroes rented buffers on return.
-            owner.Dispose();
+            Owner.Dispose();
         }
     }
 
@@ -572,7 +592,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             backend.Reduce,
@@ -627,7 +647,7 @@ internal sealed class WhirIoppTests
             statement.ConstraintPoints,
             statement.Target,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,

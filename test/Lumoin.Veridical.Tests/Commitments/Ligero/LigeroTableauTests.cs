@@ -14,8 +14,8 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
 /// <summary>
-/// Gates the Ligero tableau build and its column Merkle commitment (LF.4b.2)
-/// over the small Mersenne-prime field. The structural properties checked are
+/// Gates the Ligero tableau build and its column Merkle commitment over the
+/// small Mersenne-prime field. The structural properties checked are
 /// the ones the protocol responses will rely on: the witness and quadratic
 /// operand values land in the systematic columns the layout assigns them, the
 /// IQUAD witness block is zero and the IDOT witness block sums to zero, the
@@ -27,30 +27,42 @@ namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 [TestClass]
 internal sealed class LigeroTableauTests
 {
+    /// <summary>The byte width of one scalar in this test's canonical scratch buffers, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The default Merkle digest width these gates hash at.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    //A satisfying witness vector and its two multiplication constraints:
-    //W[2] = W[0]·W[1] (6 = 2·3) and W[5] = W[3]·W[4] (20 = 4·5).
+    /// <summary>A satisfying witness vector: W[2] = W[0]·W[1] (6 = 2·3) and W[5] = W[3]·W[4] (20 = 4·5).</summary>
     private static int[] WitnessValues { get; } = [2, 3, 6, 4, 5, 20];
+
+    /// <summary>The two multiplication constraints <see cref="WitnessValues"/> satisfies.</summary>
     private static LigeroQuadraticConstraint[] Constraints { get; } =
     [
         new LigeroQuadraticConstraint(0, 1, 2),
         new LigeroQuadraticConstraint(3, 4, 5),
     ];
 
+    /// <summary>The number of witness values in <see cref="WitnessValues"/>.</summary>
     private const int WitnessCount = 6;
+
+    /// <summary>The number of quadratic constraints in <see cref="Constraints"/>.</summary>
     private const int QuadraticCount = 2;
+
+    /// <summary>The Ligero code's inverse rate these gates commit at.</summary>
     private const int InverseRate = 2;
+
+    /// <summary>The number of Ligero columns opened per proof in these gates.</summary>
     private const int OpenedColumns = 2;
 
-    //A fixed seed makes the prover randomness reproducible so two builds yield
-    //byte-identical commitments.
-    private static byte[] RandomnessSeed { get; } = [0x4C, 0x46, 0x34, 0x62]; //"LF4b"
+    /// <summary>The fixed randomness seed that makes the prover's blinding reproducible, so two builds yield byte-identical commitments.</summary>
+    private static byte[] RandomnessSeed { get; } = "Lumoin.Veridical.Ligero.Tableau.Randomness"u8.ToArray();
 
+    /// <summary>The BLAKE3 two-to-one Merkle compression delegate, backed by <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
 
+    /// <summary>Verifies that the tableau's single witness row carries all six witness values in the systematic columns the layout assigns them.</summary>
     [TestMethod]
     public void WitnessRowCarriesTheWitnessValues()
     {
@@ -69,6 +81,7 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Verifies that each quadratic constraint's x, y and z operand rows carry the corresponding witness values.</summary>
     [TestMethod]
     public void QuadraticRowsCarryTheOperandValues()
     {
@@ -92,6 +105,7 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Verifies that the IQUAD blinding row's witness-block columns are all zero, so the quadratic test's blinding contributes nothing to the witness block.</summary>
     [TestMethod]
     public void QuadraticRowWitnessBlockIsZeroInTheBlindingRow()
     {
@@ -110,6 +124,7 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Verifies that the IDOT blinding row's witness-block columns sum to zero modulo the field order, so the dot-product value check is unbiased.</summary>
     [TestMethod]
     public void DotRowWitnessBlockSumsToZero()
     {
@@ -130,6 +145,7 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Verifies that the prover refuses to build a tableau whose witness values violate a quadratic constraint.</summary>
     [TestMethod]
     public void RejectsAnUnsatisfiedQuadraticConstraint()
     {
@@ -141,6 +157,7 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Verifies that building the tableau twice from the same prover randomness yields the same commitment root.</summary>
     [TestMethod]
     public void RootIsDeterministicInTheProverRandomness()
     {
@@ -158,6 +175,7 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Verifies that every committed column authenticates against the Merkle root, both when the extension width is already a power of two and when it is padded up to one.</summary>
     [TestMethod]
     [DataRow(8, "extension width already a power of two")]
     [DataRow(6, "extension width padded up to a power of two")]
@@ -182,10 +200,12 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Builds a tableau from <see cref="WitnessValues"/> and <see cref="Constraints"/>, the standard satisfying fixture these tests share.</summary>
     private static LigeroTableau BuildSatisfyingTableau(LigeroParameters parameters) =>
         BuildTableau(parameters, WitnessValues, Constraints);
 
 
+    /// <summary>Builds a tableau over the given witness values and quadratic constraints, using a deterministic prover-randomness source.</summary>
     private static LigeroTableau BuildTableau(LigeroParameters parameters, ReadOnlySpan<int> witnessValues, ReadOnlySpan<LigeroQuadraticConstraint> constraints)
     {
         Span<byte> witnesses = stackalloc byte[witnessValues.Length * ScalarSize];
@@ -209,6 +229,7 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Commits the tableau's columns into a Merkle tree using the production BLAKE3 hash and the two-to-one compression under test.</summary>
     private static MerkleTree CommitColumns(LigeroTableau tableau) =>
         tableau.CommitColumns(
             Blake3FiatShamirBackend.GetHash(),
@@ -217,7 +238,7 @@ internal sealed class LigeroTableauTests
             BaseMemoryPool.Shared);
 
 
-    //Wires BLAKE3 as the two-to-one Merkle compression over concatenated children.
+    /// <summary>Wires BLAKE3 as the two-to-one Merkle compression over concatenated children.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -227,9 +248,11 @@ internal sealed class LigeroTableauTests
     }
 
 
+    /// <summary>Reads a canonical big-endian scalar as an unsigned <see cref="BigInteger"/>.</summary>
     private static BigInteger ReadCanonical(ReadOnlySpan<byte> bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 
 
+    /// <summary>Writes a value into <paramref name="destination"/> as a canonical big-endian scalar, zero-padding the leading bytes.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -243,30 +266,34 @@ internal sealed class LigeroTableauTests
     }
 
 
-    //A reproducible small-field prover-randomness source: each call hashes
-    //seed ‖ counter through BLAKE3-XOF and reduces the wide output modulo the
-    //small prime field order. Test-only; production draws from a CSPRNG.
+    /// <summary>A reproducible small-field prover-randomness source: each call hashes seed concatenated with an incrementing counter through BLAKE3-XOF and reduces the wide output modulo the small prime field order. Test-only; production draws from a CSPRNG.</summary>
     private sealed class SmallFieldDeterministicRandom
     {
-        private readonly byte[] seed;
+        /// <summary>The fixed seed this source's counter-based draws are derived from.</summary>
+        private byte[] Seed { get; }
+
+        /// <summary>The number of draws produced so far, mixed into each draw's input so successive draws differ.</summary>
         private int counter;
 
 
+        /// <summary>Creates a randomness source copying the given seed, with its counter starting at zero.</summary>
         public SmallFieldDeterministicRandom(ReadOnlySpan<byte> seed)
         {
-            this.seed = seed.ToArray();
+            this.Seed = seed.ToArray();
             counter = 0;
         }
 
 
+        /// <summary>Returns this source's draw as a <see cref="ScalarRandomDelegate"/>.</summary>
         public ScalarRandomDelegate AsDelegate() => Fill;
 
 
+        /// <summary>Draws the next pseudo-random small-field scalar into <paramref name="destination"/> by hashing the seed and counter and reducing the result modulo the field order, returning <paramref name="inboundTag"/> unchanged.</summary>
         private Tag Fill(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
         {
-            Span<byte> input = stackalloc byte[seed.Length + sizeof(int)];
-            seed.CopyTo(input);
-            BinaryPrimitives.WriteInt32BigEndian(input[seed.Length..], counter);
+            Span<byte> input = stackalloc byte[Seed.Length + sizeof(int)];
+            Seed.CopyTo(input);
+            BinaryPrimitives.WriteInt32BigEndian(input[Seed.Length..], counter);
             counter++;
 
             Span<byte> wide = stackalloc byte[64];

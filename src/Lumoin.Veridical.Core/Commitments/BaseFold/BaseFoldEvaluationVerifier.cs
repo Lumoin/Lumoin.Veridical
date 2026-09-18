@@ -37,7 +37,10 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BaseFoldEvaluationVerifier
 {
+    /// <summary>The byte width of one canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The degree every sumcheck round polynomial must carry, since the mask and the base protocol both fold at degree two.</summary>
     private const int RoundPolynomialDegree = 2;
 
 
@@ -139,6 +142,12 @@ public static class BaseFoldEvaluationVerifier
     }
 
 
+    /// <summary>
+    /// Shared verification core for <see cref="Verify"/> and <see cref="VerifyWeightedSum"/>: when
+    /// <paramref name="multiplier"/> is <see langword="null"/> the terminal tie multiplies against
+    /// <c>eq_z(evaluationPoint)</c>; otherwise it multiplies against the folded multiplier
+    /// evaluation, and <paramref name="evaluationPoint"/> is ignored.
+    /// </summary>
     private static bool VerifyCore(
         FoldableCode code,
         MerkleRoot commitment,
@@ -320,8 +329,7 @@ public static class BaseFoldEvaluationVerifier
 
     /// <summary>
     /// Verifies a statistically zero-knowledge BaseFold evaluation opening
-    /// (<see cref="BaseFoldEvaluationProver.ProveZeroKnowledge"/>, per the
-    /// statistical-mask design notes (§2, v3)): replays the masked
+    /// (<see cref="BaseFoldEvaluationProver.ProveZeroKnowledge"/>): replays the masked
     /// transcript, chains the blended claim, derives the mask evaluation from
     /// the terminal (<c>s(r) = (claim − f(r)·eq_z(r))·ρ⁻¹</c>), and checks the
     /// nested weighted opening of the mask's coefficient commitment against the
@@ -528,7 +536,7 @@ public static class BaseFoldEvaluationVerifier
             //The nested weighted opening binds ⟨C*, w⁺⟩ = s(r) + σ_F: the weights
             //are the mask basis's monomials at the bound challenges, field one on
             //every filler coordinate, zero on the lift block.
-            MonomialBasis maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0);
+            using MonomialBasis maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0, pool);
             ReadOnlySpan<Scalar> terminalPoint = challengesForLevel.AsSpan(1, d);
 
             int liftedEvaluations = 1 << maskParameters.LiftedVariableCount;
@@ -566,7 +574,7 @@ public static class BaseFoldEvaluationVerifier
     }
 
 
-    //True when the canonical big-endian scalar is the field zero.
+    /// <summary>Returns whether the canonical big-endian scalar is the field zero.</summary>
     private static bool IsZeroScalar(ReadOnlySpan<byte> value)
     {
         for(int i = 0; i < value.Length; i++)
@@ -581,7 +589,7 @@ public static class BaseFoldEvaluationVerifier
     }
 
 
-    //The masked sumcheck's initial running claim y + ρ·σ.
+    /// <summary>Computes the masked sumcheck's initial running claim y + ρ·σ.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned scalar transfers ownership to the caller (added to the verifier's scratch list and disposed there).")]
     private static Scalar ComputeBlendedClaim(
         Scalar claimedValue,
@@ -601,12 +609,22 @@ public static class BaseFoldEvaluationVerifier
     }
 
 
-    //W(r) for a general public multiplier: folds a working copy of W's dense
-    //evaluation table on the high bit by each squeezed challenge in fold order
-    //(level d down to 1) — exactly the collapse the prover's multiplier table
-    //undergoes — leaving W(r) in the first slot. O(2^d) multiplies; the weighted
-    //openings' consumers are small (the statistical-mask levels), so the product
-    //shortcut eq_z enjoys is not needed here.
+    /// <summary>
+    /// Computes <c>W(r)</c> for a general public multiplier: folds a working copy of its dense
+    /// evaluation table on the high bit by each squeezed challenge in fold order (level <paramref name="d"/>
+    /// down to 1) — exactly the collapse the prover's multiplier table undergoes — leaving <c>W(r)</c> in
+    /// the first slot. This costs <c>O(2^d)</c> multiplies; the call sites that need a general multiplier
+    /// rather than <c>eq_z</c> are few and small, so the product shortcut <c>eq_z</c> enjoys is not needed here.
+    /// </summary>
+    /// <param name="multiplier">The multiplier's dense evaluation table.</param>
+    /// <param name="challengesForLevel">The fold challenges, one per level from <paramref name="d"/> down to 1.</param>
+    /// <param name="d">The sumcheck variable count.</param>
+    /// <param name="add">Backend scalar addition.</param>
+    /// <param name="subtract">Backend scalar subtraction.</param>
+    /// <param name="multiply">Backend scalar multiplication.</param>
+    /// <param name="curve">The scalar field curve.</param>
+    /// <param name="result">Receives the folded evaluation <c>W(r)</c>, one canonical scalar.</param>
+    /// <param name="pool">The pool supplying the working table.</param>
     private static void ComputeMultiplierEvaluation(
         MultilinearExtension multiplier,
         Scalar[] challengesForLevel,
@@ -635,9 +653,11 @@ public static class BaseFoldEvaluationVerifier
     }
 
 
-    //eq_z(r) = Π_{i=1}^d [z_i·v_i + (1−z_i)(1−v_i)] where z_i = evaluationPoint[i-1]
-    //and v_i = challengesForLevel[i] (the challenge that bound variable X_i).
-    //Each factor is 1 − z − v + 2zv.
+    /// <summary>
+    /// Computes <c>eq_z(r) = Π_{i=1}^d [z_i·v_i + (1−z_i)(1−v_i)]</c> where <c>z_i</c> is
+    /// <paramref name="evaluationPoint"/>[i-1] and <c>v_i</c> is the challenge that bound variable
+    /// X_i, each factor written division-free as <c>1 − z − v + 2zv</c>.
+    /// </summary>
     private static void ComputeEqEvaluation(
         ReadOnlySpan<Scalar> evaluationPoint,
         Scalar[] challengesForLevel,
@@ -679,8 +699,7 @@ public static class BaseFoldEvaluationVerifier
     }
 
 
-    //Evaluates a degree-2 polynomial in coefficient form (c_0, c_1, c_2) at
-    //point r by Horner: ((c_2·r) + c_1)·r + c_0.
+    /// <summary>Evaluates a degree-2 polynomial in coefficient form (c_0, c_1, c_2) at point r by Horner: ((c_2·r) + c_1)·r + c_0.</summary>
     private static Scalar EvaluateDegree2(
         ReadOnlySpan<byte> coefficients,
         ReadOnlySpan<byte> r,
@@ -708,18 +727,21 @@ public static class BaseFoldEvaluationVerifier
     }
 
 
+    /// <summary>Returns whether a compressed round polynomial carries the required degree two.</summary>
     private static bool RoundPolynomialDegreeMatches(CompressedRoundPolynomial polynomial)
     {
         return polynomial.Degree == RoundPolynomialDegree;
     }
 
 
+    /// <summary>Returns whether the curve is one this verifier's arithmetic delegates are validated to support.</summary>
     private static bool IsCurveWired(CurveParameterSet curve)
     {
         return curve.Code == CurveParameterSet.Bls12Curve381.Code || curve.Code == CurveParameterSet.Bn254.Code;
     }
 
 
+    /// <summary>The Fiat-Shamir label under which every round polynomial is absorbed into the transcript.</summary>
     private static FiatShamirOperationLabel RoundPolynomialLabel =>
         new(WellKnownBaseFoldEvaluationParameters.RoundPolynomial);
 }

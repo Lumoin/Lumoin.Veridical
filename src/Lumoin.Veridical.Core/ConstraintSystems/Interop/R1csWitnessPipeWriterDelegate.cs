@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 namespace Lumoin.Veridical.Core.ConstraintSystems.Interop;
 
 /// <summary>
-/// Writes an R1CS witness to a pipe in the specified wire format.
-/// Declaration-only in this batch; the writer-side direction lands
-/// in future batches.
+/// Writes an R1CS witness to a pipe in the specified wire format,
+/// mirroring the reader delegates' pipe-and-format shape so a write-side
+/// adapter can plug into the same delegate-based interop surface.
 /// </summary>
 /// <param name="pipe">The pipe accepting the encoded bytes.</param>
 /// <param name="witness">The witness to serialise.</param>

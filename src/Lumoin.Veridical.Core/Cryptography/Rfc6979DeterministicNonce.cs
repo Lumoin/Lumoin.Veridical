@@ -1,3 +1,4 @@
+using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Numerics;
 using static Lumoin.Veridical.Core.Cryptography.ConstantTimeComparison;
@@ -79,7 +80,8 @@ public static class Rfc6979DeterministicNonce
         messageHash.CopyTo(hashReduced);
         if(!IsLess(hashReduced, order))
         {
-            SubtractInPlace(hashReduced, order);
+            //Big-endian in-place subtraction a -= b, assuming a >= b (the caller's conditional guards this).
+            CanonicalScalarReduction.SubtractInPlace(hashReduced, order);
         }
 
         //HMAC_DRBG state. V = 0x01·hlen, K = 0x00·hlen (steps b, c).
@@ -146,7 +148,12 @@ public static class Rfc6979DeterministicNonce
     }
 
 
-    //Assembles the HMAC_DRBG seed message V ‖ tag ‖ int2octets(x) ‖ bits2octets(h1) into `seed` (97 bytes).
+    /// <summary>Assembles the <c>HMAC_DRBG</c> seed message <c>V ‖ tag ‖ int2octets(x) ‖ bits2octets(h1)</c> into <paramref name="seed"/> (97 bytes).</summary>
+    /// <param name="seed">The 97-byte buffer receiving the assembled seed message.</param>
+    /// <param name="v">The current <c>HMAC_DRBG</c> state <c>V</c>.</param>
+    /// <param name="tag">The step's tag byte (<c>0x00</c> or <c>0x01</c>).</param>
+    /// <param name="privateKey">The signing private key <c>x</c> (the RFC's <c>int2octets(x)</c>).</param>
+    /// <param name="hashReduced">The reduced message hash (the RFC's <c>bits2octets(h1)</c>).</param>
     private static void BuildSeed(Span<byte> seed, ReadOnlySpan<byte> v, byte tag, ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> hashReduced)
     {
         v.CopyTo(seed[..HashLength]);
@@ -156,7 +163,10 @@ public static class Rfc6979DeterministicNonce
     }
 
 
-    //Writes the curve's order q as a 32-byte big-endian scalar; rejects orders that are not 256-bit.
+    /// <summary>Writes the curve's order <c>q</c> as a 32-byte big-endian scalar.</summary>
+    /// <param name="curve">The curve whose order is written; must have a 256-bit order.</param>
+    /// <param name="order">The 32-byte buffer receiving the big-endian order.</param>
+    /// <exception cref="ArgumentException">When the curve's order is not 256-bit.</exception>
     private static void WriteOrder(CurveParameterSet curve, Span<byte> order)
     {
         BigInteger q = WellKnownCurves.GetScalarFieldOrder(curve);
@@ -168,18 +178,5 @@ public static class Rfc6979DeterministicNonce
 
         order.Clear();
         qBytes.CopyTo(order[(HashLength - qBytes.Length)..]);
-    }
-
-
-    //Big-endian in-place subtraction a -= b, assuming a >= b (the caller's conditional guards this).
-    private static void SubtractInPlace(Span<byte> a, ReadOnlySpan<byte> b)
-    {
-        int borrow = 0;
-        for(int i = a.Length - 1; i >= 0; i--)
-        {
-            int difference = a[i] - b[i] - borrow;
-            borrow = (difference >> 8) & 1;
-            a[i] = (byte)difference;
-        }
     }
 }

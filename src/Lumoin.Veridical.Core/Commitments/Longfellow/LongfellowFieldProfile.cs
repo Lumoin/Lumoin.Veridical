@@ -37,19 +37,19 @@ internal sealed class LongfellowFieldProfile: IDisposable
     /// <summary>The canonical scalar container width every profile frames its retained constants and working values at.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    /// <summary>The GF(2^128) on-wire element width in bytes (the reference <c>GF2_128</c>'s <c>kBytes</c>); the sample draw covers exactly the element width, so it also serves as that profile's <c>sampleByteLength</c>.</summary>
+    /// <summary>The GF(2^128) on-wire element width in bytes (the reference <c>GF2_128</c>'s <c>kBytes</c>); the sample draw covers exactly the element width, so it also serves as that profile's <c>SampleByteLength</c>.</summary>
     private const int Gf2128ElementBytes = 16;
 
     /// <summary>The GF(2^128) field bit count (the reference <c>GF2_128</c>'s <c>kBits</c>); that profile's <c>exact_bits_</c>.</summary>
     private const int Gf2128BitCount = 128;
 
-    /// <summary>The P-256 base-field on-wire element width in bytes (the reference <c>Fp256Base</c>'s <c>kBytes</c>); also that profile's <c>sampleByteLength</c>.</summary>
+    /// <summary>The P-256 base-field on-wire element width in bytes (the reference <c>Fp256Base</c>'s <c>kBytes</c>); also that profile's <c>SampleByteLength</c>.</summary>
     private const int Fp256ElementBytes = 32;
 
     /// <summary>The P-256 base-field bit count (the reference <c>Fp256Base</c>'s <c>kBits</c>: p's top byte is <c>0xff</c>, so <c>exact_bits_</c> spans the whole element).</summary>
     private const int Fp256BitCount = 256;
 
-    /// <summary>The FIPS 204 sextic-extension on-wire element width in bytes (the reference <c>Fp24_6</c>'s <c>kBytes</c>: six four-byte coordinates); also that profile's <c>sampleByteLength</c>.</summary>
+    /// <summary>The FIPS 204 sextic-extension on-wire element width in bytes (the reference <c>Fp24_6</c>'s <c>kBytes</c>: six four-byte coordinates); also that profile's <c>SampleByteLength</c>.</summary>
     private const int Fp24SexticElementBytes = 24;
 
     /// <summary>The FIPS 204 sextic-extension field bit count (the reference <c>Fp24_6</c>'s <c>kBits</c>).</summary>
@@ -70,37 +70,52 @@ internal sealed class LongfellowFieldProfile: IDisposable
     /// <summary>The pooled rent holding the two retained constant scalars side by side; cleared and released on disposal, <see langword="null"/> once disposed.</summary>
     private IMemoryOwner<byte>? constants;
 
-    private readonly Action<uint, Span<byte>> ofScalar;
-    private readonly LongfellowCanonicalRangeDelegate? inRange;
-    private readonly int sampleByteLength;
-    private readonly int exactBits;
+    /// <summary>The field's own <c>of_scalar(u)</c> producing the canonical big-endian scalar for a coordinate, before any working-domain lift.</summary>
+    private Action<uint, Span<byte>> CanonicalOfScalar { get; }
+
+    /// <summary>The <c>fits</c> predicate rejecting a canonical value at or above the field modulus; <see langword="null"/> for the GF(2^128) profile, which has no such bound.</summary>
+    private LongfellowCanonicalRangeDelegate? InRange { get; }
+
+    /// <summary>The number of raw bytes <see cref="SampleElement"/> draws per attempt: <c>(exact_bits_ + 7) / 8</c>.</summary>
+    private int SampleByteLength { get; }
+
+    /// <summary>The field's exact bit count that <see cref="MaskToExactBits"/> masks a sample draw down to.</summary>
+    private int ExactBits { get; }
 
     /// <summary>The field's own sample loop for elements that are not a single little-endian integer (the sextic profile's per-coordinate rejection); <see langword="null"/> for the single-integer fields, which use the generic mask-then-reject loop.</summary>
-    private readonly LongfellowElementSampleDelegate? sampleOverride;
+    private LongfellowElementSampleDelegate? SampleOverride { get; }
 
-    //The canonical<->working-domain converters (Perf Increment 1). For the GF profile and the canonical Fp
-    //profile these are null (the working domain IS canonical); for the Montgomery Fp profile toWorking lifts
-    //canonical->Montgomery (to_montgomery) and toCanonical drops Montgomery->canonical (from_montgomery).
-    //The range check / mask-to-exact-bits ALWAYS run on the canonical representative; the lift to the working
-    //domain happens only after acceptance.
-    private readonly LongfellowDomainConvertDelegate? toWorking;
-    private readonly LongfellowDomainConvertDelegate? toCanonical;
+    /// <summary>
+    /// The canonical-to-working-domain converter. <see langword="null"/> for the GF profile and the
+    /// canonical Fp profile, where the working domain IS canonical; for the Montgomery Fp profile,
+    /// lifts canonical to Montgomery (<c>to_montgomery</c>). The range check and mask-to-exact-bits
+    /// always run on the canonical representative before this lift is applied.
+    /// </summary>
+    private LongfellowDomainConvertDelegate? ToWorking { get; }
+
+    /// <summary>
+    /// The working-to-canonical-domain converter. <see langword="null"/> for the GF profile and the
+    /// canonical Fp profile, where the working domain IS canonical; for the Montgomery Fp profile,
+    /// drops Montgomery to canonical (<c>from_montgomery</c>).
+    /// </summary>
+    private LongfellowDomainConvertDelegate? ToCanonical { get; }
 
 
     /// <summary>The on-wire element byte width (<c>Field::kBytes</c>): 16 for GF(2^128), 32 for the P-256 base field, 24 for the FIPS 204 sextic circuit field.</summary>
     public int ElementBytes { get; }
 
 
+    /// <summary>Builds a profile from its field-specific delegates and constants, renting and initializing the retained third-evaluation-point and working-domain-one scalars; <see cref="ForGf2k128"/>, <see cref="ForFp256"/>, <see cref="ForFp256Montgomery"/> and <see cref="ForFp24Sextic"/> are the only callers.</summary>
     private LongfellowFieldProfile(int elementBytes, ReadOnlySpan<byte> thirdEvaluationPoint, Action<uint, Span<byte>> ofScalar, LongfellowCanonicalRangeDelegate? inRange, int sampleByteLength, int exactBits, LongfellowDomainConvertDelegate? toWorking, LongfellowDomainConvertDelegate? toCanonical, BaseMemoryPool pool, LongfellowElementSampleDelegate? sampleOverride = null)
     {
         ElementBytes = elementBytes;
-        this.ofScalar = ofScalar;
-        this.inRange = inRange;
-        this.sampleByteLength = sampleByteLength;
-        this.exactBits = exactBits;
-        this.toWorking = toWorking;
-        this.toCanonical = toCanonical;
-        this.sampleOverride = sampleOverride;
+        this.CanonicalOfScalar = ofScalar;
+        this.InRange = inRange;
+        this.SampleByteLength = sampleByteLength;
+        this.ExactBits = exactBits;
+        this.ToWorking = toWorking;
+        this.ToCanonical = toCanonical;
+        this.SampleOverride = sampleOverride;
 
         IMemoryOwner<byte> rentedConstants = pool.Rent(ConstantSlotCount * ScalarSize);
         try
@@ -172,7 +187,7 @@ internal sealed class LongfellowFieldProfile: IDisposable
 
 
     /// <summary>
-    /// The Montgomery-domain P-256 base-field signature-circuit profile (Perf Increment 1): identical wire
+    /// The Montgomery-domain P-256 base-field signature-circuit profile: identical wire
     /// behaviour to <see cref="ForFp256"/>, but the working domain is the Montgomery residue. Every value the
     /// profile produces into the working set is lifted to Montgomery via <paramref name="toMontgomery"/>
     /// (<c>of_scalar</c>, the third evaluation point, the accepted <c>of_bytes_field</c>/<c>sample</c> draw);
@@ -255,8 +270,8 @@ internal sealed class LongfellowFieldProfile: IDisposable
     /// <param name="destination">Receives the working-domain scalar; must be <see cref="Scalar.SizeBytes"/> bytes.</param>
     public void OfScalar(uint coordinate, Span<byte> destination)
     {
-        ofScalar(coordinate, destination);
-        toWorking?.Invoke(destination, destination);
+        CanonicalOfScalar(coordinate, destination);
+        ToWorking?.Invoke(destination, destination);
     }
 
 
@@ -281,12 +296,12 @@ internal sealed class LongfellowFieldProfile: IDisposable
         }
 
         //The fits guard runs on the CANONICAL value, before any working-domain lift.
-        if(inRange is not null && !inRange(working))
+        if(InRange is not null && !InRange(working))
         {
             throw new ArgumentOutOfRangeException(nameof(littleEndian), "of_bytes_field: the little-endian wire bytes encode an integer at or above the field modulus.");
         }
 
-        toWorking?.Invoke(working, working);
+        ToWorking?.Invoke(working, working);
     }
 
 
@@ -310,14 +325,14 @@ internal sealed class LongfellowFieldProfile: IDisposable
         }
 
         //The fits guard runs on the CANONICAL value, before any working-domain lift.
-        if(inRange is not null && !inRange(working))
+        if(InRange is not null && !InRange(working))
         {
             working.Clear();
 
             return false;
         }
 
-        toWorking?.Invoke(working, working);
+        ToWorking?.Invoke(working, working);
 
         return true;
     }
@@ -330,9 +345,9 @@ internal sealed class LongfellowFieldProfile: IDisposable
     /// <see cref="LongfellowElementSampleDelegate"/> (the sextic profile's per-coordinate 23-bit rejection,
     /// the reference's <c>Fp24_6::sample</c>) and never enters the generic loop; the single-integer fields
     /// draw by the mask-then-reject loop. Each
-    /// attempt fills <see cref="sampleByteLength"/> = <c>(exact_bits_ + 7) / 8</c> raw bytes through
+    /// attempt fills <see cref="SampleByteLength"/> = <c>(exact_bits_ + 7) / 8</c> raw bytes through
     /// <paramref name="fillBytes"/>, reads them little-endian into the canonical low bytes, masks off the
-    /// bits above <see cref="exactBits"/>, and — for the prime field — redraws a fresh block while the value
+    /// bits above <see cref="ExactBits"/>, and — for the prime field — redraws a fresh block while the value
     /// reaches the modulus (<c>an &lt; m_</c>). The GF(2^128) profile has no range predicate, so the first
     /// 16-byte draw is always accepted and this coincides byte-for-byte with <see cref="FromBytesField"/>;
     /// the Fp256 profile's mask is a no-op (<c>exact_bits_ == 256</c> spans the whole 32-byte draw) and the
@@ -347,24 +362,24 @@ internal sealed class LongfellowFieldProfile: IDisposable
 
         //A field whose element is not a single little-endian integer supplies its own draw structure
         //(the sextic profile's per-coordinate rejection); the generic loop below serves the rest.
-        if(sampleOverride is not null)
+        if(SampleOverride is not null)
         {
-            sampleOverride(fillBytes, working);
+            SampleOverride(fillBytes, working);
 
             return;
         }
 
         Span<byte> littleEndianBuffer = stackalloc byte[ScalarSize];
-        Span<byte> littleEndian = littleEndianBuffer[..sampleByteLength];
+        Span<byte> littleEndian = littleEndianBuffer[..SampleByteLength];
         for(;;)
         {
             fillBytes(littleEndian);
 
             //of_bytes(buf, exact_bits_): the little-endian bytes reverse into the canonical low bytes, then
-            //the bits above exact_bits_ are masked off (nat.h:111-120). The draw covers sampleByteLength
-            //bytes; exact_bits_ <= sampleByteLength·8, so the reversal fills the low sampleByteLength bytes.
+            //the bits above exact_bits_ are masked off (nat.h:111-120). The draw covers SampleByteLength
+            //bytes; exact_bits_ <= SampleByteLength·8, so the reversal fills the low SampleByteLength bytes.
             working.Clear();
-            for(int i = 0; i < sampleByteLength; i++)
+            for(int i = 0; i < SampleByteLength; i++)
             {
                 working[ScalarSize - 1 - i] = littleEndian[i];
             }
@@ -374,9 +389,9 @@ internal sealed class LongfellowFieldProfile: IDisposable
             //fits(an): accept when below the modulus. The mask and the range check run on the CANONICAL
             //representative; the working-domain lift happens only after acceptance. The GF profile has no
             //predicate (always accepts); the Fp256 profile redraws a fresh block on an out-of-range draw.
-            if(inRange is null || inRange(working))
+            if(InRange is null || InRange(working))
             {
-                toWorking?.Invoke(working, working);
+                ToWorking?.Invoke(working, working);
                 littleEndian.Clear();
 
                 return;
@@ -394,10 +409,10 @@ internal sealed class LongfellowFieldProfile: IDisposable
     /// <param name="littleEndian">Receives the <see cref="ElementBytes"/> wire bytes, least-significant first.</param>
     public void ToBytesField(ReadOnlySpan<byte> working, Span<byte> littleEndian)
     {
-        if(toCanonical is not null)
+        if(ToCanonical is not null)
         {
             Span<byte> canonical = stackalloc byte[ScalarSize];
-            toCanonical(working, canonical);
+            ToCanonical(working, canonical);
             for(int i = 0; i < ElementBytes; i++)
             {
                 littleEndian[i] = canonical[ScalarSize - 1 - i];
@@ -441,15 +456,19 @@ internal sealed class LongfellowFieldProfile: IDisposable
     }
 
 
-    //of_bytes(a, nbits) masks the value to its low exact_bits_ bits (nat.h:111-120): the byte holding the
-    //bit-exactBits boundary keeps its low (exactBits mod 8) bits, every more-significant element byte is
-    //cleared. The canonical scalar is big-endian with the element in its low bytes, so bit b sits in
-    //canonical[ScalarSize - 1 - (b / 8)] at position b mod 8. For the production fields exactBits is a byte
-    //multiple equal to ElementBytes·8, so nothing is cleared; the loop is faithful for the general case.
+    /// <summary>
+    /// The reference's <c>of_bytes(a, nbits)</c> mask (<c>nat.h:111-120</c>): masks the value to its low
+    /// <see cref="ExactBits"/> bits. The byte holding the bit-<c>ExactBits</c> boundary keeps its low
+    /// <c>(ExactBits mod 8)</c> bits; every more-significant element byte is cleared. The canonical
+    /// scalar is big-endian with the element in its low bytes, so bit <c>b</c> sits in
+    /// <c>canonical[ScalarSize - 1 - (b / 8)]</c> at position <c>b mod 8</c>. For the production fields
+    /// <see cref="ExactBits"/> is a byte multiple equal to <see cref="ElementBytes"/>·8, so nothing is
+    /// cleared; the loop is faithful for the general case.
+    /// </summary>
     private void MaskToExactBits(Span<byte> canonical)
     {
-        int wholeBytes = exactBits / 8;
-        int remainderBits = exactBits % 8;
+        int wholeBytes = ExactBits / 8;
+        int remainderBits = ExactBits % 8;
 
         if(remainderBits != 0)
         {
@@ -458,7 +477,7 @@ internal sealed class LongfellowFieldProfile: IDisposable
         }
 
         //Clear the element bytes strictly above the boundary (the leading bytes are already zero from the
-        //of_bytes reversal, but the loop keeps the mask correct for any exactBits below ElementBytes·8).
+        //of_bytes reversal, but the loop keeps the mask correct for any ExactBits below ElementBytes·8).
         for(int byteIndex = wholeBytes + (remainderBits != 0 ? 1 : 0); byteIndex < ElementBytes; byteIndex++)
         {
             canonical[ScalarSize - 1 - byteIndex] = 0;

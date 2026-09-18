@@ -15,22 +15,19 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The wire-format-conformant Ligero VERIFY flow (conformance step C.5), gated as a faithful port of
+/// The wire-format-conformant Ligero VERIFY flow, gated as a faithful port of
 /// google/longfellow-zk's <c>lib/ligero/ligero_verifier.h</c> <c>verify()</c>. The milestone gate is the
 /// first half of the cross-implementation round-trip: a proof the REFERENCE prover computed, reconstructed
-/// field by field from the C.4 oracle dump, verifies in our verifier. The self gates run our C.4 prover's
+/// field by field from the prove-step anchor, verifies in our verifier. The self gates run our prove-step prover's
 /// proof through our verifier (both subfields), and the rejection duals confirm each of the four checks
 /// (plus the dot value-check) catches the fault it owns.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The oracle dump (prove-anchor-output.txt in TestMaterial/Longfellow) is computed by the reference
-/// implementation running in its own build environment via development tooling outside this repository. It
-/// runs the real <c>LigeroProver::commit()+prove()</c> and the real <c>LigeroProof</c>, and its
-/// <c>verify=1 why=ok</c> confirms <c>LigeroVerifier::verify()</c> accepts the dumped proof. The C.5 gate
-/// reconstructs that exact proof — the response rows, the opened columns, the per-leaf nonces and the
-/// compressed Merkle path — and the public verify inputs (the commitment root, the theorem statement, the
-/// linear-constraint targets <c>b</c>), then asserts OUR <see cref="LongfellowLigeroVerifier"/> accepts it.
+/// The verify gate reconstructs that exact proof — the response rows, the opened columns, the per-leaf
+/// nonces and the compressed Merkle path — and the public verify inputs (the commitment root, the
+/// theorem statement, the linear-constraint targets <c>b</c>), then asserts OUR
+/// <see cref="LongfellowLigeroVerifier"/> accepts it.
 /// </para>
 /// <para>
 /// The rejection duals tamper one input each and assert the verifier rejects with the matching check.
@@ -46,36 +43,56 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowLigeroVerifyTests
 {
-    private const string DumpRelativePath = "TestMaterial/Longfellow/prove-anchor-output.txt";
+    /// <summary>The repository-relative path to the reference-prover proof anchor this test class reconstructs proofs from.</summary>
+    private const string AnchorRelativePath = "TestMaterial/Longfellow/prove-anchor-output.txt";
 
+    /// <summary>The byte width of a canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+    /// <summary>The byte width of a SHA-256 digest.</summary>
     private const int DigestSize = 32;
+    /// <summary>The byte width of one opened column's per-leaf nonce.</summary>
     private const int NonceSize = 32;
+    /// <summary>The on-wire little-endian element width the anchor's <c>of_bytes_field</c> values use.</summary>
     private const int ElementBytes = 16;
 
+    /// <summary>The full GF(2^128) field element byte width.</summary>
     private const int FieldBytes = 16;
+    /// <summary>The byte width of the GF(2^16) (<c>Production16</c>) subfield.</summary>
     private const int Production16SubFieldBytes = 2;
+    /// <summary>The byte width of the test-only parity-32 subfield.</summary>
     private const int TestParity32SubFieldBytes = 4;
 
+    /// <summary>The number of witness wires this test's fixed instance uses.</summary>
     private const int WitnessCount = 8;
+    /// <summary>The number of quadratic constraints this test's fixed instance uses.</summary>
     private const int QuadraticConstraintCount = 1;
+    /// <summary>The Ligero code's inverse rate these tests use.</summary>
     private const int InverseRate = 4;
+    /// <summary>The number of Ligero columns opened per proof in these tests.</summary>
     private const int OpenedColumnCount = 2;
+    /// <summary>The reference transcript format version these tests seed under.</summary>
     private const int TranscriptVersion = 6;
 
+    /// <summary>The Fiat–Shamir transcript seed shared by every verify in this test class.</summary>
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("c4");
 
+    /// <summary>The GF(2^128) addition delegate under test.</summary>
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) subtraction delegate under test.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) multiplication delegate under test.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) inversion delegate under test.</summary>
     private static ScalarInvertDelegate Invert { get; } = Gf2k128Backend.GetInvert();
 
+    /// <summary>The key/value fixture data loaded from <see cref="AnchorRelativePath"/>.</summary>
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors();
 
 
+    /// <summary>Verifies that the reference prover's proof, reconstructed field by field, verifies for the GF(2^16) production subfield.</summary>
     [TestMethod]
     public void TheVerifierAcceptsTheReferenceProofForTheProductionSubfield()
     {
@@ -83,6 +100,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that the reference prover's proof, reconstructed field by field, verifies for the test-only parity-32 subfield.</summary>
     [TestMethod]
     public void TheVerifierAcceptsTheReferenceProofForTheTestParitySubfield()
     {
@@ -90,6 +108,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that our own prover's proof verifies against our own verifier for the GF(2^16) production subfield.</summary>
     [TestMethod]
     public void TheVerifierAcceptsOurProverProofForTheProductionSubfield()
     {
@@ -97,6 +116,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that our own prover's proof verifies against our own verifier for the test-only parity-32 subfield.</summary>
     [TestMethod]
     public void TheVerifierAcceptsOurProverProofForTheTestParitySubfield()
     {
@@ -104,6 +124,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the low-degree response re-derives a different opened-index set, so the Merkle check — the first check that consumes the indices — rejects.</summary>
     [TestMethod]
     public void ATamperedResponseFailsTheMerkleCheck()
     {
@@ -117,6 +138,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the public linear-constraint targets, which never enter the transcript, leaves the index and Merkle checks intact and is caught only by the dot value check.</summary>
     [TestMethod]
     public void ATamperedLinearTargetFailsTheDotValueCheck()
     {
@@ -129,6 +151,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of an opened column causes the Merkle check to reject.</summary>
     [TestMethod]
     public void ATamperedOpenedColumnFailsTheMerkleCheck()
     {
@@ -138,6 +161,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of a per-leaf nonce causes the Merkle check to reject.</summary>
     [TestMethod]
     public void ATamperedNonceFailsTheMerkleCheck()
     {
@@ -147,6 +171,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of a Merkle authentication-path digest causes the Merkle check to reject.</summary>
     [TestMethod]
     public void ATamperedPathDigestFailsTheMerkleCheck()
     {
@@ -156,6 +181,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the commitment root causes the Merkle check to reject.</summary>
     [TestMethod]
     public void AWrongRootFailsTheMerkleCheck()
     {
@@ -165,6 +191,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the theorem-statement hash re-keys the whole transcript, moving every squeezed challenge, so the Merkle check rejects.</summary>
     [TestMethod]
     public void AWrongStatementHashFailsTheMerkleCheck()
     {
@@ -177,7 +204,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Reconstructs the reference proof from the dump and asserts the verifier accepts it.
+    /// <summary>Reconstructs the reference proof from the anchor and asserts the verifier accepts it.</summary>
     private static void AssertReferenceProofAccepted(Lch14Subfield subfield, int subFieldBytes, string prefix)
     {
         var parameters = NewParameters(subFieldBytes);
@@ -191,7 +218,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Produces a proof with our C.4 prover and asserts our verifier accepts it.
+    /// <summary>Produces a proof with our prove-step prover and asserts our verifier accepts it.</summary>
     private static void AssertOwnProofAccepted(Lch14Subfield subfield, int subFieldBytes)
     {
         var parameters = NewParameters(subFieldBytes);
@@ -206,8 +233,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Produces our own proof (production subfield), applies a single-field mutation, and asserts the
-    //verifier rejects with the expected cause.
+    /// <summary>Produces our own proof (production subfield), applies a single-field mutation, and asserts the verifier rejects with the expected cause.</summary>
     private static void AssertRejection(Action<ReferenceFields> mutate, LongfellowLigeroVerificationResult expected)
     {
         var parameters = NewParameters(Production16SubFieldBytes);
@@ -227,8 +253,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Drives LongfellowLigeroVerifier over the given fields: builds the proof object, seeds the transcript,
-    //absorbs the root, and verifies against the public constraints.
+    /// <summary>Drives <see cref="LongfellowLigeroVerifier"/> over the given fields: builds the proof object, seeds the transcript, absorbs the root, and verifies against the public constraints.</summary>
     private static bool RunVerify(LongfellowLigeroParameters parameters, Lch14AdditiveFft fft, ReferenceFields fields, out LongfellowLigeroVerificationResult cause)
     {
         LigeroQuadraticConstraint[] quadraticConstraints = [new LigeroQuadraticConstraint(0, 1, 2)];
@@ -248,8 +273,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Builds a LongfellowLigeroProof carrying the given fields, packing the four response rows into the
-    //proof's contiguous response buffer and the opened columns row-major.
+    /// <summary>Builds a <see cref="LongfellowLigeroProof"/> carrying the given fields, packing the four response rows into the proof's contiguous response buffer and the opened columns row-major.</summary>
     private static LongfellowLigeroProof BuildProof(LongfellowLigeroParameters parameters, ReferenceFields fields)
     {
         int block = parameters.Block;
@@ -285,8 +309,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Produces the verify-input fields by running our C.2 commit + C.4 prove for the given subfield, and
-    //computing the linear targets b[c] = coefficient * W[c] the verifier's value-check needs.
+    /// <summary>Produces the verify-input fields by running our commitment-step commit and prove-step prove for the given subfield, and computing the linear targets <c>b[c] = coefficient * W[c]</c> the verifier's value-check needs.</summary>
     private static ReferenceFields ProduceOwnFields(LongfellowLigeroParameters parameters, Lch14AdditiveFft fft, int subFieldBytes)
     {
         using IMemoryOwner<byte> witnessOwner = BaseMemoryPool.Shared.Rent(WitnessCount * ScalarSize);
@@ -331,7 +354,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Parses the dumped reference proof fields for the given prefix into a mutable field set.
+    /// <summary>Parses the reference proof fields recorded for the given prefix into a mutable field set.</summary>
     private static ReferenceFields ParseReferenceFields(LongfellowLigeroParameters parameters, string prefix)
     {
         byte[] root = Convert.FromHexString(Anchors[$"{prefix}_root"]);
@@ -372,7 +395,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //W[i] = of_scalar(i + 1), then W[2] = W[0]·W[1] to satisfy the one quadratic constraint.
+    /// <summary>Fills the witness vector with <c>W[i] = of_scalar(i + 1)</c>, then sets <c>W[2] = W[0]·W[1]</c> to satisfy the one quadratic constraint.</summary>
     private static void BuildWitnesses(Lch14AdditiveFft fft, Span<byte> witnesses)
     {
         for(int i = 0; i < WitnessCount; i++)
@@ -384,6 +407,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Builds one linear constraint per witness wire, each coefficient <c>of_scalar(c + 1)</c>.</summary>
     private static LigeroLinearConstraint[] BuildLinearConstraints(Lch14AdditiveFft fft)
     {
         var constraints = new LigeroLinearConstraint[WitnessCount];
@@ -398,6 +422,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Builds this test class's fixed 32-byte theorem-statement hash.</summary>
     private static byte[] TheoremStatementHash()
     {
         byte[] hash = new byte[DigestSize];
@@ -410,6 +435,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Creates a deterministic byte source counting up from zero, one byte per call index.</summary>
     private static LongfellowRandomByteSource NewCounterSource()
     {
         ulong counter = 0;
@@ -425,20 +451,22 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Builds the Ligero parameters for the given subfield width.</summary>
     private static LongfellowLigeroParameters NewParameters(int subFieldBytes) =>
         new(WitnessCount, QuadraticConstraintCount, InverseRate, OpenedColumnCount, FieldBytes, subFieldBytes);
 
 
+    /// <summary>Creates a transcript seeded with <paramref name="seed"/> at this test class's fixed version and element width.</summary>
     private static LongfellowTranscript NewTranscript(ReadOnlySpan<byte> seed) =>
         new(seed, TranscriptVersion, 16, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
+    /// <summary>Creates the GF(2^128) additive FFT for the given subfield.</summary>
     private static Lch14AdditiveFft NewFft(Lch14Subfield subfield) =>
         new(subfield, Add, Subtract, Multiply, Invert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //of_bytes_field: 16 little-endian element bytes reverse into the low 16 bytes of a 32-byte
-    //big-endian canonical scalar.
+    /// <summary>Implements <c>of_bytes_field</c>: reverses <paramref name="littleEndian"/>'s 16 element bytes into the low 16 bytes of a 32-byte big-endian canonical scalar.</summary>
     private static void FromBytesField(ReadOnlySpan<byte> littleEndian, Span<byte> canonical)
     {
         canonical.Clear();
@@ -449,6 +477,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Computes the two-to-one Merkle compression of <paramref name="left"/> and <paramref name="right"/> using SHA-256.</summary>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSize];
@@ -458,12 +487,14 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Computes a one-shot SHA-256 digest of <paramref name="input"/> into <paramref name="output"/>.</summary>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
     {
         SHA256.HashData(input, output);
     }
 
 
+    /// <summary>Encrypts <paramref name="input"/> under AES-256 in ECB mode with the given <paramref name="key"/> and no padding.</summary>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = Aes.Create();
@@ -472,8 +503,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //Parses a comma-separated run of `count` 16-byte little-endian elements into `count` canonical
-    //big-endian scalars (of_bytes_field per element).
+    /// <summary>Parses a comma-separated run of <paramref name="count"/> 16-byte little-endian elements into <paramref name="count"/> canonical big-endian scalars (<c>of_bytes_field</c> per element).</summary>
     private static byte[] ParseCanonicalElements(string commaList, int count)
     {
         string[] hexElements = count == 0 ? [] : commaList.Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -490,6 +520,7 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Parses a comma-separated run of decimal integers.</summary>
     private static int[] ParseIntList(string commaList)
     {
         string[] tokens = commaList.Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -503,9 +534,10 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
+    /// <summary>Parses the anchor file's <c>key=value</c> tokens (space-separated per line) into a dictionary.</summary>
     private static Dictionary<string, string> LoadAnchors()
     {
-        string path = $"../../../{DumpRelativePath}";
+        string path = $"../../../{AnchorRelativePath}";
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach(string line in File.ReadAllLines(path))
         {
@@ -530,35 +562,47 @@ internal sealed class LongfellowLigeroVerifyTests
     }
 
 
-    //A mutable verify-input field set: the public inputs (root, statement hash, linear targets) and the
-    //proof's wire fields, all as byte arrays the rejection duals can tamper in place.
+    /// <summary>A mutable verify-input field set: the public inputs (root, statement hash, linear targets) and the proof's wire fields, all as byte arrays the rejection duals can tamper in place.</summary>
     private sealed class ReferenceFields
     {
+        /// <summary>The commitment root.</summary>
         public byte[] Root { get; }
 
+        /// <summary>The theorem-statement hash.</summary>
         public byte[] StatementHash { get; }
 
+        /// <summary>The public linear-constraint targets <c>b</c>.</summary>
         public byte[] LinearTargets { get; }
 
+        /// <summary>The low-degree-test response row.</summary>
         public byte[] LowDegreeResponse { get; }
 
+        /// <summary>The dot-product-test response row.</summary>
         public byte[] DotResponse { get; }
 
+        /// <summary>The quadratic-test response row's random-prefix half.</summary>
         public byte[] QuadraticResponseLow { get; }
 
+        /// <summary>The quadratic-test response row's witness-block half.</summary>
         public byte[] QuadraticResponseHigh { get; }
 
+        /// <summary>The opened columns, row-major.</summary>
         public byte[] OpenedColumns { get; }
 
+        /// <summary>The opened column indices.</summary>
         public int[] Indices { get; }
 
+        /// <summary>The per-leaf nonces for the opened columns.</summary>
         public byte[] Nonces { get; }
 
+        /// <summary>The compressed Merkle authentication path.</summary>
         public byte[] MerklePath { get; }
 
+        /// <summary>The number of digests in <see cref="MerklePath"/>.</summary>
         public int MerklePathLength { get; }
 
 
+        /// <summary>Captures every field of a verify-input set.</summary>
         public ReferenceFields(
             byte[] root,
             byte[] statementHash,
@@ -588,7 +632,7 @@ internal sealed class LongfellowLigeroVerifyTests
         }
 
 
-        //Extracts the wire fields out of a produced proof into copies the rejection duals can tamper.
+        /// <summary>Extracts the wire fields out of a produced proof into copies the rejection duals can tamper.</summary>
         public static ReferenceFields FromProof(LongfellowLigeroParameters parameters, LongfellowLigeroProof proof, byte[] root, byte[] statementHash, byte[] linearTargets)
         {
             int rowCount = parameters.RowCount;

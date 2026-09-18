@@ -27,27 +27,56 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// </summary>
 internal static class MaskedSpartanTestFixtures
 {
+    /// <summary>The production BLAKE3 Fiat-Shamir hash delegate driving both the prover's and verifier's transcripts.</summary>
     public static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir squeeze delegate drawing challenges from the transcript.</summary>
     public static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BLS12-381 scalar-field reduction delegate from the BigInteger-backed reference implementation.</summary>
     public static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 scalar-field addition delegate from the BigInteger-backed reference implementation.</summary>
     public static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+
+    /// <summary>The BLS12-381 scalar-field subtraction delegate from the BigInteger-backed reference implementation.</summary>
     public static ScalarSubtractDelegate Subtract { get; } = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+
+    /// <summary>The BLS12-381 scalar-field multiplication delegate from the BigInteger-backed reference implementation.</summary>
     public static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+
+    /// <summary>The BLS12-381 scalar-field inversion delegate from the BigInteger-backed reference implementation.</summary>
     public static ScalarInvertDelegate Invert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
+
+    /// <summary>The BLS12-381 scalar-field random-sampling delegate from the BigInteger-backed reference implementation, drawing the masked prover's blinding by default.</summary>
     public static ScalarRandomDelegate ScalarRandom { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The BLS12-381 G1 addition delegate from the BigInteger-backed reference implementation.</summary>
     public static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BLS12-381 G1 scalar-multiplication delegate from the BigInteger-backed reference implementation.</summary>
     public static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BLS12-381 G1 multi-scalar-multiplication delegate under test.</summary>
     public static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The BLS12-381 G1 on-curve check delegate from the BigInteger-backed reference implementation.</summary>
     public static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BLS12-381 G1 prime-order-subgroup membership delegate from the BigInteger-backed reference implementation.</summary>
     public static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BLS12-381 G1 hash-to-curve delegate from the BigInteger-backed reference implementation, used to derive the Hyrax commitment key's generators.</summary>
     public static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The multilinear-extension evaluation delegate from the BigInteger-backed reference implementation.</summary>
     public static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The multilinear-extension fold delegate from the BigInteger-backed reference implementation.</summary>
     public static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
 
-    //The widest test-family sumcheck (rows or columns up to 2^4) bounds the
-    //statistical masks' single-row vector commitments; computed from the
-    //policy so a ledger change propagates.
+    /// <summary>The widest test-family sumcheck (rows or columns up to 2^4), bounding the statistical masks' single-row vector commitments; <see cref="MaskedVectorLengthFloor"/> is computed from it so a policy change propagates.</summary>
     private const int LargestTestSumcheckVariableCount = 4;
 
     /// <summary>
@@ -61,6 +90,7 @@ internal static class MaskedSpartanTestFixtures
         LargestTestSumcheckVariableCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree).CoefficientCount;
 
 
+    /// <summary>Initializes a fresh Fiat-Shamir transcript under the Spartan domain label, for either a prover's or a verifier's independent run.</summary>
     public static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -72,6 +102,7 @@ internal static class MaskedSpartanTestFixtures
     }
 
 
+    /// <summary>Builds a masked Spartan prover over a fresh Hyrax provider sized for the given vector length, drawing blinding from the shared <see cref="ScalarRandom"/> source.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers to the returned MaskedSpartanProver via its constructor chain.")]
     public static MaskedSpartanProver BuildMaskedProver(int hyraxVectorLength)
     {
@@ -108,6 +139,7 @@ internal static class MaskedSpartanTestFixtures
     }
 
 
+    /// <summary>Builds a masked Spartan verifier over a fresh Hyrax provider sized for the given vector length, drawing blinding from the shared <see cref="ScalarRandom"/> source (immaterial to verification's output).</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers to the returned MaskedSpartanVerifier via its constructor chain.")]
     public static MaskedSpartanVerifier BuildMaskedVerifier(int hyraxVectorLength)
     {
@@ -141,7 +173,7 @@ internal static class MaskedSpartanTestFixtures
 
     /// <summary>
     /// Wraps a Hyrax commitment key in the scheme-agnostic provider Spartan
-    /// now consumes. The provider takes ownership of <paramref name="commitmentKey"/>
+    /// consumes. The provider takes ownership of <paramref name="commitmentKey"/>
     /// (<c>ownsKey: true</c>), so whatever owns the provider disposes the key.
     /// </summary>
     public static PolynomialCommitmentProvider BuildProvider(HyraxCommitmentKey commitmentKey)
@@ -194,6 +226,7 @@ internal static class MaskedSpartanTestFixtures
     }
 
 
+    /// <summary>Builds the satisfying witness z = (1, 3, 5, 15) for the one-multiply instance: c0 3·5=15, c1 1·1=1.</summary>
     public static RawR1csWitness BuildOneMultiplyWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -277,6 +310,7 @@ internal static class MaskedSpartanTestFixtures
     }
 
 
+    /// <summary>Builds the satisfying witness z = (1, 3, 5, 15, 2, 7, 14, 0) for the two-multiply instance: c0 3·5=15, c1 2·7=14.</summary>
     public static RawR1csWitness BuildTwoMultiplyWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -309,6 +343,7 @@ internal static class MaskedSpartanTestFixtures
     }
 
 
+    /// <summary>Writes a non-negative value into <paramref name="destination"/> as canonical big-endian bytes, right-aligned with the leading bytes left zeroed.</summary>
     public static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

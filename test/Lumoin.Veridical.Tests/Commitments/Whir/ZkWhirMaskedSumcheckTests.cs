@@ -15,8 +15,8 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the masked sumcheck of the hiding WHIR path (4.2 phase C1,
-/// eprint 2026/391 Construction 6.3): the mask total must equal the
+/// Tests for the masked sumcheck of the hiding WHIR path
+/// (eprint 2026/391 Construction 6.3): the mask total must equal the
 /// brute-force cube sum, the prover and a replaying verifier must agree on
 /// the combining challenge, the fold challenges and the chained residual, and
 /// the residual must decompose as
@@ -77,10 +77,14 @@ internal sealed class ZkWhirMaskedSumcheckTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
     /// <summary>The deterministic mask-sampling seed, distinct per test class.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("zk-whir-masked-sumcheck-tests");
 
 
+    /// <summary>Pins that the mask group's combined mask total equals the brute-force sum of every mask evaluated at its own round's bit, over every point of the Boolean cube.</summary>
     [TestMethod]
     public void MaskTotalMatchesTheBruteForceCubeSum()
     {
@@ -111,6 +115,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     }
 
 
+    /// <summary>Pins that the masked-sumcheck prover and a replaying verifier derive the same combining challenge and fold challenges, and that the resulting chained residual decomposes into the epsilon-scaled plain final claim, the closed-form mask residual, and the halved auxiliary constant.</summary>
     [TestMethod]
     public void ProverAndReplayAgreeAndTheResidualDecomposes()
     {
@@ -204,6 +209,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     }
 
 
+    /// <summary>Pins that summing each mask's coefficients against the verifier's per-challenge residual covector reproduces the same value the mask group's own closed-form residual computation produces.</summary>
     [TestMethod]
     public void ResidualCovectorsReproduceTheMaskResidual()
     {
@@ -244,6 +250,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     }
 
 
+    /// <summary>Pins that replaying a batch's wires under a mask message length different from the one they were produced with throws <see cref="ArgumentException"/>.</summary>
     [TestMethod]
     public void WireDegreeMismatchIsRejectedOnReplay()
     {
@@ -288,6 +295,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
     }
 
 
+    /// <summary>Pins that constructing a mask group with zero masks throws <see cref="ArgumentOutOfRangeException"/>.</summary>
     [TestMethod]
     public void MasklessBatchIsRejected()
     {
@@ -298,7 +306,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
 
         Assert.Throws<ArgumentOutOfRangeException>(
             () => ZkWhirMaskGroup.Create(
-                shape, maskCount: 0, encoder, Merkle, new DeterministicScalarRandom(MaskSeed).AsDelegate(), backend.Curve, pool));
+                shape, maskCount: 0, encoder, TreeParameters, new DeterministicScalarRandom(MaskSeed).AsDelegate(), backend.Curve, pool));
     }
 
 
@@ -336,7 +344,7 @@ internal sealed class ZkWhirMaskedSumcheckTests
         WhirMaskCodeShape shape = WhirMaskCodeShape.Derive(WhirZkParameters.DefaultMaskMessageLength, TestMaskQueryCount, TestMaskRateLog2);
 
         return ZkWhirMaskGroup.Create(
-            shape, MaskCount, encoder, Merkle, new DeterministicScalarRandom(MaskSeed).AsDelegate(), Bls.Curve, pool);
+            shape, MaskCount, encoder, TreeParameters, new DeterministicScalarRandom(MaskSeed).AsDelegate(), Bls.Curve, pool);
     }
 
 

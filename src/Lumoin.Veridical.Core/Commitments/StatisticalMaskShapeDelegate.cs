@@ -5,8 +5,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <summary>
 /// Resolves the statistical sumcheck mask's commitment shape for a masked
 /// sumcheck of the given variable count and per-variable degree, under the
-/// scheme's own ledger (the statistical-mask design notes, §3): the
-/// lifted-and-filled BaseFold resolution for hash-path providers, the
+/// scheme's own ledger: the lifted-and-filled BaseFold resolution for
+/// hash-path providers, the
 /// unlifted Pedersen/IPA resolution for Hyrax. Deterministic — the prover and
 /// verifier resolve it independently from the protocol shape, with no wire
 /// data.

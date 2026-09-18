@@ -54,7 +54,7 @@ public static class WhirIoppProver
     /// <param name="constraintPoints">The constraint points <c>p_c</c>, <c>m</c> elements per constraint, first variable first.</param>
     /// <param name="target">The claimed sum <c>σ</c>, one element.</param>
     /// <param name="transcript">The Fiat-Shamir transcript, already initialised with the protocol's public context.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
     /// <param name="reduce">The scalar-reduce backend for deriving challenges.</param>
@@ -73,7 +73,7 @@ public static class WhirIoppProver
         ReadOnlySpan<byte> constraintPoints,
         ReadOnlySpan<byte> target,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -84,7 +84,7 @@ public static class WhirIoppProver
     {
         ArgumentNullException.ThrowIfNull(schedule);
         ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(squeeze);
         ArgumentNullException.ThrowIfNull(reduce);
@@ -143,7 +143,7 @@ public static class WhirIoppProver
 
             ThrowIfStatementDoesNotHold(functionTable, weightTable, messageLength, target, add, multiply, curve);
 
-            CommitOracle(0, workingCoefficients[..(messageLength * ScalarSize)], schedule, encoder, merkleHash, leavesOwners, trees, pool, disposables);
+            CommitOracle(0, workingCoefficients[..(messageLength * ScalarSize)], schedule, encoder, merkleParameters, leavesOwners, trees, pool, disposables);
             transcript.AbsorbWhirOracleRoot(trees[0]!.Root, hash);
 
             //Per-iteration scratch reused across the loop: the pow-expanded
@@ -162,7 +162,7 @@ public static class WhirIoppProver
                 if(iteration > 0)
                 {
                     int currentSize = 1 << currentVariableCount;
-                    CommitOracle(iteration, workingCoefficients[..(currentSize * ScalarSize)], schedule, encoder, merkleHash, leavesOwners, trees, pool, disposables);
+                    CommitOracle(iteration, workingCoefficients[..(currentSize * ScalarSize)], schedule, encoder, merkleParameters, leavesOwners, trees, pool, disposables);
                     transcript.AbsorbWhirOracleRoot(trees[iteration]!.Root, hash);
 
                     //Out-of-domain sample and reply.
@@ -344,7 +344,7 @@ public static class WhirIoppProver
     /// </summary>
     /// <param name="schedule">The parameter schedule fixing the initial domain and leaf shape.</param>
     /// <param name="coefficients">The multilinear coefficient vector, <c>2^m</c> elements for the schedule's variable count <c>m</c>.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="add">Scalar-add backend.</param>
     /// <param name="subtract">Scalar-subtract backend.</param>
     /// <param name="multiply">Scalar-multiply backend.</param>
@@ -355,14 +355,14 @@ public static class WhirIoppProver
     public static MerkleRoot ComputeInputCommitment(
         WhirParameterSchedule schedule,
         ReadOnlySpan<byte> coefficients,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply,
         BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(schedule);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(subtract);
         ArgumentNullException.ThrowIfNull(multiply);
@@ -387,11 +387,12 @@ public static class WhirIoppProver
         Span<byte> leaves = leavesOwner.Memory.Span[..(domainLength * ScalarSize)];
         encoder.EncodeToCosetLeaves(coefficients, domainSizeLog2, foldingParameter, leaves);
 
-        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * ScalarSize);
-        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * ScalarSize)];
-        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleHash, digests, pool);
+        int nodeSize = merkleParameters.NodeSizeBytes;
+        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * nodeSize);
+        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * nodeSize)];
+        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleParameters, digests, pool);
 
-        using MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleHash, pool);
+        using MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleParameters, pool);
 
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
@@ -479,7 +480,7 @@ public static class WhirIoppProver
         ReadOnlySpan<byte> currentCoefficients,
         WhirParameterSchedule schedule,
         WhirCosetEncoder encoder,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         IMemoryOwner<byte>?[] leavesOwners,
         MerkleTree?[] trees,
         BaseMemoryPool pool,
@@ -497,11 +498,12 @@ public static class WhirIoppProver
         Span<byte> leaves = leavesOwner.Memory.Span[..(domainLength * ScalarSize)];
         encoder.EncodeToCosetLeaves(currentCoefficients, domainSizeLog2, foldingParameter, leaves);
 
-        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * ScalarSize);
-        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * ScalarSize)];
-        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleHash, digests, pool);
+        int nodeSize = merkleParameters.NodeSizeBytes;
+        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * nodeSize);
+        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * nodeSize)];
+        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleParameters, digests, pool);
 
-        MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleHash, pool);
+        MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleParameters, pool);
         disposables.Add(tree);
         trees[oracleIndex] = tree;
     }

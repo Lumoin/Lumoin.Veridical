@@ -45,6 +45,7 @@ internal sealed class PredicateProofOperationsTests
         () => Prove(CompliantConstantRequest()));
 
 
+    /// <summary>Verifies that a compliant bundle (two range claims plus a <c>memberOf</c> claim) proves and verifies, with the verification message naming each satisfied claim.</summary>
     [TestMethod]
     public void CompliantBundleProvesAndVerifies()
     {
@@ -57,6 +58,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that a bundle with only a <c>memberOf</c> claim carries no Spartan proof or public inputs, carries exactly one lookup proof, and verifies.</summary>
     [TestMethod]
     public void LookupOnlyBundleProvesAndVerifies()
     {
@@ -74,6 +76,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that a recycled-content measurement below the constant threshold throws at compile time rather than producing a proof.</summary>
     [TestMethod]
     public void SubThresholdRecycledContentIsNotProvable()
     {
@@ -83,6 +86,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that a carbon-footprint measurement above the constant cap throws at compile time rather than producing a proof.</summary>
     [TestMethod]
     public void OverCapCarbonFootprintIsNotProvable()
     {
@@ -92,6 +96,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that a measured value absent from the allowed list is rejected before any commitment work runs, via the lookup unprovability fast path.</summary>
     [TestMethod]
     public void NonMemberMeasuredValueIsNotProvable()
     {
@@ -103,6 +108,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that flipping the last byte of the Spartan proof causes verification to reject the artifact.</summary>
     [TestMethod]
     public void TamperedProofIsRejected()
     {
@@ -115,6 +121,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that flipping the last byte of a lookup proof causes verification to reject the artifact.</summary>
     [TestMethod]
     public void TamperedLookupProofIsRejected()
     {
@@ -127,6 +134,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that lowering a claim's baked-in constant threshold in the artifact rebuilds a different circuit, and verification rejects the result.</summary>
     [TestMethod]
     public void TamperedConstantThresholdIsRejected()
     {
@@ -141,6 +149,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that substituting a member in a claim's allowed-value list rebuilds a different lookup table, and verification rejects the result.</summary>
     [TestMethod]
     public void TamperedAllowedValuesAreRejected()
     {
@@ -156,6 +165,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that truncating the Spartan proof bytes is reported malformed rather than rejected or crashing.</summary>
     [TestMethod]
     public void TruncatedProofIsMalformed()
     {
@@ -166,6 +176,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that truncating a lookup proof's bytes is reported malformed.</summary>
     [TestMethod]
     public void TruncatedLookupProofIsMalformed()
     {
@@ -176,6 +187,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that an artifact missing its required lookup proof is reported malformed, naming "lookup proof" in the message.</summary>
     [TestMethod]
     public void LookupProofCountMismatchIsMalformed()
     {
@@ -188,6 +200,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that an artifact claiming a downgraded query count is reported malformed, naming "query count" in the message.</summary>
     [TestMethod]
     public void DowngradedQueryCountIsMalformed()
     {
@@ -200,6 +213,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that an artifact claiming the Spartan path's (lower) query count for its lookup query count is rejected as malformed, since it falls short of the lookup path's union-bounded target.</summary>
     [TestMethod]
     public void DowngradedLookupQueryCountIsMalformed()
     {
@@ -214,6 +228,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that an artifact claiming a downgraded inverse rate is reported malformed, naming "inverse rate" in the message.</summary>
     [TestMethod]
     public void DowngradedInverseRateIsMalformed()
     {
@@ -226,6 +241,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that an artifact stamped with the version-2 format, which predates the kind discriminator, is rejected as malformed rather than reinterpreted.</summary>
     [TestMethod]
     public void PriorFormatVersionIsMalformed()
     {
@@ -240,6 +256,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that syntactically invalid JSON is reported malformed rather than throwing.</summary>
     [TestMethod]
     public void MalformedJsonIsMalformed()
     {
@@ -247,6 +264,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that an artifact whose <c>claims</c> array is JSON null is reported malformed.</summary>
     [TestMethod]
     public void NullClaimsArtifactIsMalformed()
     {
@@ -258,6 +276,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that an artifact whose <c>claims</c> array contains a null element is reported malformed.</summary>
     [TestMethod]
     public void NullClaimElementArtifactIsMalformed()
     {
@@ -269,6 +288,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that a public-input bound reveals the encoded bound, that the revealed value is identical across repeated proofs of the same request, and that the artifact verifies.</summary>
     [TestMethod]
     public void PublicInputBoundIsDeterministicAndVerifies()
     {
@@ -286,6 +306,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that the wired lookup query count equals the pinned expected value and is exactly one more than the Spartan path's wired query count.</summary>
     [TestMethod]
     public void WiredLookupQueryCountIsDerivedAtSixtyFive()
     {
@@ -297,6 +318,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that the LogUp-over-Ligero security ledger meets the classical target bits at every wired lookup-table variable count.</summary>
     [TestMethod]
     public void LookupLedgerMeetsClassicalTargetAcrossWiredTableSizes()
     {
@@ -316,6 +338,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Verifies that the Spartan path's wired query count falls short of the classical target at the lookup path's minimum table size, by exactly the union-bounded shortfall.</summary>
     [TestMethod]
     public void SpartanQueryCountFallsShortOfLookupTarget()
     {
@@ -487,7 +510,7 @@ internal sealed class PredicateProofOperationsTests
         PredicateProofArtifact artifact = VeridicalPredicateProofJson.DeserializeArtifact(Prove(request));
 
         Assert.AreNotEqual(string.Empty, artifact.Proof, "A range-only bundle carries a Spartan proof.");
-        Assert.HasCount(0, artifact.LookupProofs);
+        Assert.IsEmpty(artifact.LookupProofs);
 
         VerificationResult result = Verify(VeridicalPredicateProofJson.Serialize(artifact));
         Assert.AreEqual(VerificationStatus.Valid, result.Status, result.Message);
@@ -567,24 +590,28 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Serializes a request and runs it through the prove operation, returning the artifact JSON.</summary>
     private static string Prove(PredicateProofRequest request)
     {
         return PredicateProofOperations.ProveToJson(VeridicalPredicateProofJson.Serialize(request), BaseMemoryPool.Shared);
     }
 
 
+    /// <summary>Runs the verify operation over an artifact's JSON.</summary>
     private static VerificationResult Verify(string artifactJson)
     {
         return PredicateProofOperations.VerifyFromJson(artifactJson, BaseMemoryPool.Shared);
     }
 
 
+    /// <summary>Builds the compliant bundle request (two range claims plus the <c>memberOf</c> claim) with a constant recycled-content bound, shared by the tests that tamper with an otherwise-valid artifact.</summary>
     private static PredicateProofRequest CompliantConstantRequest()
     {
         return Request(recycled: 32.5m, carbon: 11.20m, recycledBound: "constant");
     }
 
 
+    /// <summary>Builds the <c>memberOf</c> claim over <c>material_code</c> with the standard allowed-value list, for the given measured value.</summary>
     private static PredicateProofRequestClaim MaterialCodeClaim(string measured)
     {
         return new PredicateProofRequestClaim
@@ -599,6 +626,7 @@ internal sealed class PredicateProofOperationsTests
     }
 
 
+    /// <summary>Builds a request with the single <c>memberOf</c> <c>material_code</c> claim and no range claims, for the given measured value.</summary>
     private static PredicateProofRequest LookupOnlyRequest(string measured)
     {
         return new PredicateProofRequest

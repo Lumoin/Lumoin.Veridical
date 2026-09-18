@@ -57,8 +57,9 @@ public static class LongfellowJwt
 
         //The witness computation is the cheap gate: a token the statement cannot prove is
         //rejected before the expensive circuit compilation.
-        LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle();
-        LongfellowJwtWitness generator = LongfellowJwtBundles.NewWitnessGenerator(field, statement.Spec.BlockCapacity);
+        using LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle(pool);
+        using LongfellowEllipticCurveParameters curve = LongfellowEllipticCurveParameters.CreateP256(pool);
+        using LongfellowJwtWitness generator = LongfellowJwtBundles.NewWitnessGenerator(field, curve, statement.Spec.BlockCapacity);
         var openedAttributes = new LongfellowJwtOpenedAttribute[statement.Attributes.Count];
         for(int i = 0; i < openedAttributes.Length; i++)
         {
@@ -70,7 +71,7 @@ public static class LongfellowJwt
             throw new ArgumentException("The token does not produce a witness for the statement: it is malformed, oversized for the block capacity, fails a signature, or lacks a required attribute or the device key.", nameof(token));
         }
 
-        LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, statement.Spec.BlockCapacity, statement.Attributes.Count);
+        using LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, curve, statement.Spec.BlockCapacity, statement.Attributes.Count);
         LongfellowLigeroParameters parameters = LongfellowJwtBundles.DeriveParameters(circuit);
 
         //The column carries the private witness; it is pool-rented and cleared on every exit path.
@@ -89,7 +90,7 @@ public static class LongfellowJwt
 
             generator.FillWitness(column.Slice(cursor * LongfellowJwtBundles.Fp256ElementBytes, witnessElements * LongfellowJwtBundles.Fp256ElementBytes));
 
-            Fp256RealFft fft = LongfellowJwtBundles.NewFft(pool);
+            using Fp256RealFft fft = LongfellowJwtBundles.NewFft(pool);
             LongfellowRowEncoderFactory encoderFactory = LongfellowJwtBundles.NewEncoderFactory(fft, pool);
             using LongfellowFieldProfile profile = LongfellowJwtBundles.NewProfile(pool);
             using LongfellowSubfieldRunCodec codec = LongfellowJwtBundles.NewCodec(profile);
@@ -163,8 +164,9 @@ public static class LongfellowJwt
             return LongfellowJwtVerdict.MalformedKeyBinding;
         }
 
-        LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle();
-        LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, statement.Spec.BlockCapacity, statement.Attributes.Count);
+        using LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle(pool);
+        using LongfellowEllipticCurveParameters curve = LongfellowEllipticCurveParameters.CreateP256(pool);
+        using LongfellowSumcheckCircuit circuit = LongfellowJwtBundles.CompileStatement(field, curve, statement.Spec.BlockCapacity, statement.Attributes.Count);
         LongfellowLigeroParameters parameters = LongfellowJwtBundles.DeriveParameters(circuit);
 
         int elementCount = LongfellowJwtBundles.PublicInputElementCount(statement.Attributes.Count);
@@ -180,7 +182,7 @@ public static class LongfellowJwt
         {
             LongfellowJwtBundles.AssembleVerifierPublicInputs(field, statement, keyBindingDigest, publicInputs, pool);
 
-            Fp256RealFft fft = LongfellowJwtBundles.NewFft(pool);
+            using Fp256RealFft fft = LongfellowJwtBundles.NewFft(pool);
             LongfellowRowEncoderFactory encoderFactory = LongfellowJwtBundles.NewEncoderFactory(fft, pool);
             using LongfellowFieldProfile profile = LongfellowJwtBundles.NewProfile(pool);
             using LongfellowSubfieldRunCodec codec = LongfellowJwtBundles.NewCodec(profile);

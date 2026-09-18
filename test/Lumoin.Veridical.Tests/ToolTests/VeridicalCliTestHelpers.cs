@@ -32,7 +32,7 @@ internal static class VeridicalCliTestHelpers
 
         foreach(string configuration in new[] { "Debug", "Release" })
         {
-            string path = Path.Combine(repoRoot, "src", "Lumoin.Veridical.Cli", "bin", configuration, "net10.0", $"Lumoin.Veridical.Cli{extension}");
+            string path = Path.Combine(repoRoot, "src", "Lumoin.Veridical.Cli", "bin", configuration, "net11.0", $"Lumoin.Veridical.Cli{extension}");
             if(File.Exists(path))
             {
                 return path;

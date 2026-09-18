@@ -21,6 +21,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FiatShamirTranscriptSumcheckAbsorbExtensions
 {
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for absorbing a sumcheck round polynomial.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>

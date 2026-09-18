@@ -13,13 +13,16 @@ namespace Lumoin.Veridical.Core.Algebraic;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FiatShamirTranscriptSqueezeExtensions
 {
-    //64 bytes for the scalar squeeze: 32 bytes of the field width plus
-    //32 bytes of additional entropy makes the modular-reduction bias
-    //bounded by 2^-256 (negligible at 128-bit security per RFC 9380's
-    //reasoning for hash-to-field's L = 64).
+    /// <summary>
+    /// 64 bytes for the scalar squeeze: 32 bytes of the field width plus
+    /// 32 bytes of additional entropy makes the modular-reduction bias
+    /// bounded by 2^-256 (negligible at 128-bit security per RFC 9380's
+    /// reasoning for hash-to-field's L = 64).
+    /// </summary>
     private const int SqueezeWideBytes = 64;
 
 
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for squeezing raw bytes or a typed scalar.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>

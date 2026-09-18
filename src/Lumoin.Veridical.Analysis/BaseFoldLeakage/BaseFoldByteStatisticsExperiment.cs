@@ -19,7 +19,7 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// same scalar serialized many times) and the per-query Merkle paths share
 /// upper-tree digests, so the analytic chi-squared — which assumes independent
 /// draws — rejects on pure structure for <em>any</em> labeling, including ones
-/// independent of the witness (verified during batch SM: index-parity and
+/// independent of the witness (confirmed empirically: index-parity and
 /// first-half-versus-last-half labelings rejected at p &lt; 1e-24). Comparing the
 /// observed statistic against the same statistic under random relabelings of the
 /// same proofs is valid under arbitrary intra-proof dependence: under the null
@@ -33,16 +33,23 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// </remarks>
 public static class BaseFoldByteStatisticsExperiment
 {
+    /// <summary>The experiment's short identifying name, carried into its result.</summary>
     private const string Name = "byte-distribution";
+
+    /// <summary>The number of distinct byte values a histogram bins over.</summary>
     private const int ByteValueCount = 256;
 
-    //199 relabelings give the permutation p-value a resolution of 1/200 = 0.005,
-    //comfortably below the default 0.05 significance level, at negligible cost
-    //(each permutation only re-pools the precomputed per-proof histograms).
+    /// <summary>
+    /// 199 relabelings give the permutation p-value a resolution of 1/200 = 0.005,
+    /// comfortably below the default 0.05 significance level, at negligible cost
+    /// (each permutation only re-pools the precomputed per-proof histograms).
+    /// </summary>
     private const int PermutationCount = 199;
 
-    //A fixed xorshift seed: the permutation null needs reproducibility across
-    //runs, not cryptographic randomness — the labels being permuted are public.
+    /// <summary>
+    /// A fixed xorshift seed: the permutation null needs reproducibility across
+    /// runs, not cryptographic randomness — the labels being permuted are public.
+    /// </summary>
     private const ulong PermutationSeed = 0x5DEECE66DUL;
 
 
@@ -124,14 +131,21 @@ public static class BaseFoldByteStatisticsExperiment
     }
 
 
-    //The chi-squared homogeneity statistic of the two class-pooled histograms
-    //under the given labeling. Only the statistic is used — its analytic p-value
-    //is invalid under intra-proof byte dependence (see the type remarks).
-    //
-    //The 256-bin pooling adds run vector-width (VectorizedAccumulation, the
-    //batch AC seam marker landed in batch PB); the byte-counting loop in Run
-    //stays scalar -- histogram counting scatters, and a per-lane sub-histogram
-    //split is not worth its complexity at these sample scales.
+    /// <summary>
+    /// Computes the chi-squared homogeneity statistic between the two class-pooled
+    /// histograms under the given labeling. Only the statistic is used; its analytic
+    /// p-value is invalid under intra-proof byte dependence (see the type remarks).
+    /// </summary>
+    /// <remarks>
+    /// The 256-bin pooling adds run vector-width through <see cref="VectorizedAccumulation"/>'s
+    /// SIMD seam; the byte-counting loop in <see cref="Run"/> stays scalar because histogram
+    /// counting scatters, and a per-lane sub-histogram split is not worth its complexity at
+    /// these sample scales.
+    /// </remarks>
+    /// <param name="histograms">The per-proof byte-value histograms to pool by label.</param>
+    /// <param name="labels">The witness-class label for each histogram.</param>
+    /// <param name="significanceLevel">The significance level the homogeneity test evaluates at.</param>
+    /// <returns>The chi-squared test statistic.</returns>
     private static double PooledStatistic(long[][] histograms, int[] labels, double significanceLevel)
     {
         long[] classZero = new long[ByteValueCount];
@@ -146,8 +160,7 @@ public static class BaseFoldByteStatisticsExperiment
     }
 
 
-    //Fisher–Yates over the label vector with a xorshift64 step — deterministic,
-    //reproducible, and statistically ample for a permutation null.
+    /// <summary>Fisher–Yates over the label vector with a xorshift64 step — deterministic, reproducible, and statistically ample for a permutation null.</summary>
     private static void Shuffle(int[] labels, ref ulong state)
     {
         for(int i = labels.Length - 1; i >= 1; i--)
@@ -161,6 +174,7 @@ public static class BaseFoldByteStatisticsExperiment
     }
 
 
+    /// <summary>Disposes every scalar coordinate of the sampled evaluation point.</summary>
     private static void DisposeAll(Scalar[] scalars)
     {
         foreach(Scalar scalar in scalars)

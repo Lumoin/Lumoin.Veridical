@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Core.Commitments.Whir;
 /// </para>
 /// <para>
 /// Privacy preconditions, enforced loudly by
-/// <see cref="ThrowIfOutOfDomainPointsInadmissible"/> per the wired ruling
+/// <see cref="ThrowIfOutOfDomainPointsInadmissible"/>
 /// rather than left as debug assumptions: the pad carries at least one fresh
 /// coordinate per out-of-domain sample and the points are pairwise distinct
 /// and nonzero. Over the wired ≈2^254 scalar fields the offending events have

@@ -30,8 +30,8 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// gate. Under the multilinear-mask adaptation the high-degree
 /// coefficients of each round message carry information about the
 /// underlying polynomial that varies with the witness — the
-/// documented leak structure from <c>SPARTAN2.md</c> §10.5 and
-/// the Spartan zero-knowledge design notes (§9), not a regression.
+/// documented leak structure from <c>SPARTAN2.md</c> §10.5, not a
+/// regression.
 /// </para>
 /// <para>
 /// With 50 samples per witness across 256 byte buckets the test is
@@ -46,13 +46,18 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class MaskedSpartanIndistinguishabilityTests
 {
+    /// <summary>The number of paired proofs sampled per witness for the scoped chi-squared smoke test.</summary>
     private const int ScopedChiSquaredSampleCount = 50;
+
+    /// <summary>The chi-squared p-value below which a scoped byte position is treated as a suspected leak.</summary>
     private const double PValueThreshold = 0.001;
 
 
+    /// <summary>The MSTest context, used to surface the chi-squared smoke test's diagnostics through the test output.</summary>
     public TestContext? TestContext { get; set; }
 
 
+    /// <summary>Property-based: under a fixed masking seed, proofs for two different witnesses always differ byte for byte, confirming the prover actually consumes the witness.</summary>
     [TestMethod]
     public void MaskedProofsForDifferentWitnessesHaveDifferentBytes()
     {
@@ -75,6 +80,7 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>Property-based: for the same witness, proofs produced under two different masking seeds always differ byte for byte, confirming the masking randomness actually varies the proof.</summary>
     [TestMethod]
     public void MaskedProofsForSameWitnessDifferentSeedsHaveDifferentBytes()
     {
@@ -92,6 +98,12 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>
+    /// Statistical smoke test: compares the byte distributions of every scoped, expected-blinded proof
+    /// section (terminating evaluations, masking-polynomial commitments, masking sums, masking-polynomial
+    /// openings) across paired proofs from two distinct valid witnesses, and asserts that no scoped byte
+    /// position shows a chi-squared p-value below <see cref="PValueThreshold"/>.
+    /// </summary>
     [TestMethod]
     public void MaskedProofsForDifferentWitnessesUnderUniformSeedHaveSimilarDistributionsOnBlindedSections()
     {
@@ -167,6 +179,10 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>Proves the fixture instance against a witness under a deterministic seed and returns the proof's wire bytes.</summary>
+    /// <param name="witness">The witness to prove.</param>
+    /// <param name="seed">The deterministic seed driving the masking randomness.</param>
+    /// <returns>The proof's serialized bytes.</returns>
     private static byte[] ProduceProofBytes(RawR1csWitness witness, ReadOnlySpan<byte> seed)
     {
         using MaskedSpartanProver prover = Fixtures.BuildMaskedProver(hyraxVectorLength: 2);
@@ -184,6 +200,10 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>Builds a satisfying witness <c>(x, y, x·y) = (a, b, a·b)</c> for the fixture multiply circuit.</summary>
+    /// <param name="a">The first factor.</param>
+    /// <param name="b">The second factor.</param>
+    /// <returns>The raw R1CS witness; the caller disposes it.</returns>
     private static RawR1csWitness BuildWitness(int a, int b)
     {
         int scalarSize = Scalar.SizeBytes;
@@ -196,12 +216,16 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>
+    /// Derives a deterministic 16-byte seed from a label and counter via BLAKE3, in place of
+    /// <see cref="Random"/> (which the project's analyzers ban for insecure randomness) — this path is
+    /// for reproducibility, not entropy, and BLAKE3 satisfies both intents.
+    /// </summary>
+    /// <param name="label">The seed's namespace label.</param>
+    /// <param name="counter">The seed's per-namespace counter.</param>
+    /// <returns>A deterministic 16-byte seed.</returns>
     private static byte[] DeriveSeed(string label, int counter)
     {
-        //Deterministic per-(label, counter) 16-byte seed via BLAKE3. Replaces
-        //System.Random which the project's analyzers ban for insecure
-        //randomness — this path is for reproducibility, not entropy, and
-        //BLAKE3 satisfies both intents.
         byte[] labelBytes = System.Text.Encoding.UTF8.GetBytes(label);
         Span<byte> input = stackalloc byte[labelBytes.Length + sizeof(int)];
         labelBytes.AsSpan().CopyTo(input);
@@ -214,12 +238,17 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>
+    /// Runs the prover once to learn the byte ranges of every scoped, expected-blinded proof section, via
+    /// the proof's accessor methods: the accessors return spans into the proof's backing memory, and
+    /// <c>ReadOnlySpan&lt;byte&gt;.Overlaps</c> recovers each section's absolute offset relative to the
+    /// full proof span.
+    /// </summary>
+    /// <param name="sampleProof">A previously produced proof, used only to sanity-check the freshly produced proof's length matches.</param>
+    /// <returns>The located scoped sections.</returns>
+    /// <exception cref="InvalidOperationException">When the freshly produced proof's length disagrees with <paramref name="sampleProof"/>.</exception>
     private static ScopedSection[] ResolveScopedSections(byte[] sampleProof)
     {
-        //Run the prover once to learn the byte ranges of each scoped section
-        //via the proof's accessor methods. The accessors return spans into
-        //the proof's backing memory; ReadOnlySpan.Overlaps recovers the
-        //absolute offset relative to the full proof span.
         using MaskedSpartanProver prover = Fixtures.BuildMaskedProver(hyraxVectorLength: 2);
         using RawR1csInstance instance = Fixtures.BuildOneMultiplyInstance();
         using RawR1csWitness witness = Fixtures.BuildOneMultiplyWitness();
@@ -255,6 +284,11 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>Finds a sub-span's absolute offset within the full proof span.</summary>
+    /// <param name="full">The full proof span.</param>
+    /// <param name="slice">A span that must be a view into <paramref name="full"/>.</param>
+    /// <returns>The element offset of <paramref name="slice"/> within <paramref name="full"/>.</returns>
+    /// <exception cref="InvalidOperationException">When <paramref name="slice"/> is not a view into <paramref name="full"/>.</exception>
     private static int LocateSection(ReadOnlySpan<byte> full, ReadOnlySpan<byte> slice)
     {
         if(!full.Overlaps(slice, out int elementOffset))
@@ -266,6 +300,15 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>
+    /// Computes a chi-squared homogeneity statistic on a 2×256 contingency table for one byte position
+    /// across two sample sets: equal group sizes let the expected count per cell simplify to
+    /// <c>(counts1[b] + counts2[b]) / 2</c>, and empty rows (no sample in either group) contribute nothing.
+    /// </summary>
+    /// <param name="samples1">The first group's sample proofs.</param>
+    /// <param name="samples2">The second group's sample proofs, the same length as <paramref name="samples1"/>.</param>
+    /// <param name="position">The byte position to compare across both groups.</param>
+    /// <returns>The chi-squared statistic for that position.</returns>
     private static double ChiSquaredForPosition(byte[][] samples1, byte[][] samples2, int position)
     {
         Span<int> counts1 = stackalloc int[256];
@@ -277,10 +320,6 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
             counts2[samples2[i][position]]++;
         }
 
-        //Chi-squared homogeneity test on a 2 × 256 contingency table; equal
-        //group sizes (samples1.Length == samples2.Length) simplify expected
-        //counts to (counts1[b] + counts2[b]) / 2 per cell. Empty rows (no
-        //sample in either group) contribute nothing.
         double chi = 0.0;
         for(int b = 0; b < 256; b++)
         {
@@ -299,11 +338,16 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>
+    /// Converts a chi-squared statistic at 255 degrees of freedom to a one-sided upper-tail p-value via
+    /// the Wilson-Hilferty cube-root approximation: for <c>X ~ chi^2(k)</c>, the transform
+    /// <c>((X/k)^(1/3) - (1 - 2/(9k))) / sqrt(2/(9k))</c> is approximately standard normal, with excellent
+    /// accuracy at <c>k = 255</c>.
+    /// </summary>
+    /// <param name="chiSquared">The chi-squared statistic to convert.</param>
+    /// <returns>The one-sided upper-tail p-value.</returns>
     private static double ChiSquaredPValueDf255(double chiSquared)
     {
-        //Wilson-Hilferty cube-root approximation: for X ~ chi^2(k), the
-        //transform ((X/k)^(1/3) - (1 - 2/(9k))) / sqrt(2/(9k)) is approximately
-        //standard normal. Excellent accuracy for k = 255.
         const double Df = 255.0;
         const double VarianceTerm = 2.0 / (9.0 * Df);
         double cubeRoot = Math.Cbrt(chiSquared / Df);
@@ -314,10 +358,11 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>Computes the complementary error function via the Abramowitz and Stegun 7.1.26 rational approximation, whose maximum absolute error (~1.5e-7 across the real line) is plenty for a p-value comparison against 1e-3.</summary>
+    /// <param name="x">The value to compute the complementary error function of.</param>
+    /// <returns>The approximate value of <c>erfc(x)</c>.</returns>
     private static double Erfc(double x)
     {
-        //Abramowitz and Stegun 7.1.26 — max absolute error ~1.5e-7 across
-        //the real line, plenty for a p-value comparison against 1e-3.
         double sign = x < 0.0 ? -1.0 : 1.0;
         double a = Math.Abs(x);
         double t = 1.0 / (1.0 + 0.3275911 * a);
@@ -327,5 +372,9 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     }
 
 
+    /// <summary>One expected-blinded proof section's location within the full proof bytes.</summary>
+    /// <param name="Name">The section's diagnostic name.</param>
+    /// <param name="Offset">The section's absolute byte offset within the full proof.</param>
+    /// <param name="Length">The section's byte length.</param>
     private readonly record struct ScopedSection(string Name, int Offset, int Length);
 }

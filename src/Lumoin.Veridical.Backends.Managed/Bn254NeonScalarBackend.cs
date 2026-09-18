@@ -24,7 +24,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// Add, subtract, and the batch forms are implemented here; multiplication and
-/// inversion are the shared Montgomery path (a separate sub-batch). Only the modulus
+/// inversion are the shared Montgomery path. Only the modulus
 /// constants differ from the BLS12-381 NEON backend.
 /// </para>
 /// </remarks>
@@ -60,10 +60,13 @@ internal static class Bn254NeonScalarBackend
     ];
 
 
-    /// <summary>Per-lane broadcasts of the four limbs of <c>r</c>. Each <see cref="Vector128{T}"/> has the same limb value in both 64-bit lanes.</summary>
+    /// <summary>The least-significant limb of <c>r</c>, broadcast to both 64-bit lanes of a <see cref="Vector128{T}"/>.</summary>
     private static Vector128<ulong> FieldOrderLane0 { get; } = Vector128.Create(0x43e1f593f0000001UL);
+    /// <summary>The second limb of <c>r</c>, broadcast to both 64-bit lanes of a <see cref="Vector128{T}"/>.</summary>
     private static Vector128<ulong> FieldOrderLane1 { get; } = Vector128.Create(0x2833e84879b97091UL);
+    /// <summary>The third limb of <c>r</c>, broadcast to both 64-bit lanes of a <see cref="Vector128{T}"/>.</summary>
     private static Vector128<ulong> FieldOrderLane2 { get; } = Vector128.Create(0xb85045b68181585dUL);
+    /// <summary>The most-significant limb of <c>r</c>, broadcast to both 64-bit lanes of a <see cref="Vector128{T}"/>.</summary>
     private static Vector128<ulong> FieldOrderLane3 { get; } = Vector128.Create(0x30644e72e131a029UL);
 
 
@@ -98,6 +101,7 @@ internal static class Bn254NeonScalarBackend
     public static ScalarBatchMultiplyDelegate GetBatchMultiply() => BatchMultiply;
 
 
+    /// <summary>Adds two scalars modulo <c>r</c>, counting the operation for telemetry.</summary>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -107,6 +111,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Counter-free arithmetic body of <see cref="Add"/>: computes the raw sum and the conditionally reduced sum, then selects branch-free between them.</summary>
     private static void AddCore(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -127,6 +132,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Subtracts two scalars modulo <c>r</c>, counting the operation for telemetry.</summary>
     private static void Subtract(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -136,6 +142,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Counter-free arithmetic body of <see cref="Subtract"/>: computes the raw difference and, when it borrowed, the difference plus <c>r</c>, then selects branch-free between them.</summary>
     private static void SubtractCore(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result)
     {
         Span<ulong> aLimbs = stackalloc ulong[LimbCount];
@@ -156,6 +163,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Multiplies two scalars modulo <c>r</c> via the serial CIOS Montgomery multiply, counting the operation for telemetry.</summary>
     private static void Multiply(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -168,6 +176,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Inverts a scalar modulo <c>r</c> by Fermat exponentiation, counting the operation for telemetry.</summary>
     private static void Invert(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -177,6 +186,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Negates a scalar modulo <c>r</c>, counting the operation for telemetry.</summary>
     private static void Negate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         EnsureSupported();
@@ -197,6 +207,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Adds many scalar pairs, processing two at a time via <see cref="AddPair"/> with a single-element fallback through <see cref="AddCore"/> for a trailing odd element, counting the operation for telemetry.</summary>
     private static void BatchAdd(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -234,6 +245,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Subtracts many scalar pairs, processing two at a time via <see cref="SubtractPair"/> with a single-element fallback through <see cref="SubtractCore"/> for a trailing odd element, counting the operation for telemetry.</summary>
     private static void BatchSubtract(
         ReadOnlySpan<byte> minuendsConcatenated,
         ReadOnlySpan<byte> subtrahendsConcatenated,
@@ -320,6 +332,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>SIMD inner loop: subtracts two scalars in parallel, two 64-bit lanes per <see cref="Vector128{T}"/>, one limb position per register.</summary>
     private static void SubtractPair(
         ReadOnlySpan<byte> aPair,
         ReadOnlySpan<byte> bPair,
@@ -403,6 +416,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Loads a canonical big-endian scalar into four little-endian 64-bit limbs.</summary>
     private static void LoadCanonicalToLimbs(ReadOnlySpan<byte> canonical, Span<ulong> limbs)
     {
         for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
@@ -413,6 +427,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Writes four little-endian 64-bit limbs as a canonical big-endian scalar.</summary>
     private static void StoreLimbsToCanonical(ReadOnlySpan<ulong> limbs, Span<byte> canonical)
     {
         for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
@@ -423,6 +438,8 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Adds two 256-bit limb tuples with carry propagation, scalar (non-SIMD) width, used by <see cref="AddCore"/>'s single-scalar path.</summary>
+    /// <returns><see langword="true"/> when the final limb carried out.</returns>
     private static bool AddWithCarry256(ReadOnlySpan<ulong> a, ReadOnlySpan<ulong> b, Span<ulong> result)
     {
         UInt128 carry = UInt128.Zero;
@@ -437,6 +454,8 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Subtracts one 256-bit limb tuple from another in place with borrow propagation, scalar (non-SIMD) width, used by <see cref="SubtractCore"/>'s single-scalar path.</summary>
+    /// <returns><see langword="true"/> when the final limb borrowed.</returns>
     private static bool SubtractWithBorrow256(Span<ulong> a, ReadOnlySpan<ulong> b)
     {
         ulong borrow = 0UL;
@@ -481,6 +500,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Loads two canonical scalars into four limb vectors, each vector holding one limb position with a scalar's limb in each 64-bit lane.</summary>
     private static void LoadPairToLimbVectors(
         ReadOnlySpan<byte> pairBytes,
         out Vector128<ulong> limb0,
@@ -502,6 +522,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Writes four limb-position vectors back as two canonical scalars, the inverse of <see cref="LoadPairToLimbVectors"/>.</summary>
     private static void StoreLimbVectorsToPair(
         Vector128<ulong> limb0,
         Vector128<ulong> limb1,
@@ -522,6 +543,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Validates that three batched scalar buffers each hold exactly <paramref name="count"/> elements of <paramref name="stride"/> bytes, throwing otherwise.</summary>
     private static void ValidateBatchedLengths(
         ReadOnlySpan<byte> first,
         ReadOnlySpan<byte> second,
@@ -538,6 +560,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Throws when the host CPU lacks AArch64 NEON, guarding every entry point before it touches AdvSimd intrinsics.</summary>
     private static void EnsureSupported()
     {
         if(!AdvSimd.Arm64.IsSupported)
@@ -548,16 +571,20 @@ internal static class Bn254NeonScalarBackend
     }
 
 
-    //Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS, 2-wide)
-
+    /// <summary>The number of 32-bit limbs that compose a BN254 scalar (256 bits / 32 bits per limb) in the lane-interleaved batch Montgomery multiply.</summary>
     private const int Limb32Count = 8;
 
+    /// <summary>A per-lane mask keeping only the low 32 bits of a 64-bit lane, isolating one 32-bit limb after a widening add or multiply.</summary>
     private static Vector128<ulong> Low32Mask { get; } = Vector128.Create(0xFFFFFFFFUL);
+    /// <summary>The Montgomery reduction constant <c>n′</c> (32-bit form), broadcast to both lanes for the lane-interleaved CIOS reduction.</summary>
     private static Vector128<ulong> NPrime32Broadcast { get; } = Vector128.Create((ulong)Bn254MontgomeryParameters.NPrime32);
+    /// <summary>The BN254 modulus as eight 32-bit limbs, each broadcast to both lanes, for the lane-interleaved CIOS reduction.</summary>
     private static Vector128<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
+    /// <summary>The Montgomery constant <c>R²</c> as eight 32-bit limbs, each broadcast to both lanes, used to lift an operand into the Montgomery domain before multiplying.</summary>
     private static Vector128<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
 
 
+    /// <summary>Broadcasts each 32-bit limb of a constant to both 64-bit lanes of its own <see cref="Vector128{T}"/>.</summary>
     private static Vector128<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)
     {
         var vectors = new Vector128<ulong>[Limb32Count];
@@ -570,12 +597,14 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Widening 32×32→64 multiply, lane-wise: each lane's low 32 bits of <paramref name="a"/> and <paramref name="b"/> multiply into that lane's full 64-bit result.</summary>
     private static Vector128<ulong> Multiply32(Vector128<ulong> a, Vector128<ulong> b)
     {
         return AdvSimd.MultiplyWideningLower(AdvSimd.ExtractNarrowingLower(a), AdvSimd.ExtractNarrowingLower(b));
     }
 
 
+    /// <summary>Multiplies many scalar pairs, processing two at a time via the lane-interleaved 32-bit-limb <see cref="MultiplyPair"/> with a single-element fallback through the shared serial Montgomery multiply for a trailing odd element, counting the operation for telemetry.</summary>
     private static void BatchMultiply(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -613,6 +642,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>SIMD inner loop: Montgomery-multiplies two scalar pairs, first lifting each left operand into the Montgomery domain via <see cref="RSquared32Broadcast"/>, then multiplying by the right operand.</summary>
     private static void MultiplyPair(
         ReadOnlySpan<byte> aPair,
         ReadOnlySpan<byte> bPair,
@@ -633,6 +663,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Lane-interleaved CIOS Montgomery multiplication of two 32-bit-limb operand pairs, reducing modulo the BN254 modulus one 32-bit digit at a time.</summary>
     private static void MontgomeryMultiplyPair(
         ReadOnlySpan<Vector128<ulong>> x,
         ReadOnlySpan<Vector128<ulong>> y,
@@ -680,6 +711,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Conditionally subtracts the modulus from a lane-interleaved CIOS accumulator pair, selecting the reduced value whenever the accumulator overflowed its top limb or did not need to borrow.</summary>
     private static void ConditionalSubtractModulusPair(ReadOnlySpan<Vector128<ulong>> t, Span<Vector128<ulong>> result)
     {
         Vector128<ulong> mask = Low32Mask;
@@ -705,6 +737,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Loads two canonical scalars into eight 32-bit-limb-position vectors, each vector holding one limb position with a scalar's limb in each 64-bit lane.</summary>
     private static void LoadPairTo32LimbVectors(ReadOnlySpan<byte> pairBytes, Span<Vector128<ulong>> limbVectors)
     {
         Span<uint> scalar0 = stackalloc uint[Limb32Count];
@@ -721,6 +754,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Writes eight 32-bit-limb-position vectors back as two canonical scalars, the inverse of <see cref="LoadPairTo32LimbVectors"/>.</summary>
     private static void Store32LimbVectorsToPair(ReadOnlySpan<Vector128<ulong>> limbVectors, Span<byte> pairBytes)
     {
         int stride = Scalar.SizeBytes;
@@ -737,6 +771,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Loads a canonical big-endian scalar into eight little-endian 32-bit limbs.</summary>
     private static void LoadCanonicalTo32Limbs(ReadOnlySpan<byte> canonical, Span<uint> limbs)
     {
         for(int i = 0; i < Limb32Count; i++)
@@ -746,6 +781,7 @@ internal static class Bn254NeonScalarBackend
     }
 
 
+    /// <summary>Writes eight little-endian 32-bit limbs as a canonical big-endian scalar.</summary>
     private static void StoreCanonicalFrom32Limbs(ReadOnlySpan<uint> limbs, Span<byte> canonical)
     {
         for(int i = 0; i < Limb32Count; i++)

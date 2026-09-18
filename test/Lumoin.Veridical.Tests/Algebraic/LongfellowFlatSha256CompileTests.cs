@@ -19,11 +19,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The telemetry pins carry the reference compiler's size statistics for
-/// <c>assert_transform_block</c> (unpacked) and the all-packed pack-two shape, regenerated from the
-/// pinned reference commit by running its own <c>block_size_p256</c>/<c>block_size_p256_2</c> tests
-/// in the longfellow-ref Docker oracle (the figures in <c>flatsha256_circuit.h</c>'s header comment
-/// are stale): depth, wire, input, output, copy-overhead, quad-term, eliminated-subexpression and
+/// The telemetry pins carry the reference compiler's published size statistics for
+/// <c>assert_transform_block</c> (unpacked) and the all-packed pack-two shape: depth, wire, input,
+/// output, copy-overhead, quad-term, eliminated-subexpression and
 /// not-needed counts. Matching every counter pins the entire Logic-to-scheduler pipeline — gate
 /// arithmetization, fold association trees, common-subexpression structure, dead-node elimination
 /// and copy-wire placement — against the reference compiler without a circuit blob. The input
@@ -40,8 +38,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowFlatSha256CompileTests
+internal sealed class LongfellowFlatSha256CompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
     /// <summary>The number of 32-bit message words in one SHA-256 block.</summary>
     private const int InputWordCount = 16;
 
@@ -57,61 +73,52 @@ internal sealed class LongfellowFlatSha256CompileTests
     /// <summary>The bit width of one SHA-256 word.</summary>
     private const int WordWidth = 32;
 
-    /// <summary>
-    /// The unpacked block circuit's reference depth upper bound, regenerated from the pinned
-    /// reference (3dfaac7) by running <c>FlatSHA256_Circuit.block_size_p256</c> in the
-    /// longfellow-ref Docker oracle; the figure in <c>flatsha256_circuit.h</c>'s header comment is
-    /// stale and does not reproduce at the pinned commit even in the reference itself.
-    /// </summary>
+    /// <summary>The unpacked block circuit's reference depth upper bound, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedDepth = 7;
 
-    /// <summary>The unpacked block circuit's reference wire count, regenerated the same way as <see cref="UnpackedDepth"/>.</summary>
+    /// <summary>The unpacked block circuit's reference wire count, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedWireCount = 51334;
 
-    /// <summary>The unpacked block circuit's reference input count, regenerated the same way as <see cref="UnpackedDepth"/>.</summary>
+    /// <summary>The unpacked block circuit's reference input count, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedInputCount = 6657;
 
-    /// <summary>The unpacked block circuit's reference output count, regenerated the same way as <see cref="UnpackedDepth"/>.</summary>
+    /// <summary>The unpacked block circuit's reference output count, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedOutputCount = 128;
 
-    /// <summary>The unpacked block circuit's reference copy-wire overhead count, regenerated the same way as <see cref="UnpackedDepth"/>.</summary>
+    /// <summary>The unpacked block circuit's reference copy-wire overhead count, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedCopyOverheadCount = 7020;
 
-    /// <summary>The unpacked block circuit's reference quad-term count, regenerated the same way as <see cref="UnpackedDepth"/>.</summary>
+    /// <summary>The unpacked block circuit's reference quad-term count, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedQuadTermCount = 187316;
 
-    /// <summary>The unpacked block circuit's reference eliminated-subexpression count, regenerated the same way as <see cref="UnpackedDepth"/>.</summary>
+    /// <summary>The unpacked block circuit's reference eliminated-subexpression count, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedEliminatedSubexpressionCount = 11815;
 
-    /// <summary>The unpacked block circuit's reference not-needed count, regenerated the same way as <see cref="UnpackedDepth"/>.</summary>
+    /// <summary>The unpacked block circuit's reference not-needed count, matching the reference compiler's published size statistics.</summary>
     private const int UnpackedNotNeededCount = 132324;
 
-    /// <summary>
-    /// The all-packed pack-two block circuit's reference depth upper bound, regenerated the same way
-    /// as <see cref="UnpackedDepth"/> by running <c>FlatSHA256_Circuit.block_size_p256_2</c> in the
-    /// longfellow-ref Docker oracle.
-    /// </summary>
+    /// <summary>The all-packed pack-two block circuit's reference depth upper bound, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedDepth = 9;
 
-    /// <summary>The all-packed pack-two block circuit's reference wire count, regenerated the same way as <see cref="AllPackedDepth"/>.</summary>
+    /// <summary>The all-packed pack-two block circuit's reference wire count, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedWireCount = 66760;
 
-    /// <summary>The all-packed pack-two block circuit's reference input count, regenerated the same way as <see cref="AllPackedDepth"/>.</summary>
+    /// <summary>The all-packed pack-two block circuit's reference input count, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedInputCount = 3585;
 
-    /// <summary>The all-packed pack-two block circuit's reference output count, regenerated the same way as <see cref="AllPackedDepth"/>.</summary>
+    /// <summary>The all-packed pack-two block circuit's reference output count, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedOutputCount = 128;
 
-    /// <summary>The all-packed pack-two block circuit's reference copy-wire overhead count, regenerated the same way as <see cref="AllPackedDepth"/>.</summary>
+    /// <summary>The all-packed pack-two block circuit's reference copy-wire overhead count, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedCopyOverheadCount = 10147;
 
-    /// <summary>The all-packed pack-two block circuit's reference quad-term count, regenerated the same way as <see cref="AllPackedDepth"/>.</summary>
+    /// <summary>The all-packed pack-two block circuit's reference quad-term count, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedQuadTermCount = 217040;
 
-    /// <summary>The all-packed pack-two block circuit's reference eliminated-subexpression count, regenerated the same way as <see cref="AllPackedDepth"/>.</summary>
+    /// <summary>The all-packed pack-two block circuit's reference eliminated-subexpression count, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedEliminatedSubexpressionCount = 30247;
 
-    /// <summary>The all-packed pack-two block circuit's reference not-needed count, regenerated the same way as <see cref="AllPackedDepth"/>.</summary>
+    /// <summary>The all-packed pack-two block circuit's reference not-needed count, matching the reference compiler's published size statistics.</summary>
     private const int AllPackedNotNeededCount = 153828;
 
     /// <summary>
@@ -134,7 +141,7 @@ internal sealed class LongfellowFlatSha256CompileTests
     [TestMethod]
     public void TheUnpackedBlockCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileUnpackedBlockCircuit(NewFp256Bundle(), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileUnpackedBlockCircuit(NewFp256Bundle(CircuitScope), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(UnpackedDepth, builder.DepthUpperBound, "The unpacked block circuit's depth must match the reference compiler's.");
         Assert.AreEqual(UnpackedWireCount, builder.WireCount, "The unpacked block circuit's wire count must match the reference compiler's.");
@@ -151,7 +158,7 @@ internal sealed class LongfellowFlatSha256CompileTests
     [TestMethod]
     public void TheAllPackedBlockCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileAllPackedBlockCircuit(NewFp256Bundle(), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileAllPackedBlockCircuit(NewFp256Bundle(CircuitScope), privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(AllPackedDepth, builder.DepthUpperBound, "The all-packed block circuit's depth must match the reference compiler's.");
         Assert.AreEqual(AllPackedWireCount, builder.WireCount, "The all-packed block circuit's wire count must match the reference compiler's.");
@@ -164,14 +171,14 @@ internal sealed class LongfellowFlatSha256CompileTests
     }
 
 
-    /// <summary>Pins that the kernel-compiled all-packed SHA-256 block circuit proves and verifies the padded <c>"abc"</c> statement end to end over GF(2^128), and that a tampered proof is rejected.</summary>
+    /// <summary>Pins that the all-packed SHA-256 block witness declares its packed schedule, register and final-state wires in the reference's interleaved order.</summary>
     [TestMethod]
     public void ThePackedBlockWitnessDeclaresItsWiresInTheReferenceOrder()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
-        var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        LongfellowLogicFieldOperations field = NewGfBundle(CircuitScope);
+        var builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -195,10 +202,11 @@ internal sealed class LongfellowFlatSha256CompileTests
     }
 
 
+    /// <summary>Pins that the kernel-compiled all-packed SHA-256 block circuit proves and verifies the padded <c>"abc"</c> statement end to end over GF(2^128), and that a tampered proof is rejected.</summary>
     [TestMethod]
     public void TheGfShaBlockCircuitProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
+        LongfellowLogicFieldOperations field = NewGfBundle(CircuitScope);
         LongfellowSumcheckCircuit circuit = CompileAllPackedBlockCircuit(field, privateWitness: true, out _);
         byte[] witnessColumn = BuildAllPackedWitnessColumn(field, circuit.InputCount);
 
@@ -218,7 +226,7 @@ internal sealed class LongfellowFlatSha256CompileTests
     [TestMethod]
     public void AnUnsatisfyingWitnessIsUnprovableOverTheGfShaBlockCircuit()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
+        LongfellowLogicFieldOperations field = NewGfBundle(CircuitScope);
         LongfellowSumcheckCircuit circuit = CompileAllPackedBlockCircuit(field, privateWitness: true, out _);
         byte[] witnessColumn = BuildAllPackedWitnessColumn(field, circuit.InputCount);
 
@@ -227,7 +235,10 @@ internal sealed class LongfellowFlatSha256CompileTests
         var encoder = new LongfellowBitPluckerEncoder(field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         ComputeBlockWitness(out _, out LongfellowFlatSha256BlockWitness blockWitness);
         int finalStateFirstElementWire = 1 + (InputWordCount * WordWidth) + (StateWordCount * encoder.PackedV32ElementCount);
-        encoder.MakePackedV32(blockWitness.FinalState[0] ^ 1U)[0].Span.CopyTo(witnessColumn.AsSpan(finalStateFirstElementWire * ScalarSize, ScalarSize));
+        using IMemoryOwner<byte> packedOwner = encoder.Pool.Rent(encoder.PackedV32ElementCount * ScalarSize);
+        Span<byte> packed = packedOwner.Memory.Span[..(encoder.PackedV32ElementCount * ScalarSize)];
+        encoder.MakePackedV32(blockWitness.FinalState[0] ^ 1U, packed);
+        packed[..ScalarSize].CopyTo(witnessColumn.AsSpan(finalStateFirstElementWire * ScalarSize, ScalarSize));
 
         Assert.ThrowsExactly<InvalidOperationException>(
             () => ProduceGfProof(circuit, witnessColumn, GfTranscriptSeed),
@@ -239,7 +250,7 @@ internal sealed class LongfellowFlatSha256CompileTests
     [TestMethod]
     public void TheFp256ShaBlockCircuitProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewFp256Bundle();
+        LongfellowLogicFieldOperations field = NewFp256Bundle(CircuitScope);
         LongfellowSumcheckCircuit circuit = CompileUnpackedBlockCircuit(field, privateWitness: true, out _);
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Fp256ElementBytes, Production16SubFieldBytes);
@@ -270,11 +281,11 @@ internal sealed class LongfellowFlatSha256CompileTests
     /// <param name="privateWitness">Whether the witness inputs after the message words are declared private.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileUnpackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileUnpackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, UnpackedPluckerLogPointCount);
         var sha = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -313,7 +324,7 @@ internal sealed class LongfellowFlatSha256CompileTests
 
         sha.AssertTransformBlock(blockWords, initialState, scheduleExtension, registerEWitness, registerAWitness, finalState);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -326,11 +337,11 @@ internal sealed class LongfellowFlatSha256CompileTests
     /// <param name="privateWitness">Whether the witness inputs after the message words are declared private.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileAllPackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileAllPackedBlockCircuit(LongfellowLogicFieldOperations field, bool privateWitness, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var sha = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -369,7 +380,7 @@ internal sealed class LongfellowFlatSha256CompileTests
 
         sha.AssertTransformBlock(blockWords, packedInitialState, packedSchedule, packedRegisterE, packedRegisterA, packedFinalState);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -511,11 +522,7 @@ internal sealed class LongfellowFlatSha256CompileTests
     /// <param name="word">The word to encode.</param>
     private static void WritePackedWord(byte[] column, ref int wire, LongfellowBitPluckerEncoder encoder, uint word)
     {
-        ReadOnlyMemory<byte>[] packed = encoder.MakePackedV32(word);
-        foreach(ReadOnlyMemory<byte> element in packed)
-        {
-            element.Span.CopyTo(column.AsSpan(wire * ScalarSize, ScalarSize));
-            wire++;
-        }
+        encoder.MakePackedV32(word, column.AsSpan(wire * ScalarSize, encoder.PackedV32ElementCount * ScalarSize));
+        wire += encoder.PackedV32ElementCount;
     }
 }

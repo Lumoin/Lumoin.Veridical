@@ -15,17 +15,38 @@
     <IsTestApplication>true</IsTestApplication>
     <MSTestAnalysisMode>Recommended</MSTestAnalysisMode>
     <!--
-      The tests mimic an application consuming real credentials, so they use the real
-      serialization libraries (System.Formats.Cbor to parse mdoc DeviceResponses). The
-      library itself stays serialization-free and is fed parsed bytes/offsets (or a parse
-      delegate) by its caller, so only this test project opts out of the serialization ban.
+      The tests mimic an application consuming real credentials and artifacts, so they read
+      their JSON fixtures (Wycheproof vectors, predicate-proof envelopes) with System.Text.Json.
+      The library itself stays serialization-free and is fed parsed bytes/offsets (or a parse
+      delegate) by its caller, so this test project opts out of the serialization ban. Its mdoc
+      CBOR goes through Lumoin.Veritas.Cbor, which the ban does not name.
       -->
     <EnableSerializationBan>false</EnableSerializationBan>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(VERIDICAL_STRYKER_RUN)' == 'true'">
+    <!--
+      The mutation runner drives the suite through the VsTest host, so the
+      MSTest SDK's own test host and its dotnet test integration are switched
+      off for that build only. That build restores outside the package lock
+      file because the VsTest host brings in a package the ordinary build
+      does not reference. The lock-file path is redirected to a location
+      under the intermediate output directory because NuGet refuses a
+      disabled lock file that still exists at its resolved path, and nothing
+      is ever written there. The testing-extensions profile is cleared
+      because the VsTest targets reject a non-empty profile.
+      -->
+    <UseVSTest>true</UseVSTest>
+    <EnableMSTestRunner>false</EnableMSTestRunner>
+    <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
+    <TestingExtensionsProfile></TestingExtensionsProfile>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <NuGetLockFilePath>$(BaseIntermediateOutputPath)stryker-packages.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="CsCheck" />
-    <PackageReference Include="System.Formats.Cbor" />
+    <PackageReference Include="Lumoin.Veritas.Cbor" />
     <PackageReference Include="LiquidTestReports.Markdown" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="ModelContextProtocol" />

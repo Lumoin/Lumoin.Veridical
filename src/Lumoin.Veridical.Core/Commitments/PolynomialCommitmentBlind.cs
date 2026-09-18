@@ -12,8 +12,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </summary>
 /// <remarks>
 /// <para>
-/// For Hyrax this is the per-row Pedersen blinding-factor vector (today's
-/// <c>HyraxOpeningWitness</c>). Folding schemes combine blinds
+/// For Hyrax this is the per-row Pedersen blinding-factor vector, <c>HyraxOpeningWitness</c>.
+/// Folding schemes combine blinds
 /// homomorphically alongside the commitments they blind, so the blind is
 /// a first-class artifact of the surface, not an opaque prover detail.
 /// </para>
@@ -32,6 +32,11 @@ public sealed class PolynomialCommitmentBlind: SensitiveMemory
     public CommitmentScheme Scheme { get; }
 
 
+    /// <summary>Wraps an already-tagged, already-rented buffer as a blind. Takes ownership of <paramref name="owner"/>.</summary>
+    /// <param name="owner">The rented buffer holding the blind bytes.</param>
+    /// <param name="curve">The curve identifying the scalar field the blinding factors live in.</param>
+    /// <param name="scheme">The commitment scheme that produced this blind.</param>
+    /// <param name="tag">The identifying tag, built by <see cref="CreateTag"/>.</param>
     internal PolynomialCommitmentBlind(
         IMemoryOwner<byte> owner,
         CurveParameterSet curve,

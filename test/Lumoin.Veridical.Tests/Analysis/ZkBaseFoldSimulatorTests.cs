@@ -17,17 +17,18 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Analysis;
 
 /// <summary>
-/// The programmable-Fiat-Shamir-oracle simulator gates — the literal
-/// real-versus-simulated proof test the statistical-mask design notes §7 recorded
-/// as the open follow-on. <see cref="ZkBaseFoldOpeningSimulator"/> produces,
+/// The programmable-Fiat-Shamir-oracle simulator gates — a literal
+/// real-versus-simulated proof test for the statistical mask's hiding claim.
+/// <see cref="ZkBaseFoldOpeningSimulator"/> produces,
 /// from the public statement alone, a commitment and opening that a verifier
 /// holding the programmed oracle accepts; the structural gates assert the
 /// acceptance and that the programming is doing real work (the same output
 /// is rejected under the real oracle, where the patched σ breaks every
 /// post-divergence challenge derivation). The two-sample experiment then
-/// compares real and simulated proof bytes; per the established doctrine its
-/// verdicts are logged, not asserted — a Detected or NotDetected finding is
-/// an honest outcome at test-suite sample scales.
+/// compares real and simulated proof bytes; its verdicts are logged, not
+/// asserted, because a Detected or NotDetected finding is a legitimate
+/// outcome of the statistical test at test-suite sample scales, not
+/// evidence of a defect.
 /// </summary>
 [TestClass]
 internal sealed class ZkBaseFoldSimulatorTests
@@ -35,36 +36,68 @@ internal sealed class ZkBaseFoldSimulatorTests
     /// <summary>Test context, for emitting the two-sample findings to the test log.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BLS12-381 scalar reduction backend.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 scalar addition backend.</summary>
     private static ScalarAddDelegate Add { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+
+    /// <summary>The BLS12-381 scalar subtraction backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+
+    /// <summary>The BLS12-381 scalar multiplication backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+
+    /// <summary>The BLS12-381 scalar inversion backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = Bls12Curve381BigIntegerScalarReference.GetInvert();
+
+    /// <summary>The entropy-sourced scalar sampler behind every mask and salt.</summary>
     private static ScalarRandomDelegate Random { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The BLS12-381 hash-to-scalar backend.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The independent big-integer MLE evaluation reference.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The byte size of one field element.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The wired Merkle digest size: BLAKE3's 32 bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The query count every provider in this suite is built with.</summary>
     private const int QueryCount = 8;
+
+    /// <summary>The polynomial variable count every simulated and real proof in this suite commits at.</summary>
     private const int VariableCount = 2;
-    //The minimal budget-meeting lift for d = 2 at QueryCount = 8
-    //(GetMinimumExtraVariableCount); the provider refuses under-budget shapes.
+
+    /// <summary>The minimal budget-meeting lift for d = 2 at QueryCount = 8 (<c>GetMinimumExtraVariableCount</c>); the provider refuses under-budget shapes.</summary>
     private const int ExtraVariableCount = 5;
-    //Two-sample scale: each sample is a full commit+open, so this trades
-    //statistical power against suite runtime exactly as the sibling
-    //hiding-validation experiments do.
+
+    /// <summary>Two-sample scale: each sample is a full commit+open, so this trades statistical power against suite runtime exactly as the sibling hiding-validation experiments do.</summary>
     private const int SampleCount = 24;
-    //Byte-value bins for the per-proof histograms.
+
+    /// <summary>Byte-value bins for the per-proof histograms.</summary>
     private const int ByteValueCount = 256;
 
+    /// <summary>The curve every artifact is tagged with.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+
+    /// <summary>The code seed every provider in this suite derives its encoder from.</summary>
     private static byte[] ProviderSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.fs-simulator.code.v1");
 
 
+    /// <summary>Checks that simulated opening verifies under the programmed oracle.</summary>
     [TestMethod]
     public void SimulatedOpeningVerifiesUnderTheProgrammedOracle()
     {
@@ -85,7 +118,7 @@ internal sealed class ZkBaseFoldSimulatorTests
             {
                 using(opening)
                 {
-                    using PolynomialCommitmentProvider replayProvider = NewProvider(oracle.CreateReplaySqueeze());
+                    using PolynomialCommitmentProvider replayProvider = NewProvider(pool, oracle.CreateReplaySqueeze());
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     Assert.IsTrue(
                         replayProvider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
@@ -104,6 +137,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>Checks that simulated opening is rejected by the real oracle.</summary>
     [TestMethod]
     public void SimulatedOpeningIsRejectedByTheRealOracle()
     {
@@ -125,7 +159,7 @@ internal sealed class ZkBaseFoldSimulatorTests
             {
                 using(opening)
                 {
-                    using PolynomialCommitmentProvider realProvider = NewProvider(Squeeze);
+                    using PolynomialCommitmentProvider realProvider = NewProvider(pool, Squeeze);
                     using FiatShamirTranscript verifyTx = NewTranscript();
                     Assert.IsFalse(
                         realProvider.VerifyEvaluation(commitment, point, claimedValue, opening, verifyTx, pool),
@@ -140,16 +174,17 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>Checks that real and simulated openings compare in two sample tests.</summary>
     [TestMethod]
     public void RealAndSimulatedOpeningsCompareInTwoSampleTests()
     {
-        //The literal real-versus-simulated comparison (design doc §5): mean
+        //The literal real-versus-simulated comparison: mean
         //proof byte per opening under Kolmogorov-Smirnov, and per-proof byte
         //histograms under the chi-squared statistic with the LABEL-PERMUTATION
-        //null — the analytic chi-squared p-value is invalid here (the batch SM
-        //finding: intra-proof byte dependence makes it reject even
-        //witness-independent labelings). Verdicts logged, not asserted, per
-        //the sibling hiding-validation doctrine.
+        //null — the analytic chi-squared p-value is invalid here, because
+        //intra-proof byte dependence makes it reject even witness-independent
+        //labelings, so no analytic threshold applies here: verdicts are
+        //logged for a human to read, rather than asserted.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         Scalar[] point = BuildPoint(VariableCount, salt: 59, pool);
         try
@@ -164,7 +199,7 @@ internal sealed class ZkBaseFoldSimulatorTests
                 //A real proof of a real witness.
                 using(MultilinearExtension witness = BuildRandomMle(VariableCount, salt: 1000 + i, pool))
                 {
-                    using PolynomialCommitmentProvider provider = NewProvider(Squeeze);
+                    using PolynomialCommitmentProvider provider = NewProvider(pool, Squeeze);
                     (PolynomialCommitment commitment, PolynomialCommitmentBlind blind) = provider.Commit(witness, pool);
                     using(commitment)
                     {
@@ -224,6 +259,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>Pins the oracle primitive itself: recorded responses replay in order regardless of the replay-time input, the recorded inputs are inspectable, and replaying past the recorded count throws <see cref="InvalidOperationException"/>.</summary>
     [TestMethod]
     public void RecordingAndReplayRoundTripAndReplayIsStrict()
     {
@@ -260,9 +296,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
-    //Evaluates a fresh real witness at the point and returns y = f(z); the
-    //witness itself does not outlive this method — the statement is real,
-    //the witness is unavailable to the simulator.
+    /// <summary>Evaluates a fresh real witness at the point and returns y = f(z); the witness itself does not outlive this method — the statement is real, the witness is unavailable to the simulator.</summary>
     private static Scalar EvaluateAndDiscardWitness(Scalar[] point, int witnessSalt, BaseMemoryPool pool)
     {
         using MultilinearExtension witness = BuildRandomMle(VariableCount, witnessSalt, pool);
@@ -271,6 +305,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>Adds a proof's bytes to a value histogram and returns its mean byte.</summary>
     private static double Accumulate(ReadOnlySpan<byte> proof, long[] histogram)
     {
         double sum = 0;
@@ -284,14 +319,18 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider(FiatShamirSqueezeDelegate squeeze)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="squeeze">The transcript squeeze backend.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool, FiatShamirSqueezeDelegate squeeze)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             ProviderSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, ExtraVariableCount, DigestSizeBytes);
+            Random, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes);
     }
 
 
+    /// <summary>A fresh transcript under the BaseFold domain label with empty context.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -303,6 +342,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>A deterministic dense MLE over the boolean cube.</summary>
     private static MultilinearExtension BuildRandomMle(int variableCount, int salt, BaseMemoryPool pool)
     {
         int evaluationCount = 1 << variableCount;
@@ -321,6 +361,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>A deterministic evaluation point, one scalar per variable.</summary>
     private static Scalar[] BuildPoint(int variableCount, int salt, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -339,6 +380,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>Disposes every coordinate of an evaluation point.</summary>
     private static void DisposePoint(Scalar[] point)
     {
         foreach(Scalar coordinate in point)
@@ -348,6 +390,7 @@ internal sealed class ZkBaseFoldSimulatorTests
     }
 
 
+    /// <summary>The two-to-one compression: BLAKE3 over the concatenated children.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];

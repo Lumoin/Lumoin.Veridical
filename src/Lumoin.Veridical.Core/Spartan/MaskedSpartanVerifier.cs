@@ -8,7 +8,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// weighted openings, re-derives the blending scalars <c>ρ_outer</c>
 /// and <c>ρ_inner</c> from the Fiat-Shamir transcript, derives each
 /// mask's terminal value from the masked chain, and checks one
-/// weighted opening per mask against <c>v = g(r) + σ_F</c> (design v3).
+/// weighted opening per mask against <c>v = g(r) + σ_F</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,6 +22,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// </remarks>
 public sealed class MaskedSpartanVerifier: IDisposable
 {
+    /// <summary>The wrapped verifying key, or <see langword="null"/> once this verifier has been disposed.</summary>
     private SpartanVerifyingKey? verifyingKey;
 
 

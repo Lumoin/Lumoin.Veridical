@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Numerics;
 using System.Text;
@@ -18,8 +19,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// witness generator, and the block-capacity guard rejects an oversized token.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowJwtCircuitTests
+internal sealed class LongfellowJwtCircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve, witness and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The field element width in bytes used for every column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -35,8 +52,11 @@ internal sealed class LongfellowJwtCircuitTests
     /// <summary>The P-256 base field's modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The cached Curve owner for this test instance.</summary>
+    private LongfellowEllipticCurveParameters? curve;
+
     /// <summary>The curve constants shared by the circuit and the witness generator.</summary>
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
+    private LongfellowEllipticCurveParameters Curve => curve ??= CircuitScope.Track(LongfellowEllipticCurveParameters.CreateP256(CircuitScope.Pool));
 
     /// <summary>The order-field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate OrderMultiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
@@ -53,8 +73,8 @@ internal sealed class LongfellowJwtCircuitTests
     public void TheReferenceTokenSatisfiesTheStatementInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
 
         LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
         byte[] token = Encoding.ASCII.GetBytes(vector.Token);
@@ -112,10 +132,10 @@ internal sealed class LongfellowJwtCircuitTests
 
     /// <summary>Builds the witness generator over the production Montgomery field backends at the evaluation block capacity.</summary>
     /// <param name="field">The base-field bundle.</param>
-    /// <returns>The generator.</returns>
-    private static LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
+    /// <returns>The generator borrowed until this test scope is disposed.</returns>
+    private LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
     {
-        return new LongfellowJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, EvalShaBlocks);
+        return CircuitScope.CreateJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, EvalShaBlocks);
     }
 
 
@@ -142,6 +162,8 @@ internal sealed class LongfellowJwtCircuitTests
         generator.FillWitness(column);
 
         int cursor = 0;
+
+        //Interns the next canonical element in the column as a constant wire and advances the cursor.
         int NextElement()
         {
             int wire = backend.Constant(column.AsSpan(cursor * ScalarSize, ScalarSize));
@@ -150,6 +172,7 @@ internal sealed class LongfellowJwtCircuitTests
             return wire;
         }
 
+        //Reads the next bitCount canonical bit-region elements in the column back into an integer, least significant bit first, and advances the cursor.
         ulong NextValue(int bitCount)
         {
             ulong value = 0;
@@ -285,7 +308,9 @@ internal sealed class LongfellowJwtCircuitTests
     /// <returns>The wire bundle.</returns>
     private static LongfellowJwtOpenedAttributeWires BuildAttributeWires(LongfellowLogic logic, LongfellowJwtOpenedAttribute attribute)
     {
-        byte[] pattern = attribute.BuildPattern();
+        using IMemoryOwner<byte> owner = logic.Field.Pool.Rent(attribute.PatternLength);
+        Span<byte> pattern = owner.Memory.Span[..attribute.PatternLength];
+        attribute.BuildPattern(pattern);
         var patternWires = new LongfellowBitWire[LongfellowJwtOpenedAttributeWires.PatternLength][];
         for(int i = 0; i < patternWires.Length; i++)
         {
@@ -300,14 +325,14 @@ internal sealed class LongfellowJwtCircuitTests
 
     /// <summary>Builds the P-256 base field bundle over the production Montgomery backend delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp256Bundle()
+    private LongfellowLogicFieldOperations NewFp256Bundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp256(
+        return CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
             P256BaseFieldMontgomeryBackend.GetAdd(),
             P256BaseFieldMontgomeryBackend.GetSubtract(),
             P256BaseFieldMontgomeryBackend.GetMultiply(),
             P256BaseFieldMontgomeryBackend.GetInvert(),
-            Canonical(Prime - 1));
+            Canonical(Prime - 1), CircuitScope.Pool));
     }
 
 

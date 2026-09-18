@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Tests.Longfellow;
 [TestClass]
 internal sealed class LongfellowJwsCompactTests
 {
-    /// <summary>The issuer JWS header every reference token carries, the external decode oracle.</summary>
+    /// <summary>The issuer JWS header every reference token carries, the known decoded JSON.</summary>
     private const string ErikaHeaderJson = /*lang=json,strict*/ """{"alg":"ES256","typ":"JWT"}""";
 
     /// <summary>The byte count of the deterministic round-trip payload; long enough to cross several base64url groups and end on a partial one.</summary>
@@ -43,7 +43,7 @@ internal sealed class LongfellowJwsCompactTests
 
             ReadOnlySpan<byte> issuer = token.AsSpan()[issuerRange];
             int firstDot = vector.Token.IndexOf('.', StringComparison.Ordinal);
-            int secondDot = vector.Token.IndexOf('.', firstDot + 1);
+            int secondDot = vector.Token.IndexOf('.', firstDot + 1, StringComparison.Ordinal);
 
             Assert.IsTrue(LongfellowJwsCompact.TryParse(issuer, out LongfellowJwsCompactSegments segments), "The issuer JWS must parse.");
             Assert.AreEqual(0, segments.HeaderIndex, "The header starts the JWS.");
@@ -147,7 +147,7 @@ internal sealed class LongfellowJwsCompactTests
     }
 
 
-    /// <summary>Decodes the Erika issuer header through the seam and pins the exact known JSON plaintext — an external oracle, not a self-referential round trip.</summary>
+    /// <summary>Decodes the Erika issuer header through the seam and pins the exact known JSON plaintext — an independently known value, not a self-referential round trip.</summary>
     [TestMethod]
     public void TheErikaHeaderSegmentDecodesToTheKnownJson()
     {

@@ -15,8 +15,8 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the HVZK-WHIR prover and verifier (4.2 phase C2,
-/// eprint 2026/391 Construction 9.7): honest hiding round-trips on both wired
+/// Tests for the HVZK-WHIR prover and verifier
+/// (eprint 2026/391 Construction 9.7): honest hiding round-trips on both wired
 /// curves and on the shapes that exercise every pipeline branch — the
 /// two-iteration reference, a non-constant final polynomial and the
 /// single-iteration base-case-only collapse — plus a tamper wall over the
@@ -97,10 +97,14 @@ internal sealed class ZkWhirIoppTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
     /// <summary>The deterministic mask-sampling seed, distinct per test class.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("zk-whir-iopp-tests");
 
 
+    /// <summary>Verifies that an honest hiding evaluation-claim proof over the reference shape verifies on BLS12-381.</summary>
     [TestMethod]
     public void HonestHidingEvaluationClaimRoundTripsOnBls12Curve381()
     {
@@ -110,6 +114,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest hiding evaluation-claim proof over the reference shape verifies on BN254.</summary>
     [TestMethod]
     public void HonestHidingEvaluationClaimRoundTripsOnBn254()
     {
@@ -119,6 +124,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest hiding proof over a shape whose final message is non-constant (a two-coefficient remainder) still verifies.</summary>
     [TestMethod]
     public void HonestHidingNonConstantFinalMessageRoundTrips()
     {
@@ -133,6 +139,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest hiding proof over a shape that collapses to a single iteration (no code-switch round) still verifies.</summary>
     [TestMethod]
     public void HonestHidingBaseCaseOnlyShapeRoundTrips()
     {
@@ -147,6 +154,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that an honest hiding proof of plain proximity (no constraints, a zero target) still verifies, exercising the mask-and-auxiliary-chain-only wire path.</summary>
     [TestMethod]
     public void HonestHidingPlainProximityRoundTrips()
     {
@@ -167,7 +175,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, coefficients, [], [], target, proverTranscript,
-            Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
+            TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)
         using(commitment)
@@ -182,6 +190,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the input commitment breaks verification of an otherwise honest hiding proof.</summary>
     [TestMethod]
     public void TamperedInputCommitmentIsRejected()
     {
@@ -192,6 +201,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the first code-switch mask root breaks verification of an otherwise honest hiding proof.</summary>
     [TestMethod]
     public void TamperedCodeSwitchMaskRootIsRejected()
     {
@@ -202,6 +212,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the first oracle's shift-query opening breaks verification of an otherwise honest hiding proof.</summary>
     [TestMethod]
     public void TamperedShiftOpeningIsRejected()
     {
@@ -212,6 +223,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the first mask group's carried opening breaks verification of an otherwise honest hiding proof.</summary>
     [TestMethod]
     public void TamperedCarriedMaskOpeningIsRejected()
     {
@@ -222,6 +234,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the first sumcheck mask root breaks verification of an otherwise honest hiding proof.</summary>
     [TestMethod]
     public void TamperedSumcheckMaskRootIsRejected()
     {
@@ -232,6 +245,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that a hiding proof produced for one target is rejected when verified against a different target.</summary>
     [TestMethod]
     public void WrongTargetIsRejected()
     {
@@ -242,7 +256,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            statement.Target, proverTranscript, Merkle, Hash, Squeeze,
+            statement.Target, proverTranscript, TreeParameters, Hash, Squeeze,
             Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)
@@ -263,6 +277,7 @@ internal sealed class ZkWhirIoppTests
     }
 
 
+    /// <summary>Verifies that the prover's statement-consistency guard refuses a target inconsistent with the coefficients before any oracle work.</summary>
     [TestMethod]
     public void ProverRejectsInconsistentTarget()
     {
@@ -289,7 +304,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript transcript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            wrongTarget, transcript, Merkle, Hash, Squeeze,
+            wrongTarget, transcript, TreeParameters, Hash, Squeeze,
             Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
 
@@ -320,29 +335,34 @@ internal sealed class ZkWhirIoppTests
     /// </summary>
     private sealed class EvaluationStatement: IDisposable
     {
-        private readonly IMemoryOwner<byte> owner;
-        private readonly int messageBytes;
-        private readonly int pointBytes;
+        /// <summary>The rented buffer backing every section of this statement.</summary>
+        private IMemoryOwner<byte> Owner { get; }
+
+        /// <summary>The byte length of the coefficient section.</summary>
+        private int MessageBytes { get; }
+
+        /// <summary>The byte length of the constraint-point section.</summary>
+        private int PointBytes { get; }
 
         /// <summary>The multilinear coefficient vector.</summary>
-        public ReadOnlySpan<byte> Coefficients => owner.Memory.Span[..messageBytes];
+        public ReadOnlySpan<byte> Coefficients => Owner.Memory.Span[..MessageBytes];
 
         /// <summary>The single constraint's scale, one element.</summary>
-        public ReadOnlySpan<byte> ConstraintCoefficients => owner.Memory.Span.Slice(messageBytes, ScalarSize);
+        public ReadOnlySpan<byte> ConstraintCoefficients => Owner.Memory.Span.Slice(MessageBytes, ScalarSize);
 
         /// <summary>The single constraint's point coordinates.</summary>
-        public ReadOnlySpan<byte> ConstraintPoints => owner.Memory.Span.Slice(messageBytes + ScalarSize, pointBytes);
+        public ReadOnlySpan<byte> ConstraintPoints => Owner.Memory.Span.Slice(MessageBytes + ScalarSize, PointBytes);
 
         /// <summary>The honestly evaluated target <c>σ</c>, one element.</summary>
-        public ReadOnlySpan<byte> Target => owner.Memory.Span.Slice(messageBytes + ScalarSize + pointBytes, ScalarSize);
+        public ReadOnlySpan<byte> Target => Owner.Memory.Span.Slice(MessageBytes + ScalarSize + PointBytes, ScalarSize);
 
 
         /// <summary>Wraps the populated statement buffer; the statement takes ownership.</summary>
         private EvaluationStatement(IMemoryOwner<byte> owner, int messageBytes, int pointBytes)
         {
-            this.owner = owner;
-            this.messageBytes = messageBytes;
-            this.pointBytes = pointBytes;
+            this.Owner = owner;
+            this.MessageBytes = messageBytes;
+            this.PointBytes = pointBytes;
         }
 
 
@@ -376,7 +396,7 @@ internal sealed class ZkWhirIoppTests
         public void Dispose()
         {
             //The pool zeroes rented buffers on return.
-            owner.Dispose();
+            Owner.Dispose();
         }
     }
 
@@ -393,7 +413,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            statement.Target, proverTranscript, Merkle, Hash, Squeeze,
+            statement.Target, proverTranscript, TreeParameters, Hash, Squeeze,
             backend.Reduce, backend.Add, backend.Subtract, backend.Multiply, backend.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)
@@ -421,7 +441,7 @@ internal sealed class ZkWhirIoppTests
         using FiatShamirTranscript proverTranscript = NewTranscript();
         (ZkWhirIoppProof proof, MerkleRoot commitment) = ZkWhirIoppProver.Prove(
             parameters, statement.Coefficients, statement.ConstraintCoefficients, statement.ConstraintPoints,
-            statement.Target, proverTranscript, Merkle, Hash, Squeeze,
+            statement.Target, proverTranscript, TreeParameters, Hash, Squeeze,
             Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, Bls.Invert,
             new DeterministicScalarRandom(MaskSeed).AsDelegate(), pool);
         using(proof)

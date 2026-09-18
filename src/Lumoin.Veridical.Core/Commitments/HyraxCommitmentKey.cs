@@ -80,14 +80,14 @@ public sealed class HyraxCommitmentKey: SensitiveMemory
     /// by repeated hash-to-curve from the supplied seed.
     /// </summary>
     /// <param name="vectorLength">The number of Pedersen vector generators to derive. Must be positive.</param>
-    /// <param name="seed">The protocol-identifying seed string. Use <see cref="WellKnownHyraxDomainLabels.CanonicalSeedV1"/> for the batch-E reference.</param>
-    /// <param name="curve">The curve. Currently only <see cref="CurveParameterSet.Bls12Curve381"/> is supported.</param>
+    /// <param name="seed">The protocol-identifying seed string. Use <see cref="WellKnownHyraxDomainLabels.CanonicalSeedV1"/> for this library's canonical Hyrax v1 derivation.</param>
+    /// <param name="curve">The curve; must be <see cref="CurveParameterSet.Bls12Curve381"/> or <see cref="CurveParameterSet.Bn254"/>.</param>
     /// <param name="hashToCurve">The backend hash-to-curve implementation.</param>
     /// <param name="pool">The pool to rent the backing buffer from.</param>
     /// <returns>A commitment key wrapping the derived generators, the blinding generator <c>H</c>, and the value generator <c>U</c>.</returns>
     /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="vectorLength"/> is non-positive.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="curve"/> is not BLS12-381.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="curve"/> is neither BLS12-381 nor BN254.</exception>
     public static HyraxCommitmentKey Derive(
         int vectorLength,
         string seed,

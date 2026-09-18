@@ -7,6 +7,7 @@ using Lumoin.Veridical.Core.Commitments.Ligero.Gadgets;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
@@ -16,10 +17,10 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// First atom of the Longfellow-style ECDSA-verification gadget (LF.5): elliptic
+/// First atom of the Longfellow-style ECDSA-verification gadget: elliptic
 /// curve point addition expressed as hand-built Ligero linear + quadratic
 /// constraints over the P-256 <em>base</em> field <c>Fp256</c> (the field
-/// Longfellow's ECDSA circuit runs in), proven with the LF.4b
+/// Longfellow's ECDSA circuit runs in), proven with
 /// <see cref="LigeroProver"/> and verified with <see cref="LigeroVerifier"/>.
 /// </summary>
 /// <remarks>
@@ -43,41 +44,67 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Fp256EcGadgetTests
 {
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The SEC1 compressed point width in bytes.</summary>
     private const int CompressedSize = 33;
+
+    /// <summary>The wired Merkle digest size: BLAKE3's 32 bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
+    /// <summary>The P-256 base-field modulus.</summary>
     private static BigInteger P { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>a</c>.</summary>
     private static BigInteger A { get; } = P256BigIntegerG1Reference.CurveA;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>b</c>.</summary>
     private static BigInteger B { get; } = P256BigIntegerG1Reference.CurveB;
 
-    //The curve constants a, b as canonical Fp256 bytes for the Core gadget layer.
+    /// <summary>The curve coefficient <c>a</c> as canonical Fp256 bytes for the Core gadget layer.</summary>
     private static byte[] CurveABytes { get; } = ToCanonical(A);
+
+    /// <summary>The curve coefficient <c>b</c> as canonical Fp256 bytes for the Core gadget layer.</summary>
     private static byte[] CurveBBytes { get; } = ToCanonical(B);
 
-    //The standard P-256 base point (FIPS 186-4 / SEC2 secp256r1).
+    /// <summary>The standard P-256 base point's x coordinate (FIPS 186-4 / SEC2 secp256r1).</summary>
     private static BigInteger GeneratorX { get; } = BigInteger.Parse(
         "06b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+
+    /// <summary>The standard P-256 base point's y coordinate (FIPS 186-4 / SEC2 secp256r1).</summary>
     private static BigInteger GeneratorY { get; } = BigInteger.Parse(
         "04fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 
+    /// <summary>The Ligero inverse rate the gadget's constraint system is built at.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of opened Ligero columns the gadget's constraint system is built at.</summary>
     private const int OpenedColumns = 4;
+
+    /// <summary>The Ligero block size the gadget's constraint system is built at.</summary>
     private const int Block = 64;
 
-    //A fixed valid nonce in [1, n−1] for the full-scale Alg.4 oracle gate (matches
-    //the reference ECDSA tests). Nonce reuse is forbidden in production; a fixed
-    //one is fine for gating arithmetic against the reference.
+    /// <summary>A fixed valid nonce in [1, n−1] for the full-scale Alg.4 oracle gate (matches the reference ECDSA tests). Nonce reuse is forbidden in production; a fixed one is fine for gating arithmetic against the reference.</summary>
     private const string NonceHex = "1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00";
 
+    /// <summary>The Fiat-Shamir transcript seed every gadget proof in this suite is proved and verified under.</summary>
     private static byte[] TranscriptSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ec-add.v1");
+
+    /// <summary>The deterministic prover-randomness seed shared by every proof in this suite.</summary>
     private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ec-add.rng.v1");
 
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+
+    /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
 
+    /// <summary>Pins that the hand-built point-addition gadget's witnessed sum matches the reference backend's compressed A+B, and that the gadget's proof verifies.</summary>
     [TestMethod]
     public void PointAdditionGadgetVerifiesAndMatchesTheReference()
     {
@@ -104,6 +131,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that flipping a byte inside an opened column of a point-addition proof causes verification to fail.</summary>
     [TestMethod]
     public void TamperedPointAdditionProofIsRejected()
     {
@@ -121,6 +149,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that a witness claiming a wrong sum, violating the slope/output quadratic constraints, cannot be proven.</summary>
     [TestMethod]
     public void InconsistentSumCannotBeProven()
     {
@@ -139,6 +168,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that the hand-built point-doubling gadget's witnessed double matches the reference backend's compressed [2]·A, and that the gadget's proof verifies.</summary>
     [TestMethod]
     public void PointDoublingGadgetVerifiesAndMatchesTheReference()
     {
@@ -165,6 +195,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that an on-curve point satisfies the curve-equation gadget and its proof verifies.</summary>
     [TestMethod]
     public void OnCurveCheckVerifiesForAValidPoint()
     {
@@ -179,10 +210,11 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that a point perturbed off the curve fails the curve-equation constraint and cannot be proven.</summary>
     [TestMethod]
     public void OffCurvePointCannotBeProven()
     {
-        //Perturb y off the curve: y² = x³ + ax + b no longer holds, so the
+        //Perturb y off the curve: y² = x³ + ax + b does not hold, so the
         //curve-equation constraint is unsatisfied and the prover refuses.
         (BigInteger ax, BigInteger ay) = ScalarMul(9, (GeneratorX, GeneratorY));
 
@@ -194,6 +226,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that the complete projective-addition formula's normalized result matches the reference sum for two distinct points, and that its proof verifies.</summary>
     [TestMethod]
     public void CompleteAdditionMatchesTheReferenceForDistinctPoints()
     {
@@ -218,6 +251,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that the complete formula's A + O normalizes back to A, where O is the projective point (0:1:0), and that its proof verifies.</summary>
     [TestMethod]
     public void CompleteAdditionWithIdentityReturnsThePoint()
     {
@@ -237,6 +271,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that the complete formula's A + (−A) gives the projective identity (Z3 = 0), and that its proof verifies.</summary>
     [TestMethod]
     public void CompleteAdditionOfInversesIsTheIdentity()
     {
@@ -253,6 +288,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that the complete formula handles the doubling case unconditionally: A + A normalizes to 2A, and its proof verifies.</summary>
     [TestMethod]
     public void CompleteAdditionOfEqualPointsDoubles()
     {
@@ -273,6 +309,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that two chained complete additions, (A + B) + C, normalize to the reference sum while the witness spans more than one Ligero row, exercising the multi-witness-row path the full ladder relies on.</summary>
     [TestMethod]
     public void ChainedCompleteAdditionSpansWitnessRowsAndMatchesReference()
     {
@@ -308,6 +345,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that the witnessed double-and-add ladder's [k]·G matches the reference scalar multiply, that the bit recomposition binds to the scalar value, and that the ladder's proof verifies.</summary>
     [TestMethod]
     public void SingleScalarLadderMatchesTheReference()
     {
@@ -346,6 +384,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that a bit wire carrying 2 violates the boolean constraint <c>b² = b</c> and cannot be proven, guarding against a malicious witness smuggling a non-bit into the ladder's recomposition.</summary>
     [TestMethod]
     public void NonBooleanScalarBitCannotBeProven()
     {
@@ -361,6 +400,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that the Straus/Shamir three-scalar multi-scalar-multiply gadget matches a reference scalar multiply, exercising the eight-point table, per-step three-bit selection, and double-add together.</summary>
     [TestMethod]
     public void ThreeScalarMultiScalarMultiplyMatchesTheReference()
     {
@@ -400,6 +440,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins the Longfellow Alg.4 reformulation at full 256-bit scale against a genuine .NET-produced P-256 signature: e·G + r·Q − s·R vanishes to the identity for the real signature and does not vanish once s is tampered.</summary>
     [TestMethod]
     public void Alg4IdentityHoldsForARealP256SignatureAtFullScale()
     {
@@ -445,7 +486,7 @@ internal sealed class Fp256EcGadgetTests
             OracleScalarMultiply(ModOrder(-s), noncePoint));
         Assert.IsNull(identity, "e·G + r·Q − s·R must be the identity O for a valid signature.");
 
-        //A tampered s breaks the identity: the sum is no longer O.
+        //A tampered s breaks the identity: the sum is not O.
         (BigInteger X, BigInteger Y)? broken = OracleAdd(
             OracleAdd(OracleScalarMultiply(e, (GeneratorX, GeneratorY)), OracleScalarMultiply(r, publicPoint)),
             OracleScalarMultiply(ModOrder(-(s + BigInteger.One)), noncePoint));
@@ -453,6 +494,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins a reduced-width in-circuit instance of the Alg.4 identity: on-curve checks, negation, bit recomposition and the three-scalar MSM together drive the accumulator to O for a satisfying (e, r, s), the proof verifies, and a tampered proof is rejected.</summary>
     [TestMethod]
     public void EcdsaIdentityGadgetVerifiesForASatisfyingInstance()
     {
@@ -504,6 +546,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Pins that a non-satisfying instance (e = 6 instead of 5) leaves the accumulator's Z ≠ 0, so the assert-O constraint is unsatisfiable and the prover refuses.</summary>
     [TestMethod]
     public void EcdsaIdentityGadgetRejectsANonSatisfyingInstance()
     {
@@ -532,6 +575,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Reverses a most-significant-first bit vector and asserts the gadget's recomposed scalar equals the expected value.</summary>
     private static void AssertRecomposes(LigeroConstraintSystemBuilder builder, int[] bitsMostSignificantFirst, BigInteger expected)
     {
         int[] leastSignificantFirst = (int[])bitsMostSignificantFirst.Clone();
@@ -541,6 +585,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Right-aligns a byte source into a zero-padded destination span.</summary>
     private static void LeftPad(byte[]? source, Span<byte> destination)
     {
         destination.Clear();
@@ -549,6 +594,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Declares a most-significant-first bit-wire vector for a scalar's low <paramref name="width"/> bits, each pinned to {0,1} by <c>AddBit</c>.</summary>
     private static int[] AddScalarBits(LigeroConstraintSystemBuilder builder, BigInteger scalar, int width)
     {
         //Most-significant-first bit wires, each pinned to {0,1} by AddBit.
@@ -565,6 +611,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Declares wires for two projective points and asserts their complete-formula sum.</summary>
     private static (int X3, int Y3, int Z3) AddProjective(
         LigeroConstraintSystemBuilder builder, WeierstrassCurve ec, BigInteger x1, BigInteger y1, BigInteger z1, BigInteger x2, BigInteger y2, BigInteger z2)
     {
@@ -575,6 +622,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Normalizes a projective point to affine coordinates, or returns <see langword="null"/> when z is zero (the point at infinity).</summary>
     private static (BigInteger X, BigInteger Y)? Normalize(BigInteger x, BigInteger y, BigInteger z)
     {
         if(z.IsZero)
@@ -588,31 +636,35 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
-    private readonly List<LigeroConstraintSystemBuilder> builders = [];
+    /// <summary>Every constraint builder this test created, disposed together at cleanup.</summary>
+    private List<LigeroConstraintSystemBuilder> Builders { get; } = [];
 
 
+    /// <summary>Disposes every constraint builder this test created.</summary>
     [TestCleanup]
     public void DisposeBuilders()
     {
-        foreach(LigeroConstraintSystemBuilder builder in builders)
+        foreach(LigeroConstraintSystemBuilder builder in Builders)
         {
             builder.Dispose();
         }
     }
 
 
+    /// <summary>Builds a fresh constraint builder and the Weierstrass curve gadget over it, tracking the builder for cleanup.</summary>
     private (LigeroConstraintSystemBuilder Builder, WeierstrassCurve Curve) NewGadget()
     {
         var builder = new LigeroConstraintSystemBuilder(
             P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
             P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
             CurveParameterSet.None, InverseRate, OpenedColumns, Block, BaseMemoryPool.Shared);
-        builders.Add(builder);
+        Builders.Add(builder);
 
         return (builder, WeierstrassCurve.Create(builder, CurveABytes, CurveBBytes));
     }
 
 
+    /// <summary>Declares a witness wire holding the canonical encoding of a reduced value.</summary>
     private static int Wire(LigeroConstraintSystemBuilder builder, BigInteger value)
     {
         Span<byte> bytes = stackalloc byte[ScalarSize];
@@ -622,10 +674,12 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Reads a wire's canonical value out of the builder as an unsigned integer.</summary>
     private static BigInteger Val(LigeroConstraintSystemBuilder builder, int wire) =>
         new(builder.Value(wire), isUnsigned: true, isBigEndian: true);
 
 
+    /// <summary>Declares a constant wire holding the canonical encoding of a reduced value.</summary>
     private static int Const(LigeroConstraintSystemBuilder builder, BigInteger value)
     {
         Span<byte> bytes = stackalloc byte[ScalarSize];
@@ -635,25 +689,39 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
-    private static LigeroProof ProveGadget(LigeroConstraintSystemBuilder builder) => LigeroProver.Prove(
-        builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), TranscriptSeed,
-        new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Proves with pooled snapshots that remain owned until the prover returns.</summary>
+    private static LigeroProof ProveGadget(LigeroConstraintSystemBuilder builder)
+    {
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroProver.Prove(
+            builder.BuildParameters(), (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), TranscriptSeed,
+            new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
-    private static bool VerifyGadget(LigeroConstraintSystemBuilder builder, LigeroProof proof, ReadOnlySpan<byte> transcriptSeed) => LigeroVerifier.Verify(
-        builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), transcriptSeed,
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
+    private static bool VerifyGadget(LigeroConstraintSystemBuilder builder, LigeroProof proof, ReadOnlySpan<byte> transcriptSeed)
+    {
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroVerifier.Verify(
+            builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), transcriptSeed,
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
+    /// <summary>Reduces a value and writes it as a canonical big-endian scalar.</summary>
     private static byte[] ToCanonical(BigInteger value)
     {
         byte[] bytes = new byte[ScalarSize];
@@ -663,13 +731,14 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
-    //Affine P-256 arithmetic over Fp256 (test oracle; mirrors the reference's formulas)
-
+    /// <summary>Reduces a value modulo the P-256 base-field prime into its non-negative representative.</summary>
     private static BigInteger Mod(BigInteger v) => ((v % P) + P) % P;
 
+    /// <summary>Inverts a value modulo the P-256 base-field prime via Fermat's little theorem.</summary>
     private static BigInteger ModInverse(BigInteger v) => BigInteger.ModPow(Mod(v), P - 2, P);
 
 
+    /// <summary>Adds two affine P-256 points over Fp256 (test oracle; mirrors the reference's formulas), dispatching the equal-point case to doubling.</summary>
     private static (BigInteger X, BigInteger Y) AffineAdd((BigInteger X, BigInteger Y) a, (BigInteger X, BigInteger Y) b)
     {
         //Test oracle: dispatch the equal-point case to doubling so callers need
@@ -689,6 +758,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Doubles an affine P-256 point over Fp256 (test oracle; mirrors the reference's formulas).</summary>
     private static (BigInteger X, BigInteger Y) AffineDouble((BigInteger X, BigInteger Y) a)
     {
         BigInteger slope = Mod(((3 * a.X * a.X) + A) * ModInverse(2 * a.Y));
@@ -699,13 +769,13 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
-    //Identity-aware oracle (null = the point at infinity O) for full-scale
-    //    Alg.4 verification, where intermediate and final sums may be O
-
+    /// <summary>The P-256 group order.</summary>
     private static BigInteger N { get; } = WellKnownCurves.GetScalarFieldOrder(CurveParameterSet.P256);
 
+    /// <summary>Reduces a value modulo the P-256 group order into its non-negative representative.</summary>
     private static BigInteger ModOrder(BigInteger v) => ((v % N) + N) % N;
 
+    /// <summary>Adds two points where <see langword="null"/> represents the point at infinity O, the identity-aware oracle full-scale Alg.4 verification needs since intermediate and final sums may be O.</summary>
     private static (BigInteger X, BigInteger Y)? OracleAdd((BigInteger X, BigInteger Y)? a, (BigInteger X, BigInteger Y)? b)
     {
         if(a is null)
@@ -728,6 +798,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Multiplies a point by a scalar via the identity-aware oracle, where <see langword="null"/> represents the point at infinity O.</summary>
     private static (BigInteger X, BigInteger Y)? OracleScalarMultiply(BigInteger scalar, (BigInteger X, BigInteger Y) point)
     {
         BigInteger k = ModOrder(scalar);
@@ -748,6 +819,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Multiplies a point by a small non-negative <see cref="int"/> scalar via repeated affine doubling and addition; the scalar must yield a non-infinity result.</summary>
     private static (BigInteger X, BigInteger Y) ScalarMul(int scalar, (BigInteger X, BigInteger Y) point)
     {
         (BigInteger X, BigInteger Y)? accumulator = null;
@@ -766,6 +838,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>SEC1-compresses an affine point.</summary>
     private static byte[] Encode(BigInteger x, BigInteger y)
     {
         byte[] compressed = new byte[CompressedSize];
@@ -776,6 +849,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>Writes a non-negative value as a zero-padded canonical big-endian scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -789,6 +863,7 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
+    /// <summary>The two-to-one compression: BLAKE3 over the concatenated children.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -798,22 +873,27 @@ internal sealed class Fp256EcGadgetTests
     }
 
 
-    //A reproducible Fp256 randomness source: BLAKE3-XOF of seed‖counter reduced
-    //modulo the base-field prime.
+    /// <summary>A reproducible Fp256 randomness source: BLAKE3-XOF of seed‖counter reduced modulo the base-field prime.</summary>
     private sealed class DeterministicFp256Random
     {
-        private readonly byte[] seed;
+        /// <summary>The fixed seed this source's every draw is derived from.</summary>
+        private byte[] Seed { get; }
+
+        /// <summary>The number of scalars drawn so far, mixed into each draw's pre-image.</summary>
         private int counter;
 
-        public DeterministicFp256Random(ReadOnlySpan<byte> seed) => this.seed = seed.ToArray();
+        /// <summary>Copies the seed for this source's lifetime.</summary>
+        public DeterministicFp256Random(ReadOnlySpan<byte> seed) => this.Seed = seed.ToArray();
 
+        /// <summary>Returns this source's fill delegate.</summary>
         public ScalarRandomDelegate AsDelegate() => Fill;
 
+        /// <summary>Draws the next reproducible scalar: BLAKE3-XOF of seed‖counter reduced modulo the base-field prime, then advances the counter.</summary>
         private Tag Fill(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
         {
-            Span<byte> input = stackalloc byte[seed.Length + sizeof(int)];
-            seed.CopyTo(input);
-            BinaryPrimitives.WriteInt32BigEndian(input[seed.Length..], counter);
+            Span<byte> input = stackalloc byte[Seed.Length + sizeof(int)];
+            Seed.CopyTo(input);
+            BinaryPrimitives.WriteInt32BigEndian(input[Seed.Length..], counter);
             counter++;
 
             Span<byte> wide = stackalloc byte[64];

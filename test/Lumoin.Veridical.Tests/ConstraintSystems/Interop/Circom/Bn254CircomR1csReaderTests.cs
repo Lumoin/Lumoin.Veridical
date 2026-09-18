@@ -24,12 +24,13 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 /// prime swapped to BN254's <c>r</c>) requested under
 /// <see cref="CurveParameterSet.Bn254"/>, and proves/verifies the parsed
 /// instance with the BN254 base Spartan backends. Exercises the
-/// CircomR1csReader's BN254 prime dispatch (U.9) and the U.10 curve-broadened
+/// CircomR1csReader's BN254 prime dispatch and the curve-generic
 /// construction path end-to-end from a parsed fixture.
 /// </summary>
 [TestClass]
 internal sealed class Bn254CircomR1csReaderTests
 {
+    /// <summary>Verifies that the BN254 multiplier2 fixture parses into the expected R1CS shape, triple positions and curve, matching the BLS fixture's constraints under the BN254 prime.</summary>
     [TestMethod]
     public void Bn254Multiplier2R1csParsesIntoExpectedShape()
     {
@@ -52,6 +53,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Verifies that requesting the BN254-prime fixture under the BLS12-381 curve is rejected as a prime mismatch.</summary>
     [TestMethod]
     public void Bn254Multiplier2RequestedAsBls12Curve381Rejected()
     {
@@ -65,6 +67,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Verifies that the base (non-masked) Spartan prover and verifier accept a satisfying witness over the Circom-parsed BN254 multiplier2 instance.</summary>
     [TestMethod]
     public void Bn254Multiplier2ParsedInstanceProvesAndVerifiesWithStandardSpartan()
     {
@@ -95,10 +98,12 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Reads <paramref name="fixtureBytes"/> as a Circom binary R1CS under the BN254 curve.</summary>
     private static RawR1csInstance ReadFixture(byte[] fixtureBytes) =>
         ReadFixture(fixtureBytes, CurveParameterSet.Bn254);
 
 
+    /// <summary>Reads <paramref name="fixtureBytes"/> as a Circom binary R1CS under <paramref name="curve"/>, through a fresh in-memory pipe.</summary>
     private static RawR1csInstance ReadFixture(byte[] fixtureBytes, CurveParameterSet curve)
     {
         var stream = new MemoryStream(fixtureBytes, writable: false);
@@ -108,10 +113,12 @@ internal sealed class Bn254CircomR1csReaderTests
             WellKnownR1csFormatLabel.CircomBinary,
             curve,
             Pool,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 
 
+    /// <summary>Builds the witness <c>z = (1, c, a, b) = (1, 33, 3, 11)</c> satisfying the multiplier2 instance's <c>a*b=c</c> with <c>a=3</c>, <c>b=11</c>.</summary>
     private static RawR1csWitness BuildMultiplier2Witness()
     {
         //z = (1, c, a, b) = (1, 33, 3, 11): a*b=c with a=3, b=11.
@@ -124,6 +131,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Builds a base (non-masked) BN254 Spartan prover over a freshly derived Hyrax commitment key sized for <paramref name="columnCount"/> witness columns.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanProver.")]
     private static SpartanProver BuildBaseProver(int columnCount)
     {
@@ -131,6 +139,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Builds a base (non-masked) BN254 Spartan verifier over a freshly derived Hyrax commitment key sized for <paramref name="columnCount"/> witness columns.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanVerifier.")]
     private static SpartanVerifier BuildBaseVerifier(int columnCount)
     {
@@ -138,6 +147,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Wraps <paramref name="commitmentKey"/> as a BN254 Hyrax polynomial-commitment provider, taking ownership of the key.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider takes ownership of the key (ownsKey: true) and transfers to the Spartan key that consumes it.")]
     private static PolynomialCommitmentProvider BuildProvider(HyraxCommitmentKey commitmentKey)
     {
@@ -150,6 +160,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Derives a BN254 Hyrax commitment key with one generator per coordinate of a <paramref name="columnCount"/>-wide witness column.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the derived key transfers to the caller.")]
     private static HyraxCommitmentKey BuildCommitmentKey(int columnCount)
     {
@@ -161,6 +172,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Creates a fresh transcript under the Spartan v1 domain label, seeded with no extra context bytes.</summary>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -169,6 +181,7 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>Reduces <paramref name="value"/> modulo the BN254 scalar field order into a nonnegative representative and writes it as a big-endian canonical scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -188,22 +201,54 @@ internal sealed class Bn254CircomR1csReaderTests
     }
 
 
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF (squeeze) backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BN254 scalar reduction delegate (wide bytes to a canonical scalar), from the BigInteger reference.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BN254 scalar field addition delegate, from the BigInteger reference.</summary>
     private static ScalarAddDelegate Add { get; } = Bn254BigIntegerScalarReference.GetAdd();
+
+    /// <summary>The BN254 scalar field subtraction delegate, from the BigInteger reference.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Bn254BigIntegerScalarReference.GetSubtract();
+
+    /// <summary>The BN254 scalar field multiplication delegate, from the BigInteger reference.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Bn254BigIntegerScalarReference.GetMultiply();
+
+    /// <summary>The BN254 scalar field inversion delegate, from the BigInteger reference.</summary>
     private static ScalarInvertDelegate Invert { get; } = Bn254BigIntegerScalarReference.GetInvert();
+
+    /// <summary>The BN254 scalar sampler the prover's blinds and challenges are drawn from, from the BigInteger reference.</summary>
     private static ScalarRandomDelegate ScalarRandom { get; } = Bn254BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The BN254 G1 point addition delegate, from the BigInteger reference.</summary>
     private static G1AddDelegate G1Add { get; } = Bn254BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BN254 G1 scalar-multiplication delegate, from the BigInteger reference.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bn254BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BN254 G1 multi-scalar-multiplication delegate, from the test backend.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bn254Msm;
+
+    /// <summary>The BN254 G1 on-curve check delegate, from the BigInteger reference.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BN254 G1 prime-order-subgroup membership delegate, from the BigInteger reference.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BN254 G1 hash-to-curve delegate the Hyrax commitment key derives its generators with, from the BigInteger reference.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bn254BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The independent BigInteger-reference multilinear-extension evaluator the sumcheck rounds use.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The independent BigInteger-reference multilinear-extension fold the sumcheck rounds use.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
+    /// <summary>The shared pool every rental in this file draws from.</summary>
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 }

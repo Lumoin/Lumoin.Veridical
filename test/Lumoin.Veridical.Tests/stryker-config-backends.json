@@ -1,0 +1,32 @@
+{
+  "stryker-config": {
+    "solution": "../../Lumoin.Veridical.slnx",
+    "project": "Lumoin.Veridical.Backends.Managed.csproj",
+    "test-runner": "vstest",
+    "test-case-filter": "(TestCategory!=Slow)&(FullyQualifiedName~Gf2k128VpclmulqdqAgreementTests|FullyQualifiedName~Bn254Avx512ScalarBackendAgreementTests|FullyQualifiedName~Bls12Curve381Avx512ScalarBackendAgreementTests|FullyQualifiedName~P256BaseFieldMontgomeryBatchBackendAvx512AgreementTests|FullyQualifiedName~Bn254Avx2ScalarBackendAgreementTests|FullyQualifiedName~Bls12Curve381Avx2ScalarBackendAgreementTests|FullyQualifiedName~P256BaseFieldMontgomeryBatchBackendAgreementTests|FullyQualifiedName~Bls12Curve381ScalarBackendAgreementTests|FullyQualifiedName~Bn254ScalarBatchAgreementTests|FullyQualifiedName~Bls12Curve381ScalarBatchAgreementTests|FullyQualifiedName~SimdScalarBackendDispatchTests|FullyQualifiedName~ManagedScalarBackendTests|FullyQualifiedName~ManagedMultilinearExtensionBackendTests|FullyQualifiedName~LongfellowBindQuadFp256BatchTests)",
+    "mutate": [
+      "**/Gf2k128Vpclmulqdq.cs",
+      "**/Bn254Avx512ScalarBackend.cs",
+      "**/Bls12Curve381Avx512ScalarBackend.cs",
+      "**/P256BaseFieldMontgomeryBatchBackendAvx512.cs",
+      "**/Bn254Avx2ScalarBackend.cs",
+      "**/Bls12Curve381Avx2ScalarBackend.cs",
+      "**/P256BaseFieldMontgomeryBatchBackendAvx2.cs",
+      "**/Bn254SimdScalarBackend.cs",
+      "**/Bls12Curve381SimdScalarBackend.cs"
+    ],
+    "mutation-level": "Standard",
+    "coverage-analysis": "off",
+    "concurrency": 8,
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 0
+    },
+    "reporters": [
+      "html",
+      "json",
+      "markdown"
+    ]
+  }
+}

@@ -4,9 +4,8 @@ using System.Diagnostics;
 namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 
 /// <summary>
-/// The resolved shape of a statistical sumcheck mask's coefficient commitment
-/// (the statistical-mask design notes, §2 v3): the committed vector
-/// <c>C* = (mask coefficients ‖ random filler)</c> lives on
+/// The resolved shape of a statistical sumcheck mask's coefficient commitment:
+/// the committed vector <c>C* = (mask coefficients ‖ random filler)</c> lives on
 /// <c>2^CoefficientVariableCount</c> coordinates and — over BaseFold — is
 /// dimension-lifted by <see cref="ExtraVariableCount"/> for its
 /// bounded-independence query hiding (zero over Pedersen/IPA, which needs no
@@ -31,6 +30,11 @@ public readonly struct StatisticalMaskParameters: IEquatable<StatisticalMaskPara
     public int ExtraVariableCount { get; }
 
 
+    /// <summary>Wraps already-resolved shape values; used by <see cref="WellKnownStatisticalMaskParameters"/>'s factories.</summary>
+    /// <param name="sumcheckVariableCount">The masked sumcheck's variable count <c>d</c>.</param>
+    /// <param name="maskCoefficientCount">The mask's coefficient count.</param>
+    /// <param name="coefficientVariableCount">The committed coefficient multilinear's variable count <c>ℓ₂</c>.</param>
+    /// <param name="extraVariableCount">The dimension lift <c>t_C</c>.</param>
     internal StatisticalMaskParameters(int sumcheckVariableCount, int maskCoefficientCount, int coefficientVariableCount, int extraVariableCount)
     {
         SumcheckVariableCount = sumcheckVariableCount;

@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using System;
 using System.Numerics;
+using System.Runtime.Intrinsics;
 
 namespace Lumoin.Veridical.Longfellow;
 
@@ -23,54 +24,79 @@ namespace Lumoin.Veridical.Longfellow;
 /// </remarks>
 internal static class LongfellowMdocBundles
 {
-    //One canonical field element per 32-byte big-endian slot, shared by every field and region.
+    /// <summary>One canonical field element per 32-byte big-endian slot, shared by every field and region.</summary>
     private const int ScalarSizeBytes = Scalar.SizeBytes;
 
-    //The reference v7 Ligero pair: inverse Reed-Solomon rate and opened-column count, shared by both fields.
+    /// <summary>The reference's mdoc circuit version 7 Ligero inverse Reed-Solomon rate, shared by both fields.</summary>
     internal const int InverseRate = 7;
+
+    /// <summary>The reference's mdoc circuit version 7 Ligero opened-column count, shared by both fields.</summary>
     internal const int OpenedColumnCount = 132;
 
-    //The two circuit field ids and on-wire element widths (the reference's FieldID: P256 = 1 / 32, GF2_128 = 4 / 16).
+    /// <summary>The reference's <c>FieldID</c> for the P-256 base field (1).</summary>
     internal const int Point256FieldId = 1;
+
+    /// <summary>The P-256 base field's on-wire element width in bytes (32).</summary>
     internal const int Point256ElementBytes = 32;
+
+    /// <summary>The reference's <c>FieldID</c> for the GF(2^128) field (4).</summary>
     internal const int Gf2128FieldId = 4;
+
+    /// <summary>The GF(2^128) field's on-wire element width in bytes (16).</summary>
     internal const int Gf2128ElementBytes = 16;
 
-    //The GF(2^128) hash circuit: 16-byte full field over the GF(2^16) = Production16 subfield (2 bytes).
-    //The per-specification block-encoding lengths ride in the LongfellowMdocZkSpec.
+    /// <summary>
+    /// The GF(2^128) hash circuit's full field element width in bytes (16). Per-specification
+    /// block-encoding lengths ride in <see cref="LongfellowMdocZkSpec"/> instead.
+    /// </summary>
     internal const int HashFieldBytes = 16;
+
+    /// <summary>The GF(2^128) hash circuit's GF(2^16) (Production16) subfield element width in bytes (2).</summary>
     internal const int HashSubFieldBytes = 2;
 
-    //The transcript is baked at the GF/a_v width 16; the sig side passes its 32-byte profile per op.
+    /// <summary>The transcript's baked element width: the GF(2^128)/<c>a_v</c> width (16); the signature side passes its own 32-byte profile per operation instead.</summary>
     internal const int TranscriptElementBytes = 16;
 
 
-    //The GF(2^128) hash-side delegates (all public in Backends.Managed). Subtract coincides with add (XOR).
+    /// <summary>The GF(2^128) hash-side addition delegate (XOR).</summary>
     private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+
+    /// <summary>The GF(2^128) hash-side subtraction delegate; coincides with <see cref="GfAdd"/> (XOR).</summary>
     private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
+
+    /// <summary>The GF(2^128) hash-side multiplication delegate.</summary>
     private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
+
+    /// <summary>The GF(2^128) hash-side inversion delegate.</summary>
     private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
-    //The Fp256 sig-side delegates (internal in Backends.Managed, reached through the package's IVT). Add and
-    //subtract are domain-linear, so the canonical delegates serve the Montgomery working domain unchanged; the
-    //multiply and invert are the Montgomery-domain (single-CIOS) variants.
+    /// <summary>The Fp256 sig-side addition delegate; domain-linear, so the canonical delegate also serves the Montgomery working domain unchanged.</summary>
     private static ScalarAddDelegate Fp256Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
+
+    /// <summary>The Fp256 sig-side subtraction delegate; domain-linear, so the canonical delegate also serves the Montgomery working domain unchanged.</summary>
     private static ScalarSubtractDelegate Fp256Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
+
+    /// <summary>The Fp256 sig-side Montgomery-domain (single-CIOS) multiplication delegate.</summary>
     private static ScalarMultiplyDelegate Fp256MultiplyMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
+
+    /// <summary>The Fp256 sig-side Montgomery-domain inversion delegate.</summary>
     private static ScalarInvertDelegate Fp256InvertMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
 
-    //The P-256 base-field prime the sig profile's of_scalar reduction and in_range predicate close over.
+    /// <summary>The P-256 base-field prime the sig profile's <c>of_scalar</c> reduction and <c>in_range</c> predicate close over.</summary>
     private static BigInteger Fp256Prime { get; } = P256BigIntegerG1Reference.BaseFieldPrime;
 
 
     /// <summary>
     /// The lane-parallel Fp256 Montgomery batch multiply, selected by host capability: the AVX-512 octet
     /// backend when supported, else the AVX2 quartet backend, else <see langword="null"/> so the consumer
-    /// falls back to the scalar multiply. Both SIMD backends are byte-identical to the scalar Montgomery
-    /// oracle by construction.
+    /// falls back to the scalar multiply. The AVX-512 backend is selected only where the runtime also
+    /// reports 512-bit vectors as hardware-accelerated (<see cref="Vector512.IsHardwareAccelerated"/>),
+    /// because on parts whose JIT prefers 256-bit operation the 512-bit kernels can run below the AVX2
+    /// kernels; where that report is false the ordering falls through to AVX2. Both SIMD backends are
+    /// byte-identical to the scalar Montgomery oracle by construction.
     /// </summary>
     internal static ScalarBatchMultiplyDelegate? Fp256BatchMontgomery() =>
-        P256BaseFieldMontgomeryBatchBackendAvx512.IsSupported ? P256BaseFieldMontgomeryBatchBackendAvx512.GetBatchMultiplyMontgomery()
+        P256BaseFieldMontgomeryBatchBackendAvx512.IsSupported && Vector512.IsHardwareAccelerated ? P256BaseFieldMontgomeryBatchBackendAvx512.GetBatchMultiplyMontgomery()
         : P256BaseFieldMontgomeryBatchBackendAvx2.IsSupported ? P256BaseFieldMontgomeryBatchBackendAvx2.GetBatchMultiplyMontgomery()
         : null;
 
@@ -220,6 +246,7 @@ internal static class LongfellowMdocBundles
     /// <param name="fft">The Montgomery-domain real-FFT engine.</param>
     /// <param name="codec">The sig subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
+    /// <returns>A bundle whose lifted circuit must be disposed by the caller after all bundle consumers finish.</returns>
     internal static LongfellowMdocFieldProver BuildSigProver(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, spec.SignatureBlockEncoded);
@@ -228,10 +255,18 @@ internal static class LongfellowMdocBundles
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, pool, batchMultiply);
         LongfellowSumcheckCircuit montgomeryCircuit = canonicalCircuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
 
-        return new LongfellowMdocFieldProver(
-            montgomeryCircuit, parameters, encoderFactory, profile, codec,
-            Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, LongfellowFp256Encoding.SignatureSubfieldBoundary, CurveParameterSet.None,
-            Fp256BatchMultiply: batchMultiply);
+        try
+        {
+            return new LongfellowMdocFieldProver(
+                montgomeryCircuit, parameters, encoderFactory, profile, codec,
+                Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, LongfellowFp256Encoding.SignatureSubfieldBoundary, CurveParameterSet.None,
+                Fp256BatchMultiply: batchMultiply);
+        }
+        catch
+        {
+            montgomeryCircuit.Dispose();
+            throw;
+        }
     }
 
 
@@ -262,6 +297,7 @@ internal static class LongfellowMdocBundles
     /// <param name="fft">The Montgomery-domain real-FFT engine.</param>
     /// <param name="codec">The sig subfield-run codec (borrowed; the caller disposes it).</param>
     /// <param name="pool">The pool the row encoders rent from.</param>
+    /// <returns>A bundle whose lifted circuit must be disposed by the caller after all bundle consumers finish.</returns>
     internal static LongfellowMdocFieldVerifier BuildSigVerifier(LongfellowMdocZkSpec spec, LongfellowSumcheckCircuit canonicalCircuit, LongfellowFieldProfile profile, Fp256RealFft fft, LongfellowSubfieldRunCodec codec, BaseMemoryPool pool)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(canonicalCircuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, spec.SignatureBlockEncoded);
@@ -270,9 +306,17 @@ internal static class LongfellowMdocBundles
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, pool, batchMultiply);
         LongfellowSumcheckCircuit montgomeryCircuit = canonicalCircuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
 
-        return new LongfellowMdocFieldVerifier(
-            montgomeryCircuit, parameters, encoderFactory, profile, codec,
-            Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None,
-            Fp256BatchMultiply: batchMultiply);
+        try
+        {
+            return new LongfellowMdocFieldVerifier(
+                montgomeryCircuit, parameters, encoderFactory, profile, codec,
+                Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None,
+                Fp256BatchMultiply: batchMultiply);
+        }
+        catch
+        {
+            montgomeryCircuit.Dispose();
+            throw;
+        }
     }
 }

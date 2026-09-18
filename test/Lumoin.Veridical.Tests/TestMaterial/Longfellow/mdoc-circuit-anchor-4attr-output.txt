@@ -1,5 +1,4 @@
-Circuit-artifact import ground truth for the 4-attribute bundle from google/longfellow-zk (kZkSpecs[3]: version 7, 4 attributes, block_enc 4415/4096).
-Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
+Circuit-artifact import expected values for the 4-attribute bundle (version 7, 4 attributes, block_enc 4415/4096).
 zkspec_system=longfellow-libzk-v1
 zkspec_num_attributes=4
 zkspec_version=7
@@ -218,4 +217,4 @@ hash_witness_rawlen=1597280
 hash_witness_gzlen=71693
 hash_witness_rawsha=aa4bab87303b2487d62a9631df028b9ce3142ffa6808abb0bf72800d7cf25baa
 hash_npub_in=3304
-hash_witness_dumped=1
+hash_witness_recorded=1

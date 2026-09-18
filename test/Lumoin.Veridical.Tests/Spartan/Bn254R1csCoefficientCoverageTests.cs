@@ -17,39 +17,77 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// BN254 coverage for R1CS instances with non-unit matrix coefficients —
 /// the property a BN254 Poseidon fixture would have exercised but which the
 /// all-ones multiplier2 fixture and the all-ones programmatic Spartan tests do
-/// not. A BN254 Poseidon <c>.r1cs</c> is blocked on tooling (no local circom /
-/// snarkjs, and Poseidon's round constants are field-specific so the
-/// multiplier2 prime-swap cannot produce one), not on the reader, which parses
-/// coefficients as field-agnostic 32-byte values. These programmatic tests
-/// close the substantive half of that gap: arbitrary BN254 field-element
+/// not. No BN254 Poseidon <c>.r1cs</c> fixture is committed: Poseidon's round
+/// constants are field-specific, so the multiplier2 prime-swap that derives a
+/// BN254 fixture from the BLS12-381 bytes cannot produce one. The reader is
+/// not the obstacle — it parses coefficients as field-agnostic 32-byte values
+/// regardless of curve — so these programmatic tests close the substantive
+/// half of that gap directly: arbitrary BN254 field-element
 /// coefficients flowing through <c>CheckSatisfiedBy</c>
 /// (Poseidon's load-bearing assertion) and through the Spartan prover/verifier.
 /// </summary>
 [TestClass]
 internal sealed class Bn254R1csCoefficientCoverageTests
 {
+    /// <summary>The Fiat–Shamir hash delegate, wired to the Blake3 reference implementation.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The Fiat–Shamir squeeze delegate, wired to the Blake3 reference implementation.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The scalar-reduction delegate, wired to the BN254 BigInteger reference implementation.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The scalar-addition delegate, wired to the BN254 test backend.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bn254.Add;
+
+    /// <summary>The scalar-subtraction delegate, wired to the BN254 test backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bn254.Subtract;
+
+    /// <summary>The scalar-multiplication delegate, wired to the BN254 test backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bn254.Multiply;
+
+    /// <summary>The scalar-inversion delegate, wired to the BN254 test backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bn254.Invert;
+
+    /// <summary>The scalar-sampling delegate, wired to the BN254 BigInteger reference implementation.</summary>
     private static ScalarRandomDelegate Random { get; } = Bn254BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The G1 point-addition delegate, wired to the BN254 BigInteger reference implementation.</summary>
     private static G1AddDelegate G1Add { get; } = Bn254BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The G1 scalar-multiplication delegate, wired to the BN254 BigInteger reference implementation.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bn254BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The G1 multi-scalar-multiplication delegate, wired to the BN254 test backend.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bn254Msm;
+
+    /// <summary>The G1 curve-membership delegate, wired to the BN254 BigInteger reference implementation.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The G1 prime-order-subgroup delegate, wired to the BN254 BigInteger reference implementation.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The G1 hash-to-curve delegate, wired to the BN254 BigInteger reference implementation.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bn254BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The multilinear-extension evaluation delegate, wired to the BigInteger reference implementation.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The multilinear-extension folding delegate, wired to the BigInteger reference implementation.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
+    /// <summary>The BN254 scalar field order, used to reduce constructed test values into canonical range.</summary>
     private static BigInteger Order { get; } = Bn254BigIntegerScalarReference.FieldOrder;
+
+    /// <summary>The BN254 curve parameter set these tests exercise.</summary>
     private static CurveParameterSet Curve => CurveParameterSet.Bn254;
+
+    /// <summary>The shared memory pool these tests rent instance, witness, and proof storage from.</summary>
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 
 
+    /// <summary>Verifies that a BN254 instance with non-unit matrix coefficients is satisfied by a witness that solves it.</summary>
     [TestMethod]
     public void NonUnitCoefficientInstanceSatisfiesInBn254Arithmetic()
     {
@@ -69,6 +107,7 @@ internal sealed class Bn254R1csCoefficientCoverageTests
     }
 
 
+    /// <summary>Verifies that the same non-unit-coefficient instance reports the violated constraint when the witness does not solve it.</summary>
     [TestMethod]
     public void NonUnitCoefficientWrongWitnessReportedViolated()
     {
@@ -82,6 +121,7 @@ internal sealed class Bn254R1csCoefficientCoverageTests
     }
 
 
+    /// <summary>Verifies that a BN254 instance with non-unit matrix coefficients proves and verifies through the Spartan prover and verifier.</summary>
     [TestMethod]
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; disposal happens before the assertion completes.")]
     public void NonUnitCoefficientInstanceProvesAndVerifiesThroughSpartan()
@@ -109,9 +149,19 @@ internal sealed class Bn254R1csCoefficientCoverageTests
     }
 
 
-    //A: row0 col1 = 2, row1 col0 = 1.  B: row0 col2 = 3, row1 col0 = 1.
-    //C: row0 col3 = 1, row1 col0 = 1.  (m=2, n=4). Coefficients 2 and 3 are the
-    //non-unit entries the all-ones fixtures never exercise.
+    /// <summary>The row count of <see cref="BuildNonUnitInstance"/>'s matrices: two constraints.</summary>
+    private const int RowCount = 2;
+
+    /// <summary>The column count of <see cref="BuildNonUnitInstance"/>'s matrices: the constant <c>z[0]</c> plus three witness elements.</summary>
+    private const int ColumnCount = 4;
+
+
+    /// <summary>
+    /// Builds the two-constraint, four-column BN254 instance whose non-unit
+    /// coefficients — 2 and 3, which the all-ones fixtures never exercise —
+    /// appear in row 0: <c>(2·z[1])·(3·z[2]) = z[3]</c>. Row 1 pads the
+    /// instance with the all-ones constraint <c>z[0]·z[0] = z[0]</c>.
+    /// </summary>
     private static RawR1csInstance BuildNonUnitInstance()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -120,28 +170,30 @@ internal sealed class Bn254R1csCoefficientCoverageTests
         ReadOnlySpan<int> bCols = [2, 0];
         ReadOnlySpan<int> cCols = [3, 0];
 
-        Span<byte> aVals = stackalloc byte[2 * scalarSize];
+        Span<byte> aVals = stackalloc byte[RowCount * scalarSize];
         WriteCanonical(new BigInteger(2), aVals[..scalarSize]);
         WriteCanonical(BigInteger.One, aVals.Slice(scalarSize, scalarSize));
 
-        Span<byte> bVals = stackalloc byte[2 * scalarSize];
+        Span<byte> bVals = stackalloc byte[RowCount * scalarSize];
         WriteCanonical(new BigInteger(3), bVals[..scalarSize]);
         WriteCanonical(BigInteger.One, bVals.Slice(scalarSize, scalarSize));
 
-        Span<byte> cVals = stackalloc byte[2 * scalarSize];
+        Span<byte> cVals = stackalloc byte[RowCount * scalarSize];
         WriteCanonical(BigInteger.One, cVals[..scalarSize]);
         WriteCanonical(BigInteger.One, cVals.Slice(scalarSize, scalarSize));
 
-        R1csMatrix a = R1csMatrix.FromSortedTriples(rows, aCols, aVals, 2, 4, Curve, Pool);
-        R1csMatrix b = R1csMatrix.FromSortedTriples(rows, bCols, bVals, 2, 4, Curve, Pool);
-        R1csMatrix c = R1csMatrix.FromSortedTriples(rows, cCols, cVals, 2, 4, Curve, Pool);
+        R1csMatrix a = R1csMatrix.FromSortedTriples(rows, aCols, aVals, RowCount, ColumnCount, Curve, Pool);
+        R1csMatrix b = R1csMatrix.FromSortedTriples(rows, bCols, bVals, RowCount, ColumnCount, Curve, Pool);
+        R1csMatrix c = R1csMatrix.FromSortedTriples(rows, cCols, cVals, RowCount, ColumnCount, Curve, Pool);
         return RawR1csInstance.Create(a, b, c, ReadOnlySpan<byte>.Empty, Pool);
     }
 
 
+    /// <summary>Builds the witness that satisfies <see cref="BuildNonUnitInstance"/>: <c>z[1]=2, z[2]=5, z[3]=60</c>.</summary>
     private static RawR1csWitness BuildSatisfyingWitness() => BuildWitness(z1: 2, z2: 5, z3: 60);
 
 
+    /// <summary>Builds a three-element BN254 witness from the given <c>z[1], z[2], z[3]</c> values.</summary>
     private static RawR1csWitness BuildWitness(int z1, int z2, int z3)
     {
         int scalarSize = Scalar.SizeBytes;
@@ -153,21 +205,25 @@ internal sealed class Bn254R1csCoefficientCoverageTests
     }
 
 
+    /// <summary>Builds a Spartan prover over a freshly derived BN254 Hyrax commitment provider.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanProver.")]
     private static SpartanProver BuildProver() =>
         new(new SpartanProvingKey(BuildProvider()));
 
 
+    /// <summary>Builds a Spartan verifier over a freshly derived BN254 Hyrax commitment provider.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned SpartanVerifier.")]
     private static SpartanVerifier BuildVerifier() =>
         new(new SpartanVerifyingKey(BuildProvider()));
 
 
+    /// <summary>Derives a Hyrax commitment key with enough Pedersen generators for this fixture's small polynomial commitment.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the derived key transfers to the caller.")]
     private static HyraxCommitmentKey BuildCommitmentKey() =>
         HyraxCommitmentKey.Derive(2, WellKnownHyraxDomainLabels.CanonicalSeedV1, Curve, HashToCurve, Pool);
 
 
+    /// <summary>Builds the Hyrax polynomial commitment provider that backs the prover and verifier.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider takes ownership of the key (ownsKey: true) and transfers to the Spartan key that consumes it.")]
     private static PolynomialCommitmentProvider BuildProvider() =>
         HyraxPolynomialCommitmentScheme.Create(
@@ -178,12 +234,14 @@ internal sealed class Bn254R1csCoefficientCoverageTests
             ownsKey: true);
 
 
+    /// <summary>Initialises a fresh Fiat–Shamir transcript under the Spartan domain label.</summary>
     private static FiatShamirTranscript FreshTranscript() =>
         FiatShamirTranscript.Initialise(
             new FiatShamirDomainLabel(WellKnownSpartanDomainLabels.SpartanV1),
             ReadOnlySpan<byte>.Empty, WellKnownHashAlgorithms.Blake3, Hash, Pool);
 
 
+    /// <summary>Reduces a value modulo the BN254 scalar field order and writes it as a fixed-width canonical big-endian scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

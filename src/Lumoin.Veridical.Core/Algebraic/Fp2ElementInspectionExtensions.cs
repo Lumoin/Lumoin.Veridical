@@ -17,6 +17,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class Fp2ElementInspectionExtensions
 {
+    /// <summary>Inspection members added to every <see cref="Fp2Element"/> instance.</summary>
     extension(Fp2Element element)
     {
         /// <summary>

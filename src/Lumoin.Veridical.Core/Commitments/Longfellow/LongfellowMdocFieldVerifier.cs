@@ -10,11 +10,11 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// field bundles plus the shared transcript / hash / public-input arguments.
 /// </summary>
 /// <remarks>
-/// Per D6 the circuit and parameters are pre-derived (<see cref="LongfellowCircuitReader"/> /
+/// The circuit and parameters are pre-derived (<see cref="LongfellowCircuitReader"/> /
 /// <see cref="LongfellowZkVerifier.DeriveParameters(LongfellowSumcheckCircuit, int, int, int, int, int)"/> are already-gated layers the caller drives). The
-/// row-encoder factory, the field profile and the subfield-run codec are the field bindings the C.12b
-/// seam produces (<see cref="LongfellowGf2k128Encoding"/> for the hash side,
-/// <see cref="LongfellowFp256Encoding"/> for the signature side). The codec is borrowed, not owned — the
+/// row-encoder factory, the field profile and the subfield-run codec are the field bindings
+/// <see cref="LongfellowGf2k128Encoding"/> produces for the hash side and
+/// <see cref="LongfellowFp256Encoding"/> produces for the signature side. The codec is borrowed, not owned — the
 /// caller that built it disposes it.
 /// </remarks>
 /// <param name="Circuit">The circuit shape with its per-layer <c>Quad</c> terms; must have <c>logc == 0</c>.</param>

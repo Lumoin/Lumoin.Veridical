@@ -54,7 +54,7 @@ public static class ZkWhirIoppProver
     /// <param name="constraintPoints">The constraint points <c>p_c</c>, <c>m</c> elements per constraint, first variable first.</param>
     /// <param name="target">The claimed sum <c>σ</c>, one element.</param>
     /// <param name="transcript">The Fiat-Shamir transcript, already initialised with the protocol's public context.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
     /// <param name="reduce">The scalar-reduce backend for deriving challenges.</param>
@@ -75,7 +75,7 @@ public static class ZkWhirIoppProver
         ReadOnlySpan<byte> constraintPoints,
         ReadOnlySpan<byte> target,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -88,7 +88,7 @@ public static class ZkWhirIoppProver
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(squeeze);
         ArgumentNullException.ThrowIfNull(reduce);
@@ -117,7 +117,7 @@ public static class ZkWhirIoppProver
             constraintPoints,
             target,
             transcript,
-            merkleHash,
+            merkleParameters,
             hash,
             squeeze,
             reduce,
@@ -147,7 +147,7 @@ public static class ZkWhirIoppProver
     /// <param name="constraintPoints">The constraint points <c>p_c</c>, <c>m</c> elements per constraint, first variable first.</param>
     /// <param name="target">The claimed sum <c>σ</c>, one element.</param>
     /// <param name="transcript">The Fiat-Shamir transcript, already initialised with the protocol's public context.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
     /// <param name="reduce">The scalar-reduce backend for deriving challenges.</param>
@@ -170,7 +170,7 @@ public static class ZkWhirIoppProver
         ReadOnlySpan<byte> constraintPoints,
         ReadOnlySpan<byte> target,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -183,7 +183,7 @@ public static class ZkWhirIoppProver
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(squeeze);
         ArgumentNullException.ThrowIfNull(reduce);
@@ -289,7 +289,7 @@ public static class ZkWhirIoppProver
                 currentMessageLength,
                 schedule,
                 encoder,
-                merkleHash,
+                merkleParameters,
                 leavesOwners,
                 trees,
                 pool,
@@ -355,7 +355,7 @@ public static class ZkWhirIoppProver
                         currentSize,
                         schedule,
                         encoder,
-                        merkleHash,
+                        merkleParameters,
                         leavesOwners,
                         trees,
                         pool,
@@ -369,7 +369,7 @@ public static class ZkWhirIoppProver
                         1,
                         switchMessage,
                         encoder,
-                        merkleHash,
+                        merkleParameters,
                         maskRandom,
                         curve,
                         pool);
@@ -497,7 +497,7 @@ public static class ZkWhirIoppProver
                     parameters.SumcheckMaskShape,
                     foldingParameter,
                     encoder,
-                    merkleHash,
+                    merkleParameters,
                     maskRandom,
                     curve,
                     pool);
@@ -598,7 +598,7 @@ public static class ZkWhirIoppProver
             int finalQueryDomainLog2 = last.DomainSizeLog2 - foldingParameter;
             var sourceShape = new WhirMaskCodeShape(finalMessageLength, lastRandomnessCount, finalQueryDomainLog2);
 
-            ZkWhirMaskGroup freshMain = ZkWhirMaskGroup.Create(sourceShape, 1, encoder, merkleHash, maskRandom, curve, pool);
+            ZkWhirMaskGroup freshMain = ZkWhirMaskGroup.Create(sourceShape, 1, encoder, merkleParameters, maskRandom, curve, pool);
             disposables.Add(freshMain);
             transcript.AbsorbWhirBaseCaseFreshRoot(freshMain.Tree.Root, hash);
             baseCaseFreshRoot = MerkleRoot.FromBytes(freshMain.Tree.Root.AsReadOnlySpan(), pool);
@@ -611,7 +611,7 @@ public static class ZkWhirIoppProver
                     groups[group].Shape,
                     groups[group].MaskCount,
                     encoder,
-                    merkleHash,
+                    merkleParameters,
                     maskRandom,
                     curve,
                     pool);
@@ -858,7 +858,7 @@ public static class ZkWhirIoppProver
     /// <param name="parameters">The zero-knowledge parameter extension fixing the initial domain, leaf shape and randomness budget.</param>
     /// <param name="coefficients">The multilinear coefficient vector, <c>2^m</c> elements.</param>
     /// <param name="randomness">The appended encoding randomness, <c>t_0·2^k</c> elements.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="add">Scalar-add backend.</param>
     /// <param name="subtract">Scalar-subtract backend.</param>
     /// <param name="multiply">Scalar-multiply backend.</param>
@@ -870,14 +870,14 @@ public static class ZkWhirIoppProver
         WhirZkParameters parameters,
         ReadOnlySpan<byte> coefficients,
         ReadOnlySpan<byte> randomness,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply,
         BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(subtract);
         ArgumentNullException.ThrowIfNull(multiply);
@@ -911,11 +911,12 @@ public static class ZkWhirIoppProver
         Span<byte> leaves = leavesOwner.Memory.Span[..(domainLength * ScalarSize)];
         encoder.EncodeToCosetLeavesWithRandomness(coefficients, randomness, domainSizeLog2, foldingParameter, leaves);
 
-        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * ScalarSize);
-        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * ScalarSize)];
-        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleHash, digests, pool);
+        int nodeSize = merkleParameters.NodeSizeBytes;
+        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * nodeSize);
+        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * nodeSize)];
+        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleParameters, digests, pool);
 
-        using MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleHash, pool);
+        using MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleParameters, pool);
 
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
@@ -998,7 +999,7 @@ public static class ZkWhirIoppProver
         int messageElementCount,
         WhirParameterSchedule schedule,
         WhirCosetEncoder encoder,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         IMemoryOwner<byte>?[] leavesOwners,
         MerkleTree?[] trees,
         BaseMemoryPool pool,
@@ -1021,11 +1022,12 @@ public static class ZkWhirIoppProver
             foldingParameter,
             leaves);
 
-        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * ScalarSize);
-        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * ScalarSize)];
-        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleHash, digests, pool);
+        int nodeSize = merkleParameters.NodeSizeBytes;
+        using IMemoryOwner<byte> digestsOwner = pool.Rent(blockCount * nodeSize);
+        Span<byte> digests = digestsOwner.Memory.Span[..(blockCount * nodeSize)];
+        WhirCosetLeaf.ComputeLeafDigests(leaves, blockCount, blockSize, merkleParameters, digests, pool);
 
-        MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleHash, pool);
+        MerkleTree tree = MerkleTree.Build(digests, blockCount, merkleParameters, pool);
         disposables.Add(tree);
         trees[oracleIndex] = tree;
     }

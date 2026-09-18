@@ -12,21 +12,17 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The wire-format-conformant Ligero COMMITMENT layer (conformance step C.2), gated as a faithful
+/// The wire-format-conformant Ligero COMMITMENT layer, gated as a faithful
 /// port of google/longfellow-zk's <c>lib/ligero/ligero_prover.h</c> commit path,
 /// <c>lib/ligero/ligero_param.h</c> parameter derivation and <c>lib/merkle/merkle_tree.h</c> Merkle
 /// tree, anchored to a commitment root the reference itself computes.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The oracle dump (commit-anchor-output.txt in TestMaterial/Longfellow) is computed by the
-/// reference implementation running in its own build environment with a deterministic random
-/// engine (the k-th byte ever produced is <c>k &amp; 0xFF</c>); the production procedure is
-/// development tooling outside this repository. It carries the derived <c>LigeroParam</c> fields for several
+/// The anchor carries the derived <c>LigeroParam</c> fields for several
 /// <c>(nw, nq, rateinv, nreq)</c> tuples and a full commit (per-leaf SHA-256 digests + the Merkle
-/// root) over a fixed witness set; <c>prover_root_matches=1</c> in the oracle confirms the harness's
-/// self-contained replica reproduces the real <c>LigeroProver::commit()</c> root, so the pinned root
-/// is the production commitment.
+/// root) over a fixed witness set, computed with a deterministic random engine whose k-th byte is
+/// <c>k &amp; 0xFF</c>.
 /// </para>
 /// <para>
 /// The C# gates reproduce: (a) the derived parameter fields for the tuples; (b) the leaf digests byte
@@ -40,24 +36,35 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowLigeroCommitmentTests
 {
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The SHA-256 digest width in bytes.</summary>
     private const int DigestSize = 32;
 
-    //GF(2^128) byte sizes: the full field element is 16 bytes; the production GF(2^16) subfield is 2
-    //bytes, the test-parity GF(2^32) subfield is 4 bytes.
+    /// <summary>The GF(2^128) full field element width in bytes.</summary>
     private const int FieldBytes = 16;
+
+    /// <summary>The production GF(2^16) subfield element width in bytes.</summary>
     private const int Production16SubFieldBytes = 2;
+
+    /// <summary>The test-parity GF(2^32) subfield element width in bytes.</summary>
     private const int TestParity32SubFieldBytes = 4;
 
+    /// <summary>The GF(2^128) addition delegate (XOR).</summary>
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) subtraction delegate (coincides with addition).</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) multiplication delegate.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) inversion delegate.</summary>
     private static ScalarInvertDelegate Invert { get; } = Gf2k128Backend.GetInvert();
 
 
+    /// <summary>Verifies that the derived Ligero parameters match the reference's recorded values for several shapes over the production GF(2^16) subfield.</summary>
     [TestMethod]
     public void DerivedParametersMatchTheReferenceForTheProductionSubfield()
     {
@@ -70,6 +77,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that the derived Ligero parameters match the reference's recorded values for several shapes over the test-parity GF(2^32) subfield.</summary>
     [TestMethod]
     public void DerivedParametersMatchTheReferenceForTheTestParitySubfield()
     {
@@ -82,6 +90,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that the commitment root and its leading and trailing leaf digests match the reference's recorded values over the production GF(2^16) subfield.</summary>
     [TestMethod]
     public void TheCommitmentRootAndLeavesMatchTheReferenceForTheProductionSubfield()
     {
@@ -97,6 +106,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that the commitment root and its leading and trailing leaf digests match the reference's recorded values over the test-parity GF(2^32) subfield.</summary>
     [TestMethod]
     public void TheCommitmentRootAndLeavesMatchTheReferenceForTheTestParitySubfield()
     {
@@ -112,6 +122,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that the Merkle two-to-one combine equals .NET's <c>SHA256(left ‖ right)</c> for two distinct child digests.</summary>
     [TestMethod]
     public void TheMerkleCombineMatchesDotNetSha256()
     {
@@ -137,6 +148,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that a two-leaf tree's root is the hand-computed combine of its two leaves.</summary>
     [TestMethod]
     public void TheTwoLeafTreeRootIsTheHandComputedCombine()
     {
@@ -156,6 +168,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that a three-leaf tree's root, and its intermediate heap node, follow the reference's non-balanced heap layout for an odd leaf count.</summary>
     [TestMethod]
     public void TheThreeLeafTreeRootMatchesTheReferenceHeapLayout()
     {
@@ -186,6 +199,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that flipping one bit of one leaf changes the tree's root.</summary>
     [TestMethod]
     public void AFlippedLeafChangesTheRoot()
     {
@@ -212,6 +226,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that flipping one witness element before commit propagates through the codeword into the leaves and changes the commitment root.</summary>
     [TestMethod]
     public void AFlippedTableauElementChangesItsLeafAndTheRoot()
     {
@@ -227,6 +242,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Verifies that copying the root into a buffer one byte short of the digest size is rejected.</summary>
     [TestMethod]
     public void RejectsAMisSizedRootBuffer()
     {
@@ -242,7 +258,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
-    //Builds the parameters and asserts every derived field equals the reference's dump.
+    /// <summary>Builds the parameters and asserts every derived field equals the reference's recorded value.</summary>
     private static void AssertParameters(
         int witnessCount,
         int quadraticConstraintCount,
@@ -273,8 +289,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
-    //Commits the fixed witness set over the given subfield and asserts the root and three leaves plus
-    //the last leaf match the reference's hex dump.
+    /// <summary>Commits the fixed witness set over the given subfield and asserts the root and three leaves plus the last leaf match the reference's recorded hex values.</summary>
     private static void AssertCommitMatchesReference(
         Lch14Subfield subfield,
         int subFieldBytes,
@@ -322,7 +337,7 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
-    //Recomputes the commit with a recording leaf hash so the produced leaf digests can be pinned.
+    /// <summary>Recomputes the commit with a recording leaf hash so the produced leaf digests can be pinned.</summary>
     private static void AssertReferenceLeaves(
         LongfellowLigeroParameters parameters,
         ReadOnlySpan<byte> witnesses,
@@ -338,6 +353,8 @@ internal sealed class LongfellowLigeroCommitmentTests
         byte[][] recordedLeaves = new byte[blockExtension][];
         int recorded = 0;
 
+        //Hashes one leaf and records its digest into recordedLeaves at the next slot, in commit order.
+        //The requested hash-algorithm name is ignored: this delegate is always SHA-256.
         void RecordingLeafHash(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
         {
             SHA256.HashData(input, output);
@@ -361,8 +378,11 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
-    //Commits the fixed witness set over the given subfield with an optional one-bit witness flip,
-    //writing the root.
+    /// <summary>Commits the fixed witness set over the given subfield with an optional one-bit witness flip, writing the root.</summary>
+    /// <param name="subfield">The LCH14 subfield to build the FFT over.</param>
+    /// <param name="subFieldBytes">The subfield element width in bytes.</param>
+    /// <param name="witnessFlipIndex">The witness index whose low bit is flipped, or a negative value for no flip.</param>
+    /// <param name="root">Receives the commitment root.</param>
     private static void Commit(Lch14Subfield subfield, int subFieldBytes, int witnessFlipIndex, Span<byte> root)
     {
         const int witnessCount = 8;
@@ -390,10 +410,16 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
-    //W[i] = of_scalar(i + 1) (NodeElement(i+1)), then W[2] = W[0]·W[1] to satisfy the one quadratic
-    //constraint — the reference's exact witness seeding. An optional flip index XORs one low bit of a
-    //witness to model a corrupted element; W[2] is then recomputed so the only difference is the
-    //perturbed input, which still propagates into the codeword and leaves.
+    /// <summary>
+    /// Seeds <c>W[i] = of_scalar(i + 1)</c> (<c>NodeElement(i+1)</c>), then sets <c>W[2] = W[0]·W[1]</c>
+    /// to satisfy the one quadratic constraint — the reference's exact witness seeding. An optional
+    /// flip index XORs one low bit of a witness to model a corrupted element; <c>W[2]</c> is then
+    /// recomputed so the only difference is the perturbed input, which still propagates into the
+    /// codeword and leaves.
+    /// </summary>
+    /// <param name="fft">The additive-FFT engine supplying <c>NodeElement</c>.</param>
+    /// <param name="witnesses">Receives the seeded witness column.</param>
+    /// <param name="witnessFlipIndex">The witness index whose low bit is flipped, or a negative value for no flip.</param>
     private static void BuildWitnesses(Lch14AdditiveFft fft, Span<byte> witnesses, int witnessFlipIndex)
     {
         int witnessCount = witnesses.Length / ScalarSize;
@@ -415,8 +441,11 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
-    //A fresh deterministic counter source: the k-th byte produced is (k & 0xFF), identical to the C++
-    //oracle's CounterRandomEngine. Each call returns a new source so a test restarts the stream at 0.
+    /// <summary>
+    /// Creates a fresh deterministic counter source: the k-th byte produced is <c>k &amp; 0xFF</c>.
+    /// Each call returns a new source so a test restarts the stream at zero.
+    /// </summary>
+    /// <returns>A deterministic counter-based random byte source.</returns>
     private static LongfellowRandomByteSource NewCounterSource()
     {
         ulong counter = 0;
@@ -432,11 +461,17 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
+    /// <summary>Creates the LCH14 additive-FFT engine over the given subfield.</summary>
+    /// <param name="subfield">The subfield to build the FFT over.</param>
+    /// <returns>The new additive-FFT engine.</returns>
     private static Lch14AdditiveFft NewFft(Lch14Subfield subfield) =>
         new(subfield, Add, Subtract, Multiply, Invert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //The reference's node combine: SHA256(left || right).
+    /// <summary>Computes the reference's node combine: <c>SHA256(left ‖ right)</c>.</summary>
+    /// <param name="left">The left digest.</param>
+    /// <param name="right">The right digest.</param>
+    /// <param name="output">Receives the combined digest.</param>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSize];
@@ -446,19 +481,30 @@ internal sealed class LongfellowLigeroCommitmentTests
     }
 
 
-    //The one-shot leaf hash: SHA256 over the whole nonce-plus-column input span.
+    /// <summary>Computes the one-shot leaf hash: SHA-256 over the whole nonce-plus-column input span.</summary>
+    /// <param name="input">The bytes to hash.</param>
+    /// <param name="output">Receives the 32-byte digest.</param>
+    /// <param name="hashFunction">The requested hash algorithm name; unused, since this delegate is always SHA-256.</param>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
     {
         SHA256.HashData(input, output);
     }
 
 
+    /// <summary>Fills one digest-sized leaf slot with a repeated byte value.</summary>
+    /// <param name="leaves">The concatenated leaf buffer.</param>
+    /// <param name="leafIndex">The leaf index to fill.</param>
+    /// <param name="fillByte">The byte value to fill with.</param>
     private static void FillLeaf(Span<byte> leaves, int leafIndex, byte fillByte)
     {
         leaves.Slice(leafIndex * DigestSize, DigestSize).Fill(fillByte);
     }
 
 
+    /// <summary>Asserts that <paramref name="actual"/> equals the bytes <paramref name="expectedHex"/> decodes to.</summary>
+    /// <param name="expectedHex">The expected bytes, hex-encoded.</param>
+    /// <param name="actual">The actual bytes.</param>
+    /// <param name="message">The assertion failure message.</param>
     private static void AssertHex(string expectedHex, ReadOnlySpan<byte> actual, string message)
     {
         Span<byte> expected = stackalloc byte[DigestSize];

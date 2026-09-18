@@ -9,7 +9,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// The mac/av splice into the two public-input vectors, the reference's <c>fill_public_inputs</c> tail
 /// (<c>lib/circuits/mdoc/mdoc_zk.cc:177-209</c>) over the <c>fill_gf2k</c> fillers
 /// (<c>lib/circuits/mac/mac_reference.h:62-68</c>). The driver supplies a pre-built public-input template
-/// per field (per D5 the CBOR/attribute/<c>now</c> walk and the <c>e2</c> computation are caller-side); this
+/// per field (the CBOR/attribute/<c>now</c> walk and the <c>e2</c> computation are caller-side); this
 /// appends the six macs and the shared key <c>a_v</c> in each field's framing and guards the spliced length
 /// against the circuit's declared <c>npub_in</c>.
 /// </summary>
@@ -23,13 +23,16 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal static class LongfellowMdocPublicInputs
 {
-    //f_128::kBits: a GF(2^128) element expands to 128 LSB-first base-field wires on the sig side.
+    /// <summary>The reference's <c>f_128::kBits</c>: a GF(2^128) element expands to 128 LSB-first base-field wires on the sig side.</summary>
     private const int MacKeyBits = 128;
 
-    //The six per-credential macs plus the one a_v key, in both public vectors (mdoc_zk.cc:189-207).
+    /// <summary>The six per-credential macs this splice appends to both public vectors (<c>mdoc_zk.cc:189-207</c>).</summary>
     private const int MacCount = LongfellowMdocEnvelope.MacCount;
+
+    /// <summary>The six macs plus the one shared <c>a_v</c> key, the total element count this splice appends.</summary>
     private const int MacAndKeyCount = MacCount + 1;
 
+    /// <summary>The byte width of one canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -149,9 +152,12 @@ internal static class LongfellowMdocPublicInputs
     }
 
 
-    //Writes the 128 base-field wires of one GF(2^128) element, least-significant bit first: bit j picks one
-    //or zero. The canonical scalar is big-endian with the 16-byte element in its low bytes, so bit j sits in
-    //canonical[ScalarSize - 1 - (j / 8)] at position j mod 8 (mac[j] in mac_reference.h:66).
+    /// <summary>
+    /// Writes the 128 base-field wires of one GF(2^128) element, least-significant bit first: bit j
+    /// picks one or zero. The canonical scalar is big-endian with the 16-byte element in its low
+    /// bytes, so bit j sits in <c>canonical[ScalarSize - 1 - (j / 8)]</c> at position <c>j mod 8</c>
+    /// (<c>mac[j]</c> in <c>mac_reference.h:66</c>).
+    /// </summary>
     private static void ExpandBits(ReadOnlySpan<byte> element, ReadOnlySpan<byte> oneWire, ReadOnlySpan<byte> zeroWire, int elementBytes, Span<byte> pub, ref int offset)
     {
         for(int j = 0; j < MacKeyBits; j++)

@@ -1,33 +1,22 @@
-Wire-format-conformant zk SUMCHECK-SEGMENT ground truth from google/longfellow-zk (conformance step C.7).
-Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
+The wire-format zk sumcheck-segment proof for a small GF2_128<4> circuit, sharing its field with the
+commitment and full-proof anchors: the full field is 16-byte GF(2^128), the subfield is GF(2^16). The
+circuit is the field-satisfiable relation w == (x + y) * (x + z) * x (x public, y/z/w private), chosen
+so logc = 0 (no copies; the sc wire format below requires logc == 0) and nl = 3 (a genuine
+multi-layer walk with per-layer logw of 2, 3, 3). The fixed witnesses are x = 3, y = 5, z = 7, w = the
+field product; W[0] is the constant-one wire. The deterministic Fiat-Shamir seed is "sc7" (ASCII).
 
-Produced by sc_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
-reference implementation in its own build environment via development tooling outside this repository:
-
-  docker run --rm \
-    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
-    -v "<repo>/tempdocs/longfellow-anchors:/anchor" \
-    longfellow-ref bash -c \
-    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/sc_anchor.cc /src/lib/util/log.cc -lcrypto -o /tmp/a && /tmp/a"
-
-The harness compiles a small GF2_128<4> circuit through the real compiler. The full field is 16-byte
-GF(2^128) (matching the existing C.2-C.6 Ligero stack); the subfield is GF(2^16). The circuit is the
-field-satisfiable relation w == (x + y) * (x + z) * x (x public, y/z/w private), chosen so logc = 0 (no
-copies; the reference's write_sc_proof requires logc == 0) and nl = 3 (a genuine multi-layer walk with
-per-layer logw of 2, 3, 3). The fixed witnesses are x = of_scalar(3), y = of_scalar(5), z = of_scalar(7),
-w = the field product; W[0] is the constant-one wire. The deterministic Fiat-Shamir seed is "sc7" (ASCII).
-The harness runs the genuine (non-ZK) sumcheck Prover, then dumps:
+The genuine (non-ZK) sumcheck Prover produces the following recorded fields:
 
   - the circuit shape (nv, logv, nc, logc, nl, ninputs, npub_in, per-layer nw/logw/nterms, id);
-  - the input element bytes the verifier's write_input absorbs (input0..input4, to_bytes_field);
-  - the sc segment bytes through the REAL ZkProof::write_sc_proof (sc_bytes, sc_len);
+  - the input element bytes the verifier absorbs (input0..input4, to_bytes_field);
+  - the serialized sc segment bytes (sc_bytes, sc_len);
   - every Fiat-Shamir challenge the sumcheck verifier replays (Q, G, per-layer alpha/beta, per-round
     per-hand challenge), with the per-round sum01 = p(0)+p(1) and folded claim, and the per-layer wc
     claims; plus the input-binding challenge input_alpha squeezed after the last wc (the hand-off point
     into the Ligero layer);
-  - the reference's full sumcheck Verifier accept (ref_sumcheck_verify).
+  - the recorded full sumcheck verification accept (ref_sumcheck_verify).
 
-The sc byte layout, per layer (write_sc_proof, gated on logc == 0):
+The sc byte layout, per layer (gated on logc == 0):
   for wi in 0..logw:                  // one binding round per hand variable
     for k in {0, 2}:                  // the k != 1 optimization: p(1) is implied and not sent
       write hp[0][wi].t_[k]           // left hand, then
@@ -35,31 +24,31 @@ The sc byte layout, per layer (write_sc_proof, gated on logc == 0):
   write wc[0]                         // the two claims on W[L,C], W[R,C] for the next layer
   write wc[1]
 Each element is 16 little-endian to_bytes_field bytes. Per-layer byte size = (logw*(3-1)*2 + 2)*16; the
-total here is (2*4+2 + 3*4+2 + 3*4+2)*16 = (10 + 14 + 14)*16 = 608 bytes. read_sc_proof derives the same
+total here is (2*4+2 + 3*4+2 + 3*4+2)*16 = (10 + 14 + 14)*16 = 608 bytes. Parsing derives the same
 needed-bytes formula (logw*(3-1)*2 + 2)*kBytes per layer and rejects on underflow; the unsent p(1) slots
 read back as F.zero().
 
 The transcript flow the replay reproduces (the plain non-ZK sumcheck Prover/Verifier path):
-  1. initialize_sumcheck_fiat_shamir: write(id, 32) [tag 0], then each of npub_in public inputs as a
-     field element [tag 1], then write(F.zero()) [tag 1], then write0(nterms()) [tag 0, nterms zero
-     bytes]. nterms() = sum of per-layer nterms = 2 + 4 + 7 = 13.
-  2. write_input: the input column as a field-element array of ninputs elements [tag 2, count, elements].
-  3. begin_circuit: squeeze Q (kMaxBindings elts, logc used) then G (logv used).
-  4. per layer: begin_layer squeezes alpha then beta; the claim enters as cl0 + alpha*cl1; for each of
+  1. Fiat-Shamir setup: absorb the circuit id (32 bytes) [tag 0], then each of npub_in public inputs as
+     a field element [tag 1], then one zero field element [tag 1], then a placeholder recording
+     nterms() [tag 0, nterms zero bytes]. nterms() = sum of per-layer nterms = 2 + 4 + 7 = 13.
+  2. Absorb the input column as a field-element array of ninputs elements [tag 2, count, elements].
+  3. Squeeze Q (kMaxBindings elements, logc used) then G (logv used).
+  4. Per layer: squeeze alpha then beta; the claim enters as cl0 + alpha*cl1; for each of
      logw rounds, for each hand, the round absorbs the round polynomial (p(0), p(2); p(1) omitted) then
-     squeezes the challenge, and the claim folds to eval_lagrange(p, challenge); then wc[0], wc[1] are
-     absorbed [tag 2, count 2] as the next layer's two claims.
-  5. after the last layer: input_alpha = ts.elt(F), the post-wc challenge the ZK verifier uses for the
+     squeezes the challenge, and the claim folds via Lagrange evaluation at the challenge point; then
+     wc[0], wc[1] are absorbed [tag 2, count 2] as the next layer's two claims.
+  5. After the last layer: input_alpha = ts.elt(F), the post-wc challenge the ZK verifier uses for the
      input-binding (the hand-off into the Ligero layer).
 
-The GF(2^128) round-polynomial arithmetic: WPoly is degree-3 (N = 3), evaluated at points {0, 1, g} where
-g is the subfield generator (poly_evaluation_point(0) = 0, point(i) = g^(i-1)); eval_lagrange converts the
-Lagrange values to Newton forward differences (newton_of_lagrange) and evaluates (eval_newton) using the
-field's newton_denominator(k, i) = (X[k] - X[k-i])^(-1).
+The GF(2^128) round-polynomial arithmetic: the round polynomial is degree-3 (N = 3), evaluated at
+points {0, 1, g} where g is the subfield generator (point(0) = 0, point(i) = g^(i-1)); evaluation
+converts the Lagrange-basis values to Newton (divided-difference) form and evaluates there, using the
+denominator (X[k] - X[k-i])^(-1) at each step.
 
 nl, logc and the per-layer logw drive every size; the ZK PROVER side (our engine emitting this wire) and
-the full ZK verifier composition (ZkCommon::verifier_constraints building the Ligero A/b system, then
-LigeroVerifier) are above this segment and out of scope for C.7's sc-segment gate.
+the full ZK verifier composition (building the Ligero A/b system, then checking it) are above this
+segment and out of scope for this sc-segment gate.
 
 nv=1 logv=0 nc=1 logc=0 nl=3 ninputs=5 npub_in=2
 layer0_nw=4 layer0_logw=2 layer0_nterms=2

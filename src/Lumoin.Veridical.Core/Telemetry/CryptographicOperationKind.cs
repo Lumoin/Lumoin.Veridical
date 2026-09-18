@@ -20,11 +20,14 @@ namespace Lumoin.Veridical.Core.Telemetry;
 /// system's bespoke operation, a project-specific tally, and so on.
 /// </para>
 /// <para>
-/// Codes are partitioned by surface so future batches can extend any
-/// category without renumbering: 1–9 are the scalar-field operations,
+/// Codes are partitioned by surface so any category can gain values
+/// without renumbering the others: 1–9 are the scalar-field operations,
 /// 10–19 the base-field operations (when introduced), 20–39 the G1 group
-/// operations, 40–59 G2 / GT, 60–79 polynomial and FFT operations, and
-/// codes above 1000 are reserved for application extensions.
+/// operations, 40–59 G2 / GT — where Fp2, the smallest extension field and
+/// the one feeding G2 and the pairing, occupies the low end of the block
+/// rather than the reserved-but-unused 10–19 base-field range — 60–79
+/// polynomial and FFT operations, and codes above 1000 are reserved for
+/// application extensions.
 /// </para>
 /// </remarks>
 [DebuggerDisplay("{CryptographicOperationKindNames.GetName(this),nq}")]
@@ -34,14 +37,13 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public int Code { get; }
 
 
+    /// <summary>Wraps a numeric code as an operation kind. Use <see cref="Create"/> to register a new one.</summary>
     private CryptographicOperationKind(int code) { Code = code; }
 
 
     /// <summary>The sentinel "no operation". Reserved as code zero; not emitted by any backend.</summary>
     public static CryptographicOperationKind None { get; } = new(0);
 
-
-    //Scalar-field operations: 1-9.
 
     /// <summary>Addition in the scalar field.</summary>
     public static CryptographicOperationKind ScalarAdd { get; } = new(1);
@@ -86,11 +88,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind ScalarBatchMultiplyAccumulate { get; } = new(12);
 
 
-    //Fp2 extension-field operations: 40-49.
-    //(The 10-19 range is reserved for base-field Fp ops; Fp2 is the smallest
-    //extension field and lives in the pairing-side 40-59 block alongside
-    //future G2 / GT / pairing entries.)
-
     /// <summary>Addition in the BLS12-381 Fp2 extension field.</summary>
     public static CryptographicOperationKind Fp2Add { get; } = new(40);
 
@@ -113,8 +110,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind Fp2Conjugate { get; } = new(46);
 
 
-    //G2 group operations: 50-57.
-
     /// <summary>Point addition in G2.</summary>
     public static CryptographicOperationKind G2Add { get; } = new(50);
 
@@ -133,8 +128,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     /// <summary>Prime-order subgroup membership validation for a G2 candidate.</summary>
     public static CryptographicOperationKind G2IsInPrimeOrderSubgroup { get; } = new(55);
 
-
-    //G1 group operations: 20-29.
 
     /// <summary>Point addition in G1.</summary>
     public static CryptographicOperationKind G1Add { get; } = new(20);
@@ -158,9 +151,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind G1IsInPrimeOrderSubgroup { get; } = new(26);
 
 
-    //Polynomial and multilinear-extension operations: 60-79 per the
-    //CryptographicOperationKind partitioning convention.
-
     /// <summary>Univariate polynomial evaluation at a point.</summary>
     public static CryptographicOperationKind PolynomialEvaluate { get; } = new(60);
 
@@ -177,8 +167,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind MleEvaluate { get; } = new(64);
 
 
-    //Fiat-Shamir transcript operations: 80-89.
-
     /// <summary>Initialisation of a Fiat-Shamir transcript (initial state derivation).</summary>
     public static CryptographicOperationKind TranscriptInitialise { get; } = new(80);
 
@@ -191,8 +179,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     /// <summary>State-update transition that follows every squeeze on a Fiat-Shamir transcript.</summary>
     public static CryptographicOperationKind TranscriptUpdateState { get; } = new(83);
 
-
-    //Commitment-scheme operations: 100-119.
 
     /// <summary>Pedersen vector-commitment computation.</summary>
     public static CryptographicOperationKind PedersenCommit { get; } = new(100);
@@ -213,8 +199,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind IpaVerify { get; } = new(105);
 
 
-    //Constraint-system operations: 120-139.
-
     /// <summary>Construction of an R1CS sparse-COO matrix.</summary>
     public static CryptographicOperationKind R1csConstructMatrix { get; } = new(120);
 
@@ -230,8 +214,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     /// <summary>One Nova-style relaxed-R1CS fold step (cross-term, challenge, and homomorphic combination together count as one increment).</summary>
     public static CryptographicOperationKind RelaxedR1csFold { get; } = new(124);
 
-
-    //Sumcheck and Spartan-specific operations: 140-159.
 
     /// <summary>One round of the sumcheck protocol — round-polynomial computation, transcript absorb, and challenge squeeze together count as one increment.</summary>
     public static CryptographicOperationKind SumcheckRound { get; } = new(140);
@@ -252,13 +234,12 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind EvalPublicAndOneCompute { get; } = new(145);
 
 
-    //Fp6 extension-field operations: 200-209.
-    //(Fp6 = Fp2[v]/(v³ − (1+u)) is the cubic-over-quadratic layer in the
-    //BLS12-381 tower. It has no consumer outside Fp12, but is surfaced as
-    //its own delegate set for testability and so a GPU backend can fuse
-    //Fp6 ops without flattening into Fp12 first.)
-
-    /// <summary>Addition in the BLS12-381 Fp6 extension field.</summary>
+    /// <summary>
+    /// Addition in the BLS12-381 Fp6 extension field (<c>Fp6 = Fp2[v]/(v³ − (1+u))</c>, the
+    /// cubic-over-quadratic layer in the tower). Fp6 has no consumer outside Fp12, but is surfaced
+    /// as its own delegate set for testability and so a GPU backend can fuse Fp6 operations without
+    /// flattening into Fp12 first.
+    /// </summary>
     public static CryptographicOperationKind Fp6Add { get; } = new(200);
 
     /// <summary>Subtraction in the BLS12-381 Fp6 extension field.</summary>
@@ -276,8 +257,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     /// <summary>Multiplicative inverse in the BLS12-381 Fp6 extension field.</summary>
     public static CryptographicOperationKind Fp6Invert { get; } = new(205);
 
-
-    //Fp12 extension-field operations: 210-219.
 
     /// <summary>Addition in the BLS12-381 Fp12 extension field.</summary>
     public static CryptographicOperationKind Fp12Add { get; } = new(210);
@@ -301,8 +280,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind Fp12Conjugate { get; } = new(216);
 
 
-    //Pairing-side Fp12 operations and the pairing itself: 220-229.
-
     /// <summary>Frobenius endomorphism (x ↦ x^p) on the BLS12-381 Fp12 extension field.</summary>
     public static CryptographicOperationKind Fp12Frobenius { get; } = new(220);
 
@@ -312,8 +289,6 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     /// <summary>Top-level pairing <c>e(P, Q) : G1 × G2 → GT ⊂ Fp12*</c>. Counts a single composed Miller loop + final exponentiation as one increment.</summary>
     public static CryptographicOperationKind Pairing { get; } = new(222);
 
-
-    //BBS+ signature-scheme operations: 160-169.
 
     /// <summary>BBS+ key generation (derive secret-key scalar from input key material, compute public key on G2).</summary>
     public static CryptographicOperationKind BbsGenerate { get; } = new(160);
@@ -331,12 +306,7 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind BbsVerifyProof { get; } = new(164);
 
 
-    //BBS blind-signature (draft-irtf-cfrg-bbs-blind-signatures-03) and
-    //per-verifier-pseudonym (draft-irtf-cfrg-bbs-per-verifier-linkability-03)
-    //extension operations: 165-175, immediately following the core BBS+
-    //block (160-164) and before the next allocated block (Fp6, 200-209).
-
-    /// <summary>Blind BBS commitment to a set of prover-chosen messages (<c>Commit</c>/<c>CoreCommit</c>), producing the Pedersen commitment plus its Schnorr proof of opening.</summary>
+    /// <summary>Blind BBS commitment to a set of prover-chosen messages per <c>draft-irtf-cfrg-bbs-blind-signatures-03</c> (<c>Commit</c>/<c>CoreCommit</c>), producing the Pedersen commitment plus its Schnorr proof of opening.</summary>
     public static CryptographicOperationKind BbsCommit { get; } = new(165);
 
     /// <summary>Blind BBS signing over a deserialized-and-validated commitment plus signer-known messages (<c>BlindSign</c>).</summary>
@@ -351,7 +321,7 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     /// <summary>Blind BBS selective-disclosure proof verification (<c>BlindProofVerify</c>).</summary>
     public static CryptographicOperationKind BbsBlindVerifyProof { get; } = new(169);
 
-    /// <summary>Per-verifier-pseudonym commitment to the prover's <c>nym_secrets</c> alongside any blind messages (<c>CommitWithNym</c>).</summary>
+    /// <summary>Per-verifier-pseudonym commitment to the prover's <c>nym_secrets</c> alongside any blind messages per <c>draft-irtf-cfrg-bbs-per-verifier-linkability-03</c> (<c>CommitWithNym</c>).</summary>
     public static CryptographicOperationKind BbsNymCommit { get; } = new(170);
 
     /// <summary>Per-verifier-pseudonym blind signing over a commitment carrying <c>nym_secrets</c> (<c>BlindSignWithNym</c>).</summary>
@@ -370,6 +340,7 @@ public readonly struct CryptographicOperationKind: IEquatable<CryptographicOpera
     public static CryptographicOperationKind BbsCommitVerify { get; } = new(175);
 
 
+    /// <summary>The mutable backing list of every registered operation kind, built-in values first in declaration order, with any <see cref="Create"/>-registered kinds appended.</summary>
     private static List<CryptographicOperationKind> kinds { get; } =
     [
         None,

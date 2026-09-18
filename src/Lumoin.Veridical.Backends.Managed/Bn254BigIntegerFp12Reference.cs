@@ -33,13 +33,15 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <para>
 /// Frobenius and cyclotomic squaring are not part of this tower reference —
 /// the BLS12-381 codebase implements them in its pairing reference, where the
-/// final exponentiation needs them, and the BN254 equivalents land there too
-/// (U.6/U.7).
+/// final exponentiation needs them, and the BN254 equivalents live in
+/// <see cref="Bn254BigIntegerPairingReference"/> alongside it.
 /// </para>
 /// </remarks>
 internal static class Bn254BigIntegerFp12Reference
 {
+    /// <summary>The byte width of one Fp6 component (six BN254 base-field elements).</summary>
     private const int ComponentSize = 6 * WellKnownCurves.Bn254BaseFieldSizeBytes;
+    /// <summary>The byte width of a full Fp12 element (two Fp6 components).</summary>
     private const int ElementSize = 12 * WellKnownCurves.Bn254BaseFieldSizeBytes;
 
 
@@ -65,6 +67,7 @@ internal static class Bn254BigIntegerFp12Reference
     public static Fp12ConjugateDelegate GetConjugate() => Conjugate;
 
 
+    /// <summary>Adds two Fp12 elements component-wise over their Fp6 halves.</summary>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Add, curve);
@@ -77,6 +80,7 @@ internal static class Bn254BigIntegerFp12Reference
     }
 
 
+    /// <summary>Subtracts two Fp12 elements component-wise over their Fp6 halves.</summary>
     private static void Subtract(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Subtract, curve);
@@ -89,6 +93,7 @@ internal static class Bn254BigIntegerFp12Reference
     }
 
 
+    /// <summary>Multiplies two Fp12 elements using the schoolbook tower formula.</summary>
     private static void Multiply(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Multiply, curve);
@@ -99,6 +104,7 @@ internal static class Bn254BigIntegerFp12Reference
     }
 
 
+    /// <summary>Squares an Fp12 element as its schoolbook product with itself.</summary>
     private static void Square(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Square, curve);
@@ -108,6 +114,7 @@ internal static class Bn254BigIntegerFp12Reference
     }
 
 
+    /// <summary>Negates an Fp12 element component-wise over its Fp6 halves.</summary>
     private static void Negate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Negate, curve);
@@ -119,6 +126,7 @@ internal static class Bn254BigIntegerFp12Reference
     }
 
 
+    /// <summary>Inverts an Fp12 element via the quadratic-extension norm, or returns zero for a zero input.</summary>
     private static void Invert(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Invert, curve);
@@ -134,6 +142,7 @@ internal static class Bn254BigIntegerFp12Reference
     }
 
 
+    /// <summary>Conjugates an Fp12 element by negating its <c>c1</c> Fp6 component.</summary>
     private static void Conjugate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Conjugate, curve);
@@ -190,16 +199,19 @@ internal static class Bn254BigIntegerFp12Reference
         Bn254BigIntegerFp6Reference.Fp6Value C0,
         Bn254BigIntegerFp6Reference.Fp6Value C1)
     {
+        /// <summary>The Fp12 additive identity, <c>0 + 0·w</c>.</summary>
         public static Fp12Value Zero { get; } = new(
             Bn254BigIntegerFp6Reference.Fp6Value.Zero,
             Bn254BigIntegerFp6Reference.Fp6Value.Zero);
 
+        /// <summary>The Fp12 multiplicative identity, <c>1 + 0·w</c>.</summary>
         public static Fp12Value One { get; } = new(
             Bn254BigIntegerFp6Reference.Fp6Value.One,
             Bn254BigIntegerFp6Reference.Fp6Value.Zero);
     }
 
 
+    /// <summary>Decodes an Fp12 element from its <c>[c0 : 192][c1 : 192]</c> byte layout.</summary>
     internal static Fp12Value Read(ReadOnlySpan<byte> bytes)
     {
         if(bytes.Length != ElementSize)
@@ -216,6 +228,7 @@ internal static class Bn254BigIntegerFp12Reference
     }
 
 
+    /// <summary>Encodes an Fp12 element into its <c>[c0 : 192][c1 : 192]</c> byte layout.</summary>
     internal static void Write(Span<byte> destination, Fp12Value value)
     {
         if(destination.Length != ElementSize)

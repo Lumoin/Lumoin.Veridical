@@ -19,6 +19,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FiatShamirTranscriptByteAbsorbExtensions
 {
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for absorbing raw bytes under an operation label.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>

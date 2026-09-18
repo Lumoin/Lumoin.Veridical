@@ -25,7 +25,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// The part does not own a buffer. It holds a reference to the owning proof's
 /// <see cref="SensitiveMemory"/> and the byte offset where the middle begins,
 /// slicing on demand — so both <see cref="SpartanProof"/> and
-/// <see cref="BaseFoldSpartanProof"/> expose the identical block from their own
+/// <see cref="CommitmentSpartanProof"/> expose the identical block from their own
 /// buffers without a copy. <see cref="Write"/> packs the block for a proof's
 /// assembly; the accessors read it back during verification, decoupling the
 /// sumcheck verifier drivers from any concrete proof type.
@@ -33,13 +33,23 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// </remarks>
 internal sealed class SpartanSumcheckProofPart
 {
+    /// <summary>The byte width of one scalar in this window's layout, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The compressed byte width of one outer-sumcheck round's degree-2 polynomial (three scalars).</summary>
     private const int OuterRoundCompressedSize = 3 * ScalarSize;
+
+    /// <summary>The compressed byte width of one inner-sumcheck round's degree-1 polynomial (two scalars).</summary>
     private const int InnerRoundCompressedSize = 2 * ScalarSize;
+
+    /// <summary>The byte width of the three outer terminating claims <c>claim_Az</c>, <c>claim_Bz</c> and <c>claim_Cz</c> together.</summary>
     private const int OuterClaimsSize = 3 * ScalarSize;
 
-    private readonly SensitiveMemory source;
-    private readonly int offset;
+    /// <summary>The owning proof's sensitive-memory buffer this window slices into; the window does not own it.</summary>
+    private SensitiveMemory Source { get; }
+
+    /// <summary>The byte offset into <see cref="Source"/> where this window's middle block begins.</summary>
+    private int Offset { get; }
 
 
     /// <summary>The number of outer-sumcheck rounds carried in the window.</summary>
@@ -68,8 +78,8 @@ internal sealed class SpartanSumcheckProofPart
         ArgumentOutOfRangeException.ThrowIfNegative(outerRoundCount);
         ArgumentOutOfRangeException.ThrowIfNegative(innerRoundCount);
 
-        this.source = source;
-        offset = middleOffset;
+        this.Source = source;
+        Offset = middleOffset;
         OuterRoundCount = outerRoundCount;
         InnerRoundCount = innerRoundCount;
         Curve = curve;
@@ -83,7 +93,7 @@ internal sealed class SpartanSumcheckProofPart
         ArgumentOutOfRangeException.ThrowIfNegative(roundIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(roundIndex, OuterRoundCount);
 
-        return source.AsReadOnlySpan().Slice(offset + (roundIndex * OuterRoundCompressedSize), OuterRoundCompressedSize);
+        return Source.AsReadOnlySpan().Slice(Offset + (roundIndex * OuterRoundCompressedSize), OuterRoundCompressedSize);
     }
 
 
@@ -94,28 +104,30 @@ internal sealed class SpartanSumcheckProofPart
         ArgumentOutOfRangeException.ThrowIfNegative(roundIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(roundIndex, InnerRoundCount);
 
-        return source.AsReadOnlySpan().Slice(InnerRoundsStart() + (roundIndex * InnerRoundCompressedSize), InnerRoundCompressedSize);
+        return Source.AsReadOnlySpan().Slice(InnerRoundsStart() + (roundIndex * InnerRoundCompressedSize), InnerRoundCompressedSize);
     }
 
 
     /// <summary>Returns the canonical bytes of <c>claim_Az</c>.</summary>
-    public ReadOnlySpan<byte> GetClaimAzBytes() => source.AsReadOnlySpan().Slice(ClaimsStart(), ScalarSize);
+    public ReadOnlySpan<byte> GetClaimAzBytes() => Source.AsReadOnlySpan().Slice(ClaimsStart(), ScalarSize);
 
     /// <summary>Returns the canonical bytes of <c>claim_Bz</c>.</summary>
-    public ReadOnlySpan<byte> GetClaimBzBytes() => source.AsReadOnlySpan().Slice(ClaimsStart() + ScalarSize, ScalarSize);
+    public ReadOnlySpan<byte> GetClaimBzBytes() => Source.AsReadOnlySpan().Slice(ClaimsStart() + ScalarSize, ScalarSize);
 
     /// <summary>Returns the canonical bytes of <c>claim_Cz</c>.</summary>
-    public ReadOnlySpan<byte> GetClaimCzBytes() => source.AsReadOnlySpan().Slice(ClaimsStart() + (2 * ScalarSize), ScalarSize);
+    public ReadOnlySpan<byte> GetClaimCzBytes() => Source.AsReadOnlySpan().Slice(ClaimsStart() + (2 * ScalarSize), ScalarSize);
 
     /// <summary>Returns the canonical bytes of the relaxed error-MLE evaluation <c>E(r_x)</c>.</summary>
-    public ReadOnlySpan<byte> GetErrorEvaluationBytes() => source.AsReadOnlySpan().Slice(ClaimsStart() + OuterClaimsSize, ScalarSize);
+    public ReadOnlySpan<byte> GetErrorEvaluationBytes() => Source.AsReadOnlySpan().Slice(ClaimsStart() + OuterClaimsSize, ScalarSize);
 
     /// <summary>Returns the canonical bytes of the witness MLE evaluation <c>eval_W</c>.</summary>
-    public ReadOnlySpan<byte> GetEvalWBytes() => source.AsReadOnlySpan().Slice(InnerRoundsStart() + (InnerRoundCount * InnerRoundCompressedSize), ScalarSize);
+    public ReadOnlySpan<byte> GetEvalWBytes() => Source.AsReadOnlySpan().Slice(InnerRoundsStart() + (InnerRoundCount * InnerRoundCompressedSize), ScalarSize);
 
 
-    private int ClaimsStart() => offset + (OuterRoundCount * OuterRoundCompressedSize);
+    /// <summary>Returns the byte offset where the three outer terminating claims begin, right after the outer rounds.</summary>
+    private int ClaimsStart() => Offset + (OuterRoundCount * OuterRoundCompressedSize);
 
+    /// <summary>Returns the byte offset where the inner-sumcheck rounds begin, right after the outer claims and the error evaluation.</summary>
     private int InnerRoundsStart() => ClaimsStart() + OuterClaimsSize + ScalarSize;
 
 
@@ -137,7 +149,7 @@ internal sealed class SpartanSumcheckProofPart
     /// Packs the scheme-independent middle block into <paramref name="destination"/>
     /// (exactly <see cref="GetSectionSizeBytes"/>(<paramref name="outerRounds"/>.Count,
     /// <paramref name="innerRounds"/>.Count) bytes) in the canonical order. Both
-    /// <see cref="SpartanProof"/> and <see cref="BaseFoldSpartanProof"/> route
+    /// <see cref="SpartanProof"/> and <see cref="CommitmentSpartanProof"/> route
     /// their middle through this so the block is byte-identical across schemes.
     /// </summary>
     /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>

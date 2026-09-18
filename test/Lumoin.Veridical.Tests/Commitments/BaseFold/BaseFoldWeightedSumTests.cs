@@ -13,7 +13,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// SM.1 — the weighted-opening BaseFold primitive
+/// The weighted-opening BaseFold primitive
 /// (<see cref="BaseFoldEvaluationProver.ProveWeightedSum"/> /
 /// <see cref="BaseFoldEvaluationVerifier.VerifyWeightedSum"/>): the evaluation
 /// protocol with the <c>eq_z</c> multiplier generalised to an arbitrary public
@@ -21,33 +21,60 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// evaluation opening is the special case <c>W = eq_z</c>, pinned here by a
 /// byte-identity test so the generalisation provably did not move the existing
 /// wire format. This is the binding primitive the statistical-mask construction
-/// (the statistical-mask design notes, levels 2 and 3) opens its mask
-/// coefficients with. Real BLS12-381 arithmetic and production BLAKE3.
+/// opens its mask coefficients with, at both the quadratic degree BaseFold's
+/// <c>f·eq_z</c> sumcheck uses and the cubic degree the Spartan outer sumcheck
+/// uses. Real BLS12-381 arithmetic and production BLAKE3.
 /// </summary>
 [TestClass]
 internal sealed class BaseFoldWeightedSumTests
 {
+    /// <summary>The BLS12-381 scalar field addition delegate, from the reference backend.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar field subtraction delegate, from the reference backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar field multiplication delegate, from the reference backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar field inversion delegate, from the reference backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BLS12-381 scalar reduction delegate (wide bytes to a canonical scalar), from the BigInteger reference.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 hash-to-scalar delegate deriving the foldable code's basis, from the BigInteger reference.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The BLS12-381 scalar sampler the hiding opening's fresh salts are drawn from, from the BigInteger reference.</summary>
     private static ScalarRandomDelegate Random { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF (squeeze) backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The Merkle two-to-one compression this test's trees use, <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
+    /// <summary>The width in bytes of one BLS12-381 scalar in its canonical representation.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The Merkle tree's node/digest width in bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    //A modest query count keeps the round-trip and tamper tests fast; protocol
-    //correctness does not depend on the soundness-driven repetition count.
+    /// <summary>The IOPP query-repetition count these tests use: a modest count keeps the round-trip and tamper tests fast, since protocol correctness does not depend on the soundness-driven repetition count.</summary>
     private const int TestQueryCount = 12;
 
+    /// <summary>The curve every gate in this file runs over: BLS12-381.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies, for variable counts one through four, that the weighted opening's claimed value equals the directly computed <c>Σ_b f(b)·W(b)</c>, and that the honest weighted opening verifies.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -64,7 +91,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
@@ -85,6 +112,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Verifies that opening with the multiplier <c>W = eq_z</c> produces the same claimed value and a byte-identical serialized proof as the plain evaluation opening at the same point, and that each verifier accepts the other's proof.</summary>
     [TestMethod]
     public void EqMultiplierWeightedOpeningIsByteIdenticalToEvaluationOpening()
     {
@@ -103,12 +131,12 @@ internal sealed class BaseFoldWeightedSumTests
         {
             using FiatShamirTranscript evaluationTx = NewTranscript();
             (BaseFoldEvaluationProof evaluationProof, Scalar evaluationValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, evaluationTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, evaluationTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using MultilinearExtension eqMultiplier = SumcheckRoundComputation.BuildEqEvaluations(point, Subtract, Multiply, Curve, pool);
             using FiatShamirTranscript weightedTx = NewTranscript();
             (BaseFoldEvaluationProof weightedProof, Scalar weightedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-                code, mle, eqMultiplier, TestQueryCount, weightedTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, eqMultiplier, TestQueryCount, weightedTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(evaluationProof)
             using(evaluationValue)
@@ -149,6 +177,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Verifies that a hiding (salted-Merkle) weighted opening still proves the true <c>Σ f·W</c> and verifies against the salted commitment built from the same top-layer salts.</summary>
     [TestMethod]
     public void HidingWeightedOpeningRoundTrips()
     {
@@ -174,7 +203,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSumHiding(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, salts, Random, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, salts, Random, pool);
 
         using(proof)
         using(claimedValue)
@@ -193,6 +222,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Verifies that perturbing the honestly proved weighted-sum claim by one, before verification, is rejected.</summary>
     [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
@@ -206,7 +236,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
@@ -222,6 +252,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Verifies that verifying a weighted proof and its correct claim against a different public multiplier than the one it was opened with is rejected.</summary>
     [TestMethod]
     public void DifferentMultiplierIsRejected()
     {
@@ -238,7 +269,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
@@ -253,6 +284,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Verifies that flipping one byte of the first fold-layer root, after round-tripping the weighted proof through serialization, is rejected.</summary>
     [TestMethod]
     public void TamperedFoldRootIsRejected()
     {
@@ -266,7 +298,7 @@ internal sealed class BaseFoldWeightedSumTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-            code, mle, multiplier, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, mle, multiplier, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         using(proof)
         using(claimedValue)
@@ -297,7 +329,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
-    //Σ_b f(b)·W(b) computed directly over the dense tables.
+    /// <summary>Computes <c>Σ_b f(b)·W(b)</c> directly over the dense tables, the value a correct weighted opening's claim must equal.</summary>
     private static Scalar DirectWeightedSum(MultilinearExtension mle, MultilinearExtension multiplier, BaseMemoryPool pool)
     {
         ReadOnlySpan<byte> f = mle.AsReadOnlySpan();
@@ -319,6 +351,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Computes the public commitment the verifier needs: the Merkle root of <c>Enc_d(coeffs)</c>, where <c>coeffs</c> is the interpolation of the MLE.</summary>
     private static MerkleRoot ComputeCommitment(FoldableCode code, MultilinearExtension mle, BaseMemoryPool pool)
     {
         FoldableCodeParameters parameters = code.Parameters;
@@ -333,12 +366,13 @@ internal sealed class BaseFoldWeightedSumTests
         Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
         code.Encode(coeffs, codeword, Add, Subtract, Multiply, pool);
 
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, TreeParameters, pool);
 
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
 
 
+    /// <summary>Computes the public hiding commitment the verifier needs: the salted Merkle root of <c>Enc_d(coeffs)</c> over <paramref name="salts"/>, where <c>coeffs</c> is the interpolation of the MLE.</summary>
     private static MerkleRoot ComputeSaltedCommitment(FoldableCode code, MultilinearExtension mle, ReadOnlySpan<byte> salts, BaseMemoryPool pool)
     {
         FoldableCodeParameters parameters = code.Parameters;
@@ -353,12 +387,13 @@ internal sealed class BaseFoldWeightedSumTests
         Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
         code.Encode(coeffs, codeword, Add, Subtract, Multiply, pool);
 
-        using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.BuildSalted(codeword, salts, codewordElements, TreeParameters, pool);
 
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random multilinear extension of <paramref name="variableCount"/> variables, varied by <paramref name="salt"/> so distinct call sites get distinct evaluation tables.</summary>
     private static MultilinearExtension BuildRandomMle(int variableCount, int salt, BaseMemoryPool pool)
     {
         int evaluationCount = 1 << variableCount;
@@ -377,6 +412,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random evaluation point of <paramref name="variableCount"/> scalars, varied by <paramref name="salt"/> so distinct call sites get distinct points.</summary>
     private static Scalar[] BuildPoint(int variableCount, int salt, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -395,6 +431,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Adds the field one to <paramref name="value"/>, returning a fresh <see cref="Scalar"/> distinct from any correct claimed value derived from a well-formed weighted opening.</summary>
     private static Scalar AddOne(Scalar value, BaseMemoryPool pool)
     {
         Span<byte> one = stackalloc byte[ScalarSize];
@@ -408,6 +445,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Disposes every coordinate scalar of a point built by <see cref="BuildPoint"/>.</summary>
     private static void DisposePoint(Scalar[] point)
     {
         foreach(Scalar coordinate in point)
@@ -417,6 +455,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Creates a fresh transcript under this file's fixed domain label, seeded with no extra context bytes.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -428,6 +467,7 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>Computes the two-to-one BLAKE3 compression of <paramref name="left"/> concatenated with <paramref name="right"/> into <paramref name="output"/>, this file's Merkle node hash.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -437,5 +477,6 @@ internal sealed class BaseFoldWeightedSumTests
     }
 
 
+    /// <summary>The fixed domain-separation seed the foldable code is derived from in every gate.</summary>
     private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.WeightedSum.Test"u8;
 }

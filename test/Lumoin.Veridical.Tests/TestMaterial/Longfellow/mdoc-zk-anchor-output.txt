@@ -1,3 +1,4 @@
+An mdoc ZK proof envelope disclosing one org.iso.18013.5.1 attribute: the proof, its transcript, and the hash/signature templates.
 version=7
 doc_type=org.iso.18013.5.1.mDL
 now=2024-01-30T09:00:00Z

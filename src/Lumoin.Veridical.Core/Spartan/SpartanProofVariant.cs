@@ -5,18 +5,15 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// (tag) level. The variant identifier is what distinguishes a base
 /// <see cref="SpartanProof"/> from a <see cref="MaskedSpartanProof"/>
 /// and from future ZK-construction sibling proof types per the
-/// taxonomy in the Spartan zero-knowledge design notes.
+/// taxonomy the entries below define.
 /// </summary>
 /// <param name="Identifier">A stable string identifying the variant; the same identifier appears in proof tag entries for runtime discrimination.</param>
 /// <remarks>
 /// <para>
-/// The variant entries cover the full Category A and Category B
-/// surface the design document anticipates. <see cref="Unmasked"/>
-/// and <see cref="MaskedStatistical"/> are the variants the codebase
-/// currently produces and verifies; the other two are reserved
-/// for future ZK constructions and exist so the type system carries
-/// the full taxonomy from the design doc rather than growing one
-/// entry at a time.
+/// <see cref="Unmasked"/> and <see cref="MaskedStatistical"/> are the variants the codebase
+/// produces and verifies; <see cref="MaskedCfs2017Strong"/> and <see cref="MaskedHyrax"/>
+/// are reserved for alternative published ZK-masking constructions, so the type carries the full
+/// range of anticipated variants rather than growing one entry at a time.
 /// </para>
 /// </remarks>
 public readonly record struct SpartanProofVariant(string Identifier)
@@ -33,13 +30,12 @@ public readonly record struct SpartanProofVariant(string Identifier)
         new("veridical.spartan2.unmasked");
 
     /// <summary>
-    /// The statistically-masked Category A construction implemented by
-    /// <c>MaskedSpartanProver</c> (SM.7b): degree-matched
+    /// The statistically-masked construction implemented by
+    /// <c>MaskedSpartanProver</c>: degree-matched
     /// sum-of-univariates kernel masks (Libra, Xie et al CRYPTO 2019
     /// §4.1; lineage Chiesa, Forbes, Spooner 2017, IACR ePrint
-    /// 2017/305) with the filler-laundered weighted-opening binding of
-    /// the statistical-mask design notes (v3). The round messages and
-    /// terminating evaluations are statistically masked; the
+    /// 2017/305) with a filler-laundered weighted-opening binding. The
+    /// round messages and terminating evaluations are statistically masked; the
     /// end-to-end ZK flavor follows the commitment scheme — DLOG-rooted
     /// computational over Pedersen/IPA, statistical in the ROM over
     /// the full-ZK BaseFold provider, sound-only over plain BaseFold.
@@ -51,19 +47,18 @@ public readonly record struct SpartanProofVariant(string Identifier)
     /// Reserved for a faithful implementation of CFS 2017
     /// Construction 6.6 (the <c>(m + k)</c>-variate <c>Z</c> polynomial
     /// plus <c>k</c>-variate <c>A</c> polynomial pair with the
-    /// <c>G^k</c> summation decommitment subprotocol). Largely
-    /// superseded: the statistical round-message masking it was
-    /// reserved for landed as <see cref="MaskedStatistical"/> via the
-    /// sum-of-univariates kernel at <c>O(d)</c> mask cost instead of
-    /// Construction 6.6's <c>3^d</c>/<c>4^d</c>. Kept so the taxonomy
-    /// records the faithful-construction road not taken. Not
-    /// implemented.
+    /// <c>G^k</c> summation decommitment subprotocol), which masks round
+    /// messages at <c>3^d</c>/<c>4^d</c> cost. <see cref="MaskedStatistical"/>
+    /// achieves the same statistical round-message masking via the
+    /// sum-of-univariates kernel at the lower <c>O(d)</c> cost instead, so this
+    /// entry stands specifically for the faithful Construction 6.6 approach,
+    /// kept for completeness of the taxonomy. Not implemented.
     /// </summary>
     public static SpartanProofVariant MaskedCfs2017Strong { get; } =
         new("veridical.spartan2.masked-cfs2017-strong");
 
     /// <summary>
-    /// Reserved for a future Hyrax-style commit-and-prove Category A
+    /// Reserved for a Hyrax-style commit-and-prove
     /// construction per Setty 2020 §8: send each round message as a
     /// Pedersen commitment plus per-round equality, product, and
     /// knowledge proofs. Requires three new commitment-layer

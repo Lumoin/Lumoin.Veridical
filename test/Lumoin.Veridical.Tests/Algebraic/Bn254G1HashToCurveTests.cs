@@ -16,9 +16,9 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <remarks>
 /// <para>
 /// RFC 9380 (final) does not register a BN254 suite, so there are no
-/// primary-source BN254 hash-to-curve vectors. Per the batch's test-vector
-/// policy the byte-faithful vectors here were produced by an independent
-/// CPython implementation of the same pipeline — <c>expand_message_xmd</c>
+/// primary-source BN254 hash-to-curve vectors. The byte-faithful vectors
+/// here instead come from an independent implementation
+/// of the same pipeline — <c>expand_message_xmd</c>
 /// (§5.3.1), <c>hash_to_field</c> with <c>L = 48</c> (§5.2), the SvdW map
 /// (§6.6.1) with <c>Z = 1</c>, point addition, and the gnark compressed
 /// encoding — which shares no code with this library's
@@ -36,25 +36,32 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254G1HashToCurveTests
 {
+    /// <summary>The BN254 G1 hash-to-curve delegate under test.</summary>
     private static G1HashToCurveDelegate HashToCurveDelegate { get; } =
         Bn254BigIntegerG1Reference.GetHashToCurve();
 
+    /// <summary>The BN254 G1 on-curve check delegate this test verifies hash-to-curve results with.</summary>
     private static G1IsOnCurveDelegate IsOnCurveDelegate { get; } =
         Bn254BigIntegerG1Reference.GetIsOnCurve();
 
+    /// <summary>The BN254 G1 prime-order-subgroup check delegate this test verifies hash-to-curve results with.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate IsInPrimeOrderSubgroupDelegate { get; } =
         Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
 
 
+    /// <summary>The memory pool this test's points are allocated from.</summary>
     private static BaseMemoryPool Pool { get; } = BaseMemoryPool.Shared;
 
 
+    /// <summary>The domain-separation tag this test's hash-to-curve calls use.</summary>
     private static ReadOnlySpan<byte> Dst => "VERIDICAL-BN254G1-SVDW-SHA256-V1"u8;
 
 
+    /// <summary>The MSTest-supplied context for this test class.</summary>
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>Verifies that hashing four known messages (including the empty message) to a BN254 G1 point matches the independently computed known-answer vectors.</summary>
     [TestMethod]
     public void HashToCurveMatchesIndependentVectors()
     {
@@ -68,6 +75,7 @@ internal sealed class Bn254G1HashToCurveTests
     }
 
 
+    /// <summary>Hashes a message to a G1 point and asserts its gnark-compressed hex encoding matches the expected known-answer value.</summary>
     private static void AssertHashToCurve(ReadOnlySpan<byte> message, string expectedHex)
     {
         using G1Point point = G1Point.FromHashToCurve(message, Dst, HashToCurveDelegate, CurveParameterSet.Bn254, Pool);
@@ -75,6 +83,7 @@ internal sealed class Bn254G1HashToCurveTests
     }
 
 
+    /// <summary>Verifies that a hash-to-curve result lies on the BN254 curve.</summary>
     [TestMethod]
     public void HashToCurveResultIsOnCurve()
     {
@@ -83,6 +92,7 @@ internal sealed class Bn254G1HashToCurveTests
     }
 
 
+    /// <summary>Verifies that a hash-to-curve result lies in the prime-order subgroup, expected unconditionally since BN254's cofactor is 1.</summary>
     [TestMethod]
     public void HashToCurveResultIsInPrimeOrderSubgroup()
     {
@@ -92,6 +102,7 @@ internal sealed class Bn254G1HashToCurveTests
     }
 
 
+    /// <summary>Verifies that hashing the same message and DST twice yields identical G1 points.</summary>
     [TestMethod]
     public void HashToCurveIsDeterministic()
     {
@@ -102,6 +113,7 @@ internal sealed class Bn254G1HashToCurveTests
     }
 
 
+    /// <summary>Verifies that a hash-to-curve result carries provenance tags naming the producing reference, the G1-point algebraic role, and the BN254 curve.</summary>
     [TestMethod]
     public void HashToCurveProducesPointsCarryingProvenance()
     {

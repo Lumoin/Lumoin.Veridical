@@ -14,8 +14,8 @@ namespace Lumoin.Veridical.Core.Spartan;
 
 /// <summary>
 /// Produces a <see cref="MaskedSpartanProof"/> for the masked Spartan2 ZK
-/// construction (the statistical sum-of-univariates masks of SM.7b, design v3
-/// of the statistical-mask design notes; lineage CFS 2017 / Libra 2019).
+/// construction (the statistical sum-of-univariates masks with a
+/// filler-laundered weighted-opening binding; lineage CFS 2017 / Libra 2019).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,13 +27,14 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// openings happen alongside the witness opening after <c>eval_W</c>. The
 /// per-round sumcheck messages occupy the same per-round slot as in the base
 /// prover but carry the blended polynomial bytes — including the top
-/// coefficient, which the degree-matched kernel mask blankets and the old
-/// multilinear mask left bare.
+/// coefficient, which the degree-matched kernel mask blankets and a
+/// multilinear mask leaves bare.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class MaskedSpartanProverExtensions
 {
+    /// <summary>Proving members added to every <see cref="MaskedSpartanProver"/> instance.</summary>
     extension(MaskedSpartanProver prover)
     {
         /// <summary>
@@ -137,7 +138,7 @@ public static class MaskedSpartanProverExtensions
         /// the witness and error openings are then hiding, simulatable full-ZK
         /// openings, the mask coefficient vectors are committed salted-and-lifted,
         /// and their weighted openings are filler-laundered — the statistical-ZK
-        /// flavor of design v3. It packs a <see cref="ZkBaseFoldMaskedSpartanProof"/>.
+        /// flavor of the construction. It packs a <see cref="ZkBaseFoldMaskedSpartanProof"/>.
         /// </summary>
         /// <param name="instance">The relaxed R1CS instance to prove satisfaction of.</param>
         /// <param name="witness">The relaxed R1CS witness (witness scalars plus the error vector).</param>
@@ -198,6 +199,11 @@ public static class MaskedSpartanProverExtensions
         }
 
 
+        /// <summary>Assembles a <see cref="ZkBaseFoldMaskedSpartanProof"/> from the shared masked-proof components and the provider's full-ZK BaseFold metadata.</summary>
+        /// <param name="pcs">The full-ZK BaseFold provider the metadata is read from.</param>
+        /// <param name="c">The shared masked-proof components.</param>
+        /// <param name="p">The pool the assembled proof rents from.</param>
+        /// <returns>The assembled proof.</returns>
         private static ZkBaseFoldMaskedSpartanProof AssembleZkBaseFoldProof(
             PolynomialCommitmentProvider pcs, MaskedProofComponents c, BaseMemoryPool p)
         {
@@ -212,12 +218,17 @@ public static class MaskedSpartanProverExtensions
         }
 
 
-        //The scheme-neutral masked Spartan orchestration. Identical across schemes
-        //(commit witness + two mask coefficient vectors, run both masked
-        //sumchecks, open the error and witness commitments and the two mask
-        //weighted openings); differs only in the final assembly supplied as the
-        //scheme-shaped assemble callback. The components are alive in the
-        //using-scope when assemble runs, so it copies their bytes before disposal.
+        /// <summary>
+        /// Produces a masked Spartan proof with caller-owned pools and operation-owned mask bases.
+        /// </summary>
+        /// <remarks>
+        /// The orchestration is identical across schemes: commit the witness and the two mask
+        /// coefficient vectors, run both masked sumchecks, then open the error and witness
+        /// commitments and the two mask weighted openings. Only the final assembly, supplied as
+        /// the scheme-shaped <paramref name="assemble"/> callback, differs. The proof components
+        /// stay alive in their using-scope while <paramref name="assemble"/> runs, so the callback
+        /// copies their bytes before disposal.
+        /// </remarks>
         [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers via using declarations and the assemble callback; the assembled proof transfers to the caller.")]
         private TProof ProveMaskedCore<TProof>(
             RelaxedR1csInstance instance,
@@ -334,15 +345,15 @@ public static class MaskedSpartanProverExtensions
                     hash);
 
                 //Sample the two statistical sum-of-univariates masks, degree-matched
-                //to each sumcheck's round format (design v3): the outer cubic over
+                //to each sumcheck's round format: the outer cubic over
                 //log_2(rows) variables, the inner quadratic over log_2(columns).
                 StatisticalMaskParameters outerShape = resolveMaskShape(rowVariableCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
                 StatisticalMaskParameters innerShape = resolveMaskShape(columnVariableCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
 
-                MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    rowVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
-                MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    columnVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
+                using MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    rowVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
+                using MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    columnVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
 
                 using MonomialBasisMask outerMask = MonomialBasisMask.Sample(outerBasis, scalarRandom, curve, pool);
                 using MonomialBasisMask innerMask = MonomialBasisMask.Sample(innerBasis, scalarRandom, curve, pool);
@@ -369,8 +380,8 @@ public static class MaskedSpartanProverExtensions
                 using(innerMaskOpeningWitness)
                 {
                     //Absorb com(C*), σ, and σ_F for both masks BEFORE squeezing the
-                    //blending scalars — the CFS blend soundness and the v3 binding
-                    //both require every mask artifact fixed pre-ρ.
+                    //blending scalars — the CFS blend soundness and the weighted-opening's
+                    //all-ones-filler binding both require every mask artifact fixed pre-ρ.
                     transcript.AbsorbBytes(
                         new FiatShamirOperationLabel(WellKnownMaskedSpartanTranscriptLabels.OuterMaskCommitment),
                         outerMaskCommitment.AsReadOnlySpan(),
@@ -770,6 +781,12 @@ public static class MaskedSpartanProverExtensions
         }
 
 
+        /// <summary>
+        /// Shared core for the raw-instance full-ZK BaseFold entries: prepares the raw instance and witness
+        /// into their relaxed equivalents under <paramref name="errorPcs"/>, then forwards to the shared
+        /// masked-proving core, assembling through <see cref="AssembleZkBaseFoldProof"/>.
+        /// </summary>
+        /// <returns>The assembled proof.</returns>
         private ZkBaseFoldMaskedSpartanProof ProveZkBaseFoldRawCore(
             RawR1csInstance instance,
             RawR1csWitness witness,
@@ -831,9 +848,11 @@ public static class MaskedSpartanProverExtensions
     }
 
 
-    //Carries the broad components the masked proof assembly needs, kept alive in
-    //the prover's innermost using-scope while the scheme-shaped assemble callback
-    //copies their bytes into the proof.
+    /// <summary>
+    /// Carries the broad components the masked proof assembly needs, kept alive in the prover's
+    /// innermost using-scope while the scheme-shaped assemble callback copies their bytes into the
+    /// proof.
+    /// </summary>
     private sealed class MaskedProofComponents(
         PolynomialCommitment witnessCommitment,
         PolynomialCommitment outerMaskCommitment,
@@ -850,24 +869,54 @@ public static class MaskedSpartanProverExtensions
         PolynomialOpening innerMaskOpening,
         PolynomialOpening witnessOpening)
     {
+        /// <summary>The witness polynomial's commitment.</summary>
         public PolynomialCommitment WitnessCommitment => witnessCommitment;
+
+        /// <summary>The outer mask vector's commitment.</summary>
         public PolynomialCommitment OuterMaskCommitment => outerMaskCommitment;
+
+        /// <summary>The inner mask vector's commitment.</summary>
         public PolynomialCommitment InnerMaskCommitment => innerMaskCommitment;
+
+        /// <summary>The outer mask's closed-form sum <c>σ</c>.</summary>
         public Scalar OuterMaskSum => outerMaskSum;
+
+        /// <summary>The inner mask's closed-form sum <c>σ</c>.</summary>
         public Scalar InnerMaskSum => innerMaskSum;
+
+        /// <summary>The outer mask's filler-block sum <c>σ_F</c>.</summary>
         public Scalar OuterMaskFillerSum => outerMaskFillerSum;
+
+        /// <summary>The inner mask's filler-block sum <c>σ_F</c>.</summary>
         public Scalar InnerMaskFillerSum => innerMaskFillerSum;
+
+        /// <summary>The masked outer sumcheck's result.</summary>
         public MaskedSpartanAlgorithm.OuterResult Outer => outer;
+
+        /// <summary>The masked inner sumcheck's result.</summary>
         public MaskedSpartanAlgorithm.InnerResult Inner => inner;
+
+        /// <summary>The witness MLE's evaluation at <c>r_y</c>.</summary>
         public Scalar EvalW => evalW;
+
+        /// <summary>The error commitment's opening at <c>r_x</c>.</summary>
         public PolynomialOpening ErrorOpening => errorOpening;
+
+        /// <summary>The outer mask's weighted opening.</summary>
         public PolynomialOpening OuterMaskOpening => outerMaskOpening;
+
+        /// <summary>The inner mask's weighted opening.</summary>
         public PolynomialOpening InnerMaskOpening => innerMaskOpening;
+
+        /// <summary>The witness commitment's opening at <c>r_y</c>.</summary>
         public PolynomialOpening WitnessOpening => witnessOpening;
     }
 
 
-    //Reads the BaseFold query count and digest size the provider was built with.
+    /// <summary>Reads the BaseFold query count and digest size the provider was built with.</summary>
+    /// <param name="pcs">The provider to read metadata from.</param>
+    /// <returns>The provider's query count and digest size.</returns>
+    /// <exception cref="InvalidOperationException">When the provider does not carry a BaseFold query count and digest size.</exception>
     private static (int QueryCount, int DigestSize) RequireBaseFoldMetadata(PolynomialCommitmentProvider pcs)
     {
         if(pcs.QueryCount is not int queryCount || pcs.DigestSizeBytes is not int digestSize)
@@ -880,10 +929,14 @@ public static class MaskedSpartanProverExtensions
     }
 
 
-    //Throws when the provider is not hiding. Masked Spartan only achieves zero-knowledge over a hiding
-    //provider, so a non-hiding one is the privacy footgun: refuse it loudly rather than silently degrading
-    //ZK to a sound-only argument. Called fail-fast at the ProveZkBaseFold entries and again here at metadata
-    //extraction (defense in depth).
+    /// <summary>
+    /// Throws when the provider is not hiding. Masked Spartan only achieves zero-knowledge over a hiding
+    /// provider, so a non-hiding one is the privacy footgun: refuse it loudly rather than silently
+    /// degrading ZK to a sound-only argument. Called at the <c>ProveZkBaseFold</c> entries and again
+    /// here at metadata extraction, defense in depth against either call site skipping the check.
+    /// </summary>
+    /// <param name="pcs">The provider to check.</param>
+    /// <exception cref="InvalidOperationException">When <paramref name="pcs"/> is not hiding.</exception>
     private static void ThrowIfProviderNotHiding(PolynomialCommitmentProvider pcs)
     {
         if(!pcs.IsHiding)
@@ -894,8 +947,13 @@ public static class MaskedSpartanProverExtensions
     }
 
 
-    //Reads the query count, digest size, and dimension-lift count of a full-ZK
-    //BaseFold provider; the lift count sizes the lifted witness opening.
+    /// <summary>
+    /// Reads the query count, digest size, and dimension-lift count of a full-ZK BaseFold provider; the
+    /// lift count sizes the lifted witness opening.
+    /// </summary>
+    /// <param name="pcs">The provider to read metadata from.</param>
+    /// <returns>The provider's query count, digest size, and dimension-lift count.</returns>
+    /// <exception cref="InvalidOperationException">When <paramref name="pcs"/> is not hiding, or does not carry the full-ZK BaseFold metadata.</exception>
     private static (int QueryCount, int DigestSize, int ExtraVariableCount) RequireZkBaseFoldMetadata(PolynomialCommitmentProvider pcs)
     {
         ThrowIfProviderNotHiding(pcs);
@@ -910,9 +968,17 @@ public static class MaskedSpartanProverExtensions
     }
 
 
-    //The committed mask vector C* = (kernel coefficients ‖ random filler) over
-    //2^ℓ₂ coordinates — every coordinate beyond the coefficients is laundering
-    //entropy (design v3; the policy leaves no zero-weight real coordinates).
+    /// <summary>
+    /// Builds the committed mask vector <c>C* = (kernel coefficients ‖ random filler)</c> over
+    /// <c>2^ℓ₂</c> coordinates: every coordinate beyond the coefficients is laundering entropy,
+    /// leaving no zero-weight real coordinates.
+    /// </summary>
+    /// <param name="mask">The kernel mask basis.</param>
+    /// <param name="shape">The statistical mask's degree and variable-count shape.</param>
+    /// <param name="scalarRandom">The random-scalar backend sampling the filler coordinates.</param>
+    /// <param name="curve">The curve the mask vector's scalars belong to.</param>
+    /// <param name="pool">The pool the returned extension rents from.</param>
+    /// <returns>The mask vector; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The rented buffer transfers ownership to the returned MLE.")]
     private static MultilinearExtension BuildMaskVector(
         MonomialBasisMask mask,
@@ -950,8 +1016,16 @@ public static class MaskedSpartanProverExtensions
     }
 
 
-    //σ_F = the sum of the filler block's coordinates; absorbed pre-ρ so the
-    //weighted-opening claim s(r) + σ_F is fixed by the commitment.
+    /// <summary>
+    /// Computes <c>σ_F</c>, the sum of the filler block's coordinates; absorbed pre-<c>ρ</c> so the
+    /// weighted-opening claim <c>s(r) + σ_F</c> is fixed by the commitment.
+    /// </summary>
+    /// <param name="vector">The mask vector to sum a range of.</param>
+    /// <param name="start">The first coordinate index to include.</param>
+    /// <param name="count">The number of coordinates to sum.</param>
+    /// <param name="add">The scalar addition delegate.</param>
+    /// <param name="pool">The pool the returned scalar rents from.</param>
+    /// <returns>The sum of the selected coordinates.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The rented buffer transfers ownership to the returned scalar.")]
     private static Scalar SumCoordinateRange(
         MultilinearExtension vector,
@@ -976,6 +1050,16 @@ public static class MaskedSpartanProverExtensions
     }
 
 
+    /// <summary>Squeezes <paramref name="count"/> independent challenge scalars under the same label.</summary>
+    /// <param name="transcript">The transcript to squeeze from.</param>
+    /// <param name="count">The number of challenges to squeeze.</param>
+    /// <param name="label">The Fiat-Shamir operation label.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze delegate.</param>
+    /// <param name="hash">The Fiat-Shamir hash delegate.</param>
+    /// <param name="reduce">The scalar reduction delegate.</param>
+    /// <param name="curve">The curve the challenges belong to.</param>
+    /// <param name="pool">The pool the returned scalars rent from.</param>
+    /// <returns>The squeezed challenge scalars, in squeeze order.</returns>
     private static Scalar[] SqueezeChallenges(
         FiatShamirTranscript transcript,
         int count,
@@ -998,6 +1082,10 @@ public static class MaskedSpartanProverExtensions
     }
 
 
+    /// <summary>Copies a read-only scalar list into a freshly pool-rented array of independently owned scalars.</summary>
+    /// <param name="source">The scalars to copy.</param>
+    /// <param name="pool">The pool each copied scalar rents from.</param>
+    /// <returns>The copied scalars, owned by the caller.</returns>
     private static Scalar[] ToScalarArray(IReadOnlyList<Scalar> source, BaseMemoryPool pool)
     {
         Scalar[] result = new Scalar[source.Count];
@@ -1010,6 +1098,8 @@ public static class MaskedSpartanProverExtensions
     }
 
 
+    /// <summary>Disposes every non-null scalar in <paramref name="scalars"/>.</summary>
+    /// <param name="scalars">The scalars to dispose.</param>
     private static void DisposeAll(Scalar[] scalars)
     {
         for(int i = 0; i < scalars.Length; i++)
@@ -1019,6 +1109,14 @@ public static class MaskedSpartanProverExtensions
     }
 
 
+    /// <summary>Computes the matrix-vector product <c>matrix · z</c> and wraps it as a multilinear extension over the row variables.</summary>
+    /// <param name="matrix">The R1CS matrix.</param>
+    /// <param name="zBytes">The canonical-scalar vector <c>z</c>.</param>
+    /// <param name="rowVariableCount">The number of row variables (<c>log2</c> of the row count).</param>
+    /// <param name="scalarAdd">The scalar addition delegate.</param>
+    /// <param name="scalarMultiply">The scalar multiplication delegate.</param>
+    /// <param name="pool">The pool the returned extension rents from.</param>
+    /// <returns>The product's multilinear extension; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned MLE takes ownership of its rented buffer and transfers to the caller.")]
     private static MultilinearExtension ComputeMatrixVectorProductMle(
         R1csMatrix matrix,
@@ -1040,6 +1138,16 @@ public static class MaskedSpartanProverExtensions
     }
 
 
+    /// <summary>Computes the random linear combination <c>A(r_x,·) + r·B(r_x,·) + r²·C(r_x,·)</c> of the three row slices, coordinate by coordinate.</summary>
+    /// <param name="aSlice">The <c>A</c> matrix's row slice at <c>r_x</c>.</param>
+    /// <param name="bSlice">The <c>B</c> matrix's row slice at <c>r_x</c>.</param>
+    /// <param name="cSlice">The <c>C</c> matrix's row slice at <c>r_x</c>.</param>
+    /// <param name="r">The random combination challenge.</param>
+    /// <param name="variableCount">The number of column variables the result is defined over.</param>
+    /// <param name="scalarAdd">The scalar addition delegate.</param>
+    /// <param name="scalarMultiply">The scalar multiplication delegate.</param>
+    /// <param name="pool">The pool the returned extension rents from.</param>
+    /// <returns>The combined multilinear extension; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned MLE takes ownership of its rented buffer and transfers to the caller.")]
     private static MultilinearExtension LinearCombineAbcSlices(
         MultilinearExtension aSlice,

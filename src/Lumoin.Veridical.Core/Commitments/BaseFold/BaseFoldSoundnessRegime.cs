@@ -103,10 +103,10 @@ public enum BaseFoldSoundnessRegime
     /// revisions, so the statement, not a bare number, is the anchor), with
     /// the same radius reached independently for general codes by Gao, Kan,
     /// Li (IACR ePrint 2024/1810). The per-query bits price the <c>ε, η → 0</c>
-    /// limit of the theorem's slack parameters, matching the Johnson-radius
-    /// pricing convention documented in the security-bits design notes; the
-    /// commit-phase failure the slacks control is a separate field-side term
-    /// (<c>3d/(εη·|F|)</c>) accounted in
+    /// limit of the theorem's slack parameters, using the same Johnson-radius
+    /// pricing convention <see cref="WellKnownSecurityLevels"/> applies
+    /// throughout; the commit-phase failure the slacks control is a separate
+    /// field-side term (<c>3d/(εη·|F|)</c>) accounted in
     /// <see cref="WellKnownSecurityLevels"/>. At the wired distance the
     /// guaranteed proximity lies inside the unique-decoding ball, so the
     /// commitment binds a unique multilinear polynomial and no cross-opening

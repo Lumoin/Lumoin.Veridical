@@ -22,31 +22,64 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// that reaches them.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowZeroMaskRejectionTests
+internal sealed class LongfellowZeroMaskRejectionTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The SHA-256 digest width in bytes.</summary>
     private const int DigestSize = 32;
 
-    //GF(2^128) byte sizes: the full field element is 16 bytes; the production
-    //GF(2^16) subfield is 2 bytes.
+    /// <summary>The full GF(2^128) field element width in bytes.</summary>
     private const int FieldBytes = 16;
+
+    /// <summary>The production GF(2^16) subfield element width in bytes.</summary>
     private const int SubFieldBytes = 2;
 
-    //The tiny commit shape the C.2 conformance gate also uses.
+    /// <summary>The witness count of the tiny commit shape the commitment-step conformance gate also uses.</summary>
     private const int WitnessCount = 8;
+
+    /// <summary>The quadratic constraint count of the tiny commit shape the commitment-step conformance gate also uses.</summary>
     private const int QuadraticConstraintCount = 1;
+
+    /// <summary>The inverse rate of the tiny commit shape the commitment-step conformance gate also uses.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The opened column count of the tiny commit shape the commitment-step conformance gate also uses.</summary>
     private const int OpenedColumnCount = 2;
 
+    /// <summary>The GF(2^128) field addition delegate.</summary>
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) field subtraction delegate.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) field inversion delegate.</summary>
     private static ScalarInvertDelegate Invert { get; } = Gf2k128Backend.GetInvert();
 
 
+    /// <summary>Pins that filling a proof pad from an always-zero byte source throws <see cref="InvalidOperationException"/> at generation, since every drawn pad element would be the field zero and the pad would encrypt nothing.</summary>
     [TestMethod]
     public void ProofPadFillWithZeroSourceThrows()
     {
@@ -64,6 +97,7 @@ internal sealed class LongfellowZeroMaskRejectionTests
     }
 
 
+    /// <summary>Pins that committing with an always-zero byte source throws <see cref="InvalidOperationException"/> before building the tree, since a zero source zeroes the tableau's whole hiding budget.</summary>
     [TestMethod]
     public void LigeroCommitWithZeroSourceThrows()
     {
@@ -102,30 +136,26 @@ internal sealed class LongfellowZeroMaskRejectionTests
     }
 
 
-    //A byte source that always produces zero bytes — the modelled RNG wiring
-    //failure. Zero is below every field modulus, so the sample reject loop
-    //accepts it and every drawn element is the field zero.
+    /// <summary>A byte source that always produces zero bytes — the modelled RNG wiring failure. Zero is below every field modulus, so the sample reject loop accepts it and every drawn element is the field zero.</summary>
     private static void ZeroSource(Span<byte> destination)
     {
         destination.Clear();
     }
 
 
-    //A minimal logc == 0 circuit shape: one layer with two hand rounds.
-    private static LongfellowSumcheckCircuit SmallCircuit()
+    /// <summary>Builds a minimal logc == 0 circuit shape — one layer with two hand rounds — whose owners are released at this test's cleanup.</summary>
+    private LongfellowSumcheckCircuit SmallCircuit()
     {
         LongfellowSumcheckLayer layer = new(inputCount: 4, handRounds: 2, termCount: 0);
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
 
-        return new LongfellowSumcheckCircuit(
+        return CircuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 0, id, [layer]);
     }
 
 
-    //W[i] = of_scalar(i + 1), then W[2] = W[0]·W[1] so the one quadratic
-    //constraint is satisfied — the same seeding the commit conformance gate
-    //uses.
+    /// <summary>Fills W[i] = of_scalar(i + 1), then sets W[2] = W[0]·W[1] so the one quadratic constraint is satisfied — the same seeding the commitment-step conformance gate uses.</summary>
     private static void BuildWitnesses(Lch14AdditiveFft fft, Span<byte> witnesses)
     {
         int witnessCount = witnesses.Length / ScalarSize;
@@ -142,11 +172,12 @@ internal sealed class LongfellowZeroMaskRejectionTests
     }
 
 
+    /// <summary>Builds the GF(2^128) additive FFT at the production-16 subfield.</summary>
     private static Lch14AdditiveFft NewFft() =>
         new(Lch14Subfield.Production16, Add, Subtract, Multiply, Invert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //The reference's node combine: SHA256(left || right).
+    /// <summary>The reference's node combine: SHA256(left || right).</summary>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSize];
@@ -156,7 +187,7 @@ internal sealed class LongfellowZeroMaskRejectionTests
     }
 
 
-    //The one-shot leaf hash: SHA256 over the whole nonce-plus-column input span.
+    /// <summary>The one-shot leaf hash: SHA256 over the whole nonce-plus-column input span.</summary>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
     {
         SHA256.HashData(input, output);

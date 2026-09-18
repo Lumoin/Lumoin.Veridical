@@ -37,41 +37,59 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     /// <summary>Test context, for emitting the two-sample findings to the test log.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>The BLAKE3 Fiat–Shamir hash delegate this test's transcripts and commitment providers share.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    /// <summary>The BLAKE3 Fiat–Shamir squeeze delegate this test's transcripts and commitment providers share.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    /// <summary>The BLS12-381 scalar-field reduction delegate used throughout these tests.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    /// <summary>The BLS12-381 scalar addition delegate the masked-Spartan prover and verifier use.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    /// <summary>The BLS12-381 scalar subtraction delegate the masked-Spartan prover and verifier use.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    /// <summary>The BLS12-381 scalar multiplication delegate the masked-Spartan prover and verifier use.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    /// <summary>The BLS12-381 scalar inversion delegate the masked-Spartan prover and verifier use.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    /// <summary>The BLS12-381 scalar randomness delegate the masking terms are drawn from.</summary>
     private static ScalarRandomDelegate Random { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+    /// <summary>The BLS12-381 hash-to-scalar delegate the BaseFold-family commitment providers use to derive challenges.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    /// <summary>The BLS12-381 G1 point addition delegate the commitment providers use.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+    /// <summary>The BLS12-381 G1 scalar multiplication delegate the commitment providers use.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    /// <summary>The BLS12-381 G1 multi-scalar multiplication delegate the commitment providers use.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+    /// <summary>The multilinear-extension evaluation delegate the masked-Spartan verifier uses to check round claims.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+    /// <summary>The multilinear-extension folding delegate the masked-Spartan prover uses to build its sumcheck rounds.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
+    /// <summary>The two-to-one Merkle compression function, delegated to <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The byte width of a canonical BLS12-381 scalar.</summary>
     private const int ScalarSize = 32;
+    /// <summary>The byte width of a BLAKE3 digest, as used by the Merkle and BaseFold commitments in these tests.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+    /// <summary>The number of BaseFold query repetitions these fixtures use.</summary>
     private const int QueryCount = 8;
-    //The smallest committed polynomial this instance routes through the
-    //provider has d = 1 (the two-scalar witness), which at QueryCount = 8
-    //needs t = 6 (GetMinimumExtraVariableCount).
+    /// <summary>The number of extra masking variables the commitment providers pad with. The smallest committed polynomial this instance routes through the provider has degree 1 (the two-scalar witness), which at <see cref="QueryCount"/> = 8 needs 6 extra variables (see <c>GetMinimumExtraVariableCount</c>).</summary>
     private const int ExtraVariableCount = 6;
-    //Two-sample scale: each sample is a full masked-Spartan prove, so this
-    //trades statistical power against suite runtime as the sibling
-    //experiments do.
+    /// <summary>The number of real and simulated proofs the two-sample comparison draws. Each sample is a full masked-Spartan prove, so this count trades statistical power against suite runtime, the same tradeoff the sibling statistical experiments make.</summary>
     private const int SampleCount = 12;
-    //Byte-value bins for the per-proof histograms.
+    /// <summary>The number of byte-value bins in each per-proof histogram.</summary>
     private const int ByteValueCount = 256;
+    /// <summary>The Fiat–Shamir domain-separation label for every transcript this test class creates.</summary>
     private const string TranscriptDomain = "veridical.analysis.spartan2.simulator.test.v1";
 
+    /// <summary>The BaseFold code seed shared by the zero-knowledge and error commitment providers, so the prover and verifier derive identical codes.</summary>
     private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.analysis.spartan2.simulator.code.v1");
+    /// <summary>The BLS12-381 curve parameters used throughout these tests.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that a witness-free simulated masked-Spartan proof verifies when the verifier replays the oracle responses the simulator programmed, consuming exactly the recorded sequence.</summary>
     [TestMethod]
     public void SimulatedMaskedSpartanProofVerifiesUnderTheProgrammedOracle()
     {
@@ -92,6 +110,7 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Verifies that a witness-free simulated proof is rejected when verified against an honest, unprogrammed oracle, since the patched challenge diverges the transcript from that point on.</summary>
     [TestMethod]
     public void SimulatedMaskedSpartanProofIsRejectedByTheRealOracle()
     {
@@ -112,15 +131,18 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Compares real (witness-backed) and simulated (witness-free) masked-Spartan proofs across independent samples, checking that the Kolmogorov–Smirnov and permutation tests each produce a well-formed p-value; the tests' own reject/not-reject verdicts are logged for review rather than asserted, since any fixed-significance statistical test has a nonzero false-positive rate.</summary>
     [TestMethod]
     public void RealAndSimulatedMaskedSpartanProofsCompareInTwoSampleTests()
     {
         //Real proofs of the satisfying witness versus witness-free simulated
         //proofs: mean proof byte under Kolmogorov-Smirnov, per-proof byte
         //histograms under the label-permutation null (the analytic chi-squared
-        //p-value is invalid under intra-proof byte dependence — the SM.6
-        //finding). Verdicts logged, not asserted, per the established
-        //doctrine.
+        //p-value is invalid here, because intra-proof byte dependence breaks
+        //its independence assumption). A statistical test has a nonzero
+        //false-positive rate at any fixed significance level, so its
+        //reject/not-reject verdict is logged for review rather than asserted;
+        //only the p-value's well-formedness is asserted below.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         using RawR1csInstance instance = BuildInstance();
 
@@ -160,27 +182,29 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Simulates a proof with provider factories funded by the caller's pool.</summary>
     private static (ZkBaseFoldMaskedSpartanProof Proof, ProgrammableFiatShamirOracle Oracle) Simulate(
         RawR1csInstance instance, BaseMemoryPool pool)
     {
         using FiatShamirTranscript transcript = FreshTranscript();
 
         return ZkBaseFoldMaskedSpartanSimulator.Simulate(
-            instance, transcript, BuildProvider, BuildErrorProvider,
+            instance, transcript, squeeze => BuildProvider(pool, squeeze), squeeze => BuildErrorProvider(pool, squeeze),
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold,
             QueryCount, DigestSizeBytes, ExtraVariableCount, pool);
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The Spartan key takes ownership of the provider and the prover disposes the key; the proof transfers to the caller.")]
+    /// <summary>Produces a witness-backed proof using the caller's pool and transfers provider ownership to the prover.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the proving key and the key to the prover, which the using declaration releases; the key and prover constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static ZkBaseFoldMaskedSpartanProof ProveReal(RawR1csInstance instance, BaseMemoryPool pool)
     {
         using RawR1csWitness witness = BuildSatisfyingWitness();
-        var provingKey = new SpartanProvingKey(BuildProvider(Squeeze));
+        var provingKey = new SpartanProvingKey(BuildProvider(pool, Squeeze));
         using var prover = new MaskedSpartanProver(provingKey);
         using FiatShamirTranscript transcript = FreshTranscript();
-        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(Squeeze);
+        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(pool, Squeeze);
 
         return prover.ProveZkBaseFold(
             instance, witness, transcript,
@@ -189,14 +213,15 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The Spartan key takes ownership of the provider and the verifier disposes the key.")]
+    /// <summary>Verifies the test proof and releases provider storage through the owning verifier.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the verifying key and the key to the verifier, which the using declaration releases; the key and verifier constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static bool Verify(
         ZkBaseFoldMaskedSpartanProof proof, RawR1csInstance instance, FiatShamirSqueezeDelegate squeeze, BaseMemoryPool pool)
     {
-        var verifyingKey = new SpartanVerifyingKey(BuildProvider(squeeze));
+        var verifyingKey = new SpartanVerifyingKey(BuildProvider(pool, squeeze));
         using var verifier = new MaskedSpartanVerifier(verifyingKey);
         using FiatShamirTranscript transcript = FreshTranscript();
-        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(squeeze);
+        using PolynomialCommitmentProvider errorProvider = BuildErrorProvider(pool, squeeze);
 
         return verifier.VerifyZkBaseFold(
             proof, instance, transcript,
@@ -204,29 +229,32 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the consumer disposes it.")]
-    private static PolynomialCommitmentProvider BuildProvider(FiatShamirSqueezeDelegate squeeze)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="squeeze">The transcript squeeze backend.</param>
+    private static PolynomialCommitmentProvider BuildProvider(BaseMemoryPool pool, FiatShamirSqueezeDelegate squeeze)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             CodeSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, ExtraVariableCount, DigestSizeBytes);
+            Random, HashToScalar, ExtraVariableCount, pool, DigestSizeBytes);
     }
 
 
-    //The plain (deterministic) BaseFold provider for the public zero-error
-    //vector, over the same code parameters so prover and verifier recompute
-    //the identical error commitment.
-    [SuppressMessage("Reliability", "CA2000", Justification = "The provider holds no disposable key; the consumer disposes it.")]
-    private static PolynomialCommitmentProvider BuildErrorProvider(FiatShamirSqueezeDelegate squeeze)
+    /// <summary>
+    /// Builds the plain (deterministic) BaseFold commitment provider for the public zero-error
+    /// vector, using the caller's pool over the same code parameters so the prover and verifier
+    /// recompute the identical error commitment.
+    /// </summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="squeeze">The transcript squeeze backend.</param>
+    private static PolynomialCommitmentProvider BuildErrorProvider(BaseMemoryPool pool, FiatShamirSqueezeDelegate squeeze)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, QueryCount, Merkle, Hash, squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 
-    //Four distinct nonzero constraints over z = (1, 15, x, y), satisfied by
-    //(x, y) = (3, 5): x·y = 15, x·x = 9·1, y·y = 25·1, x·15 = 45·1. Two row
-    //variables pin the E_τ index conventions.
+    /// <summary>Builds the four-constraint R1CS instance over <c>z = (1, 15, x, y)</c>, satisfied by <c>(x, y) = (3, 5)</c>: <c>x·y = 15</c>, <c>x·x = 9·1</c>, <c>y·y = 25·1</c>, <c>x·15 = 45·1</c>. Two row variables pin the <c>E_τ</c> index conventions.</summary>
     private static RawR1csInstance BuildInstance()
     {
         int[] aRows = [0, 1, 2, 3];
@@ -250,6 +278,7 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Builds the witness <c>(x, y) = (3, 5)</c> that satisfies <see cref="BuildInstance"/>'s constraints.</summary>
     private static RawR1csWitness BuildSatisfyingWitness()
     {
         byte[] witnessBytes = BuildCanonicalScalars(3, 5);
@@ -258,6 +287,7 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Encodes each value in <paramref name="values"/> as a canonical big-endian BLS12-381 scalar, concatenated.</summary>
     private static byte[] BuildCanonicalScalars(params int[] values)
     {
         byte[] bytes = new byte[values.Length * ScalarSize];
@@ -270,6 +300,7 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Sums the bytes of <paramref name="proof"/> into <paramref name="histogram"/>'s per-byte-value bins and returns the proof's mean byte value.</summary>
     private static double Accumulate(ReadOnlySpan<byte> proof, long[] histogram)
     {
         double sum = 0;
@@ -283,6 +314,7 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Creates a new Fiat–Shamir transcript domain-separated by <see cref="TranscriptDomain"/>.</summary>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -294,6 +326,7 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Computes the two-to-one Merkle compression of <paramref name="left"/> and <paramref name="right"/> using BLAKE3.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -303,6 +336,7 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     }
 
 
+    /// <summary>Reduces <paramref name="value"/> modulo the BLS12-381 scalar field order and writes it to <paramref name="destination"/> as a canonical big-endian, non-negative scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

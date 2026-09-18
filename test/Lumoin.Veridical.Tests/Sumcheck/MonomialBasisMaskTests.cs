@@ -13,9 +13,9 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Sumcheck;
 
 /// <summary>
-/// SM.2b — the monomial-basis sumcheck mask (<see cref="MonomialBasisMask"/>
+/// The monomial-basis sumcheck mask (<see cref="MonomialBasisMask"/>
 /// over a <see cref="MonomialBasis"/>; Libra ePrint 2019/317 §4.1 generalised
-/// per the statistical-mask design notes (§2, v2): pins the generic
+/// to an arbitrary monomial basis) pins the generic
 /// closed-form <c>σ</c>, the per-round blend, and the terminal
 /// <c>s(r)</c>/weight pairing against a naive dense reference that evaluates
 /// the mask monomial by monomial and brute-forces the round partial sums. The
@@ -27,30 +27,68 @@ namespace Lumoin.Veridical.Tests.Sumcheck;
 [TestClass]
 internal sealed class MonomialBasisMaskTests
 {
+    /// <summary>The real BLS12-381 scalar addition delegate every test in this file computes over.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The real BLS12-381 scalar subtraction delegate every test in this file computes over.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The real BLS12-381 scalar multiplication delegate every test in this file computes over.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The delegate that reduces a wide byte buffer to a canonical BLS12-381 scalar, used to build deterministic challenges.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
+    /// <summary>The byte width of one BLS12-381 scalar.</summary>
     private const int ScalarSize = 32;
 
+    /// <summary>The BLS12-381 curve tag every delegate call in this file routes over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+
+    /// <summary>The fixed seed for every deterministic mask sampler this file constructs.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("veridical.sumcheck.monomialmask.kernel.test.v1");
 
 
+    /// <summary>Both factory shapes release storage idempotently and reject all exponent access after disposal.</summary>
+    /// <param name="padded">Whether to use the padded univariate basis.</param>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void BasisDisposalIsIdempotentAndInvalidatesAccess(bool padded)
+    {
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        //A single variable exercises both factory shapes without unnecessary storage.
+        const int VariableCount = 1;
+        using MonomialBasis basis = padded
+            ? MonomialBasis.SumOfUnivariatesWithPad(VariableCount, padPairCount: 0, pool)
+            : MonomialBasis.Full(VariableCount, pool);
+        Assert.HasCount(VariableCount, basis.ExponentsAt(0));
+
+        basis.Dispose();
+        basis.Dispose();
+
+        ObjectDisposedException exception = Assert.ThrowsExactly<ObjectDisposedException>(() => basis.ExponentsAt(0));
+        Assert.AreEqual(nameof(MonomialBasis), exception.ObjectName);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => basis.ExponentsAt(-1));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => basis.ExponentsAt(basis.Count));
+    }
+
+
+    /// <summary>Checks the padded univariate mask chain from its hypercube sum to the terminal evaluation.</summary>
     [TestMethod]
     [DataRow(5, 4)]
     [DataRow(5, 8)]
     [DataRow(6, 8)]
     public void PaddedSumOfUnivariatesChainsFromSigmaToTerminal(int variableCount, int padPairCount)
     {
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount, BaseMemoryPool.Shared);
         Assert.AreEqual((2 * variableCount) + 1 + (2 * padPairCount), basis.Count, "The padded basis count must be 2d + 1 + 2P.");
 
         AssertChainsFromSigmaToTerminal(basis, salt: 23);
     }
 
 
+    /// <summary>Checks the full basis mask chain from its hypercube sum to the terminal evaluation.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -58,7 +96,7 @@ internal sealed class MonomialBasisMaskTests
     [DataRow(4)]
     public void FullBasisChainsFromSigmaToTerminal(int variableCount)
     {
-        MonomialBasis basis = MonomialBasis.Full(variableCount);
+        using MonomialBasis basis = MonomialBasis.Full(variableCount, BaseMemoryPool.Shared);
         int expectedCount = 1;
         for(int j = 0; j < variableCount; j++)
         {
@@ -71,6 +109,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks that the public weights and mask coefficients reproduce the mask evaluation.</summary>
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
@@ -81,9 +120,9 @@ internal sealed class MonomialBasisMaskTests
         //committed coefficient multilinear relies on.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = padded
-            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 6)
-            : MonomialBasis.Full(variableCount: 3);
+        using MonomialBasis basis = padded
+            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 6, pool)
+            : MonomialBasis.Full(variableCount: 3, pool);
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
         Scalar[] registry = BuildChallengeRegistry(basis.VariableCount, salt: 31, pool);
@@ -123,6 +162,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Verifies that Sample throws <see cref="InvalidOperationException"/> for a sampler that always returns zero bytes, since blending nothing would silently void the mask's statistical zero-knowledge.</summary>
     [TestMethod]
     public void SampleWithZeroEntropyThrows()
     {
@@ -131,17 +171,17 @@ internal sealed class MonomialBasisMaskTests
         //blends nothing, yet every proof still verifies. Sample must reject it
         //at generation with InvalidOperationException.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 0);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 0, pool);
 
         Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using MonomialBasisMask _ = MonomialBasisMask.Sample(basis, ZeroScalarRandom, Curve, pool);
-        });
+            MonomialBasisMask.Sample(basis, ZeroScalarRandom, Curve, pool).Dispose());
     }
 
 
-    //An entropy delegate with the production signature that always returns
-    //zero bytes — the modelled RNG wiring failure.
+    /// <summary>
+    /// An entropy delegate with the production sampler signature that always returns zero bytes,
+    /// modelling an RNG wiring failure.
+    /// </summary>
     private static Tag ZeroScalarRandom(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
     {
         destination.Clear();
@@ -150,6 +190,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Verifies that the mask's closed-form σ equals the literal sum of its evaluations over every point of the Boolean hypercube.</summary>
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
@@ -158,9 +199,9 @@ internal sealed class MonomialBasisMaskTests
         //σ against the literal Σ_b s(b) over all 2^d boolean points.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = padded
-            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 5)
-            : MonomialBasis.Full(variableCount: 4);
+        using MonomialBasis basis = padded
+            ? MonomialBasis.SumOfUnivariatesWithPad(variableCount: 5, padPairCount: 5, pool)
+            : MonomialBasis.Full(variableCount: 4, pool);
         int d = basis.VariableCount;
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
@@ -198,6 +239,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks the cubic mask chain from its hypercube sum to the terminal evaluation.</summary>
     [TestMethod]
     [DataRow(2)]
     [DataRow(3)]
@@ -213,7 +255,7 @@ internal sealed class MonomialBasisMaskTests
         //the cubic down to s(r).
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 2, perVariableDegree: 3);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 2, pool, perVariableDegree: 3);
         Assert.AreEqual((3 * variableCount) + 1 + 4, basis.Count, "The cubic padded basis count must be 3d + 1 + 2P.");
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
@@ -301,6 +343,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Verifies that routing a cubic-degree basis through the quadratic round-blend overload throws, rather than silently dropping the cubic share.</summary>
     [TestMethod]
     public void QuadraticBlendOverloadRejectsCubicBases()
     {
@@ -308,7 +351,7 @@ internal sealed class MonomialBasisMaskTests
         //the cubic share; the kernel must refuse loudly instead.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 3, padPairCount: 0, perVariableDegree: 3);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 3, padPairCount: 0, pool, perVariableDegree: 3);
 
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
         Scalar[] registry = BuildChallengeRegistry(3, salt: 43, pool);
@@ -331,6 +374,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Checks that the basis factory rejects pad pairs beyond its capacity.</summary>
     [TestMethod]
     public void PadPairCapacityIsEnforced()
     {
@@ -339,21 +383,22 @@ internal sealed class MonomialBasisMaskTests
         const int VariableCount = 3;
         const int Capacity = 1 << (VariableCount - 1);
 
-        MonomialBasis atCapacity = MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity);
+        using MonomialBasis atCapacity = MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity, BaseMemoryPool.Shared);
         Assert.AreEqual((2 * VariableCount) + 1 + (2 * Capacity), atCapacity.Count);
 
         _ = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => _ = MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity + 1),
+            () => MonomialBasis.SumOfUnivariatesWithPad(VariableCount, Capacity + 1, BaseMemoryPool.Shared).Dispose(),
             "A pad request beyond the multilinear-monomial capacity must be refused.");
     }
 
 
+    /// <summary>Checks that separately sampled masks have different coefficients.</summary>
     [TestMethod]
     public void TwoSampledMasksDiffer()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 3);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount: 4, padPairCount: 3, pool);
 
         using MonomialBasisMask first = MonomialBasisMask.Sample(basis, random, Curve, pool);
         using MonomialBasisMask second = MonomialBasisMask.Sample(basis, random, Curve, pool);
@@ -365,11 +410,12 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //The strongest property: starting the claim at σ, every round's blend must
-    //agree with the brute-forced partial sum p_k at t ∈ {0, 1, 2}, the chain
-    //p_k(0) + p_k(1) = claim must hold per round, and the final claim p_1(r_1)
-    //must equal EvaluateAt(r) — one pass exercising ComputeSigma, AddRoundBlend
-    //(both blended coefficients), and EvaluateAt against each other.
+    /// <summary>
+    /// Asserts the strongest chain property for a quadratic-shaped basis: starting the claim at σ,
+    /// every round's blend agrees with the brute-forced partial sum p_k at t ∈ {0, 1, 2}, the chain
+    /// p_k(0) + p_k(1) = claim holds per round, and the final claim p_1(r_1) equals EvaluateAt(r) —
+    /// one pass exercising ComputeSigma, AddRoundBlend and EvaluateAt against each other.
+    /// </summary>
     private static void AssertChainsFromSigmaToTerminal(MonomialBasis basis, int salt)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
@@ -450,9 +496,10 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //The brute-forced round polynomial p_k(t): the partial sum of the mask over
-    //the k−1 free boolean variables with X_k = t and the higher variables bound
-    //to their challenges.
+    /// <summary>
+    /// Computes the brute-forced round polynomial p_k(t): the partial sum of the mask over the
+    /// k-1 free Boolean variables with X_k = t and the higher variables bound to their challenges.
+    /// </summary>
     private static void ReferenceRoundPolynomial(
         MonomialBasis basis,
         ReadOnlySpan<byte> coefficients,
@@ -486,7 +533,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //The naive mask evaluation Σ_e c_e·Π x_j^{e_j} at the given coordinates.
+    /// <summary>Computes the naive mask evaluation Σ_e c_e·Π x_j^{e_j} at the given coordinates.</summary>
     private static void EvaluateMaskReference(
         MonomialBasis basis,
         ReadOnlySpan<byte> coefficients,
@@ -515,9 +562,11 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //Evaluates the quadratic through (0, p0), (1, p1), (2, p2) at r without
-    //field division until the end: c0 = p0, 2c2 = p0 − 2p1 + p2,
-    //2c1 = 2(p1 − p0) − 2c2, then q(r) = (2·p0 + 2c1·r + 2c2·r²)·inv(2).
+    /// <summary>
+    /// Evaluates the quadratic through (0, p0), (1, p1), (2, p2) at r without field division until
+    /// the end: c0 = p0, 2c2 = p0 − 2p1 + p2, 2c1 = 2(p1 − p0) − 2c2, then
+    /// q(r) = (2·p0 + 2c1·r + 2c2·r²)·inv(2).
+    /// </summary>
     private static void EvaluateQuadraticFromSamples(
         ReadOnlySpan<byte> p0,
         ReadOnlySpan<byte> p1,
@@ -548,14 +597,19 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //The inverse of two in the BLS12-381 scalar field: (p + 1) / 2 where p is
-    //the field order — computed once from the reference field order.
+    /// <summary>
+    /// The inverse of two in the BLS12-381 scalar field, equal to (p + 1) / 2 where p is the field
+    /// order, computed once from the reference field order.
+    /// </summary>
     private static byte[] InverseOfTwo { get; } = ComputeInverse(2);
 
-    //The inverse of six, for recovering a cubic's value from its four samples
-    //after the division-free coefficient identities.
+    /// <summary>
+    /// The inverse of six in the BLS12-381 scalar field, used to recover a cubic's value from its
+    /// four samples after the division-free coefficient identities.
+    /// </summary>
     private static byte[] InverseOfSix { get; } = ComputeInverse(6);
 
+    /// <summary>Computes the modular inverse of the given small integer in the BLS12-381 scalar field by Fermat's little theorem.</summary>
     private static byte[] ComputeInverse(int value)
     {
         System.Numerics.BigInteger p = Bls12Curve381BigIntegerScalarReference.FieldOrder;
@@ -568,7 +622,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //result = 6·value by field doubling and adding.
+    /// <summary>Computes result = 6·value by field doubling and adding.</summary>
     private static void MultiplyBySix(ReadOnlySpan<byte> value, Span<byte> result)
     {
         Span<byte> twice = stackalloc byte[ScalarSize];
@@ -578,10 +632,11 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //Evaluates the cubic through (0, p0) … (3, p3) at r, division-free until a
-    //single final multiply by inv(6): with T = 6c₃ (the third difference),
-    //S = 2c₂ + T (the second difference), and 6c₁ = 6(p1 − p0) − 3(S − T) − T,
-    //6·q(r) = 6p0 + (6c₁)r + 3(S − T)r² + T·r³.
+    /// <summary>
+    /// Evaluates the cubic through (0, p0) … (3, p3) at r, division-free until a single final
+    /// multiply by inv(6): with T = 6c₃ (the third difference), S = 2c₂ + T (the second
+    /// difference), and 6c₁ = 6(p1 − p0) − 3(S − T) − T, 6·q(r) = 6p0 + (6c₁)r + 3(S − T)r² + T·r³.
+    /// </summary>
     private static void EvaluateCubicFromSamples(
         ReadOnlySpan<byte> p0,
         ReadOnlySpan<byte> p1,
@@ -633,8 +688,10 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //One-based challenge registry: registry[j] = r_j; index 0 is an unused
-    //placeholder scalar so the indexing matches the X_j naming.
+    /// <summary>
+    /// Builds a one-based challenge registry where registry[j] = r_j; index 0 is an unused
+    /// placeholder scalar so the indexing matches the X_j naming.
+    /// </summary>
     private static Scalar[] BuildChallengeRegistry(int variableCount, int salt, BaseMemoryPool pool)
     {
         var registry = new Scalar[variableCount + 1];
@@ -653,7 +710,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
-    //The evaluation point r in MLE storage order from the one-based registry.
+    /// <summary>Builds the evaluation point r in MLE storage order from the one-based registry.</summary>
     private static Scalar[] PointFromRegistry(Scalar[] registry, int variableCount)
     {
         var point = new Scalar[variableCount];
@@ -666,6 +723,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Writes a small non-negative integer as a canonical scalar in its last byte, the rest zeroed.</summary>
     private static void WriteSmallScalar(int value, Span<byte> destination)
     {
         destination.Clear();
@@ -673,6 +731,7 @@ internal sealed class MonomialBasisMaskTests
     }
 
 
+    /// <summary>Disposes every challenge scalar a registry holds.</summary>
     private static void DisposeRegistry(Scalar[] registry)
     {
         foreach(Scalar challenge in registry)

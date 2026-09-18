@@ -9,6 +9,7 @@ using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Mdoc;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -30,43 +31,83 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class EcdsaVerificationGadgetTests
 {
+    /// <summary>The test context used to read the run's cancellation token for the real-credential async tests.</summary>
     public TestContext TestContext { get; set; } = null!;
 
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
+    /// <summary>The Ligero inverse rate the gadget's constraint system is built at.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of opened Ligero columns the gadget's constraint system is built at.</summary>
     private const int OpenedColumns = 4;
+
+    /// <summary>The Ligero block size the gadget's constraint system is built at.</summary>
     private const int Block = 64;
 
+    /// <summary>The P-256 base-field modulus.</summary>
     private static BigInteger P { get; } = EcdsaNonceRecovery.P;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>a</c>.</summary>
     private static BigInteger A { get; } = EcdsaNonceRecovery.A;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>b</c>.</summary>
     private static BigInteger B { get; } = P256BigIntegerG1Reference.CurveB;
+
+    /// <summary>The P-256 group order.</summary>
     private static BigInteger N { get; } = EcdsaNonceRecovery.N;
 
+    /// <summary>The P-256 generator's x coordinate.</summary>
     private static BigInteger Gx { get; } = EcdsaNonceRecovery.Gx;
+
+    /// <summary>The P-256 generator's y coordinate.</summary>
     private static BigInteger Gy { get; } = EcdsaNonceRecovery.Gy;
+
+    /// <summary>The P-256 generator point.</summary>
     private static (BigInteger X, BigInteger Y) G { get; } = EcdsaNonceRecovery.G;
 
+    /// <summary>The canonical big-endian encoding of <see cref="A"/>.</summary>
     private static byte[] CurveABytes { get; } = Bytes(A);
+
+    /// <summary>The canonical big-endian encoding of <see cref="B"/>.</summary>
     private static byte[] CurveBBytes { get; } = Bytes(B);
 
-    //Fixed test scalars, all < n (the leading nibble keeps them below n = 0xFFFF…).
+    /// <summary>A fixed test private-key scalar, below n (the leading nibble keeps it below n = 0xFFFF…).</summary>
     private static BigInteger D { get; } = Hex("5b1e9f2c4a7d8e3f0a1b2c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e6f7081");
+
+    /// <summary>A fixed test nonce scalar, below n (the leading nibble keeps it below n = 0xFFFF…).</summary>
     private static BigInteger K { get; } = Hex("1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00");
+
+    /// <summary>A fixed test message-hash scalar, below n (the leading nibble keeps it below n = 0xFFFF…).</summary>
     private static BigInteger E { get; } = Hex("0a1b2c3d4e5f60718293a4b5c6d7e8f9000102030405060708090a0b0c0d0e0f");
 
+    /// <summary>The wired Merkle digest size: BLAKE3's 32 bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The Fiat-Shamir domain label the transcript seed is derived under.</summary>
     private static byte[] Domain { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.v1");
+
+    /// <summary>The deterministic prover-randomness seed shared by every proof in this suite.</summary>
     private static byte[] RandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.longfellow.ecdsa-p256.rng.v1");
+
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
+
+    /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
-    //An 8-bit difference covers any realistic age − threshold gap (0..255).
+    /// <summary>An 8-bit difference covers any realistic age − threshold gap (0..255).</summary>
     private const int AgeDifferenceBits = 8;
+
+    /// <summary>The age-at-least threshold the age-predicate tests assert against.</summary>
     private const int AgeThreshold = 18;
 
 
+    /// <summary>Pins that a synthetic ECDSA signature satisfying the Alg.4 identity at the oracle level also verifies in-circuit.</summary>
     [TestMethod]
     public void VerifiesARealSignatureInCircuit()
     {
@@ -84,6 +125,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that incrementing s by one breaks the identity and must not verify.</summary>
     [TestMethod]
     public void RejectsATamperedSignatureS()
     {
@@ -96,6 +138,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that a signature does not verify under a different, on-curve public key.</summary>
     [TestMethod]
     public void RejectsAWrongPublicKey()
     {
@@ -111,14 +154,15 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that witnessing a different on-curve nonce point, whose x does not reduce to r, must not verify.</summary>
     [TestMethod]
     public void RejectsAWrongNoncePoint()
     {
         (BigInteger qx, BigInteger qy, BigInteger _, BigInteger _, BigInteger r, BigInteger s) = Sign(D, K, E);
 
-        //Witness a different on-curve nonce point R' = (k + 1)·G: its x no longer
-        //reduces to r (the r = R.x mod n binding fails) and the identity no longer
-        //vanishes.
+        //Witness a different on-curve nonce point R' = (k + 1)·G: its x does not
+        //reduce to r (the r = R.x mod n binding fails) and the identity does not
+        //vanish.
         (BigInteger wrongRx, BigInteger wrongRy) = ScalarMultiply(K + 1, G);
 
         var (builder, gadget) = NewGadget();
@@ -128,6 +172,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that an off-curve nonce point must not verify.</summary>
     [TestMethod]
     public void RejectsAnOffCurveNoncePoint()
     {
@@ -140,6 +185,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that genuine .NET ECDSA signatures over several fresh keys and messages verify in-circuit after recovering the nonce point from the public signature alone, and that tampering s on each breaks verification.</summary>
     [TestMethod]
     public void VerifiesGenuineDotNetEcdsaSignaturesInCircuit()
     {
@@ -182,6 +228,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Proves and verifies a genuine signature using a caller-owned transcript seed.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void ProvesAndVerifiesAGenuineDotNetEcdsaSignature()
@@ -206,7 +253,10 @@ internal sealed class EcdsaVerificationGadgetTests
         (BigInteger rx, BigInteger ry) = RecoverNoncePoint(qx, qy, e, r, s);
 
         EcdsaPublicInputs pub = Public(qx, qy, e, r, s);
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         var (builder, gadget) = NewGadget();
         builder.AssertVerifies(gadget, pub, new EcdsaWitness(Bytes(rx), Bytes(ry)));
@@ -216,6 +266,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that one proof can attest both a valid issuer ECDSA signature and a private age at or above the threshold.</summary>
     [TestMethod]
     public void VerifiesSignatureAndAgeThresholdTogetherInCircuit()
     {
@@ -231,6 +282,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that a genuinely valid signature does not rescue a sub-threshold age: the age predicate fails independently within the same proof.</summary>
     [TestMethod]
     public void RejectsAgeBelowThresholdAlongsideAValidSignature()
     {
@@ -246,12 +298,13 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Proves the signature and age threshold with a statement-bound transcript.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void SignatureAndAgeThresholdProveAndVerifyEndToEnd()
     {
         //The headline: one Ligero proof attests, in zero knowledge, that the holder has
-        //a valid issuer ECDSA signature AND an age ≥ 18 — the signature now verified IN
+        //a valid issuer ECDSA signature AND an age ≥ 18 — the signature verified IN
         //circuit (vs out of circuit in the BLS-Spartan age e2e). Proved and verified
         //end-to-end through the real prover, with the seed bound to the public statement.
         //Scope: the age is a witness not yet cryptographically tied to the signed
@@ -261,7 +314,10 @@ internal sealed class EcdsaVerificationGadgetTests
         //evaluator gates above cover the logic.
         (BigInteger qx, BigInteger qy, BigInteger rx, BigInteger ry, BigInteger r, BigInteger s) = Sign(D, K, E);
         EcdsaPublicInputs pub = Public(qx, qy, E, r, s);
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         var (builder, gadget) = NewGadget();
         builder.AssertVerifies(gadget, pub, new EcdsaWitness(Bytes(rx), Bytes(ry)));
@@ -272,6 +328,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Checks full-width signature proofs, statement binding and tamper rejection.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void FullWidthSignatureProvesAndVerifiesEndToEnd()
@@ -287,7 +344,10 @@ internal sealed class EcdsaVerificationGadgetTests
         EcdsaPublicInputs pub = Public(qx, qy, E, r, s);
         var wit = new EcdsaWitness(Bytes(rx), Bytes(ry));
 
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(pub, Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         var (builder, gadget) = NewGadget();
         builder.AssertVerifies(gadget, pub, wit);
@@ -297,7 +357,9 @@ internal sealed class EcdsaVerificationGadgetTests
 
         //Statement binding: the same proof is rejected under a different statement's
         //seed (here the seed for a tampered s).
-        byte[] otherSeed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(Public(qx, qy, E, r, (s + 1) % N), Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using IMemoryOwner<byte> otherSeedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> otherSeed = otherSeedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(Public(qx, qy, E, r, (s + 1) % N), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, otherSeed);
         Assert.IsFalse(Verify(builder, proof, otherSeed), "A proof must be rejected under a different statement's seed.");
 
         //Tampering an opened column breaks the proof.
@@ -306,6 +368,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that a genuine .NET ECDSA signature verifies in-circuit with the message hash computed inside the proof from the witnessed message, and that tampering the message breaks verification.</summary>
     [TestMethod]
     public void VerifiesAHashedMessageSignatureInCircuit()
     {
@@ -334,7 +397,7 @@ internal sealed class EcdsaVerificationGadgetTests
             new EcdsaHashedWitness(message, Bytes(rx), Bytes(ry)));
         Assert.IsTrue(LigeroConstraintEvaluator.IsSatisfied(builder), "A signature must verify in-circuit for e = SHA-256(the witnessed message).");
 
-        //Tampering the message changes the in-circuit hash, so the identity no longer vanishes.
+        //Tampering the message changes the in-circuit hash, so the identity does not vanish.
         byte[] tampered = (byte[])message.Clone();
         tampered[0] ^= 0x01;
         var (tamperedBuilder, tamperedGadget) = NewGadget();
@@ -345,6 +408,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that a genuine signature over a private message verifies together with disclosure of a public attribute at a witnessed offset within that message, and that an attribute absent from the message cannot be disclosed even under an otherwise-valid signature.</summary>
     [TestMethod]
     public void VerifiesADisclosedAttributeInASignedMessage()
     {
@@ -389,6 +453,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins the full ISO 18013-5 three-level binding — signature over the MSO, MSO digest over the item, item holding the attribute — in one proof, and that an attribute absent from the item cannot be disclosed even when every other level checks out.</summary>
     [TestMethod]
     public void VerifiesATwoLevelMdocAttribute()
     {
@@ -435,6 +500,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Pins that a genuine ISO 18013-5 credential's age_over_18 disclosure verifies in-circuit over its real bytes, with the nonce point recovered from the real signature.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public async Task ProvesAgeOver18FromARealCredentialInCircuit()
@@ -466,16 +532,17 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
-    //A generous hang guard for the full real-credential prove+verify: the FFT
-    //row extender removes the encoder's super-linear wall, and the measured
-    //run is ~37 minutes on a desktop-class machine — the remaining prover
-    //stages walk a ~100k-constraint circuit. Two hours guards a slower runner
-    //without asserting elapsed time; the prove is synchronous and does not
-    //observe the cooperative token, so the guard is sized above the measured
-    //run rather than relied on to interrupt it.
+    /// <summary>
+    /// A generous hang guard for the full real-credential prove+verify: the FFT row extender removes the
+    /// encoder's super-linear wall, and the measured run is ~37 minutes on a desktop-class machine — the
+    /// remaining prover stages walk a ~100k-constraint circuit. Two hours guards a slower runner without
+    /// asserting elapsed time; the prove is synchronous and does not observe the cooperative token, so the
+    /// guard is sized above the measured run rather than relied on to interrupt it.
+    /// </summary>
     private const int EndToEndHangGuardMilliseconds = 7_200_000;
 
 
+    /// <summary>Proves the real credential disclosure using a statement-bound transcript.</summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     [Timeout(EndToEndHangGuardMilliseconds, CooperativeCancellation = true)]
@@ -505,14 +572,18 @@ internal sealed class EcdsaVerificationGadgetTests
             new EcdsaMdocWitness(disclosure.SignedStructure, disclosure.IssuerSignedItem, Bytes(rx), Bytes(ry)),
             disclosure.Attribute, disclosure.ItemDigestOffset, disclosure.AttributeOffset);
 
-        byte[] seed = EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(
-            Public(qx, qy, e, r, s), Domain, Hash, WellKnownHashAlgorithms.Blake3);
+        using BaseMemoryPool transcriptPool = new();
+        using IMemoryOwner<byte> seedOwner = transcriptPool.Rent(ScalarSize);
+        Span<byte> seed = seedOwner.Memory.Span[..ScalarSize];
+        EcdsaVerificationGadgetExtensions.DeriveTranscriptSeed(
+            Public(qx, qy, e, r, s), Domain, Hash, WellKnownHashAlgorithms.Blake3, transcriptPool, seed);
 
         using LigeroProof proof = ProveMontgomery(builder, seed);
         Assert.IsTrue(VerifyMontgomery(builder, proof, seed), "A real credential's age_over_18 disclosure must prove and verify end-to-end in zero knowledge.");
     }
 
 
+    /// <summary>Produces a valid ECDSA signature (r, s) and the corresponding public key and nonce point for the given private key, nonce and message hash.</summary>
     private static (BigInteger Qx, BigInteger Qy, BigInteger Rx, BigInteger Ry, BigInteger R, BigInteger S) Sign(BigInteger d, BigInteger k, BigInteger e)
     {
         (BigInteger qx, BigInteger qy) = ScalarMultiply(d, G);
@@ -524,103 +595,142 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Builds the gadget's public-input bundle from the signature components.</summary>
     private static EcdsaPublicInputs Public(BigInteger qx, BigInteger qy, BigInteger e, BigInteger r, BigInteger s) =>
         new(Bytes(qx), Bytes(qy), Bytes(e), Bytes(r), Bytes(s));
 
 
-    //The nonce point a verifier reconstructs from the public signature alone.
+    /// <summary>The nonce point a verifier reconstructs from the public signature alone.</summary>
     private static (BigInteger X, BigInteger Y) RecoverNoncePoint(BigInteger qx, BigInteger qy, BigInteger e, BigInteger r, BigInteger s) =>
         EcdsaNonceRecovery.RecoverNoncePoint(qx, qy, e, r, s);
 
 
+    /// <summary>Interprets canonical big-endian bytes as an unsigned integer.</summary>
     private static BigInteger ToInteger(ReadOnlySpan<byte> bytes) => EcdsaNonceRecovery.ToInteger(bytes);
 
 
-    private readonly List<LigeroConstraintSystemBuilder> builders = [];
+    /// <summary>Every constraint builder this test created, disposed together at cleanup.</summary>
+    private List<LigeroConstraintSystemBuilder> Builders { get; } = [];
 
 
+    /// <summary>Disposes every constraint builder this test created.</summary>
     [TestCleanup]
     public void DisposeBuilders()
     {
-        foreach(LigeroConstraintSystemBuilder builder in builders)
+        foreach(LigeroConstraintSystemBuilder builder in Builders)
         {
             builder.Dispose();
         }
     }
 
 
+    /// <summary>Builds a fresh constraint builder and the ECDSA curve gadget over it, tracking the builder for cleanup.</summary>
     private (LigeroConstraintSystemBuilder Builder, EcdsaCurve Gadget) NewGadget()
     {
         var builder = new LigeroConstraintSystemBuilder(
             P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
             P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
             CurveParameterSet.None, InverseRate, OpenedColumns, Block, BaseMemoryPool.Shared);
-        builders.Add(builder);
+        Builders.Add(builder);
         var gadget = new EcdsaCurve(WeierstrassCurve.Create(builder, CurveABytes, CurveBBytes), Bytes(Gx), Bytes(Gy), Bytes(N));
 
         return (builder, gadget);
     }
 
 
+    /// <summary>Reduces a value modulo the P-256 group order.</summary>
     private static BigInteger ModN(BigInteger v) => EcdsaNonceRecovery.ModN(v);
 
+    /// <summary>Inverts a value modulo the P-256 group order.</summary>
     private static BigInteger ModInvN(BigInteger v) => EcdsaNonceRecovery.ModInvN(v);
 
+    /// <summary>Multiplies a P-256 point by a scalar over BigInteger arithmetic.</summary>
     private static (BigInteger X, BigInteger Y) ScalarMultiply(BigInteger scalar, (BigInteger X, BigInteger Y) point) =>
         EcdsaNonceRecovery.ScalarMultiply(scalar, point);
 
+    /// <summary>Adds two P-256 points (or the point at infinity) over BigInteger arithmetic, the out-of-circuit oracle the in-circuit gadget is checked against.</summary>
     private static (BigInteger X, BigInteger Y)? OracleAdd((BigInteger X, BigInteger Y)? a, (BigInteger X, BigInteger Y)? b) =>
         EcdsaNonceRecovery.OracleAdd(a, b);
 
+    /// <summary>Multiplies a P-256 point by a scalar, returning the point at infinity for a zero scalar, over BigInteger arithmetic.</summary>
     private static (BigInteger X, BigInteger Y)? OracleScalarMultiply(BigInteger scalar, (BigInteger X, BigInteger Y) point) =>
         EcdsaNonceRecovery.OracleScalarMultiply(scalar, point);
 
+    /// <summary>Parses a hex string into an unsigned big-endian integer.</summary>
     private static BigInteger Hex(string value) => EcdsaNonceRecovery.Hex(value);
 
+    /// <summary>Converts a value to its canonical big-endian scalar encoding.</summary>
     private static byte[] Bytes(BigInteger value) => EcdsaNonceRecovery.Bytes(value);
 
 
-    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder, byte[] seed) => LigeroProver.Prove(
-        builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), seed,
-        new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Proves with pooled snapshots that remain owned until the prover returns.</summary>
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static LigeroProof Prove(LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> seed)
+    {
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroProver.Prove(
+            builder.BuildParameters(), (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), seed,
+            new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
-    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof, byte[] seed) => LigeroVerifier.Verify(
-        builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), seed,
-        P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
-        P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="proof">The proof to verify.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static bool Verify(LigeroConstraintSystemBuilder builder, LigeroProof proof, ReadOnlySpan<byte> seed)
+    {
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroVerifier.Verify(
+            builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), seed,
+            P256BaseFieldReference.GetAdd(), P256BaseFieldReference.GetSubtract(), P256BaseFieldReference.GetMultiply(),
+            P256BaseFieldReference.GetInvert(), P256BaseFieldReference.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
-    //The same prove/verify over the production Montgomery Fp256 backend with the FFT convolution
-    //row extender installed — byte-identical to the reference (the extender computes the same
-    //integer-node extension; the byte gate is Fp256LigeroRowExtenderTests), used for the large
-    //real-credential circuit where the barycentric loop was the 6.6-hour wall.
-    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, byte[] seed)
+    /// <summary>
+    /// Proves through the production Montgomery Fp256 backend with the FFT convolution row extender
+    /// installed, owning the witness and target snapshots. Byte-identical to the reference path — the
+    /// extender computes the same integer-node extension, gated byte-for-byte by
+    /// <c>Fp256LigeroRowExtenderTests</c> — and is the path this large real-credential circuit needs:
+    /// its O(n²) barycentric encoder alone runs on the order of 6.6 hours over a circuit this size.
+    /// </summary>
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static LigeroProof ProveMontgomery(LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> seed)
     {
         Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
-        var fft = new Fp256RealFft(
+        using BaseMemoryPool fftPool = new();
+        using var fft = new Fp256RealFft(
             root, LongfellowFp256Encoding.OmegaOrder,
             P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),
             P256BaseFieldMontgomeryBackend.GetMultiply(), P256BaseFieldMontgomeryBackend.GetInvert(),
-            WriteCanonicalUInt, CurveParameterSet.None, BaseMemoryPool.Shared);
+            WriteCanonicalUInt, CurveParameterSet.None, fftPool);
         using var extenders = new Fp256LigeroRowExtenders(
             fft,
             P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(),
             P256BaseFieldMontgomeryBackend.GetMultiply(), P256BaseFieldMontgomeryBackend.GetInvert(),
             WriteCanonicalUInt, CurveParameterSet.None, BaseMemoryPool.Shared);
 
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
         return LigeroProver.Prove(
-            builder.BuildParameters(), builder.WitnessBytes(), builder.LinearConstraintCount, builder.LinearConstraints(),
-            builder.TargetBytes(), builder.QuadraticConstraints(), seed,
+            builder.BuildParameters(), (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), seed,
             new DeterministicFp256Random(RandomnessSeed).AsDelegate(),
             P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(), P256BaseFieldMontgomeryBackend.GetMultiply(),
             P256BaseFieldMontgomeryBackend.GetInvert(), P256BaseFieldMontgomeryBackend.GetReduce(),
@@ -630,6 +740,7 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
+    /// <summary>Writes a 32-bit value as a zero-padded canonical big-endian scalar.</summary>
     private static void WriteCanonicalUInt(uint value, Span<byte> destination)
     {
         destination.Clear();
@@ -637,15 +748,25 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
-    private static bool VerifyMontgomery(LigeroConstraintSystemBuilder builder, LigeroProof proof, byte[] seed) => LigeroVerifier.Verify(
-        builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
-        builder.TargetBytes(), builder.QuadraticConstraints(), seed,
-        P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(), P256BaseFieldMontgomeryBackend.GetMultiply(),
-        P256BaseFieldMontgomeryBackend.GetInvert(), P256BaseFieldMontgomeryBackend.GetReduce(),
-        Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
-        CurveParameterSet.None, BaseMemoryPool.Shared);
+    /// <summary>Verifies with a pooled target snapshot owned until verification returns.</summary>
+    /// <param name="builder">The live constraint builder.</param>
+    /// <param name="proof">The proof to verify.</param>
+    /// <param name="seed">The transcript seed borrowed for this call.</param>
+    private static bool VerifyMontgomery(LigeroConstraintSystemBuilder builder, LigeroProof proof, ReadOnlySpan<byte> seed)
+    {
+        using IMemoryOwner<byte>? targetsOwner = builder.TargetBytes();
+
+        return LigeroVerifier.Verify(
+            builder.BuildParameters(), proof, builder.LinearConstraintCount, builder.LinearConstraints(),
+            (targetsOwner?.Memory ?? Memory<byte>.Empty).Span, builder.QuadraticConstraints(), seed,
+            P256BaseFieldMontgomeryBackend.GetAdd(), P256BaseFieldMontgomeryBackend.GetSubtract(), P256BaseFieldMontgomeryBackend.GetMultiply(),
+            P256BaseFieldMontgomeryBackend.GetInvert(), P256BaseFieldMontgomeryBackend.GetReduce(),
+            Hash, Squeeze, Hash, Merkle, WellKnownHashAlgorithms.Blake3,
+            CurveParameterSet.None, BaseMemoryPool.Shared);
+    }
 
 
+    /// <summary>The two-to-one compression: BLAKE3 over the concatenated children.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -655,22 +776,27 @@ internal sealed class EcdsaVerificationGadgetTests
     }
 
 
-    //A reproducible Fp256 randomness source: BLAKE3-XOF of seed‖counter reduced
-    //modulo the base-field prime.
+    /// <summary>A reproducible Fp256 randomness source: BLAKE3-XOF of seed‖counter reduced modulo the base-field prime.</summary>
     private sealed class DeterministicFp256Random
     {
-        private readonly byte[] seed;
+        /// <summary>The fixed seed this source's every draw is derived from.</summary>
+        private byte[] Seed { get; }
+
+        /// <summary>The number of scalars drawn so far, mixed into each draw's pre-image.</summary>
         private int counter;
 
-        public DeterministicFp256Random(ReadOnlySpan<byte> seed) => this.seed = seed.ToArray();
+        /// <summary>Copies the seed for this source's lifetime.</summary>
+        public DeterministicFp256Random(ReadOnlySpan<byte> seed) => this.Seed = seed.ToArray();
 
+        /// <summary>Returns this source's fill delegate.</summary>
         public ScalarRandomDelegate AsDelegate() => Fill;
 
+        /// <summary>Draws the next reproducible scalar: BLAKE3-XOF of seed‖counter reduced modulo the base-field prime, then advances the counter.</summary>
         private Tag Fill(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
         {
-            Span<byte> input = stackalloc byte[seed.Length + sizeof(int)];
-            seed.CopyTo(input);
-            BinaryPrimitives.WriteInt32BigEndian(input[seed.Length..], counter);
+            Span<byte> input = stackalloc byte[Seed.Length + sizeof(int)];
+            Seed.CopyTo(input);
+            BinaryPrimitives.WriteInt32BigEndian(input[Seed.Length..], counter);
             counter++;
 
             Span<byte> wide = stackalloc byte[64];

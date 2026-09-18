@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using Lumoin.Veridical.Core.Algebraic;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
@@ -220,16 +221,29 @@ internal sealed class LongfellowJwtCircuit
     /// <summary>One SHA-256 block's byte width.</summary>
     private const int BytesPerBlock = 64;
 
-    //The reference's unroll parameter for both the payload and the attribute shifts.
+    /// <summary>The reference's unroll parameter for both the payload and the attribute shifts.</summary>
     private const int ShiftUnroll = 3;
 
-    private readonly LongfellowLogic logic;
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowLogicFieldOperations field;
-    private readonly LongfellowEllipticCurveParameters curve;
-    private readonly LongfellowFlatSha256Circuit sha;
-    private readonly LongfellowRouting routing;
-    private readonly int maxBlocks;
+    /// <summary>The gadget layer every sub-circuit this statement builds is declared and evaluated on.</summary>
+    private LongfellowLogic Logic { get; }
+
+    /// <summary>The logic layer's constraint backend, used to recompose the digest bits into a field element.</summary>
+    private LongfellowLogicBackend Backend { get; }
+
+    /// <summary>The logic layer's field operations, used for the digest recomposition's doubling and the default byte vector's zero constant.</summary>
+    private LongfellowLogicFieldOperations Field { get; }
+
+    /// <summary>The elliptic curve constants both ECDSA signature checks verify against.</summary>
+    private LongfellowEllipticCurveParameters Curve { get; }
+
+    /// <summary>The SHA-256 gadget, built at the JWT packing width, that ties the preimage to its digest.</summary>
+    private LongfellowFlatSha256Circuit Sha { get; }
+
+    /// <summary>The routing gadget that shifts the payload and each disclosed attribute's window to the front.</summary>
+    private LongfellowRouting Routing { get; }
+
+    /// <summary>The preimage capacity in SHA-256 blocks this circuit instance was built for.</summary>
+    private int MaxBlocks { get; }
 
 
     /// <summary>
@@ -256,13 +270,13 @@ internal sealed class LongfellowJwtCircuit
             throw new ArgumentOutOfRangeException(nameof(maxShaBlocks), "The JWT index bit width cannot address the block capacity.");
         }
 
-        this.logic = logic;
-        this.curve = curve;
-        backend = logic.Backend;
-        field = logic.Field;
-        maxBlocks = maxShaBlocks;
-        sha = new LongfellowFlatSha256Circuit(logic, new LongfellowBitPlucker(logic, LongfellowJwtConstants.ShaJwtPluckerBits));
-        routing = new LongfellowRouting(logic);
+        this.Logic = logic;
+        this.Curve = curve;
+        Backend = logic.Backend;
+        Field = logic.Field;
+        MaxBlocks = maxShaBlocks;
+        Sha = new LongfellowFlatSha256Circuit(logic, new LongfellowBitPlucker(logic, LongfellowJwtConstants.ShaJwtPluckerBits));
+        Routing = new LongfellowRouting(logic);
     }
 
 
@@ -279,37 +293,37 @@ internal sealed class LongfellowJwtCircuit
     {
         ArgumentOutOfRangeException.ThrowIfNegative(attributeCount);
 
-        int e = logic.InputElement();
-        int dpkX = logic.InputElement();
-        int dpkY = logic.InputElement();
-        LongfellowEcdsaVerifyWitnessWires jwtSignature = LongfellowEcdsaVerifyWitnessWires.Input(logic, curve.ScalarBitCount);
-        LongfellowEcdsaVerifyWitnessWires kbSignature = LongfellowEcdsaVerifyWitnessWires.Input(logic, curve.ScalarBitCount);
+        int e = Logic.InputElement();
+        int dpkX = Logic.InputElement();
+        int dpkY = Logic.InputElement();
+        LongfellowEcdsaVerifyWitnessWires jwtSignature = LongfellowEcdsaVerifyWitnessWires.Input(Logic, Curve.ScalarBitCount);
+        LongfellowEcdsaVerifyWitnessWires kbSignature = LongfellowEcdsaVerifyWitnessWires.Input(Logic, Curve.ScalarBitCount);
 
-        var preimage = new LongfellowBitWire[maxBlocks * BytesPerBlock][];
+        var preimage = new LongfellowBitWire[MaxBlocks * BytesPerBlock][];
         for(int i = 0; i < preimage.Length; i++)
         {
-            preimage[i] = logic.InputVector(LongfellowLogic.BitWidth8);
+            preimage[i] = Logic.InputVector(LongfellowLogic.BitWidth8);
         }
 
-        LongfellowBitWire[] eBits = logic.InputVector(LongfellowLogic.BitWidth256);
+        LongfellowBitWire[] eBits = Logic.InputVector(LongfellowLogic.BitWidth256);
 
-        var shaWitness = new LongfellowFlatSha256PackedBlockWitness[maxBlocks];
-        for(int j = 0; j < maxBlocks; j++)
+        var shaWitness = new LongfellowFlatSha256PackedBlockWitness[MaxBlocks];
+        for(int j = 0; j < MaxBlocks; j++)
         {
             shaWitness[j] = new LongfellowFlatSha256PackedBlockWitness();
-            shaWitness[j].Input(sha);
+            shaWitness[j].Input(Sha);
         }
 
-        LongfellowBitWire[] blockNumber = logic.InputVector(LongfellowLogic.BitWidth8);
+        LongfellowBitWire[] blockNumber = Logic.InputVector(LongfellowLogic.BitWidth8);
 
         var attributeIndices = new LongfellowBitWire[attributeCount][];
         for(int i = 0; i < attributeCount; i++)
         {
-            attributeIndices[i] = logic.InputVector(LongfellowJwtConstants.JwtIndexBits);
+            attributeIndices[i] = Logic.InputVector(LongfellowJwtConstants.JwtIndexBits);
         }
 
-        LongfellowBitWire[] payloadIndex = logic.InputVector(LongfellowJwtConstants.JwtIndexBits);
-        LongfellowBitWire[] payloadLength = logic.InputVector(LongfellowJwtConstants.JwtIndexBits);
+        LongfellowBitWire[] payloadIndex = Logic.InputVector(LongfellowJwtConstants.JwtIndexBits);
+        LongfellowBitWire[] payloadLength = Logic.InputVector(LongfellowJwtConstants.JwtIndexBits);
 
         return new LongfellowJwtWitnessWires(e, dpkX, dpkY, jwtSignature, kbSignature, preimage, eBits, shaWitness, blockNumber, attributeIndices, payloadIndex, payloadLength);
     }
@@ -338,46 +352,52 @@ internal sealed class LongfellowJwtCircuit
             throw new ArgumentException("The attribute bundles disagree with the witness's index count.", nameof(attributes));
         }
 
-        var ecdsa = new LongfellowEcdsaVerifyCircuit(logic, curve);
+        var ecdsa = new LongfellowEcdsaVerifyCircuit(Logic, Curve);
 
         ecdsa.VerifySignature3(pkX, pkY, witness.E, witness.JwtSignature);
         ecdsa.VerifySignature3(witness.DpkX, witness.DpkY, e2, witness.KbSignature);
 
-        sha.AssertMessageHash(maxBlocks, witness.BlockNumber, witness.Preimage, witness.EBits, witness.Sha);
-        logic.AssertIsBit(witness.EBits);
+        Sha.AssertMessageHash(MaxBlocks, witness.BlockNumber, witness.Preimage, witness.EBits, witness.Sha);
+        Logic.AssertIsBit(witness.EBits);
 
         //Recompose the digest bits into a field element and tie it to the signature's digest; this
         //is also what guarantees e is nonzero advice-independently.
-        ReadOnlyMemory<byte> powerOfTwo = field.Compiler.One;
-        int est = backend.Constant(field.Compiler.Zero.Span);
+        //Separate current and doubled scalars preserve delegates whose outputs cannot alias inputs.
+        const int DoublingScalarCount = 2;
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(DoublingScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(DoublingScalarCount * Scalar.SizeBytes)];
+        Span<byte> powerOfTwo = buffer[..Scalar.SizeBytes];
+        Span<byte> doubled = buffer[Scalar.SizeBytes..];
+        Field.Compiler.One.Span.CopyTo(powerOfTwo);
+        int est = Backend.Constant(Field.Compiler.Zero.Span);
         for(int i = 0; i < LongfellowLogic.BitWidth256; i++)
         {
-            est = backend.Axpy(est, powerOfTwo.Span, logic.Eval(witness.EBits[i]));
+            est = Backend.Axpy(est, powerOfTwo, Logic.Eval(witness.EBits[i]));
 
-            var doubled = new byte[Scalar.SizeBytes];
-            field.Compiler.Add(powerOfTwo.Span, powerOfTwo.Span, doubled, field.Compiler.Curve);
-            powerOfTwo = doubled;
+            doubled.Clear();
+            Field.Compiler.Add(powerOfTwo, powerOfTwo, doubled, Field.Compiler.Curve);
+            doubled.CopyTo(powerOfTwo);
         }
 
-        _ = logic.AssertEqual(est, witness.E);
+        _ = Logic.AssertEqual(est, witness.E);
 
         //The zero byte cannot appear in the token's strings, so it is the shift filler.
-        LongfellowBitWire[] zeroByte = logic.BitVector(LongfellowLogic.BitWidth8, 0);
+        LongfellowBitWire[] zeroByte = Logic.BitVector(LongfellowLogic.BitWidth8, 0);
 
         //Shift the payload region to the front, then decode it. The undecoded output tail keeps the
         //value-initialized shape the reference's C++ default construction produces (a zero affine
         //reading over wire zero), which the attribute shifts below consume as-is.
-        int payloadCapacity = BytesPerBlock * (maxBlocks - LongfellowJwtConstants.ReservedTailBlocks);
+        int payloadCapacity = BytesPerBlock * (MaxBlocks - LongfellowJwtConstants.ReservedTailBlocks);
         var shiftBuffer = NewByteVectorArray(payloadCapacity);
-        routing.Shift(witness.PayloadIndex, shiftBuffer, witness.Preimage, zeroByte, ShiftUnroll);
+        Routing.Shift(witness.PayloadIndex, shiftBuffer, witness.Preimage, zeroByte, ShiftUnroll);
 
-        var decodeBuffer = new LongfellowBitWire[BytesPerBlock * maxBlocks][];
+        var decodeBuffer = new LongfellowBitWire[BytesPerBlock * MaxBlocks][];
         for(int i = 0; i < decodeBuffer.Length; i++)
         {
             decodeBuffer[i] = DefaultByteVector();
         }
 
-        var decoder = new LongfellowBase64Decoder(logic);
+        var decoder = new LongfellowBase64Decoder(Logic);
         decoder.RawUrlDecodeWithLength(shiftBuffer, decodeBuffer, payloadCapacity, witness.PayloadLength);
 
         //Shift each attribute's claimed position to the front and compare against the disclosed
@@ -385,7 +405,7 @@ internal sealed class LongfellowJwtCircuit
         for(int i = 0; i < witness.AttributeIndices.Length; i++)
         {
             var attributeWindow = NewByteVectorArray(LongfellowJwtOpenedAttributeWires.PatternLength);
-            routing.Shift(witness.AttributeIndices[i], attributeWindow, decodeBuffer, zeroByte, ShiftUnroll);
+            Routing.Shift(witness.AttributeIndices[i], attributeWindow, decodeBuffer, zeroByte, ShiftUnroll);
             AssertStringEqual(LongfellowJwtOpenedAttributeWires.PatternLength, attributes[i].Length, attributeWindow, attributes[i].Pattern);
         }
     }
@@ -407,9 +427,9 @@ internal sealed class LongfellowJwtCircuit
 
         for(int j = 0; j < max; j++)
         {
-            LongfellowBitWire inRange = logic.LessThan((ulong)j, length);
-            LongfellowBitWire same = logic.Equal(got[j], want[j]);
-            _ = logic.AssertImplies(inRange, same);
+            LongfellowBitWire inRange = Logic.LessThan((ulong)j, length);
+            LongfellowBitWire same = Logic.Equal(got[j], want[j]);
+            _ = Logic.AssertImplies(inRange, same);
         }
     }
 
@@ -441,7 +461,7 @@ internal sealed class LongfellowJwtCircuit
         var vector = new LongfellowBitWire[LongfellowLogic.BitWidth8];
         for(int i = 0; i < vector.Length; i++)
         {
-            vector[i] = new LongfellowBitWire(field.Compiler.Zero, field.Compiler.Zero, 0);
+            vector[i] = new LongfellowBitWire(Field.Compiler.Zero, Field.Compiler.Zero, 0);
         }
 
         return vector;

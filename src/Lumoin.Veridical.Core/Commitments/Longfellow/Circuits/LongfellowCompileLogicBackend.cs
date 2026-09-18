@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// <summary>
 /// The compiling backend, a faithful port of google/longfellow-zk's
 /// <c>CompilerBackend&lt;Field&gt;</c> (<c>compiler_backend.h</c>): every primitive forwards directly
-/// to the Phase-0 <see cref="LongfellowQuadCircuitBuilder"/>, so the emitted node graph — and
+/// to the <see cref="LongfellowQuadCircuitBuilder"/>, so the emitted node graph — and
 /// therefore the compiled circuit's structure and structural id — is exactly the builder's own.
 /// </summary>
 /// <remarks>
@@ -21,7 +21,8 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// </remarks>
 internal sealed class LongfellowCompileLogicBackend : LongfellowLogicBackend
 {
-    private readonly LongfellowQuadCircuitBuilder builder;
+    /// <summary>The circuit builder every primitive forwards to.</summary>
+    private LongfellowQuadCircuitBuilder Builder { get; }
 
 
     /// <summary>
@@ -35,21 +36,21 @@ internal sealed class LongfellowCompileLogicBackend : LongfellowLogicBackend
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        this.builder = builder;
+        this.Builder = builder;
     }
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.AssertZero"/>.</summary>
     /// <param name="wire">The wire whose value must be zero.</param>
     /// <returns>The assertion node, per <see cref="LongfellowQuadCircuitBuilder.AssertZero"/>.</returns>
-    public override int AssertZero(int wire) => builder.AssertZero(wire);
+    public override int AssertZero(int wire) => Builder.AssertZero(wire);
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.Add"/>.</summary>
     /// <param name="left">The first addend node.</param>
     /// <param name="right">The second addend node.</param>
     /// <returns>The sum node.</returns>
-    public override int Add(int left, int right) => builder.Add(left, right);
+    public override int Add(int left, int right) => Builder.Add(left, right);
 
 
     /// <summary>
@@ -60,21 +61,21 @@ internal sealed class LongfellowCompileLogicBackend : LongfellowLogicBackend
     /// <param name="left">The minuend node.</param>
     /// <param name="right">The subtrahend node.</param>
     /// <returns>The difference node.</returns>
-    public override int Sub(int left, int right) => builder.Add(left, builder.Mul(builder.Konst(Field.Compiler.MinusOne.Span), right));
+    public override int Sub(int left, int right) => Builder.Add(left, Builder.Mul(Builder.Konst(Field.Compiler.MinusOne.Span), right));
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.Mul(int, int)"/>.</summary>
     /// <param name="left">The first factor node.</param>
     /// <param name="right">The second factor node.</param>
     /// <returns>The product node.</returns>
-    public override int Mul(int left, int right) => builder.Mul(left, right);
+    public override int Mul(int left, int right) => Builder.Mul(left, right);
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.Mul(ReadOnlySpan{byte}, int)"/>.</summary>
     /// <param name="coefficient">The scaling constant, canonical big-endian.</param>
     /// <param name="wire">The node to scale.</param>
     /// <returns>The scaled node.</returns>
-    public override int MultiplyScaled(ReadOnlySpan<byte> coefficient, int wire) => builder.Mul(coefficient, wire);
+    public override int MultiplyScaled(ReadOnlySpan<byte> coefficient, int wire) => Builder.Mul(coefficient, wire);
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.Mul(ReadOnlySpan{byte}, int, int)"/>.</summary>
@@ -82,13 +83,13 @@ internal sealed class LongfellowCompileLogicBackend : LongfellowLogicBackend
     /// <param name="left">The first factor node.</param>
     /// <param name="right">The second factor node.</param>
     /// <returns>The scaled product node.</returns>
-    public override int MultiplyScaled(ReadOnlySpan<byte> coefficient, int left, int right) => builder.Mul(coefficient, left, right);
+    public override int MultiplyScaled(ReadOnlySpan<byte> coefficient, int left, int right) => Builder.Mul(coefficient, left, right);
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.Konst"/>.</summary>
     /// <param name="value">The constant, canonical big-endian.</param>
     /// <returns>The constant node.</returns>
-    public override int Constant(ReadOnlySpan<byte> value) => builder.Konst(value);
+    public override int Constant(ReadOnlySpan<byte> value) => Builder.Konst(value);
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.Axpy"/>.</summary>
@@ -96,19 +97,19 @@ internal sealed class LongfellowCompileLogicBackend : LongfellowLogicBackend
     /// <param name="coefficient">The scaling constant, canonical big-endian.</param>
     /// <param name="wire">The scaled node.</param>
     /// <returns>The result node.</returns>
-    public override int Axpy(int accumulator, ReadOnlySpan<byte> coefficient, int wire) => builder.Axpy(accumulator, coefficient, wire);
+    public override int Axpy(int accumulator, ReadOnlySpan<byte> coefficient, int wire) => Builder.Axpy(accumulator, coefficient, wire);
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.Apy"/>.</summary>
     /// <param name="accumulator">The accumulator node.</param>
     /// <param name="constant">The constant to add, canonical big-endian.</param>
     /// <returns>The result node.</returns>
-    public override int Apy(int accumulator, ReadOnlySpan<byte> constant) => builder.Apy(accumulator, constant);
+    public override int Apy(int accumulator, ReadOnlySpan<byte> constant) => Builder.Apy(accumulator, constant);
 
 
     /// <summary>Forwards to <see cref="LongfellowQuadCircuitBuilder.InputWire"/>.</summary>
     /// <returns>The declared input node.</returns>
-    public override int InputWire() => builder.InputWire();
+    public override int InputWire() => Builder.InputWire();
 
 
     /// <summary>
@@ -119,5 +120,5 @@ internal sealed class LongfellowCompileLogicBackend : LongfellowLogicBackend
     /// </summary>
     /// <param name="wire">The node whose value is the output.</param>
     /// <param name="index">The output position the value claims.</param>
-    public override void OutputWire(int wire, int index) => builder.OutputWire(wire, index);
+    public override void OutputWire(int wire, int index) => Builder.OutputWire(wire, index);
 }

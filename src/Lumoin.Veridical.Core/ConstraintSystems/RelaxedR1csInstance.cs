@@ -18,10 +18,11 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 /// Standard R1CS is the special case <c>u = 1</c>, <c>E = 0</c>.
 /// Folding schemes (Nova, ProtoStar) produce relaxed instances by
 /// combining two satisfied relaxed instances into a new one whose
-/// <c>u</c> and <c>E</c> reflect the combination's error term. Batch F
-/// lands the data shape for those future folding-scheme batches to
-/// consume; the satisfaction check here verifies the relaxed identity
-/// against an explicit error vector held in
+/// <c>u</c> and <c>E</c> reflect the combination's error term. This
+/// type defines the data shape a folding-scheme accumulator consumes
+/// without prescribing which scheme produces it; the satisfaction
+/// check here verifies the relaxed identity against an explicit error
+/// vector held in
 /// <see cref="RelaxedR1csWitness"/>. Verification of the error
 /// commitment against that vector is a separate (commitment-scheme)
 /// operation, not part of the satisfaction check itself.
@@ -54,6 +55,7 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>Wraps an already-validated buffer and matrices; the caller has checked shapes, curves and canonicity.</summary>
     internal RelaxedR1csInstance(
         IMemoryOwner<byte> owner,
         R1csMatrix a,
@@ -198,6 +200,7 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
     }
 
 
+    /// <summary>Computes the backing buffer size: the public-input scalars followed by the single relaxation scalar <c>u</c>, at least one byte.</summary>
     private static int ComputeBufferSize(int publicInputCount, CurveParameterSet curve)
     {
         int scalarSize = R1csMatrix.GetValueByteSize(curve);
@@ -208,6 +211,7 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
     }
 
 
+    /// <summary>Builds a fresh provenance tag for a folding accumulator at the given dimensions and curve.</summary>
     private static Tag ComposeAlgebraicTag(R1csDimensions dimensions, CurveParameterSet curve)
     {
         return Tag.Create(AlgebraicRole.FoldingAccumulator)
@@ -216,6 +220,7 @@ public sealed class RelaxedR1csInstance: SensitiveMemory
     }
 
 
+    /// <summary>Merges the folding-accumulator role, curve and dimensions into a caller-supplied provenance tag.</summary>
     private static Tag MergeWithAlgebraicTag(Tag tag, R1csDimensions dimensions, CurveParameterSet curve)
     {
         return tag.With(AlgebraicRole.FoldingAccumulator)

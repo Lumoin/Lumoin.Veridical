@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
@@ -23,10 +24,10 @@ internal static class LongfellowMdocRevocationListWitness
     /// <param name="field">The base-field bundle.</param>
     /// <param name="id">The identifier, canonical big-endian.</param>
     /// <param name="list">The revocation list elements, canonical big-endian.</param>
-    /// <returns>The canonical product inverse, or zero when the identifier is listed.</returns>
+    /// <param name="inverse">Receives the canonical scalar-sized product inverse, or zero when the identifier is listed.</param>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="id"/> is not exactly <see cref="Scalar.SizeBytes"/> bytes.</exception>
-    public static byte[] ComputeProductInverse(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> id, ReadOnlyMemory<byte>[] list)
+    public static void ComputeProductInverse(LongfellowLogicFieldOperations field, ReadOnlySpan<byte> id, ReadOnlyMemory<byte>[] list, Span<byte> inverse)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(list);
@@ -36,7 +37,8 @@ internal static class LongfellowMdocRevocationListWitness
             throw new ArgumentException($"The identifier is a canonical {Scalar.SizeBytes}-byte scalar.", nameof(id));
         }
 
-        byte[] product = new byte[Scalar.SizeBytes];
+        using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> product = owner.Memory.Span[..Scalar.SizeBytes];
         field.Compiler.One.Span.CopyTo(product);
 
         //The delegates' aliasing behavior is unspecified, so the running product ping-pongs
@@ -52,13 +54,13 @@ internal static class LongfellowMdocRevocationListWitness
 
         if(LongfellowCompilerFieldOperations.ElementIsZero(product))
         {
-            return new byte[Scalar.SizeBytes];
+            inverse.Clear();
+
+            return;
         }
 
-        byte[] inverse = new byte[Scalar.SizeBytes];
+        inverse.Clear();
         field.Invert(product, inverse, field.Compiler.Curve);
-
-        return inverse;
     }
 }
 
@@ -78,7 +80,7 @@ internal static class LongfellowMdocRevocationListWitness
 /// credential and span data; the single-subtraction digest reduction takes a data-dependent early
 /// exit, as in the ported ECDSA and JWT generators.
 /// </remarks>
-internal sealed class LongfellowMdocRevocationSpanWitness
+internal sealed class LongfellowMdocRevocationSpanWitness: IDisposable
 {
     /// <summary>One SHA-256 block's byte width.</summary>
     private const int BytesPerBlock = 64;
@@ -86,29 +88,52 @@ internal sealed class LongfellowMdocRevocationSpanWitness
     /// <summary>The words one SHA-256 block's advice records: the schedule extension, both per-round registers, and the final state.</summary>
     private const int WordsPerBlock = 48 + 64 + 64 + 8;
 
-    private readonly LongfellowLogicFieldOperations field;
-    private readonly LongfellowEcdsaVerifyWitness signature;
-    private readonly LongfellowBitPluckerEncoder encoder;
-    private readonly byte[] basePrime;
+    /// <summary>Owns all retained byte buffers through the field's caller pool.</summary>
+    private LongfellowCircuitStorage Storage { get; }
 
-    private readonly byte[] spanR;
-    private readonly byte[] spanS;
-    private readonly byte[] digest;
-    private readonly byte[] preimage;
-    private readonly byte[] idBits;
-    private readonly byte[] eBits;
-    private readonly LongfellowFlatSha256BlockWitness[] blocks;
+    /// <summary>The base-field bundle this generator's ECDSA and SHA-256 witnesses operate over.</summary>
+    private LongfellowLogicFieldOperations Field { get; }
+
+    /// <summary>The nested ECDSA advice owner, released with this generator.</summary>
+    private LongfellowEcdsaVerifyWitness Signature { get; }
+
+    /// <summary>Packs each 32-bit SHA-256 advice word into the plucker-encoded column elements.</summary>
+    private LongfellowBitPluckerEncoder Encoder { get; }
+
+    /// <summary>The canonical base prime, borrowed from this generator's storage.</summary>
+    private Memory<byte> BasePrime { get; }
+
+    /// <summary>The span signature's r scalar, borrowed from this generator's storage.</summary>
+    private Memory<byte> SpanR { get; }
+
+    /// <summary>The span signature's s scalar, borrowed from this generator's storage.</summary>
+    private Memory<byte> SpanS { get; }
+
+    /// <summary>The reduced span digest, borrowed from this generator's storage.</summary>
+    private Memory<byte> Digest { get; }
+
+    /// <summary>The padded span preimage, borrowed from this generator's storage.</summary>
+    private Memory<byte> Preimage { get; }
+
+    /// <summary>The identifier bits, borrowed from this generator's storage.</summary>
+    private Memory<byte> IdBits { get; }
+
+    /// <summary>The raw span digest bits, borrowed from this generator's storage.</summary>
+    private Memory<byte> EBits { get; }
+
+    /// <summary>The per-block SHA-256 advice, one entry per span message block.</summary>
+    private LongfellowFlatSha256BlockWitness[] Blocks { get; }
 
 
     /// <summary>
     /// Constructs the generator over the same field bundles and curve the statement circuit uses.
     /// </summary>
-    /// <param name="field">The base-field bundle.</param>
+    /// <param name="field">The borrowed base-field bundle and originating pool, both kept alive until this generator is disposed.</param>
     /// <param name="orderMultiply">The order-field multiplication, canonical in and out.</param>
     /// <param name="orderSubtract">The order-field subtraction, canonical in and out.</param>
     /// <param name="orderInvert">The order-field inversion, canonical in and out.</param>
     /// <param name="orderCurve">The curve parameter set the order-field delegates dispatch on.</param>
-    /// <param name="curve">The curve constants.</param>
+    /// <param name="curve">The curve constants borrowed until this generator is disposed.</param>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
     public LongfellowMdocRevocationSpanWitness(
         LongfellowLogicFieldOperations field,
@@ -121,21 +146,37 @@ internal sealed class LongfellowMdocRevocationSpanWitness
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(curve);
 
-        this.field = field;
-        signature = new LongfellowEcdsaVerifyWitness(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
-        encoder = new LongfellowBitPluckerEncoder(field, LongfellowMdocRevocationConstants.ShaRevocationPluckerBits);
-        basePrime = LongfellowEcdsaVerifyWitness.DeriveBasePrime(field);
-
-        spanR = new byte[Scalar.SizeBytes];
-        spanS = new byte[Scalar.SizeBytes];
-        digest = new byte[Scalar.SizeBytes];
-        preimage = new byte[LongfellowMdocRevocationConstants.SpanBlockCount * BytesPerBlock];
-        idBits = new byte[LongfellowLogic.BitWidth256];
-        eBits = new byte[LongfellowLogic.BitWidth256];
-        blocks = new LongfellowFlatSha256BlockWitness[LongfellowMdocRevocationConstants.SpanBlockCount];
-        for(int i = 0; i < blocks.Length; i++)
+        this.Field = field;
+        LongfellowCircuitStorage? storageOwner = new LongfellowCircuitStorage(field.Pool);
+        LongfellowEcdsaVerifyWitness? signatureOwner = null;
+        try
         {
-            blocks[i] = new LongfellowFlatSha256BlockWitness();
+            signatureOwner = new LongfellowEcdsaVerifyWitness(field, orderMultiply, orderSubtract, orderInvert, orderCurve, curve);
+            Encoder = new LongfellowBitPluckerEncoder(field, LongfellowMdocRevocationConstants.ShaRevocationPluckerBits);
+            BasePrime = storageOwner.Allocate(Scalar.SizeBytes);
+            LongfellowEcdsaVerifyWitness.DeriveBasePrime(field, BasePrime.Span);
+
+            SpanR = storageOwner.Allocate(Scalar.SizeBytes);
+            SpanS = storageOwner.Allocate(Scalar.SizeBytes);
+            Digest = storageOwner.Allocate(Scalar.SizeBytes);
+            Preimage = storageOwner.Allocate(LongfellowMdocRevocationConstants.SpanBlockCount * BytesPerBlock);
+            IdBits = storageOwner.Allocate(LongfellowLogic.BitWidth256);
+            EBits = storageOwner.Allocate(LongfellowLogic.BitWidth256);
+            Blocks = new LongfellowFlatSha256BlockWitness[LongfellowMdocRevocationConstants.SpanBlockCount];
+            for(int i = 0; i < Blocks.Length; i++)
+            {
+                Blocks[i] = new LongfellowFlatSha256BlockWitness();
+            }
+
+            Signature = signatureOwner;
+            signatureOwner = null;
+            Storage = storageOwner;
+            storageOwner = null;
+        }
+        finally
+        {
+            signatureOwner?.Dispose();
+            storageOwner?.Dispose();
         }
     }
 
@@ -143,10 +184,10 @@ internal sealed class LongfellowMdocRevocationSpanWitness
     /// <summary>The column length in elements: the signature scalars and span digest, the ECDSA advice, the preimage and identifier and digest bits, and the packed SHA-256 advice.</summary>
     public int ElementCount =>
         3
-        + signature.ElementCount
+        + Signature.ElementCount
         + (LongfellowMdocRevocationConstants.SpanBlockCount * BytesPerBlock * LongfellowLogic.BitWidth8)
         + (2 * LongfellowLogic.BitWidth256)
-        + (LongfellowMdocRevocationConstants.SpanBlockCount * WordsPerBlock * encoder.PackedV32ElementCount);
+        + (LongfellowMdocRevocationConstants.SpanBlockCount * WordsPerBlock * Encoder.PackedV32ElementCount);
 
 
     /// <summary>
@@ -188,14 +229,14 @@ internal sealed class LongfellowMdocRevocationSpanWitness
             throw new ArgumentException($"Every scalar argument is a canonical {Scalar.SizeBytes}-byte value.");
         }
 
-        if(!signature.ComputeWitness(pkX, pkY, e, r, s))
+        if(!Signature.ComputeWitness(pkX, pkY, e, r, s))
         {
             return false;
         }
 
-        r.CopyTo(spanR);
-        s.CopyTo(spanS);
-        ReduceOnce(e, basePrime, digest);
+        r.CopyTo(SpanR.Span);
+        s.CopyTo(SpanS.Span);
+        CanonicalScalarReduction.ReduceOnce(e, BasePrime.Span, Digest.Span);
 
         //The signed span: the epoch, then both bounds, all little endian.
         Span<byte> message = stackalloc byte[LongfellowMdocRevocationConstants.SpanMessageLength];
@@ -205,11 +246,11 @@ internal sealed class LongfellowMdocRevocationSpanWitness
 
         for(int i = 0; i < LongfellowLogic.BitWidth256; i++)
         {
-            idBits[i] = (byte)((id[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
-            eBits[i] = (byte)((e[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
+            IdBits.Span[i] = (byte)((id[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
+            EBits.Span[i] = (byte)((e[Scalar.SizeBytes - 1 - (i / 8)] >> (i % 8)) & 1);
         }
 
-        LongfellowFlatSha256Witness.TransformAndWitnessMessage(message, LongfellowMdocRevocationConstants.SpanBlockCount, out _, preimage, blocks);
+        LongfellowFlatSha256Witness.TransformAndWitnessMessage(message, LongfellowMdocRevocationConstants.SpanBlockCount, out _, Preimage.Span, Blocks);
 
         return true;
     }
@@ -228,31 +269,31 @@ internal sealed class LongfellowMdocRevocationSpanWitness
         }
 
         int cursor = 0;
-        WriteElement(destination, ref cursor, spanR);
-        WriteElement(destination, ref cursor, spanS);
-        WriteElement(destination, ref cursor, digest);
+        WriteElement(destination, ref cursor, SpanR.Span);
+        WriteElement(destination, ref cursor, SpanS.Span);
+        WriteElement(destination, ref cursor, Digest.Span);
 
-        signature.FillWitness(destination.Slice(cursor * Scalar.SizeBytes, signature.ElementCount * Scalar.SizeBytes));
-        cursor += signature.ElementCount;
+        Signature.FillWitness(destination.Slice(cursor * Scalar.SizeBytes, Signature.ElementCount * Scalar.SizeBytes));
+        cursor += Signature.ElementCount;
 
-        for(int i = 0; i < preimage.Length; i++)
+        for(int i = 0; i < Preimage.Length; i++)
         {
-            WriteBits(destination, ref cursor, preimage[i], LongfellowLogic.BitWidth8);
+            WriteBits(destination, ref cursor, Preimage.Span[i], LongfellowLogic.BitWidth8);
         }
 
-        for(int i = 0; i < idBits.Length; i++)
+        for(int i = 0; i < IdBits.Length; i++)
         {
-            WriteBits(destination, ref cursor, idBits[i], 1);
+            WriteBits(destination, ref cursor, IdBits.Span[i], 1);
         }
 
-        for(int i = 0; i < eBits.Length; i++)
+        for(int i = 0; i < EBits.Length; i++)
         {
-            WriteBits(destination, ref cursor, eBits[i], 1);
+            WriteBits(destination, ref cursor, EBits.Span[i], 1);
         }
 
-        for(int j = 0; j < blocks.Length; j++)
+        for(int j = 0; j < Blocks.Length; j++)
         {
-            FillShaBlock(destination, ref cursor, blocks[j]);
+            FillShaBlock(destination, ref cursor, Blocks[j]);
         }
     }
 
@@ -296,18 +337,14 @@ internal sealed class LongfellowMdocRevocationSpanWitness
     }
 
 
-    /// <summary>Writes one 32-bit word as its plucker-packed elements.</summary>
+    /// <summary>Writes one 32-bit word directly into the column as its plucker-packed elements.</summary>
     /// <param name="destination">The column being filled.</param>
     /// <param name="cursor">The element cursor.</param>
     /// <param name="word">The word to pack.</param>
     private void WritePackedWord(Span<byte> destination, ref int cursor, uint word)
     {
-        ReadOnlyMemory<byte>[] packed = encoder.MakePackedV32(word);
-        for(int i = 0; i < packed.Length; i++)
-        {
-            packed[i].Span.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
-            cursor++;
-        }
+        Encoder.MakePackedV32(word, destination.Slice(cursor * Scalar.SizeBytes, Encoder.PackedV32ElementCount * Scalar.SizeBytes));
+        cursor += Encoder.PackedV32ElementCount;
     }
 
 
@@ -320,7 +357,7 @@ internal sealed class LongfellowMdocRevocationSpanWitness
     {
         for(int i = 0; i < bitCount; i++)
         {
-            ReadOnlyMemory<byte> element = ((value >> i) & 1UL) != 0UL ? field.Compiler.One : field.Compiler.Zero;
+            ReadOnlyMemory<byte> element = ((value >> i) & 1UL) != 0UL ? Field.Compiler.One : Field.Compiler.Zero;
             element.Span.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
             cursor++;
         }
@@ -331,43 +368,17 @@ internal sealed class LongfellowMdocRevocationSpanWitness
     /// <param name="destination">The column.</param>
     /// <param name="cursor">The element cursor.</param>
     /// <param name="element">The element to write.</param>
-    private static void WriteElement(Span<byte> destination, ref int cursor, byte[] element)
+    private static void WriteElement(Span<byte> destination, ref int cursor, ReadOnlySpan<byte> element)
     {
         element.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
         cursor++;
     }
 
 
-    /// <summary>Reduces a raw 256-bit value once modulo <paramref name="modulus"/> (the same single conditional subtraction the ECDSA witness generator uses).</summary>
-    /// <param name="value">The raw big-endian value.</param>
-    /// <param name="modulus">The modulus.</param>
-    /// <param name="destination">Receives the reduced value.</param>
-    private static void ReduceOnce(ReadOnlySpan<byte> value, ReadOnlySpan<byte> modulus, Span<byte> destination)
+    /// <summary>Clears and releases retained bytes and nested signature advice. Repeated disposal has no effect.</summary>
+    public void Dispose()
     {
-        bool subtract = true;
-        for(int i = 0; i < Scalar.SizeBytes; i++)
-        {
-            if(value[i] != modulus[i])
-            {
-                subtract = value[i] > modulus[i];
-
-                break;
-            }
-        }
-
-        if(!subtract)
-        {
-            value.CopyTo(destination);
-
-            return;
-        }
-
-        int borrow = 0;
-        for(int i = Scalar.SizeBytes - 1; i >= 0; i--)
-        {
-            int difference = value[i] - modulus[i] - borrow;
-            borrow = difference < 0 ? 1 : 0;
-            destination[i] = (byte)(difference & 0xFF);
-        }
+        Signature.Dispose();
+        Storage.Dispose();
     }
 }

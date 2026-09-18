@@ -34,13 +34,16 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// </remarks>
 public sealed class SpartanProof: SensitiveMemory
 {
+    /// <summary>The byte width of a canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+    /// <summary>The byte length of one degree-3 compressed outer-sumcheck round polynomial.</summary>
     private const int OuterRoundCompressedSize = 3 * ScalarSize;
+    /// <summary>The byte length of one degree-2 compressed inner-sumcheck round polynomial.</summary>
     private const int InnerRoundCompressedSize = 2 * ScalarSize;
+    /// <summary>The byte length of the three outer terminating evaluations <c>(claim_Az, claim_Bz, claim_Cz)</c>.</summary>
     private const int OuterClaimsSize = 3 * ScalarSize;
 
-    //The witness-commitment G1 rows are sized by the curve; computed
-    //per-instance from Curve rather than pinned to a constant.
+    /// <summary>The byte length of one compressed G1 point on <see cref="Curve"/>; the witness-commitment rows are sized by the curve rather than pinned to a constant.</summary>
     private int G1Size => WellKnownCurves.GetG1CompressedSizeBytes(Curve);
 
 
@@ -63,6 +66,7 @@ public sealed class SpartanProof: SensitiveMemory
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>Wraps an already-filled wire-format buffer under the given section dimensions, curve, and provenance tag.</summary>
     internal SpartanProof(
         IMemoryOwner<byte> owner,
         int witnessCommitmentRowCount,
@@ -195,7 +199,7 @@ public sealed class SpartanProof: SensitiveMemory
     /// Reconstructs a proof from its canonical wire bytes given the dimensions
     /// (recovered by the verifier from the instance shape and the commitment
     /// key). Copies the bytes into a fresh pool-rented buffer — the sibling of
-    /// <see cref="BaseFoldSpartanProof.FromBytes"/> for the Hyrax-shaped proof,
+    /// <see cref="CommitmentSpartanProof.FromBytes"/> for the Hyrax-shaped proof,
     /// and the entry point for proofs that arrive over a wire or from storage.
     /// </summary>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
@@ -325,7 +329,7 @@ public sealed class SpartanProof: SensitiveMemory
     /// <summary>
     /// Returns a zero-copy window over the scheme-independent middle block
     /// (outer rounds, the three claims, <c>E(r_x)</c>, inner rounds,
-    /// <c>eval_W</c>), shared with <see cref="BaseFoldSpartanProof"/> and
+    /// <c>eval_W</c>), shared with <see cref="CommitmentSpartanProof"/> and
     /// consumed by the sumcheck verifier drivers. The window reads from this
     /// proof's buffer, so this proof must outlive the returned part.
     /// </summary>
@@ -351,18 +355,14 @@ public sealed class SpartanProof: SensitiveMemory
     }
 
 
-    //Section size helpers. These mirror the byte layout the Hyrax commitment
-    //scheme produces (a commitment is one compressed-G1 point per row; an
-    //opening proof is C_f + IpaRounds·(L,R) pairs + three trailing scalars),
-    //expressed in curve-generic terms so the proof type names no scheme type.
-    //If a future scheme assembles a differently-shaped proof it brings its own
-    //layout; this proof remains the Hyrax-shaped one.
+    /// <summary>The byte length of a Hyrax witness commitment with <paramref name="rowCount"/> rows: one compressed G1 point per row, expressed in curve-generic terms so this proof type names no scheme type.</summary>
     private static int WitnessCommitmentSizeBytes(int rowCount, CurveParameterSet curve)
     {
         return rowCount * WellKnownCurves.GetG1CompressedSizeBytes(curve);
     }
 
 
+    /// <summary>The byte length of a Hyrax opening proof with <paramref name="ipaRoundCount"/> IPA rounds: <c>C_f</c> plus <paramref name="ipaRoundCount"/> <c>(L, R)</c> pairs plus three trailing scalars. If a future scheme assembles a differently shaped proof it brings its own layout; this proof remains the Hyrax-shaped one.</summary>
     private static int OpeningProofSizeBytes(int ipaRoundCount, CurveParameterSet curve)
     {
         int g1Size = WellKnownCurves.GetG1CompressedSizeBytes(curve);
@@ -370,13 +370,14 @@ public sealed class SpartanProof: SensitiveMemory
     }
 
 
+    /// <summary>Recovers the witness commitment's row count from its encoded byte length — the inverse of <see cref="WitnessCommitmentSizeBytes"/>.</summary>
     private static int WitnessRowCountFromBytes(int lengthBytes, CurveParameterSet curve)
     {
         return lengthBytes / WellKnownCurves.GetG1CompressedSizeBytes(curve);
     }
 
 
-    //Inverse of OpeningProofSizeBytes: rounds = (len − g1 − 3·scalar) / (2·g1).
+    /// <summary>Recovers an opening proof's IPA round count from its encoded byte length — the inverse of <see cref="OpeningProofSizeBytes"/>: <c>rounds = (len − g1 − 3·scalar) / (2·g1)</c>.</summary>
     private static int IpaRoundCountFromBytes(int lengthBytes, CurveParameterSet curve)
     {
         int g1Size = WellKnownCurves.GetG1CompressedSizeBytes(curve);
@@ -384,24 +385,24 @@ public sealed class SpartanProof: SensitiveMemory
     }
 
 
+    /// <summary>The byte length of this proof's embedded witness commitment.</summary>
     private int WitnessCommitmentSize() => WitnessCommitmentRowCount * G1Size;
 
-    //End of the outer section: witness commitment, outer rounds, the
-    //three outer claims, and E(r_x). The inner rounds start here.
+    /// <summary>The offset just past the outer section: the witness commitment, the outer rounds, the three outer claims, and <c>E(r_x)</c>. The inner rounds start here.</summary>
     private int OuterSectionEnd() =>
         WitnessCommitmentSize()
         + (OuterRoundCount * OuterRoundCompressedSize)
         + OuterClaimsSize
         + ScalarSize;
 
-    //Start of the two trailing Hyrax opening proofs (error opening at
-    //r_x first, then the witness opening at r_y).
+    /// <summary>The offset of the two trailing Hyrax opening proofs: the error opening at <c>r_x</c> first, then the witness opening at <c>r_y</c>.</summary>
     private int OpeningsSectionStart() =>
         OuterSectionEnd()
         + (InnerRoundCount * InnerRoundCompressedSize)
         + ScalarSize;
 
 
+    /// <summary>Throws if any round in <paramref name="rounds"/> does not match <paramref name="curve"/> or <paramref name="expectedDegree"/>.</summary>
     private static void ValidateRoundShape(
         IReadOnlyList<SumcheckRound> rounds,
         int expectedDegree,
@@ -425,6 +426,7 @@ public sealed class SpartanProof: SensitiveMemory
     }
 
 
+    /// <summary>Builds the algebraic-identity tag for a freshly built unmasked Spartan proof of the given dimensions and curve.</summary>
     private static Tag ComposeAlgebraicTag(SpartanProofDimensions dimensions, CurveParameterSet curve)
     {
         return Tag.Create(AlgebraicRole.ZkProof)
@@ -434,6 +436,7 @@ public sealed class SpartanProof: SensitiveMemory
     }
 
 
+    /// <summary>Merges the algebraic-identity entries for an unmasked Spartan proof of the given dimensions and curve into a caller-supplied tag.</summary>
     private static Tag MergeWithAlgebraicTag(Tag tag, SpartanProofDimensions dimensions, CurveParameterSet curve)
     {
         return tag.With(AlgebraicRole.ZkProof)

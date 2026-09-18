@@ -151,8 +151,13 @@ internal static class PredicateProofOperations
     /// <summary>The largest number of allowed values a statement description lists verbatim before eliding the rest.</summary>
     private const int DescribedAllowedValueCount = 8;
 
+    /// <summary>The curve the wired parameter set proves over, matching <see cref="CurveId"/>.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+
+    /// <summary>The Fiat-Shamir hash delegate every transcript this tool builds uses.</summary>
     private static FiatShamirHashDelegate Hash { get; } = Blake3FiatShamirBackend.GetHash();
+
+    /// <summary>The Fiat-Shamir squeeze delegate every transcript this tool builds uses.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = Blake3FiatShamirBackend.GetSqueeze();
 
 
@@ -309,7 +314,7 @@ internal static class PredicateProofOperations
         using var rowExtenders = new ScalarNttLigeroRowExtenders(scalar.Add, scalar.Subtract, scalar.Multiply, scalar.Invert, Curve, pool, scalar.BatchMultiply);
         using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider(scalar, request.QueryCount, request.InverseRate, request.DigestBytes, rowExtenders.Create)));
         using FiatShamirTranscript transcript = FreshTranscript(request.TranscriptDomain, pool);
-        using LigeroSpartanProof proof = prover.ProveLigero(
+        using CommitmentSpartanProof proof = prover.ProveCommitted(
             instance, witness, transcript,
             Hash, Squeeze, scalar.Reduce, scalar.Add, scalar.Subtract, scalar.Multiply, scalar.Invert, scalar.Random,
             g1.Add, g1.ScalarMultiply, g1.MultiScalarMultiply, mleEvaluate, mleFold, pool);
@@ -504,11 +509,26 @@ internal static class PredicateProofOperations
         ThrowIfBelowSoundnessTarget(instance, artifact.InverseRate, artifact.QueryCount);
 
         using ScalarArithmeticBackend scalar = Bls12Curve381ManagedScalarBackend.Create();
-        using LigeroSpartanProof proof = LigeroSpartanProof.FromBytes(proofBytes, outerRoundCount, innerRoundCount, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes, Curve, pool);
-        using var verifier = new SpartanVerifier(new SpartanVerifyingKey(BuildProvider(scalar, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes)));
+        PolynomialCommitmentProvider pcs = BuildProvider(scalar, artifact.QueryCount, artifact.InverseRate, artifact.DigestBytes);
+        using var verifier = new SpartanVerifier(new SpartanVerifyingKey(pcs));
+
+        //The wire bytes are pure payload, so all three section lengths must come from
+        //outside them, and the provider about to check the proof is the one source
+        //that cannot disagree with the check: it states the commitment's length and
+        //one opening's length per variable count, from the same parameters the
+        //verification runs under. Taking any of them from the header instead would
+        //let a proof be split at boundaries its verifier never agreed to, misreading
+        //every section before a single check ran. The witness is committed over the
+        //column variables, so the commitment is sized at the inner-round count, as
+        //its own opening is.
+        PolynomialOpeningSizeDelegate openingSize = pcs.EvaluationProofSizeBytes!;
+        PolynomialCommitmentSizeDelegate commitmentSize = pcs.CommitmentSizeBytes!;
+        using CommitmentSpartanProof proof = CommitmentSpartanProof.FromBytes(
+            proofBytes, pcs.Scheme, outerRoundCount, innerRoundCount,
+            commitmentSize(innerRoundCount), openingSize(outerRoundCount), openingSize(innerRoundCount), Curve, pool);
         using FiatShamirTranscript transcript = FreshTranscript(artifact.TranscriptDomain, pool);
 
-        return verifier.VerifyLigero(proof, instance, transcript, scalar.Add, scalar.Multiply, scalar.Subtract, scalar.Reduce, Hash, Squeeze, pool);
+        return verifier.VerifyCommitted(proof, instance, transcript, scalar.Add, scalar.Multiply, scalar.Subtract, scalar.Reduce, Hash, Squeeze, pool);
     }
 
 
@@ -611,6 +631,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Builds the Ligero polynomial-commitment provider at the given figures, over BLAKE3 and this tool's curve.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The commitment provider is handed to the Spartan key the caller constructs, which owns and disposes it.")]
     private static PolynomialCommitmentProvider BuildProvider(ScalarArithmeticBackend scalar, int queryCount, int inverseRate, int digestBytes, LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
@@ -640,6 +661,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Builds a fresh Fiat-Shamir transcript under the given domain label, with an empty initial absorb.</summary>
     private static FiatShamirTranscript FreshTranscript(string transcriptDomain, BaseMemoryPool pool)
     {
         return FiatShamirTranscript.Initialise(
@@ -665,6 +687,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Parses one request claim into its descriptor, dispatching on the <c>kind</c> discriminator to the range or memberOf shape.</summary>
     private static ClaimDescriptor ParseRequestClaim(PredicateProofRequestClaim claim)
     {
         ArgumentNullException.ThrowIfNull(claim);
@@ -689,6 +712,10 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>
+    /// Parses every artifact claim into its descriptor, rejecting a duplicate name and
+    /// dispatching each one on the <c>kind</c> discriminator to the range or memberOf shape.
+    /// </summary>
     private static List<ClaimDescriptor> ParseArtifactClaims(IReadOnlyList<PredicateProofClaim> claims)
     {
         ArgumentNullException.ThrowIfNull(claims);
@@ -838,6 +865,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Builds the artifact's wire claim descriptors from the parsed claims, in claim order.</summary>
     private static PredicateProofClaim[] BuildArtifactClaims(IReadOnlyList<ClaimDescriptor> descriptors)
     {
         var claims = new PredicateProofClaim[descriptors.Count];
@@ -962,6 +990,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Parses the inclusive-maximum decimal and builds the fixed-point domain for the given fractional-digit scale.</summary>
     private static FixedPointDomain BuildDomain(int fractionalDigits, string inclusiveMaximum, out decimal parsedMaximum)
     {
         parsedMaximum = ParseDecimal(inclusiveMaximum, "inclusive maximum");
@@ -970,6 +999,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Parses the wire direction string ("atLeast" or "atMost") into its enum value, case-insensitively.</summary>
     private static SupplyChainDirection ParseDirection(string direction)
     {
         if(string.Equals(direction, "atLeast", StringComparison.OrdinalIgnoreCase))
@@ -986,6 +1016,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Parses the wire bound-kind string, returning <see langword="true"/> for "public" and <see langword="false"/> for "constant", case-insensitively.</summary>
     private static bool ParseBoundKind(string bound)
     {
         if(string.Equals(bound, "public", StringComparison.OrdinalIgnoreCase))
@@ -1002,6 +1033,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Parses an invariant-culture decimal, naming <paramref name="context"/> in the exception when parsing fails.</summary>
     private static decimal ParseDecimal(string value, string context)
     {
         if(!decimal.TryParse(value, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal result))
@@ -1013,6 +1045,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Decodes a Base64 string, naming <paramref name="context"/> in the exception when decoding fails.</summary>
     private static byte[] DecodeBase64(string value, string context)
     {
         try
@@ -1026,18 +1059,21 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>Renders a parsed direction back to its wire string ("atLeast" or "atMost").</summary>
     private static string DirectionToString(SupplyChainDirection direction)
     {
         return direction == SupplyChainDirection.AtLeast ? "atLeast" : "atMost";
     }
 
 
+    /// <summary>Builds the R1CS public-input variable name for a claim's public bound, distinct from the claim's measured-witness variable name.</summary>
     private static string PublicInputVariableName(string claimName)
     {
         return claimName + "_public_input";
     }
 
 
+    /// <summary>Validates that a request's or artifact's header names the expected format, curve and wired parameter figures, throwing on the first mismatch.</summary>
     private static void ValidateHeader(string format, string expectedFormat, string curve, int queryCount, int inverseRate, int digestBytes, int lookupQueryCount)
     {
         if(!string.Equals(format, expectedFormat, StringComparison.Ordinal))
@@ -1072,6 +1108,7 @@ internal static class PredicateProofOperations
     }
 
 
+    /// <summary>The non-throwing form of <see cref="ValidateHeader"/>, for the verify path where a bad header must return a result rather than throw.</summary>
     private static bool TryValidateHeader(string format, string expectedFormat, string curve, int queryCount, int inverseRate, int digestBytes, int lookupQueryCount, out string error)
     {
         try
@@ -1252,5 +1289,6 @@ internal static class PredicateProofOperations
         IReadOnlyList<decimal> AllowedValues);
 
 
+    /// <summary>A statement circuit paired with the supply-chain claims it was built from, so the caller can bind witness values to the same claim objects the circuit declares.</summary>
     private readonly record struct BuiltStatement(R1csCircuit Circuit, SupplyChainClaim[] Claims);
 }

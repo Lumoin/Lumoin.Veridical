@@ -32,6 +32,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class RelaxedR1csInstanceExtensions
 {
+    /// <summary>Satisfaction-check members added to every <see cref="RelaxedR1csInstance"/>.</summary>
     extension(RelaxedR1csInstance instance)
     {
         /// <summary>
@@ -128,6 +129,17 @@ public static class RelaxedR1csInstanceExtensions
     }
 
 
+    /// <summary>
+    /// Builds the <see cref="R1csSatisfaction.Violated"/> result for a failing row: wraps
+    /// <paramref name="lhsBytes"/> and <paramref name="rhsBytes"/> as canonical scalars over
+    /// <paramref name="instance"/>'s curve and records every variable that row references.
+    /// </summary>
+    /// <param name="instance">The instance being checked, supplying the curve and the constraint matrices.</param>
+    /// <param name="row">The index of the constraint row whose identity failed.</param>
+    /// <param name="lhsBytes">The row's computed left-hand side (<c>az · bz</c>).</param>
+    /// <param name="rhsBytes">The row's computed right-hand side (<c>u · cz + E[row]</c>).</param>
+    /// <param name="pool">The pool the returned scalars rent their buffers from.</param>
+    /// <returns>The violation result identifying the row, its two mismatched sides, and its involved variables.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The scalars take ownership of their pool-rented buffers and are returned to the caller through R1csSatisfaction.Violated; the caller's Dispose chains through.")]
     private static R1csSatisfaction.Violated BuildViolatedResult(
         RelaxedR1csInstance instance,
@@ -147,6 +159,13 @@ public static class RelaxedR1csInstanceExtensions
     }
 
 
+    /// <summary>
+    /// Collects every variable that constraint row <paramref name="row"/> references across
+    /// <paramref name="instance"/>'s three constraint matrices, in ascending column order.
+    /// </summary>
+    /// <param name="instance">The instance supplying the A, B, and C matrices to scan.</param>
+    /// <param name="row">The constraint row to collect variables from.</param>
+    /// <returns>The distinct variable indices <paramref name="row"/> references, sorted ascending.</returns>
     private static List<R1csVariableIndex> CollectInvolvedVariables(RelaxedR1csInstance instance, int row)
     {
         var variables = new SortedSet<int>();
@@ -165,6 +184,14 @@ public static class RelaxedR1csInstanceExtensions
     }
 
 
+    /// <summary>
+    /// Adds to <paramref name="destination"/> the column index of every nonzero entry of
+    /// <paramref name="matrix"/> in row <paramref name="row"/>. Nonzero entries are stored in
+    /// ascending row order, so the scan stops as soon as it passes <paramref name="row"/>.
+    /// </summary>
+    /// <param name="matrix">The sparse matrix to scan.</param>
+    /// <param name="row">The row whose nonzero columns are collected.</param>
+    /// <param name="destination">The set that accumulates the column indices found.</param>
     private static void CollectFromRow(R1csMatrix matrix, int row, SortedSet<int> destination)
     {
         for(int i = 0; i < matrix.NonzeroCount; i++)

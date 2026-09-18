@@ -1,3 +1,4 @@
+using System.Buffers;
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
@@ -18,8 +19,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// identifiers off the list.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowMdocRevocationCircuitTests
+internal sealed class LongfellowMdocRevocationCircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve, witness and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The field element width in bytes used for every column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -44,8 +61,11 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     /// <summary>The P-256 base field's modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The cached Curve owner for this test instance.</summary>
+    private LongfellowEllipticCurveParameters? curve;
+
     /// <summary>The curve constants shared by the circuit and the witness generator.</summary>
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
+    private LongfellowEllipticCurveParameters Curve => curve ??= CircuitScope.Track(LongfellowEllipticCurveParameters.CreateP256(CircuitScope.Pool));
 
     /// <summary>The order-field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate OrderMultiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
@@ -62,8 +82,8 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     public void TheReferenceSpanSatisfiesTheStatementInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
 
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;
         byte[] id = ParseScalar(vector.Id);
@@ -153,12 +173,12 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     public void TheListStatementAcceptsAnUnlistedIdentifierInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
         byte[] id = Canonical(EvalUnlistedIdValue);
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list, inverse);
 
         var circuit = new LongfellowMdocRevocationListCircuit(logic);
         circuit.AssertNotOnList(InternList(backend, list), backend.Constant(id), backend.Constant(inverse));
@@ -172,12 +192,12 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     public void TheListStatementRejectsAListedIdentifierInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
         byte[] id = list[EvalListedIndex].ToArray();
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list, inverse);
 
         var circuit = new LongfellowMdocRevocationListCircuit(logic);
         circuit.AssertNotOnList(InternList(backend, list), backend.Constant(id), backend.Constant(inverse));
@@ -191,8 +211,8 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     public void TheListStatementRejectsAWrongInverseInEvaluation()
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
 
         ReadOnlyMemory<byte>[] list = BuildEvalList();
         byte[] id = Canonical(EvalUnlistedIdValue);
@@ -211,9 +231,11 @@ internal sealed class LongfellowMdocRevocationCircuitTests
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         ReadOnlyMemory<byte>[] list = BuildEvalList();
 
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, list[EvalListedIndex].Span, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);
+        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];
+        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, list[EvalListedIndex].Span, list, inverse);
 
-        Assert.AreSequenceEqual(new byte[ScalarSize], inverse, "A listed identifier's product inverse must be the zero non-witness.");
+        Assert.AreSequenceEqual<byte>(field.Compiler.Zero.Span, inverse, "A listed identifier's product inverse must be the zero non-witness.");
     }
 
 
@@ -227,11 +249,11 @@ internal sealed class LongfellowMdocRevocationCircuitTests
     /// <param name="circuitPkY">The y coordinate handed to the circuit, defaulting to the reference authority key's.</param>
     /// <param name="corruptColumn">An optional column mutation applied before interning.</param>
     /// <returns>Whether the evaluation latched an assertion failure.</returns>
-    private static bool SpanEvaluationFails(byte[] id, ulong? epoch = null, byte[]? circuitPkX = null, byte[]? circuitPkY = null, Action<byte[]>? corruptColumn = null)
+    private bool SpanEvaluationFails(byte[] id, ulong? epoch = null, byte[]? circuitPkX = null, byte[]? circuitPkY = null, Action<byte[]>? corruptColumn = null)
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
 
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;
 
@@ -283,18 +305,18 @@ internal sealed class LongfellowMdocRevocationCircuitTests
 
     /// <summary>Builds the witness generator over the production Montgomery field backends.</summary>
     /// <param name="field">The base-field bundle.</param>
-    /// <returns>The generator.</returns>
-    private static LongfellowMdocRevocationSpanWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
+    /// <returns>The generator borrowed until this test scope is disposed.</returns>
+    private LongfellowMdocRevocationSpanWitness NewWitnessGenerator(LongfellowLogicFieldOperations field)
     {
-        return new LongfellowMdocRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        return CircuitScope.CreateRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
     }
 
 
     /// <summary>The digest-bit region's first element offset inside the generator's column: after the three scalars, the advice, the preimage bits and the identifier bits.</summary>
     /// <returns>The element offset.</returns>
-    private static int EBitsElementOffset()
+    private int EBitsElementOffset()
     {
-        var probe = new LongfellowEcdsaVerifyWitness(NewFp256Bundle(), OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var probe = CircuitScope.CreateEcdsaWitness(NewFp256Bundle(), OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
 
         return 3
             + probe.ElementCount
@@ -356,6 +378,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests
         int elementCount = column.Length / ScalarSize;
 
         int cursor = 0;
+        //Interns the column's next element as an evaluation constant and advances the cursor.
         int NextElement()
         {
             int wire = backend.Constant(column.AsSpan(cursor * ScalarSize, ScalarSize));
@@ -364,6 +387,7 @@ internal sealed class LongfellowMdocRevocationCircuitTests
             return wire;
         }
 
+        //Reads the next bitCount column elements as bits, least significant first, into a single value, and advances the cursor.
         ulong NextValue(int bitCount)
         {
             ulong value = 0;
@@ -489,14 +513,14 @@ internal sealed class LongfellowMdocRevocationCircuitTests
 
     /// <summary>Builds the P-256 base field bundle over the production Montgomery backend delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp256Bundle()
+    private LongfellowLogicFieldOperations NewFp256Bundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp256(
+        return CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
             P256BaseFieldMontgomeryBackend.GetAdd(),
             P256BaseFieldMontgomeryBackend.GetSubtract(),
             P256BaseFieldMontgomeryBackend.GetMultiply(),
             P256BaseFieldMontgomeryBackend.GetInvert(),
-            Canonical(Prime - 1));
+            Canonical(Prime - 1), CircuitScope.Pool));
     }
 
 

@@ -21,6 +21,7 @@ namespace Lumoin.Veridical.Bbs;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BbsNymProofVerificationExtensions
 {
+    /// <summary>Per-verifier-pseudonym selective-disclosure proof verification members added to every <see cref="BbsPublicKey"/> instance.</summary>
     extension(BbsPublicKey publicKey)
     {
         /// <summary>

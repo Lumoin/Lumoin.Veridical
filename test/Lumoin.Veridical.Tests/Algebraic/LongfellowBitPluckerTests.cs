@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -31,8 +32,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowBitPluckerTests
+internal sealed class LongfellowBitPluckerTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
     /// <summary>
     /// The reference sweeps LOGN = 1..5; each output bit's polynomial is interpolated and evaluated by
     /// the same fixed procedure regardless of LOGN, so 1..4 still exercises every point count from a
@@ -56,20 +75,26 @@ internal sealed class LongfellowBitPluckerTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Gf2128Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? gf2128Field;
+
     /// <summary>The GF(2^128) field bundle gated over by the GF(2^128) tests.</summary>
-    private static LongfellowLogicFieldOperations Gf2128Field { get; } = LongfellowLogicFieldOperations.CreateGf2128(
+    private LongfellowLogicFieldOperations Gf2128Field => gf2128Field ??= CircuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(
         Gf2k128Backend.GetAdd(),
         Gf2k128Backend.GetSubtract(),
         Gf2k128Backend.GetMultiply(),
-        Gf2k128Backend.GetInvert());
+        Gf2k128Backend.GetInvert(), CircuitScope.Pool));
+
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
 
     /// <summary>The P-256 base field bundle gated over by the Fp256 tests.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, CircuitScope.Pool));
 
 
     /// <summary>Pins that encode-then-pluck round-trips to the original bits across every swept LOGN over GF(2^128).</summary>
@@ -108,7 +133,8 @@ internal sealed class LongfellowBitPluckerTests
     [TestMethod]
     public void PackedV32ElementCountAtLogPointCountTwoMatchesTheReferenceKNv32EltsFormula()
     {
-        var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Gf2128Field);
+        using var logic = new LongfellowLogic(backend, Gf2128Field);
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
@@ -121,19 +147,22 @@ internal sealed class LongfellowBitPluckerTests
     [TestMethod]
     public void MakePackedV32RoundTripsThroughUnpackAtLogPointCountTwoOverGf2128()
     {
-        var logic = new LongfellowLogic(new LongfellowEvaluationLogicBackend(Gf2128Field), Gf2128Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Gf2128Field);
+        using var logic = new LongfellowLogic(backend, Gf2128Field);
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
         (uint value, _) = BuildPackingTestVector();
-        ReadOnlyMemory<byte>[] packed = encoder.MakePackedV32(value);
+        using IMemoryOwner<byte> packedOwner = encoder.Pool.Rent(encoder.PackedV32ElementCount * Scalar.SizeBytes);
+        Span<byte> packed = packedOwner.Memory.Span[..(encoder.PackedV32ElementCount * Scalar.SizeBytes)];
+        encoder.MakePackedV32(value, packed);
 
-        Assert.HasCount(PackedV32ElementCountAtLogPointCountTwo, packed, "MakePackedV32 must produce PackedV32ElementCount elements.");
+        Assert.AreEqual(PackedV32ElementCountAtLogPointCountTwo, packed.Length / Scalar.SizeBytes, "MakePackedV32 must produce PackedV32ElementCount elements.");
 
-        var packedWires = new int[packed.Length];
-        for(int i = 0; i < packed.Length; i++)
+        var packedWires = new int[encoder.PackedV32ElementCount];
+        for(int i = 0; i < packedWires.Length; i++)
         {
-            packedWires[i] = logic.Backend.Constant(packed[i].Span);
+            packedWires[i] = logic.Backend.Constant(packed.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes));
         }
 
         LongfellowBitWire[] unpacked = plucker.UnpackV32(packedWires);
@@ -156,13 +185,17 @@ internal sealed class LongfellowBitPluckerTests
         var encoder = new LongfellowBitPluckerEncoder(Gf2128Field, PackingLogPointCount);
 
         (uint value, byte[] bitBytes) = BuildPackingTestVector();
-        ReadOnlyMemory<byte>[] fromValue = encoder.MakePackedV32(value);
-        ReadOnlyMemory<byte>[] fromBits = encoder.Pack(bitBytes, LongfellowLogic.BitWidth32, PackedV32ElementCountAtLogPointCountTwo);
+        using IMemoryOwner<byte> valueOwner = encoder.Pool.Rent(encoder.PackedV32ElementCount * Scalar.SizeBytes);
+        Span<byte> fromValue = valueOwner.Memory.Span[..(encoder.PackedV32ElementCount * Scalar.SizeBytes)];
+        encoder.MakePackedV32(value, fromValue);
+        using IMemoryOwner<byte> bitsOwner = encoder.Pool.Rent(PackedV32ElementCountAtLogPointCountTwo * Scalar.SizeBytes);
+        Span<byte> fromBits = bitsOwner.Memory.Span[..(PackedV32ElementCountAtLogPointCountTwo * Scalar.SizeBytes)];
+        encoder.Pack(bitBytes, LongfellowLogic.BitWidth32, PackedV32ElementCountAtLogPointCountTwo, fromBits);
 
         Assert.HasCount(fromValue.Length, fromBits, "Pack and MakePackedV32 must produce the same element count for the same bit pattern.");
-        for(int i = 0; i < fromValue.Length; i++)
+        for(int i = 0; i < encoder.PackedV32ElementCount; i++)
         {
-            Assert.IsTrue(fromValue[i].Span.SequenceEqual(fromBits[i].Span), $"Pack and MakePackedV32 must agree on packed element {i}.");
+            Assert.IsTrue(fromValue.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes).SequenceEqual(fromBits.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes)), $"Pack and MakePackedV32 must agree on packed element {i}.");
         }
     }
 
@@ -171,23 +204,23 @@ internal sealed class LongfellowBitPluckerTests
     [TestMethod]
     public void PolynomialEvaluationAndParallelHornerAgreeWithTheClosedFormValue()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
         var polynomial = new LongfellowCircuitPolynomial(backend);
 
         //P(x) = 3 + x + 4x^2 + x^3 + 5x^4 at x = 7: 3 + 7 + 196 + 343 + 12005 = 12554. Five
         //coefficients exercise the parallel Horner's ceiling halving over an odd count.
         ReadOnlyMemory<byte>[] coefficients =
         [
-            Fp256Field.OfScalar(3), Fp256Field.OfScalar(1), Fp256Field.OfScalar(4), Fp256Field.OfScalar(1), Fp256Field.OfScalar(5),
+            CircuitScope.OfScalar(Fp256Field, 3), CircuitScope.OfScalar(Fp256Field, 1), CircuitScope.OfScalar(Fp256Field, 4), CircuitScope.OfScalar(Fp256Field, 1), CircuitScope.OfScalar(Fp256Field, 5),
         ];
         const ulong EvaluationPoint = 7;
         const ulong ExpectedValue = 12554;
 
-        int x = backend.Constant(Fp256Field.OfScalar(EvaluationPoint).Span);
+        int x = backend.ScalarConstant(EvaluationPoint);
         int dotProduct = polynomial.Evaluate(coefficients, x);
         int horner = polynomial.EvaluateHorner(coefficients, x);
 
-        byte[] expected = Fp256Field.OfScalar(ExpectedValue).ToArray();
+        byte[] expected = CircuitScope.OfScalar(Fp256Field, ExpectedValue).ToArray();
         Assert.IsTrue(backend.ElementAt(dotProduct).Span.SequenceEqual(expected), "The powers-and-dot-product evaluation must match the closed-form value.");
         Assert.IsTrue(backend.ElementAt(horner).Span.SequenceEqual(expected), "The parallel Horner evaluation must match the closed-form value.");
     }
@@ -201,8 +234,8 @@ internal sealed class LongfellowBitPluckerTests
         //there to keep a hostile width from driving an unbounded interpolation.
         const int BeyondMaxLogPointCount = 9;
 
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new LongfellowBitPlucker(logic, BeyondMaxLogPointCount), "The plucker must reject a point-count exponent beyond eight.");
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new LongfellowBitPluckerEncoder(Fp256Field, BeyondMaxLogPointCount), "The encoder must reject a point-count exponent beyond eight.");
@@ -213,9 +246,8 @@ internal sealed class LongfellowBitPluckerTests
     [TestMethod]
     public void TheCompiledPluckerTelemetryMatchesTheReferenceCompiler()
     {
-        //The reference's pluck-size figures at the pinned commit, regenerated by running
-        //BitPlucker.PluckSizePrimeField in the longfellow-ref Docker oracle (they also agree with
-        //bit_plucker.h's header comment): per LOGN 1..4, depth, wires, out, ovh, t, cse and notn.
+        //The reference compiler's pluck-size figures for BitPlucker.PluckSizePrimeField (they also
+        //agree with bit_plucker.h's header comment): per LOGN 1..4, depth, wires, out, ovh, t, cse and notn.
         //These pin the interpolation, the powers-of-x association, the dot-product fold, the bitness
         //assertions and the backend subtraction's dead constant node against the reference compiler.
         int[][] expected =
@@ -232,9 +264,9 @@ internal sealed class LongfellowBitPluckerTests
 
         for(int logPointCount = MinLogPointCount; logPointCount <= MaxLogPointCount; logPointCount++)
         {
-            var builder = new LongfellowQuadCircuitBuilder(Fp256Field.Compiler);
+            var builder = CircuitScope.CreateBuilder(Fp256Field.Compiler);
             var backend = new LongfellowCompileLogicBackend(Fp256Field, builder);
-            var logic = new LongfellowLogic(backend, Fp256Field);
+            using var logic = new LongfellowLogic(backend, Fp256Field);
             var plucker = new LongfellowBitPlucker(logic, logPointCount);
 
             int element = logic.InputElement();
@@ -244,7 +276,7 @@ internal sealed class LongfellowBitPluckerTests
                 logic.Output(bits[k], k);
             }
 
-            _ = builder.MakeCircuit(SingleCopy, Sha256FiatShamirBackend.GetIncrementalFactory());
+            _ = CircuitScope.Compile(builder, SingleCopy, Sha256FiatShamirBackend.GetIncrementalFactory());
 
             int[] pins = expected[logPointCount - MinLogPointCount];
             Assert.AreEqual(pins[0], builder.DepthUpperBound, $"pluck[{logPointCount}]'s depth must match the reference compiler's.");
@@ -265,15 +297,18 @@ internal sealed class LongfellowBitPluckerTests
     {
         for(int logPointCount = MinLogPointCount; logPointCount <= MaxLogPointCount; logPointCount++)
         {
-            var backend = new LongfellowEvaluationLogicBackend(field);
-            var logic = new LongfellowLogic(backend, field);
+            using var backend = new LongfellowEvaluationLogicBackend(field);
+            using var logic = new LongfellowLogic(backend, field);
             var encoder = new LongfellowBitPluckerEncoder(field, logPointCount);
             var plucker = new LongfellowBitPlucker(logic, logPointCount);
 
             int pointCount = 1 << logPointCount;
             for(int i = 0; i < pointCount; i++)
             {
-                int wire = backend.Constant(encoder.Encode(i).Span);
+                using IMemoryOwner<byte> owner = field.Pool.Rent(Scalar.SizeBytes);
+                Span<byte> encoded = owner.Memory.Span[..Scalar.SizeBytes];
+                encoder.Encode(i, encoded);
+                int wire = backend.Constant(encoded);
                 LongfellowBitWire[] bits = plucker.Pluck(wire);
 
                 for(int k = 0; k < logPointCount; k++)
@@ -294,14 +329,14 @@ internal sealed class LongfellowBitPluckerTests
     {
         int pointCount = 1 << PackingLogPointCount;
 
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, PackingLogPointCount);
 
         //OfScalar(pointCount) is not one of the plucker's pointCount interpolation points (those
         //encode 2*i - (pointCount - 1) for i < pointCount), so pluck's per-bit bitness assertion must
         //latch a failure on at least one output bit.
-        int wire = backend.Constant(field.OfScalar((ulong)pointCount).Span);
+        int wire = backend.ScalarConstant((ulong)pointCount);
         _ = plucker.Pluck(wire);
 
         Assert.IsTrue(backend.AssertionFailed, "Plucking a non-plucker-point value must latch a bitness assertion failure.");

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
@@ -26,7 +27,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// <see cref="LongfellowCompilerFieldOperations.ElementBytes"/> bytes carry the value.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowLogicFieldOperations
+internal sealed class LongfellowLogicFieldOperations: IDisposable
 {
     /// <summary>The characteristic-two subfield's basis size (<c>kSubFieldBits</c> at the reference's default template parameter, <c>subfield_log_bits = 4</c>): <see cref="OfScalar"/> and <see cref="Beta(int)"/> cover exactly this many bits over GF(2^128).</summary>
     private const int SubfieldBitCount = 16;
@@ -64,11 +65,22 @@ internal sealed class LongfellowLogicFieldOperations
     /// <summary>The odd-prime basis exponent bound (<c>fp_generic.h</c>'s <c>beta</c>: <c>check(i &lt; 64)</c>): <see cref="Beta(int)"/> covers exponents strictly below this over a prime field.</summary>
     private const int PrimeBetaExponentBound = 64;
 
-    private readonly ReadOnlyMemory<byte>[]? subfieldBasis;
-    private readonly ReadOnlyMemory<byte> generatorPolynomial;
-    private readonly ReadOnlyMemory<byte> twoConstant;
-    private readonly ReadOnlyMemory<byte> halfConstant;
-    private readonly ulong primeScalarBound;
+    /// <summary>The sensitive owner of the field's fixed constants and basis table.</summary>
+    private LongfellowCircuitStorage Storage { get; }
+
+    /// <summary>The bounded basis table; its slices remain valid until disposal.</summary>
+    private ReadOnlyMemory<byte>[] Basis { get; }
+
+    /// <summary>The caller pool shared by this field and its compiler.</summary>
+    public BaseMemoryPool Pool => Compiler.Pool;
+    /// <summary>The borrowed characteristic-two polynomial generator.</summary>
+    private ReadOnlyMemory<byte> GeneratorPolynomial { get; }
+    /// <summary>The borrowed odd-prime embedding of two.</summary>
+    private ReadOnlyMemory<byte> TwoConstant { get; }
+    /// <summary>The borrowed odd-prime inverse of two.</summary>
+    private ReadOnlyMemory<byte> HalfConstant { get; }
+    /// <summary>The exclusive small-prime scalar bound, or zero when every ulong fits.</summary>
+    private ulong PrimeScalarBound { get; }
 
     /// <summary>The wrapped compiler-kernel field-operation bundle: addition, multiplication, the field identities, and the element width/characteristic markers.</summary>
     public LongfellowCompilerFieldOperations Compiler { get; }
@@ -87,7 +99,8 @@ internal sealed class LongfellowLogicFieldOperations
     /// <param name="compiler">The wrapped compiler-kernel field-operation bundle.</param>
     /// <param name="subtract">The field subtraction.</param>
     /// <param name="invert">The field inversion.</param>
-    /// <param name="subfieldBasis">The 16-element characteristic-two subfield basis, or <see langword="null"/> over an odd-prime field.</param>
+    /// <param name="basis">The bounded field basis, borrowed from the supplied storage or compiler.</param>
+    /// <param name="storage">The constant owner transferred with the compiler on successful construction.</param>
     /// <param name="generatorPolynomial">The characteristic-two generator polynomial <c>x</c>, or the default value over an odd-prime field.</param>
     /// <param name="twoConstant">The odd-prime constant two, or the default value over a characteristic-two field.</param>
     /// <param name="halfConstant">The odd-prime constant one-half, or the default value over a characteristic-two field.</param>
@@ -97,7 +110,8 @@ internal sealed class LongfellowLogicFieldOperations
         LongfellowCompilerFieldOperations compiler,
         ScalarSubtractDelegate subtract,
         ScalarInvertDelegate invert,
-        ReadOnlyMemory<byte>[]? subfieldBasis,
+        ReadOnlyMemory<byte>[] basis,
+        LongfellowCircuitStorage storage,
         ReadOnlyMemory<byte> generatorPolynomial,
         ReadOnlyMemory<byte> twoConstant,
         ReadOnlyMemory<byte> halfConstant,
@@ -110,11 +124,12 @@ internal sealed class LongfellowLogicFieldOperations
         Compiler = compiler;
         Subtract = subtract;
         Invert = invert;
-        this.subfieldBasis = subfieldBasis;
-        this.generatorPolynomial = generatorPolynomial;
-        this.twoConstant = twoConstant;
-        this.halfConstant = halfConstant;
-        this.primeScalarBound = primeScalarBound;
+        this.Basis = basis;
+        this.Storage = storage;
+        this.GeneratorPolynomial = generatorPolynomial;
+        this.TwoConstant = twoConstant;
+        this.HalfConstant = halfConstant;
+        this.PrimeScalarBound = primeScalarBound;
     }
 
 
@@ -127,34 +142,52 @@ internal sealed class LongfellowLogicFieldOperations
     /// <param name="subtract">The field subtraction (equal to addition in characteristic two, but a distinct delegate instance may be supplied).</param>
     /// <param name="multiply">The field multiplication.</param>
     /// <param name="invert">The field inversion.</param>
-    /// <returns>The bundle.</returns>
+    /// <param name="pool">The caller pool, which must outlive this disposable bundle and all borrowers.</param>
+    /// <returns>The bundle owning its compiler and constants.</returns>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     public static LongfellowLogicFieldOperations CreateGf2128(
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply,
-        ScalarInvertDelegate invert)
+        ScalarInvertDelegate invert,
+        BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(multiply);
 
-        LongfellowCompilerFieldOperations compiler = LongfellowCompilerFieldOperations.CreateCharacteristicTwo(
-            add, multiply, CurveParameterSet.None, Gf2128ElementBytes);
-
-        var generator = new byte[Scalar.SizeBytes];
-        generator[Scalar.SizeBytes - 1] = PolynomialXLowByte;
-
-        byte[] subfieldGenerator = ComputeSubfieldGenerator(generator, multiply, compiler.Curve);
-
-        var basis = new ReadOnlyMemory<byte>[SubfieldBitCount];
-        basis[0] = compiler.One;
-        for(int i = 1; i < SubfieldBitCount; i++)
+        LongfellowCompilerFieldOperations? compiler = null;
+        LongfellowCircuitStorage? storage = null;
+        try
         {
-            var product = new byte[Scalar.SizeBytes];
-            multiply(basis[i - 1].Span, subfieldGenerator, product, compiler.Curve);
-            basis[i] = product;
-        }
+            compiler = LongfellowCompilerFieldOperations.CreateCharacteristicTwo(
+                add, multiply, CurveParameterSet.None, Gf2128ElementBytes, pool);
+            storage = new LongfellowCircuitStorage(pool);
+            Memory<byte> generator = storage.Allocate(Scalar.SizeBytes);
+            generator.Span[Scalar.SizeBytes - 1] = PolynomialXLowByte;
 
-        return new LongfellowLogicFieldOperations(compiler, subtract, invert, basis, generator, default, default);
+            using IMemoryOwner<byte> generatorOwner = pool.Rent(Scalar.SizeBytes);
+            Span<byte> subfieldGenerator = generatorOwner.Memory.Span[..Scalar.SizeBytes];
+            ComputeSubfieldGenerator(generator.Span, multiply, compiler.Curve, subfieldGenerator, pool);
+
+            var basis = new ReadOnlyMemory<byte>[SubfieldBitCount];
+            basis[0] = compiler.One;
+            for(int i = 1; i < SubfieldBitCount; i++)
+            {
+                Memory<byte> product = storage.Allocate(Scalar.SizeBytes);
+                multiply(basis[i - 1].Span, subfieldGenerator, product.Span, compiler.Curve);
+                basis[i] = product;
+            }
+
+            var result = new LongfellowLogicFieldOperations(compiler, subtract, invert, basis, storage, generator, default, default);
+            compiler = null;
+            storage = null;
+
+            return result;
+        }
+        finally
+        {
+            storage?.Dispose();
+            compiler?.Dispose();
+        }
     }
 
 
@@ -167,25 +200,50 @@ internal sealed class LongfellowLogicFieldOperations
     /// <param name="multiply">The field multiplication.</param>
     /// <param name="invert">The field inversion.</param>
     /// <param name="minusOne">The modulus less one, canonical big-endian, <see cref="Scalar.SizeBytes"/> bytes.</param>
-    /// <returns>The bundle.</returns>
+    /// <param name="pool">The caller pool, which must outlive this disposable bundle and all borrowers.</param>
+    /// <returns>The bundle owning its compiler and constants.</returns>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     public static LongfellowLogicFieldOperations CreateFp256(
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
-        ReadOnlyMemory<byte> minusOne)
+        ReadOnlyMemory<byte> minusOne,
+        BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(invert);
 
-        LongfellowCompilerFieldOperations compiler = LongfellowCompilerFieldOperations.CreatePrime(
-            add, multiply, CurveParameterSet.None, minusOne, Fp256ElementBytes, Fp256BitCount);
+        LongfellowCompilerFieldOperations? compiler = null;
+        LongfellowCircuitStorage? storage = null;
+        try
+        {
+            compiler = LongfellowCompilerFieldOperations.CreatePrime(
+                add, multiply, CurveParameterSet.None, minusOne, Fp256ElementBytes, Fp256BitCount, pool);
+            storage = new LongfellowCircuitStorage(pool);
+            Memory<byte> two = storage.Allocate(Scalar.SizeBytes);
+            WriteCanonicalUInt64(TwoScalarValue, two.Span);
+            Memory<byte> half = storage.Allocate(Scalar.SizeBytes);
+            invert(two.Span, half.Span, compiler.Curve);
 
-        byte[] two = WriteCanonicalUInt64(TwoScalarValue);
-        var half = new byte[Scalar.SizeBytes];
-        invert(two, half, compiler.Curve);
+            var basis = new ReadOnlyMemory<byte>[PrimeBetaExponentBound];
+            for(int i = 0; i < basis.Length; i++)
+            {
+                Memory<byte> value = storage.Allocate(Scalar.SizeBytes);
+                WriteCanonicalUInt64(1UL << i, value.Span);
+                basis[i] = value;
+            }
 
-        return new LongfellowLogicFieldOperations(compiler, subtract, invert, null, default, two, half);
+            var result = new LongfellowLogicFieldOperations(compiler, subtract, invert, basis, storage, default, two, half, 0);
+            compiler = null;
+            storage = null;
+
+            return result;
+        }
+        finally
+        {
+            storage?.Dispose();
+            compiler?.Dispose();
+        }
     }
 
 
@@ -200,25 +258,50 @@ internal sealed class LongfellowLogicFieldOperations
     /// <param name="multiply">The field multiplication.</param>
     /// <param name="invert">The field inversion.</param>
     /// <param name="minusOne">The base modulus less one in the constant coefficient, canonical big-endian, <see cref="Scalar.SizeBytes"/> bytes.</param>
-    /// <returns>The bundle.</returns>
+    /// <param name="pool">The caller pool, which must outlive this disposable bundle and all borrowers.</param>
+    /// <returns>The bundle owning its compiler and constants.</returns>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     public static LongfellowLogicFieldOperations CreateFp24Sextic(
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
-        ReadOnlyMemory<byte> minusOne)
+        ReadOnlyMemory<byte> minusOne,
+        BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(invert);
 
-        LongfellowCompilerFieldOperations compiler = LongfellowCompilerFieldOperations.CreatePrime(
-            add, multiply, CurveParameterSet.None, minusOne, Fp24SexticElementBytes, Fp24SexticBitCount);
+        LongfellowCompilerFieldOperations? compiler = null;
+        LongfellowCircuitStorage? storage = null;
+        try
+        {
+            compiler = LongfellowCompilerFieldOperations.CreatePrime(
+                add, multiply, CurveParameterSet.None, minusOne, Fp24SexticElementBytes, Fp24SexticBitCount, pool);
+            storage = new LongfellowCircuitStorage(pool);
+            Memory<byte> two = storage.Allocate(Scalar.SizeBytes);
+            WriteCanonicalUInt64(TwoScalarValue, two.Span);
+            Memory<byte> half = storage.Allocate(Scalar.SizeBytes);
+            invert(two.Span, half.Span, compiler.Curve);
 
-        byte[] two = WriteCanonicalUInt64(TwoScalarValue);
-        var half = new byte[Scalar.SizeBytes];
-        invert(two, half, compiler.Curve);
+            var basis = new ReadOnlyMemory<byte>[PrimeBetaExponentBound];
+            for(int i = 0; i < basis.Length; i++)
+            {
+                Memory<byte> value = storage.Allocate(Scalar.SizeBytes);
+                WriteCanonicalUInt64(1UL << i, value.Span);
+                basis[i] = value;
+            }
 
-        return new LongfellowLogicFieldOperations(compiler, subtract, invert, null, default, two, half, Fp24SexticScalarBound);
+            var result = new LongfellowLogicFieldOperations(compiler, subtract, invert, basis, storage, default, two, half, Fp24SexticScalarBound);
+            compiler = null;
+            storage = null;
+
+            return result;
+        }
+        finally
+        {
+            storage?.Dispose();
+            compiler?.Dispose();
+        }
     }
 
 
@@ -230,18 +313,20 @@ internal sealed class LongfellowLogicFieldOperations
     /// <c>Σ scalar_i · beta[i]</c>, defined only for the low 16 bits.
     /// </summary>
     /// <param name="scalar">The value to embed.</param>
-    /// <returns>The field element, canonical big-endian.</returns>
+    /// <param name="destination">Receives one canonical scalar; no input constant storage may overlap it.</param>
     /// <exception cref="ArgumentOutOfRangeException">When <see cref="Compiler"/> is characteristic two and <paramref name="scalar"/> occupies more than the low 16 bits, or when a bounded odd-prime field cannot represent <paramref name="scalar"/>.</exception>
-    public ReadOnlyMemory<byte> OfScalar(ulong scalar)
+    public void OfScalar(ulong scalar, Span<byte> destination)
     {
         if(!Compiler.IsCharacteristicTwo)
         {
-            if(primeScalarBound != 0 && scalar >= primeScalarBound)
+            if(PrimeScalarBound != 0 && scalar >= PrimeScalarBound)
             {
-                throw new ArgumentOutOfRangeException(nameof(scalar), $"The field's of_scalar represents values below {primeScalarBound}.");
+                throw new ArgumentOutOfRangeException(nameof(scalar), $"The field's of_scalar represents values below {PrimeScalarBound}.");
             }
 
-            return WriteCanonicalUInt64(scalar);
+            WriteCanonicalUInt64(scalar, destination);
+
+            return;
         }
 
         if(scalar >= (1UL << SubfieldBitCount))
@@ -249,18 +334,19 @@ internal sealed class LongfellowLogicFieldOperations
             throw new ArgumentOutOfRangeException(nameof(scalar), "of_scalar over GF(2^128) represents at most the low 16 bits through the subfield basis.");
         }
 
-        byte[] accumulated = new byte[Scalar.SizeBytes];
+        Span<byte> accumulated = destination[..Scalar.SizeBytes];
+        accumulated.Clear();
+        using IMemoryOwner<byte> owner = Pool.Rent(Scalar.SizeBytes);
+        Span<byte> sum = owner.Memory.Span[..Scalar.SizeBytes];
         for(int bit = 0; bit < SubfieldBitCount; bit++)
         {
             if(((scalar >> bit) & 1UL) != 0UL)
             {
-                var sum = new byte[Scalar.SizeBytes];
-                Compiler.Add(accumulated, subfieldBasis![bit].Span, sum, Compiler.Curve);
-                accumulated = sum;
+                sum.Clear();
+                Compiler.Add(accumulated, Basis[bit].Span, sum, Compiler.Curve);
+                sum.CopyTo(accumulated);
             }
         }
-
-        return accumulated;
     }
 
 
@@ -271,7 +357,7 @@ internal sealed class LongfellowLogicFieldOperations
     /// (<c>i &lt; 64</c>).
     /// </summary>
     /// <param name="index">The basis index.</param>
-    /// <returns>The basis element, canonical big-endian.</returns>
+    /// <returns>The canonical basis element, borrowed until this bundle is disposed.</returns>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="index"/> is negative or at or beyond the field's basis bound.</exception>
     public ReadOnlyMemory<byte> Beta(int index)
     {
@@ -282,7 +368,7 @@ internal sealed class LongfellowLogicFieldOperations
                 throw new ArgumentOutOfRangeException(nameof(index), $"The GF(2^128) subfield basis covers indices below {SubfieldBitCount}.");
             }
 
-            return subfieldBasis![index];
+            return Basis[index];
         }
 
         if(index < 0 || index >= PrimeBetaExponentBound)
@@ -290,7 +376,13 @@ internal sealed class LongfellowLogicFieldOperations
             throw new ArgumentOutOfRangeException(nameof(index), $"The odd-prime basis covers exponents below {PrimeBetaExponentBound}.");
         }
 
-        return OfScalar(1UL << index);
+        ulong scalar = 1UL << index;
+        if(PrimeScalarBound != 0 && scalar >= PrimeScalarBound)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index), $"Basis index {index} yields 2^{index}, and the field's of_scalar represents values below {PrimeScalarBound}.");
+        }
+
+        return Basis[index];
     }
 
 
@@ -305,7 +397,7 @@ internal sealed class LongfellowLogicFieldOperations
                 throw new InvalidOperationException("The generator polynomial x is defined only over the characteristic-two field.");
             }
 
-            return generatorPolynomial;
+            return GeneratorPolynomial;
         }
     }
 
@@ -321,7 +413,7 @@ internal sealed class LongfellowLogicFieldOperations
                 throw new InvalidOperationException("Two is defined only over the odd-prime field.");
             }
 
-            return twoConstant;
+            return TwoConstant;
         }
     }
 
@@ -337,7 +429,7 @@ internal sealed class LongfellowLogicFieldOperations
                 throw new InvalidOperationException("Half is defined only over the odd-prime field.");
             }
 
-            return halfConstant;
+            return HalfConstant;
         }
     }
 
@@ -346,13 +438,12 @@ internal sealed class LongfellowLogicFieldOperations
     /// Negates a field element by multiplying it by <see cref="LongfellowCompilerFieldOperations.MinusOne"/>, the gadget layer's shared negation helper (the reference composes this inline wherever <c>negf</c> or a subtraction-by-multiplication is needed, for instance the compiler backend's <c>sub</c>).
     /// </summary>
     /// <param name="element">The element to negate, canonical big-endian.</param>
-    /// <returns>The negated element, canonical big-endian.</returns>
-    public ReadOnlyMemory<byte> Negate(ReadOnlySpan<byte> element)
+    /// <param name="destination">Receives one canonical scalar without overlapping the input.</param>
+    public void Negate(ReadOnlySpan<byte> element, Span<byte> destination)
     {
-        var negated = new byte[Scalar.SizeBytes];
+        Span<byte> negated = destination[..Scalar.SizeBytes];
+        negated.Clear();
         Compiler.Multiply(element, Compiler.MinusOne.Span, negated, Compiler.Curve);
-
-        return negated;
     }
 
 
@@ -366,44 +457,54 @@ internal sealed class LongfellowLogicFieldOperations
     /// <param name="generatorPolynomial">The generator polynomial <c>x</c>, canonical big-endian.</param>
     /// <param name="multiply">The field multiplication.</param>
     /// <param name="curve">The curve parameter set the multiplication delegate dispatches on.</param>
-    /// <returns>The subfield generator, canonical big-endian.</returns>
-    private static byte[] ComputeSubfieldGenerator(byte[] generatorPolynomial, ScalarMultiplyDelegate multiply, CurveParameterSet curve)
+    /// <param name="destination">Receives the canonical subfield generator.</param>
+    /// <param name="pool">The caller pool supplying separate multiplication workspace.</param>
+    private static void ComputeSubfieldGenerator(ReadOnlySpan<byte> generatorPolynomial, ScalarMultiplyDelegate multiply, CurveParameterSet curve, Span<byte> destination, BaseMemoryPool pool)
     {
-        byte[] r = (byte[])generatorPolynomial.Clone();
+        //Squaring and multiplication use distinct input and output slots for every delegate call.
+        const int ScratchScalarCount = 2;
+        using IMemoryOwner<byte> owner = pool.Rent(ScratchScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(ScratchScalarCount * Scalar.SizeBytes)];
+        Span<byte> s = buffer[..Scalar.SizeBytes];
+        Span<byte> product = buffer[Scalar.SizeBytes..];
+        Span<byte> r = destination[..Scalar.SizeBytes];
+        generatorPolynomial.CopyTo(r);
         for(int i = SubfieldGeneratorLowLogBits; i < SubfieldGeneratorHighLogBits; i++)
         {
-            byte[] s = (byte[])r.Clone();
+            r.CopyTo(s);
             int squarings = 1 << i;
             for(int j = 0; j < squarings; j++)
             {
-                var squared = new byte[Scalar.SizeBytes];
-                multiply(s, s, squared, curve);
-                s = squared;
+                product.Clear();
+                multiply(s, s, product, curve);
+                product.CopyTo(s);
             }
 
-            var product = new byte[Scalar.SizeBytes];
+            product.Clear();
             multiply(r, s, product, curve);
-            r = product;
+            product.CopyTo(r);
         }
-
-        return r;
     }
 
 
     /// <summary>
-    /// The checked embedding a raw <see cref="ulong"/> receives before it is a valid canonical field
-    /// element: both wired prime moduli (Fp256, and any future odd-prime field this bundle wraps)
-    /// exceed 2^64, so a plain big-endian write already produces the value's canonical form. Centralizing
-    /// the write here keeps <see cref="OfScalar"/> and the eagerly computed <see cref="Two"/> constant
-    /// from duplicating the byte layout.
+    /// Writes a raw <see cref="ulong"/> in the zero-padded canonical byte layout shared by
+    /// <see cref="OfScalar"/>, <see cref="Two"/>, and the prime basis table. The caller checks any
+    /// field-specific bound before exposing the value as a field element.
     /// </summary>
     /// <param name="scalar">The value to embed.</param>
-    /// <returns>The canonical big-endian element.</returns>
-    private static byte[] WriteCanonicalUInt64(ulong scalar)
+    /// <param name="destination">Receives the zero-padded canonical scalar.</param>
+    private static void WriteCanonicalUInt64(ulong scalar, Span<byte> destination)
     {
-        var canonical = new byte[Scalar.SizeBytes];
-        BinaryPrimitives.WriteUInt64BigEndian(canonical.AsSpan(Scalar.SizeBytes - sizeof(ulong), sizeof(ulong)), scalar);
+        Span<byte> canonical = destination[..Scalar.SizeBytes];
+        canonical.Clear();
+        BinaryPrimitives.WriteUInt64BigEndian(canonical.Slice(Scalar.SizeBytes - sizeof(ulong), sizeof(ulong)), scalar);
+    }
 
-        return canonical;
+    /// <summary>Clears and releases the constants and the owned compiler bundle after all borrowers finish.</summary>
+    public void Dispose()
+    {
+        Storage.Dispose();
+        Compiler.Dispose();
     }
 }

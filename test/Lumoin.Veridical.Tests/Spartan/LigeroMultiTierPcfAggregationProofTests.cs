@@ -71,39 +71,81 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class LigeroMultiTierPcfAggregationProofTests
 {
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BLS12-381 scalar reduction backend.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 scalar addition backend.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar subtraction backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar multiplication backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar inversion backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BLS12-381 G1 addition backend.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BLS12-381 G1 scalar-multiplication backend.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BLS12-381 G1 multi-scalar-multiplication backend.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The independent big-integer MLE evaluation reference.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The independent big-integer MLE fold reference.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
+
+    /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The wired Merkle digest size: BLAKE3's 32 bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The Ligero query count every provider in this suite is built with.</summary>
     private const int TestQueryCount = 8;
+
+    /// <summary>The Fiat-Shamir domain label every tier's transcript is initialised under.</summary>
     private const string TranscriptDomain = "veridical.supplychain.pcfaggregation.ligero.test.v1";
 
+    /// <summary>The public-output variable name: a tier's cradle-to-gate footprint.</summary>
     private const string Pcf = "pcf";
+
+    /// <summary>The witness variable name: a tier's own gate-to-gate emissions.</summary>
     private const string Direct = "direct";
+
+    /// <summary>The range-check domain name for the tier's own emissions.</summary>
     private const string DirectDomain = "direct_domain";
+
+    /// <summary>The public-input name prefix for a tier's carried upstream footprints.</summary>
     private const string UpstreamPrefix = "upstream_";
 
+    /// <summary>The deterministic prover-randomness seed shared by every tier's proof in this suite.</summary>
     private static byte[] RandomSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.supplychain.pcfaggregation.rng.v1");
+
+    /// <summary>The curve every artifact is tagged with.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
-    //One scale for every tier: kilograms of CO2-equivalent to two decimals. A
-    //shared scale is what makes the field sum the decimal roll-up exactly; the
-    //inclusive maximum leaves ample headroom for a whole chain's total and sits far
-    //below the field-safe width, so no honest sum wraps.
+    /// <summary>
+    /// One scale for every tier: kilograms of CO2-equivalent to two decimals. A shared scale is what
+    /// makes the field sum the decimal roll-up exactly; the inclusive maximum leaves ample headroom
+    /// for a whole chain's total and sits far below the field-safe width, so no honest sum wraps.
+    /// </summary>
     private static FixedPointDomain PcfDomain { get; } = FixedPointDomain.Create(FixedPointScale.OfFractionalDigits(2), 100_000.00m);
 
 
+    /// <summary>Pins the full three-tier roll-up: two leaf material suppliers, a cell maker aggregating them, and a pack manufacturer aggregating the cell — each proof verifies, each committed footprint carries forward correctly, and the final rolled-up total is the sum of every tier's direct emissions.</summary>
     [TestMethod]
     public void MultiTierRollUpVerifiesAndTheAggregateIsUnderTheRegulatoryCap()
     {
@@ -131,6 +173,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>Pins that a rolled-up total exactly equal to the cap satisfies the at-most predicate, since the difference is zero, which is in range.</summary>
     [TestMethod]
     public void AnAggregateAtExactlyTheCapVerifies()
     {
@@ -143,6 +186,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>Pins that a rolled-up total above the cap cannot be proven.</summary>
     [TestMethod]
     public void AnAggregateThatExceedsTheRegulatoryCapCannotBeProven()
     {
@@ -155,6 +199,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>Pins that a leaf tier cannot prove a footprint above its own cap.</summary>
     [TestMethod]
     public void ATierWhoseOwnFootprintExceedsItsCapCannotBeProven()
     {
@@ -163,6 +208,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>Pins that the range check on a tier's own emissions rejects a value chosen to wrap the scalar field so that direct + upstream would falsely encode a footprint below the tier's verified upstream input.</summary>
     [TestMethod]
     public void ATierCannotUnderReportBelowItsUpstreamByWrappingItsOwnEmissions()
     {
@@ -193,6 +239,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>Pins that a downstream tier's proof is internally consistent for whatever upstream value it is handed, so soundness of the chain rests on the orchestrator comparing the carried value against the child's actual committed output — which an understated carry fails.</summary>
     [TestMethod]
     public void UnderReportingUpstreamDivergesFromTheVerifiedChildCommitment()
     {
@@ -213,6 +260,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>Pins that flipping the last byte of an aggregation proof causes verification to fail.</summary>
     [TestMethod]
     [SuppressMessage("Reliability", "CA2000", Justification = "The Spartan prover/verifier own their keys (and the provider) and are disposed via using declarations.")]
     public void TamperedAggregateProofIsRejected()
@@ -232,7 +280,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
 
         using FiatShamirTranscript proverTranscript = FreshTranscript();
         ScalarRandomDelegate random = new DeterministicScalarRandom(RandomSeed).AsDelegate();
-        using LigeroSpartanProof proof = prover.ProveLigero(
+        using CommitmentSpartanProof proof = prover.ProveCommitted(
             instance, witness, proverTranscript,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
@@ -245,15 +293,12 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
         using RawR1csWitness spareWitness = verifierCompiled.Witness;
         using FiatShamirTranscript verifierTranscript = FreshTranscript();
 
-        bool verified = verifier.VerifyLigero(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
+        bool verified = verifier.VerifyCommitted(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
         Assert.IsFalse(verified, "A tampered aggregation proof must be rejected.");
     }
 
 
-    //Proves and verifies one tier over Spartan-over-Ligero and returns its
-    //committed output. A false statement (a footprint above the cap, rejected at
-    //binding/compile time) returns an unverified result. The carried upstream
-    //values are the committed outputs of already-verified child tiers.
+    /// <summary>Proves and verifies one tier over Spartan-over-Ligero and returns its committed output. A false statement (a footprint above the cap, rejected at binding/compile time) returns an unverified result. The carried upstream values are the committed outputs of already-verified child tiers.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Instances, witnesses, prover, verifier and transcripts are disposed via using declarations before the result is returned.")]
     private static TierProof ProveAndVerifyTier(decimal cap, decimal directEmissions, params BigInteger[] carriedUpstream)
     {
@@ -284,7 +329,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
         using var prover = new SpartanProver(new SpartanProvingKey(BuildProvider()));
         using FiatShamirTranscript proverTranscript = FreshTranscript();
         ScalarRandomDelegate random = new DeterministicScalarRandom(RandomSeed).AsDelegate();
-        using LigeroSpartanProof proof = prover.ProveLigero(
+        using CommitmentSpartanProof proof = prover.ProveCommitted(
             instance, witness, proverTranscript,
             Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, random,
             G1Add, G1ScalarMul, G1Msm, MleEvaluate, MleFold, pool);
@@ -295,18 +340,14 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
         using RawR1csWitness spareWitness = verifierCompiled.Witness;
         using FiatShamirTranscript verifierTranscript = FreshTranscript();
 
-        bool verified = verifier.VerifyLigero(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
+        bool verified = verifier.VerifyCommitted(proof, verifierInstance, verifierTranscript, Add, Multiply, Subtract, Reduce, Hash, Squeeze, pool);
         BigInteger committedPcf = ReadCommittedPcf(verifierInstance);
 
         return new TierProof(verified, PcfDomain.Scale.Decode(committedPcf), committedPcf);
     }
 
 
-    //One tier circuit: a public footprint output, one public input per direct
-    //supplier, and a private own-emissions witness. It constrains the cradle-to-gate
-    //identity pcf = Σ upstream_j + direct, range-checks the private own emissions
-    //into the field-safe width (so the total cannot wrap below its upstream inputs),
-    //and proves pcf ≤ cap.
+    /// <summary>Builds one tier circuit: a public footprint output, one public input per direct supplier, and a private own-emissions witness. It constrains the cradle-to-gate identity pcf = Σ upstream_j + direct, range-checks the private own emissions into the field-safe width (so the total cannot wrap below its upstream inputs), and proves pcf ≤ cap.</summary>
     private static R1csCircuit BuildTierCircuit(int upstreamCount, decimal cap)
     {
         var builder = new R1csCircuitBuilder(Curve);
@@ -333,11 +374,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
-    //Binds a tier's inputs: the carried upstream footprints (public), the private
-    //own emissions and its domain bits, the public footprint output with the
-    //at-most auxiliaries, and the padding columns. The footprint decimal is
-    //recovered from the exact field sum, so the bound value and the summation
-    //constraint agree.
+    /// <summary>Binds a tier's inputs: the carried upstream footprints (public), the private own emissions and its domain bits, the public footprint output with the at-most auxiliaries, and the padding columns. The footprint decimal is recovered from the exact field sum, so the bound value and the summation constraint agree.</summary>
     private static R1csCircuitInputs BuildTierInputs(R1csCircuit circuit, decimal cap, decimal directEmissions, ReadOnlySpan<BigInteger> carriedUpstream)
     {
         var bindings = new Dictionary<string, BigInteger>(StringComparer.Ordinal);
@@ -362,8 +399,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
-    //Reads the tier's committed footprint: the first public input of the verified
-    //instance, in canonical big-endian, is the pcf output the verifier re-checked.
+    /// <summary>Reads the tier's committed footprint: the first public input of the verified instance, in canonical big-endian, is the pcf output the verifier re-checked.</summary>
     private static BigInteger ReadCommittedPcf(RawR1csInstance instance)
     {
         ReadOnlySpan<byte> publicInputs = instance.GetPublicInputsBytes();
@@ -373,6 +409,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>Builds the Ligero commitment provider Spartan proves and verifies against.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The Ligero provider holds no disposable key; the Spartan key that consumes it disposes it.")]
     private static PolynomialCommitmentProvider BuildProvider()
     {
@@ -381,6 +418,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>A fresh transcript under this suite's domain label with empty context.</summary>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -392,6 +430,7 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
+    /// <summary>The two-to-one compression: BLAKE3 over the concatenated children.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -401,11 +440,10 @@ internal sealed class LigeroMultiTierPcfAggregationProofTests
     }
 
 
-    //The verified outcome of one tier: whether its proof verified, its decoded
-    //cradle-to-gate footprint, and the committed field element the next tier carries.
+    /// <summary>The verified outcome of one tier: whether its proof verified, its decoded cradle-to-gate footprint, and the committed field element the next tier carries.</summary>
     private readonly record struct TierProof(bool Verified, decimal Pcf, BigInteger CommittedPcf)
     {
-        //An unprovable tier — a false statement rejected before proving.
+        /// <summary>An unprovable tier — a false statement rejected before proving.</summary>
         public static TierProof Unproven { get; } = new(false, decimal.Zero, BigInteger.Zero);
     }
 }

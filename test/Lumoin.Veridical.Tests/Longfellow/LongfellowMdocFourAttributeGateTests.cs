@@ -18,38 +18,78 @@ namespace Lumoin.Veridical.Tests.Longfellow;
 /// public-template byte and confirm the verdict is no longer accepted.
 /// </summary>
 /// <remarks>
-/// The envelope, the public-input templates and the session transcript are the reference's own dump
-/// (<c>mdoc-zk-anchor-4attr-output.txt</c>); the circuit bundle is the imported kZkSpecs[3] raw stream. The
+/// The anchor (<c>mdoc-zk-anchor-4attr-output.txt</c>) carries the envelope, the public-input templates
+/// and the session transcript; the circuit bundle is the imported kZkSpecs[3] raw stream. The
 /// signature template arrives little-endian in the fixture and is reversed to the canonical big-endian form
 /// the statement carries; the facade frames it back into the Montgomery wire domain internally.
 /// </remarks>
 [TestClass]
 internal sealed class LongfellowMdocFourAttributeGateTests
 {
+    /// <summary>
+    /// The path, relative to the test project, of the gzip-compressed reference four-attribute
+    /// raw circuit bytes.
+    /// </summary>
     private const string RawGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-raw-4attr.gz";
+
+    /// <summary>
+    /// The path, relative to the test project, of the gzip-compressed four-attribute
+    /// hash-witness column.
+    /// </summary>
     private const string WitnessGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-hash-witness-4attr.gz";
+
+    /// <summary>
+    /// The path, relative to the test project, of the four-attribute anchor carrying the
+    /// envelope, the public-input templates and the session transcript.
+    /// </summary>
     private const string AnchorRelativePath = "TestMaterial/Longfellow/mdoc-zk-anchor-4attr-output.txt";
+
+    /// <summary>
+    /// The path, relative to the test project, of the four-attribute anchor carrying the raw and
+    /// hash-witness circuit digests.
+    /// </summary>
     private const string CircuitAnchorRelativePath = "TestMaterial/Longfellow/mdoc-circuit-anchor-4attr-output.txt";
 
-    //One canonical field element per 32-byte big-endian slot in the signature template.
+    /// <summary>
+    /// One canonical field element per 32-byte big-endian slot in the signature template.
+    /// </summary>
     private const int ScalarSize = 32;
 
-    //A byte well inside the hash ZkProof region of the envelope, past the 96-byte MAC prefix; flipping it must
-    //break the hash-circuit verify without touching the MAC prefix or the signature region.
+    /// <summary>
+    /// A byte offset well inside the hash ZkProof region of the envelope, past the 96-byte MAC
+    /// prefix; flipping the byte there must break the hash-circuit verify without touching the
+    /// MAC prefix or the signature region.
+    /// </summary>
     private const int EnvelopeTamperOffset = 5000;
 
-    //A byte inside the attribute-bit region of the hash template (element 100); flipping it changes the
-    //public statement and must break the spliced-template verify.
+    /// <summary>
+    /// A byte offset inside the attribute-bit region of the hash template (element 100);
+    /// flipping the byte there changes the public statement and must break the spliced-template
+    /// verify.
+    /// </summary>
     private const int TemplateTamperOffset = 100 * LongfellowMdocStatement.HashTemplateElementBytes;
 
-    //The decompressed reference four-attribute circuit-definition bytes (~115 MB); decompress once and share.
+    /// <summary>
+    /// The decompressed reference four-attribute circuit-definition bytes (~115 MB), decompressed
+    /// once and shared across the tests in this class.
+    /// </summary>
     private static byte[] RawCircuitBytes { get; } = DecompressGzip(ReadFixture(RawGzipRelativePath));
 
+    /// <summary>
+    /// The four-attribute anchor's key/value pairs, keyed by field name.
+    /// </summary>
     private static Dictionary<string, string> AnchorFixture { get; } = LoadFixture(AnchorRelativePath);
 
+    /// <summary>
+    /// The four-attribute circuit anchor's key/value pairs, keyed by field name.
+    /// </summary>
     private static Dictionary<string, string> CircuitAnchorFixture { get; } = LoadFixture(CircuitAnchorRelativePath);
 
 
+    /// <summary>
+    /// Verifies that hashing the decompressed four-attribute raw circuit bytes reproduces the
+    /// digest recorded in the circuit anchor.
+    /// </summary>
     [TestMethod]
     public void TheCommittedFourAttributeRawStreamReproducesTheAnchorDigest()
     {
@@ -59,16 +99,25 @@ internal sealed class LongfellowMdocFourAttributeGateTests
     }
 
 
+    /// <summary>
+    /// Verifies that hashing the decompressed four-attribute hash-witness column reproduces the
+    /// digest recorded in the circuit anchor.
+    /// </summary>
     [TestMethod]
     public void TheCommittedFourAttributeWitnessColumnReproducesTheAnchorDigest()
     {
         byte[] witnessColumn = DecompressGzip(ReadFixture(WitnessGzipRelativePath));
 
         string computed = Convert.ToHexStringLower(SHA256.HashData(witnessColumn));
-        Assert.AreEqual(CircuitAnchorFixture["hash_witness_rawsha"], computed, "SHA-256 of the four-attribute witness column must equal the reference's dumped column digest.");
+        Assert.AreEqual(CircuitAnchorFixture["hash_witness_rawsha"], computed, "SHA-256 of the four-attribute witness column must equal the reference's anchor column digest.");
     }
 
 
+    /// <summary>
+    /// Verifies that <see cref="LongfellowMdoc.Verify"/> accepts the reference four-attribute
+    /// envelope built from the anchor's components, and that flipping a byte in either the
+    /// envelope or the public hash template flips the verdict to rejected.
+    /// </summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void TheFacadeAcceptsTheReferenceFourAttributeEnvelopeAndRejectsTampers()
@@ -122,8 +171,12 @@ internal sealed class LongfellowMdocFourAttributeGateTests
     }
 
 
-    //The fixture's signature template elements are little-endian wire bytes; the statement carries the
-    //canonical big-endian form, so each 32-byte element is reversed in place.
+    /// <summary>
+    /// Reverses each 32-byte element of a little-endian wire template into the canonical
+    /// big-endian form the statement carries.
+    /// </summary>
+    /// <param name="littleEndianTemplate">The little-endian wire template to reverse.</param>
+    /// <returns>The template with each element's bytes reversed to big-endian.</returns>
     private static byte[] ReverseElements(byte[] littleEndianTemplate)
     {
         byte[] canonical = new byte[littleEndianTemplate.Length];
@@ -139,9 +192,19 @@ internal sealed class LongfellowMdocFourAttributeGateTests
     }
 
 
+    /// <summary>
+    /// Reads a fixture file's raw bytes from its path relative to the test project.
+    /// </summary>
+    /// <param name="relativePath">The fixture file's path, relative to the test project.</param>
+    /// <returns>The fixture file's raw bytes.</returns>
     private static byte[] ReadFixture(string relativePath) => File.ReadAllBytes($"../../../{relativePath}");
 
 
+    /// <summary>
+    /// Decompresses a gzip-compressed byte array.
+    /// </summary>
+    /// <param name="gzip">The gzip-compressed bytes.</param>
+    /// <returns>The decompressed bytes.</returns>
     private static byte[] DecompressGzip(byte[] gzip)
     {
         using var input = new MemoryStream(gzip);
@@ -153,6 +216,11 @@ internal sealed class LongfellowMdocFourAttributeGateTests
     }
 
 
+    /// <summary>
+    /// Loads a fixture's newline-delimited <c>key=value</c> pairs into a dictionary keyed by name.
+    /// </summary>
+    /// <param name="relativePath">The fixture file's path, relative to the test project.</param>
+    /// <returns>The fixture's entries, keyed by name.</returns>
     private static Dictionary<string, string> LoadFixture(string relativePath)
     {
         string path = $"../../../{relativePath}";

@@ -16,29 +16,43 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 /// </summary>
 public static class ZkInterfaceCursorDecoder
 {
-    //Root.message is a union, occupying two consecutive vtable slots: the
-    //discriminator byte, then the offset to the union value table.
+    /// <summary>The vtable slot of <c>Root.message</c>'s union discriminator byte.</summary>
     private const int RootMessageTypeSlot = 0;
+
+    /// <summary>The vtable slot of <c>Root.message</c>'s union value table offset, the slot immediately after the discriminator.</summary>
     private const int RootMessageValueSlot = 1;
 
-    //Schema-declaration slot order (zkinterface.fbs). A field's vtable slot
-    //is its zero-based position in its table's field list.
+    /// <summary>The vtable slot of <c>CircuitHeader.instance_variables</c>, per the schema's declared field order (zkinterface.fbs).</summary>
     private const int HeaderInstanceVariablesSlot = 0;
+
+    /// <summary>The vtable slot of <c>CircuitHeader.free_variable_id</c>, per the schema's declared field order (zkinterface.fbs).</summary>
     private const int HeaderFreeVariableIdSlot = 1;
+
+    /// <summary>The vtable slot of <c>CircuitHeader.field_maximum</c>, per the schema's declared field order (zkinterface.fbs).</summary>
     private const int HeaderFieldMaximumSlot = 2;
 
+    /// <summary>The vtable slot of <c>ConstraintSystem.constraints</c>.</summary>
     private const int ConstraintSystemConstraintsSlot = 0;
 
+    /// <summary>The vtable slot of a constraint's <c>linear_combination_a</c>.</summary>
     private const int ConstraintLcASlot = 0;
+
+    /// <summary>The vtable slot of a constraint's <c>linear_combination_b</c>.</summary>
     private const int ConstraintLcBSlot = 1;
+
+    /// <summary>The vtable slot of a constraint's <c>linear_combination_c</c>.</summary>
     private const int ConstraintLcCSlot = 2;
 
+    /// <summary>The vtable slot of a <c>Variables</c> table's <c>variable_ids</c> vector.</summary>
     private const int VariablesIdsSlot = 0;
+
+    /// <summary>The vtable slot of a <c>Variables</c> table's <c>values</c> vector.</summary>
     private const int VariablesValuesSlot = 1;
 
+    /// <summary>The vtable slot of <c>Witness.assigned_variables</c>.</summary>
     private const int WitnessAssignedVariablesSlot = 0;
 
-    //A 4-byte little-endian size precedes every message in the stream.
+    /// <summary>The byte width of the little-endian size prefix that precedes every message in the stream.</summary>
     private const int MessageSizePrefixBytes = sizeof(uint);
 
 
@@ -46,30 +60,49 @@ public static class ZkInterfaceCursorDecoder
     public static ZkInterfaceMessageDecoderDelegate Decoder { get; } = Decode;
 
 
-    private static void Decode(ReadOnlySequence<byte> source, IZkInterfaceMessageSink sink, CancellationToken cancellationToken)
+    /// <summary>Decodes a stream using caller-funded contiguous staging when required.</summary>
+    /// <param name="source">The complete message stream.</param>
+    /// <param name="sink">The decoded-message consumer.</param>
+    /// <param name="pool">The pool supplying temporary contiguous storage.</param>
+    /// <param name="cancellationToken">Cancellation observed between messages.</param>
+    private static void Decode(ReadOnlySequence<byte> source, IZkInterfaceMessageSink sink, BaseMemoryPool pool, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sink);
+        ArgumentNullException.ThrowIfNull(pool);
 
         //FlatBuffers needs random access; use the segment directly when the
         //stream is contiguous, otherwise copy it into one buffer.
-        if(source.IsSingleSegment)
+        if(source.IsEmpty)
+        {
+            DecodeContiguous(ReadOnlySpan<byte>.Empty, sink, cancellationToken);
+        }
+        else if(source.IsSingleSegment)
         {
             DecodeContiguous(source.FirstSpan, sink, cancellationToken);
         }
         else
         {
-            byte[] contiguous = source.ToArray();
+            int length = checked((int)source.Length);
+            using IMemoryOwner<byte> owner = pool.Rent(length);
+            Span<byte> contiguous = owner.Memory.Span[..length];
+            source.CopyTo(contiguous);
             DecodeContiguous(contiguous, sink, cancellationToken);
         }
     }
 
 
-    //Decodes one already-resolved message body (CircuitHeader, ConstraintSystem, or Witness)
-    //into the sink under the shared work budget; the three body decoders share this shape so the
-    //union discriminator can select one by pattern match.
+    /// <summary>
+    /// Decodes one already-resolved message body (CircuitHeader, ConstraintSystem, or Witness) into
+    /// the sink under the shared work budget; the three body decoders share this shape so the union
+    /// discriminator can select one by pattern match.
+    /// </summary>
     private delegate void MessageBodyDecoder(FlatBufferTable value, IZkInterfaceMessageSink sink, DecodeBudget budget);
 
 
+    /// <summary>
+    /// Locates every message in the contiguous buffer, then decodes each one's body under a shared
+    /// decode-work budget sized to the buffer, dispatching by the message's union discriminator.
+    /// </summary>
     private static void DecodeContiguous(ReadOnlySpan<byte> file, IZkInterfaceMessageSink sink, CancellationToken cancellationToken)
     {
         IReadOnlyList<ZkInterfaceMessageSpan> messages = LocateMessages(file);
@@ -177,6 +210,10 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
+    /// <summary>
+    /// Decodes a <c>CircuitHeader</c> message: the free variable id, the field maximum bytes when
+    /// present, and the instance-variable assignments when the sub-table is present.
+    /// </summary>
     private static void DecodeCircuitHeader(FlatBufferTable header, IZkInterfaceMessageSink sink, DecodeBudget budget)
     {
         sink.OnFreeVariableId(header.ReadUInt64Field(HeaderFreeVariableIdSlot));
@@ -193,6 +230,10 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
+    /// <summary>
+    /// Decodes a <c>ConstraintSystem</c> message's constraints vector, charging one decode-work event
+    /// per constraint before pushing its three linear combinations to the sink.
+    /// </summary>
     private static void DecodeConstraintSystem(FlatBufferTable system, IZkInterfaceMessageSink sink, DecodeBudget budget)
     {
         if(!system.TryGetVector(ConstraintSystemConstraintsSlot, out FlatBufferVector constraints))
@@ -217,6 +258,7 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
+    /// <summary>Decodes a <c>Witness</c> message's assigned-variables sub-table when present.</summary>
     private static void DecodeWitness(FlatBufferTable witness, IZkInterfaceMessageSink sink, DecodeBudget budget)
     {
         if(witness.TryGetSubTable(WitnessAssignedVariablesSlot, out FlatBufferTable assigned))
@@ -226,6 +268,11 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
+    /// <summary>
+    /// Decodes a <c>Variables</c> table's id/value pairs and pushes each one to the sink as either a
+    /// witness or an instance variable, charging one decode-work event and the value's byte length
+    /// to the budget for every assignment.
+    /// </summary>
     private static void DecodeAssignments(FlatBufferTable variables, IZkInterfaceMessageSink sink, bool witness, DecodeBudget budget)
     {
         if(!variables.TryGetVector(VariablesIdsSlot, out FlatBufferVector ids) || ids.Length == 0)
@@ -263,6 +310,11 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
+    /// <summary>
+    /// Decodes one constraint's linear combination at the given slot into terms of the named matrix,
+    /// pushing each term to the sink and charging one decode-work event plus the coefficient's byte
+    /// length to the budget per term. An absent linear combination contributes no terms.
+    /// </summary>
     private static void DecodeLinearCombination(
         FlatBufferTable constraint,
         int slot,
@@ -303,6 +355,10 @@ public static class ZkInterfaceCursorDecoder
     }
 
 
+    /// <summary>
+    /// Computes the per-element byte width as values.length / variable_ids.length, per the schema,
+    /// rejecting a values vector whose length is not an exact multiple of the id count.
+    /// </summary>
     private static int ElementSize(int valueByteCount, int idCount)
     {
         //Per the schema: element size = values.length / variable_ids.length.
@@ -330,27 +386,34 @@ public static class ZkInterfaceCursorDecoder
     /// </summary>
     private sealed class DecodeBudget
     {
+        /// <summary>The remaining decode-work units this stream may still spend before it is rejected.</summary>
         private long remaining;
 
 
+        /// <summary>Initializes the budget to the source stream's own byte length.</summary>
         public DecodeBudget(int sourceByteLength)
         {
             remaining = sourceByteLength;
         }
 
 
-        //Charge one decoded event (a constraint, a term, or an assignment), bounding
-        //the number of decoded events by the source byte length.
+        /// <summary>
+        /// Charges one decoded event (a constraint, a term, or an assignment), bounding the number of
+        /// decoded events by the source byte length.
+        /// </summary>
         public void SpendEvent() => Spend(1);
 
 
-        //Charge the coefficient/value bytes a term or assignment hands to the sink,
-        //bounding the total scan work by the source byte length. An aliased vector whose
-        //over-long coefficient is re-read across many terms exhausts the budget here
-        //rather than driving quadratic scan work through the canonical-scalar writer.
+        /// <summary>
+        /// Charges the coefficient/value bytes a term or assignment hands to the sink, bounding the
+        /// total scan work by the source byte length. An aliased vector whose over-long coefficient
+        /// is re-read across many terms exhausts the budget here rather than driving quadratic scan
+        /// work through the canonical-scalar writer.
+        /// </summary>
         public void SpendScan(int byteCount) => Spend(byteCount);
 
 
+        /// <summary>Deducts the given number of units and rejects the stream once the remaining budget goes negative.</summary>
         private void Spend(long units)
         {
             remaining -= units;

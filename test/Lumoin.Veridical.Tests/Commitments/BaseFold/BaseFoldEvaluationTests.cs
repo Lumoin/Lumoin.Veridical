@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold evaluation protocol (AB.4): the multilinear PCS
+/// Tests for the BaseFold evaluation protocol: the multilinear PCS
 /// open/verify that interleaves a sumcheck for <c>Σ_b f(b)·eq_z(b) = y</c> with
 /// the BaseFold IOPP. The round-trip tests confirm an honest opening verifies
 /// and that the prover's claimed value equals an independent MLE evaluation —
@@ -26,31 +26,56 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class BaseFoldEvaluationTests
 {
-    //Scalar field ops come from the environment-aware bundle (SIMD when the host
-    //supports it, BigInteger otherwise) — byte-identical to the reference, so this
-    //exercises the SIMD path end-to-end through BaseFold without changing results.
+    /// <summary>The BLS12-381 scalar field addition delegate, from the environment-aware bundle (SIMD when the host supports it, BigInteger otherwise) — byte-identical to the reference, so this exercises the SIMD path end-to-end through BaseFold without changing results.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar field subtraction delegate, from the same environment-aware bundle as <see cref="Add"/>.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar field multiplication delegate, from the same environment-aware bundle as <see cref="Add"/>.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar field inversion delegate, from the same environment-aware bundle as <see cref="Add"/>.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BLS12-381 scalar reduction delegate (wide bytes to a canonical scalar), from the BigInteger reference.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 hash-to-scalar delegate deriving the foldable code's basis, from the BigInteger reference.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The independent BigInteger-reference multilinear-extension evaluator, used to cross-check the prover's claimed value.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF (squeeze) backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The Merkle two-to-one compression this test's trees use, <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
+    /// <summary>The width in bytes of one BLS12-381 scalar in its canonical representation.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The Merkle tree's node/digest width in bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    //A modest query count keeps the round-trip and tamper tests fast; protocol
-    //correctness does not depend on the soundness-driven repetition count.
+    /// <summary>The IOPP query-repetition count these tests use: a modest count keeps the round-trip and tamper tests fast, since protocol correctness does not depend on the soundness-driven repetition count.</summary>
     private const int TestQueryCount = 12;
+
+    /// <summary>The number of random samples <see cref="RandomHonestEvaluationsAlwaysVerify"/> draws.</summary>
     private const int IterationCount = 12;
 
+    /// <summary>The curve every gate in this file runs over: BLS12-381.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies, for variable counts one through five, that the prover's claimed value equals an independent MLE evaluation at the same point, and that the honest evaluation proof verifies.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -70,7 +95,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)
@@ -96,6 +121,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Verifies, over randomly generated variable counts, evaluation tables and points, that an honest evaluation proof always verifies.</summary>
     [TestMethod]
     public void RandomHonestEvaluationsAlwaysVerify()
     {
@@ -118,7 +144,7 @@ internal sealed class BaseFoldEvaluationTests
                 {
                     using FiatShamirTranscript proverTx = NewTranscript();
                     (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                        code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                        code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
                     using(proof)
                     using(claimedValue)
@@ -137,6 +163,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Verifies that perturbing the honestly proved claimed value by one, before verification, is rejected.</summary>
     [TestMethod]
     public void WrongClaimedValueIsRejected()
     {
@@ -152,7 +179,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)
@@ -175,6 +202,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Verifies that flipping one byte of the first proof-carried fold-layer root is rejected.</summary>
     [TestMethod]
     public void TamperedFoldRootIsRejected()
     {
@@ -190,7 +218,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)
@@ -212,6 +240,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Verifies that verifying a proof against a different evaluation point than the one the prover opened at is rejected.</summary>
     [TestMethod]
     public void WrongEvaluationPointIsRejected()
     {
@@ -228,7 +257,7 @@ internal sealed class BaseFoldEvaluationTests
         {
             using FiatShamirTranscript proverTx = NewTranscript();
             (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code, mle, point, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                code, mle, point, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
             using(proof)
             using(claimedValue)
@@ -249,9 +278,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
-    //Computes the public commitment the verifier needs: the Merkle root of
-    //Enc_d(coeffs), where coeffs is the interpolation of the MLE. Mirrors what
-    //the commit operation produces.
+    /// <summary>Computes the public commitment the verifier needs: the Merkle root of <c>Enc_d(coeffs)</c>, where <c>coeffs</c> is the interpolation of the MLE. Mirrors what the commit operation produces.</summary>
     private static MerkleRoot ComputeCommitment(FoldableCode code, MultilinearExtension mle, BaseMemoryPool pool)
     {
         FoldableCodeParameters parameters = code.Parameters;
@@ -266,11 +293,12 @@ internal sealed class BaseFoldEvaluationTests
         Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
         code.Encode(coeffs, codeword, Add, Subtract, Multiply, pool);
 
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, new MerkleCommitmentParameters(Merkle, ScalarSize), pool);
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random multilinear extension of <paramref name="variableCount"/> variables, varied by <paramref name="salt"/> so distinct call sites get distinct evaluation tables.</summary>
     private static MultilinearExtension BuildRandomMle(int variableCount, int salt, BaseMemoryPool pool)
     {
         int evaluationCount = 1 << variableCount;
@@ -289,6 +317,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Builds a multilinear extension of <paramref name="variableCount"/> variables by reducing each generated evaluation-table slice of <paramref name="evalBytes"/> to a canonical scalar.</summary>
     private static MultilinearExtension MleFromBytes(byte[] evalBytes, int variableCount, BaseMemoryPool pool)
     {
         int evaluationCount = 1 << variableCount;
@@ -303,6 +332,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random evaluation point of <paramref name="variableCount"/> scalars, varied by <paramref name="salt"/> so distinct call sites get distinct points.</summary>
     private static Scalar[] BuildPoint(int variableCount, int salt, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -321,6 +351,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Builds an evaluation point of <paramref name="variableCount"/> scalars by reducing each generated slice of <paramref name="pointBytes"/> to a canonical scalar.</summary>
     private static Scalar[] PointFromBytes(byte[] pointBytes, int variableCount, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -335,6 +366,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Adds the field one to <paramref name="value"/>, returning a fresh <see cref="Scalar"/> distinct from any correct claimed value derived from a well-formed evaluation.</summary>
     private static Scalar AddOne(Scalar value, BaseMemoryPool pool)
     {
         Span<byte> one = stackalloc byte[ScalarSize];
@@ -348,6 +380,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Disposes every coordinate scalar of a point built by <see cref="BuildPoint"/> or <see cref="PointFromBytes"/>.</summary>
     private static void DisposePoint(Scalar[] point)
     {
         foreach(Scalar coordinate in point)
@@ -357,6 +390,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Creates a fresh transcript under this file's fixed domain label, seeded with no extra context bytes.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -368,6 +402,7 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
+    /// <summary>Computes the two-to-one BLAKE3 compression of <paramref name="left"/> concatenated with <paramref name="right"/> into <paramref name="output"/>, this file's Merkle node hash.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -377,5 +412,6 @@ internal sealed class BaseFoldEvaluationTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB4.Eval.Test"u8;
+    /// <summary>The fixed domain-separation seed the foldable code is derived from in every gate.</summary>
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.Eval.Test"u8;
 }

@@ -24,35 +24,34 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <para>
 /// This is a scalar reference implementation: correctness-first, no SIMD.
 /// It is selected only as the fallback when the OS XOF is unavailable (see
-/// <see cref="Rfc9380ExpandMessage.ExpandMessageXofShake256"/>); a future
-/// batch can add accelerated backends behind the same call site, exactly as
-/// the BLAKE3 backends are selected. Byte-identity with the OS XOF is gated
+/// <see cref="Rfc9380ExpandMessage.ExpandMessageXofShake256"/>); the same
+/// call site accommodates accelerated backends without a signature change,
+/// exactly as the BLAKE3 backends are selected. Byte-identity with the OS XOF is gated
 /// by an agreement test on hosts where both exist, and by the published
 /// IETF BBS SHAKE-256 vectors on hosts where only this path runs.
 /// </para>
 /// </remarks>
 public static class ManagedShake256
 {
-    //SHAKE-256 sponge rate r = 1600 - c, with capacity c = 512 bits.
-    //(1600 - 512) / 8 = 136 absorbed/squeezed bytes per permutation.
+    /// <summary>SHAKE-256's sponge rate <c>r = 1600 - c</c> with capacity <c>c = 512</c> bits, in bytes: <c>(1600 - 512) / 8 = 136</c> absorbed or squeezed bytes per permutation.</summary>
     private const int RateBytes = 136;
 
-    //The Keccak state is 1600 bits = 25 lanes of 64 bits.
+    /// <summary>The Keccak state width in 64-bit lanes: 1600 bits = 25 lanes.</summary>
     private const int LaneCount = 25;
 
-    //Lanes touched by one rate block (RateBytes / 8).
+    /// <summary>The number of 64-bit lanes touched by one rate block (<c>RateBytes / 8</c>).</summary>
     private const int RateLanes = RateBytes / 8;
 
-    //Number of Keccak-f permutation rounds for width 1600.
+    /// <summary>The number of Keccak-<c>f</c> permutation rounds for state width 1600.</summary>
     private const int RoundCount = 24;
 
-    //SHAKE domain-separation suffix (bits 1111) merged with the first
-    //pad10*1 bit, packed little-endian into a single byte: 0x1F.
+    /// <summary>The SHAKE domain-separation suffix (bits 1111) merged with the first <c>pad10*1</c> bit, packed little-endian into a single byte.</summary>
     private const byte DomainSuffix = 0x1F;
 
-    //Final pad10*1 bit set in the last byte of the rate block.
+    /// <summary>The final <c>pad10*1</c> bit, set in the last byte of the rate block.</summary>
     private const byte FinalPadBit = 0x80;
 
+    /// <summary>The 24 Keccak-<c>f</c>[1600] round constants (FIPS 202, the iota step).</summary>
     private static ulong[] RoundConstants { get; } =
     [
         0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL, 0x8000000080008000UL,
@@ -63,7 +62,7 @@ public static class ManagedShake256
         0x8000000080008081UL, 0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
     ];
 
-    //Rho rotation offsets indexed by lane i = x + 5*y (FIPS 202 Table 2).
+    /// <summary>The per-lane rotation offsets indexed by lane <c>i = x + 5y</c> (FIPS 202 Table 2, the rho step).</summary>
     private static ReadOnlySpan<byte> RhoOffsets =>
     [
         0, 1, 62, 28, 27,
@@ -124,7 +123,9 @@ public static class ManagedShake256
     }
 
 
-    //XORs one rate block (little-endian lanes) into the sponge state.
+    /// <summary>XORs one rate block (little-endian lanes) into the sponge state.</summary>
+    /// <param name="state">The sponge state to absorb into.</param>
+    /// <param name="block">The rate-sized block to absorb; must be <see cref="RateBytes"/> bytes.</param>
     private static void AbsorbBlock(Span<ulong> state, ReadOnlySpan<byte> block)
     {
         for(int lane = 0; lane < RateLanes; lane++)
@@ -134,7 +135,9 @@ public static class ManagedShake256
     }
 
 
-    //Serialises the rate portion of the state to little-endian bytes.
+    /// <summary>Serializes the rate portion of the state to little-endian bytes.</summary>
+    /// <param name="state">The sponge state to read from.</param>
+    /// <param name="rateBytes">Receives the rate-sized little-endian bytes; must be <see cref="RateBytes"/> bytes.</param>
     private static void ExtractRate(ReadOnlySpan<ulong> state, Span<byte> rateBytes)
     {
         for(int lane = 0; lane < RateLanes; lane++)
@@ -144,7 +147,8 @@ public static class ManagedShake256
     }
 
 
-    //One Keccak-f[1600] permutation: theta, rho+pi, chi, iota per round.
+    /// <summary>Applies one Keccak-<c>f</c>[1600] permutation: theta, rho+pi, chi, and iota, once per round.</summary>
+    /// <param name="a">The state to permute in place.</param>
     private static void KeccakF(Span<ulong> a)
     {
         ReadOnlySpan<byte> rho = RhoOffsets;

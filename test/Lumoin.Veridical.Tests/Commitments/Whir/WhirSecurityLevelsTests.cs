@@ -6,8 +6,8 @@ using System;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR entries of <see cref="WellKnownSecurityLevels"/>
-/// (4.2 phase B): the realised round-by-round figure of the full-λ shape and
+/// Tests for the WHIR entries of <see cref="WellKnownSecurityLevels"/>: the
+/// realised round-by-round figure of the full-λ shape and
 /// the loud clamp guard — a shape that cannot reach the target must throw up
 /// front rather than silently degrade.
 /// </summary>
@@ -31,6 +31,7 @@ internal sealed class WhirSecurityLevelsTests
     private const int UnderTargetVariableCount = 8;
 
 
+    /// <summary>Verifies that the full-λ shape's realised proximity-soundness figure reaches the classical 128-bit target, and equals the parameter schedule's minimum per-round figure.</summary>
     [TestMethod]
     public void FullShapeRealisesTheClassicalTarget()
     {
@@ -45,6 +46,7 @@ internal sealed class WhirSecurityLevelsTests
     }
 
 
+    /// <summary>Verifies that a shape whose query counts cannot fit their folded query domains is refused with an <see cref="ArgumentException"/> rather than silently clamped.</summary>
     [TestMethod]
     public void UnderTargetShapeThrowsWithRealisedFigures()
     {
@@ -55,6 +57,7 @@ internal sealed class WhirSecurityLevelsTests
     }
 
 
+    /// <summary>Verifies that the full-λ shape, which reaches its target, passes the clamp guard without throwing.</summary>
     [TestMethod]
     public void FullShapeGuardPasses()
     {

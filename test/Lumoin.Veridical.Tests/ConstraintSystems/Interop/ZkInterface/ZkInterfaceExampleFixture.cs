@@ -4,13 +4,21 @@ using System.IO;
 namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 
 /// <summary>
-/// Loads the vendored upstream <c>example.zkif</c> sample. Provenance,
-/// contents, and the SHA-256 are recorded in
-/// <c>ConstraintSystems/Interop/ZkInterface/Fixtures/FIXTURES.md</c>.
+/// Loads the vendored <c>example.zkif</c> sample; see
+/// <c>ConstraintSystems/Interop/ZkInterface/Fixtures/FIXTURES.md</c> for its licence and contents.
 /// </summary>
 internal static class ZkInterfaceExampleFixture
 {
+    /// <summary>
+    /// The repository-relative directory holding the vendored ZkInterface
+    /// fixture files.
+    /// </summary>
     private const string FixtureDirectoryRelative = "ConstraintSystems/Interop/ZkInterface/Fixtures";
+
+    /// <summary>
+    /// The vendored example file's name within
+    /// <see cref="FixtureDirectoryRelative"/>.
+    /// </summary>
     private const string ExampleFileName = "example.zkif";
 
 
@@ -29,7 +37,7 @@ internal static class ZkInterfaceExampleFixture
         if(!File.Exists(path))
         {
             Assert.Inconclusive(
-                $"Fixture file not found: {path}. It is vendored from QED-it/zkinterface; see Fixtures/FIXTURES.md.");
+                $"Fixture file not found: {path}. See Fixtures/FIXTURES.md.");
         }
 
         return File.ReadAllBytes(path);

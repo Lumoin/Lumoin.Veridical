@@ -9,8 +9,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 
 /// <summary>
 /// The statistical-ZK sumcheck mask (Libra, IACR ePrint 2019/317 §4.1; lineage
-/// CFS, ePrint 2017/305; the statistical-mask design notes, §2 v2):
-/// uniformly random coefficients over an explicit public
+/// CFS, ePrint 2017/305): uniformly random coefficients over an explicit public
 /// <see cref="MonomialBasis"/> of per-variable degree at most two, blended into
 /// a degree-2 sumcheck as <c>h_k + ρ·s_k</c> so every revealed round
 /// coefficient — including the degree-two one a multilinear mask leaves bare —
@@ -28,7 +27,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 /// The terminal value <c>s(r) = Σ_e c_e·m_e(r)</c> is the inner product of the
 /// coefficient vector with the public weights <c>m_e(r)</c>
 /// (<see cref="BuildWeightVector"/>), which is how the construction binds it: a
-/// weighted opening of the committed coefficients (SM.1).
+/// weighted opening of the committed coefficients.
 /// </para>
 /// <para>
 /// The coefficients are secret mask randomness — revealing them retroactively
@@ -39,10 +38,11 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 [DebuggerDisplay("MonomialBasisMask (VariableCount = {VariableCount}, CoefficientCount = {CoefficientCount})")]
 public sealed class MonomialBasisMask: SensitiveMemory
 {
+    /// <summary>The byte width of one scalar in this mask's coefficient buffer, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
-    /// <summary>The public monomial basis the coefficients live on.</summary>
+    /// <summary>The borrowed public monomial basis; it must remain alive until this mask is disposed.</summary>
     public MonomialBasis Basis { get; }
 
     /// <summary>The masked sumcheck's variable count <c>d</c>.</summary>
@@ -55,6 +55,7 @@ public sealed class MonomialBasisMask: SensitiveMemory
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>Wraps an already-sampled coefficient buffer with its basis and curve; only <see cref="Sample"/> constructs a mask.</summary>
     private MonomialBasisMask(IMemoryOwner<byte> owner, MonomialBasis basis, CurveParameterSet curve, Tag tag)
         : base(owner, tag)
     {
@@ -69,7 +70,7 @@ public sealed class MonomialBasisMask: SensitiveMemory
     /// <c>ρ</c> is squeezed — the commitment to these coefficients must enter
     /// the transcript first or the blend's soundness argument fails.
     /// </summary>
-    /// <param name="basis">The public monomial basis.</param>
+    /// <param name="basis">The borrowed public monomial basis; the caller must keep it alive until the returned mask is disposed.</param>
     /// <param name="random">The entropy-sourced scalar sampler.</param>
     /// <param name="curve">The curve identifying the scalar field.</param>
     /// <param name="pool">The pool to rent the coefficient buffer from.</param>
@@ -229,6 +230,7 @@ public sealed class MonomialBasisMask: SensitiveMemory
     }
 
 
+    /// <summary>Shared implementation behind both <see cref="AddRoundBlend(int, ReadOnlySpan{Scalar}, ReadOnlySpan{byte}, Span{byte}, Span{byte}, ScalarAddDelegate, ScalarMultiplyDelegate)"/> overloads; <paramref name="c3"/> is empty for the quadratic-only caller and one scalar wide for the degree-3 caller.</summary>
     private void AddRoundBlendCore(
         int boundVariable,
         ReadOnlySpan<Scalar> challengesForVariable,
@@ -460,13 +462,20 @@ public sealed class MonomialBasisMask: SensitiveMemory
     }
 
 
-    //m_e(r) = Π_j r_j^{e_j} into result (one scalar wide).
-    //
-    //Batch seam marker (perf batch): within one monomial the multiplies chain
-    //(data-dependent), but across monomials — BuildWeightVector's per-index
-    //calls and EvaluateAt's terms — they are independent, exactly the
-    //ScalarArithmeticBackend.BatchMultiply shape (the AD.7b lane-interleaved
-    //kernel); not pre-designed here per the substrate rule.
+    /// <summary>
+    /// Evaluates one monomial <c>m_e(r) = Π_j r_j^{e_j}</c> at <paramref name="point"/>
+    /// into <paramref name="result"/> (one scalar wide). Within a monomial the
+    /// multiplies chain, each depending on the last, but across monomials — the
+    /// per-index calls <see cref="BuildWeightVector"/> makes and the terms
+    /// <see cref="EvaluateAt"/> sums — they are independent, matching the shape
+    /// <see cref="ScalarArithmeticBackend.BatchMultiply"/> targets; that batching is
+    /// left to those callers, which already hold the backend the curve travels with.
+    /// </summary>
+    /// <param name="exponents">The monomial's per-variable exponents.</param>
+    /// <param name="point">The evaluation point, one scalar per variable.</param>
+    /// <param name="result">Receives the monomial's value at <paramref name="point"/>.</param>
+    /// <param name="multiply">The scalar multiplication delegate.</param>
+    /// <param name="curve">The curve identifying the scalar field.</param>
     private static void EvaluateMonomial(
         ReadOnlySpan<byte> exponents,
         ReadOnlySpan<Scalar> point,
@@ -489,9 +498,15 @@ public sealed class MonomialBasisMask: SensitiveMemory
     }
 
 
-    //Fills and returns a table of 2^0 … 2^d as canonical scalars by repeated
-    //field doubling — the wired curves' scalar fields are odd-prime, so the
-    //powers stay nonzero.
+    /// <summary>
+    /// Fills <paramref name="table"/> with the powers <c>2^0 … 2^d</c> as canonical
+    /// scalars by repeated field doubling; the wired curves' scalar fields are
+    /// odd-prime, so the powers stay nonzero.
+    /// </summary>
+    /// <param name="d">The highest power to fill; <paramref name="table"/> must be exactly <c>d + 1</c> scalars wide.</param>
+    /// <param name="add">The scalar addition delegate.</param>
+    /// <param name="table">The buffer to fill.</param>
+    /// <returns><paramref name="table"/>, filled with the power sequence.</returns>
     private Span<byte> BuildTwoPowerTable(int d, ScalarAddDelegate add, Span<byte> table)
     {
         table.Clear();
@@ -507,6 +522,7 @@ public sealed class MonomialBasisMask: SensitiveMemory
     }
 
 
+    /// <summary>Throws an <see cref="ArgumentException"/> naming <paramref name="parameterName"/> unless <paramref name="length"/> is exactly one scalar wide.</summary>
     private static void ThrowIfNotScalarWide(int length, string parameterName)
     {
         if(length != ScalarSize)

@@ -27,18 +27,28 @@ namespace Lumoin.Veridical.Core.Lookup;
 /// <see cref="FromParts"/> is the deserialization funnel that enforces
 /// canonical scalar encodings on the sumcheck and evaluation bytes. A
 /// fixed-layout single-buffer carrier per commitment scheme (the
-/// <c>LigeroSpartanProof</c> precedent) is deliberately deferred until a
+/// <c>CommitmentSpartanProof</c> precedent) is deliberately deferred until a
 /// consumer surface needs wire bytes.
 /// </para>
 /// </remarks>
 public sealed class LogUpProof: IDisposable
 {
-    private readonly PolynomialCommitment[] witnessCommitments;
-    private readonly PolynomialOpening[] witnessOpenings;
-    private readonly IMemoryOwner<byte> roundEvaluations;
-    private readonly IMemoryOwner<byte> claimedEvaluations;
+    /// <summary>The owned witness-column commitments backing <see cref="WitnessCommitments"/>.</summary>
+    private PolynomialCommitment[] WitnessCommitmentsArray { get; }
+
+    /// <summary>The owned witness-column openings backing <see cref="WitnessOpenings"/>.</summary>
+    private PolynomialOpening[] WitnessOpeningsArray { get; }
+
+    /// <summary>The pool-rented buffer backing <see cref="GetRoundEvaluationBytes"/>.</summary>
+    private IMemoryOwner<byte> RoundEvaluations { get; }
+
+    /// <summary>The pool-rented buffer backing <see cref="GetClaimedEvaluationBytes"/>.</summary>
+    private IMemoryOwner<byte> ClaimedEvaluations { get; }
+
+    /// <summary>Whether <see cref="Dispose"/> has already run, so repeated calls and post-dispose accessor calls are safe or refused respectively.</summary>
     private bool disposed;
 
+    /// <summary>The in-memory canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -52,7 +62,7 @@ public sealed class LogUpProof: IDisposable
     public CurveParameterSet Curve { get; }
 
     /// <summary>The witness-column commitments, in column order.</summary>
-    public IReadOnlyList<PolynomialCommitment> WitnessCommitments => witnessCommitments;
+    public IReadOnlyList<PolynomialCommitment> WitnessCommitments => WitnessCommitmentsArray;
 
     /// <summary>The multiplicity-column commitment.</summary>
     public PolynomialCommitment MultiplicityCommitment { get; }
@@ -61,7 +71,7 @@ public sealed class LogUpProof: IDisposable
     public PolynomialCommitment HelperCommitment { get; }
 
     /// <summary>The witness-column openings at the sumcheck point, in column order.</summary>
-    public IReadOnlyList<PolynomialOpening> WitnessOpenings => witnessOpenings;
+    public IReadOnlyList<PolynomialOpening> WitnessOpenings => WitnessOpeningsArray;
 
     /// <summary>The multiplicity-column opening at the sumcheck point.</summary>
     public PolynomialOpening MultiplicityOpening { get; }
@@ -70,6 +80,18 @@ public sealed class LogUpProof: IDisposable
     public PolynomialOpening HelperOpening { get; }
 
 
+    /// <summary>Wraps already-validated, already-owned parts into a proof; ownership of every reference argument transfers to this instance.</summary>
+    /// <param name="variableCount">The hypercube variable count.</param>
+    /// <param name="witnessColumnCount">The witness-column count.</param>
+    /// <param name="curve">The curve whose scalar field the argument runs over.</param>
+    /// <param name="witnessCommitments">The witness-column commitments, in column order.</param>
+    /// <param name="multiplicityCommitment">The multiplicity-column commitment.</param>
+    /// <param name="helperCommitment">The helper-column commitment.</param>
+    /// <param name="roundEvaluations">The pool-owned sumcheck round-message buffer.</param>
+    /// <param name="claimedEvaluations">The pool-owned claimed-evaluations buffer.</param>
+    /// <param name="witnessOpenings">The witness-column openings, in column order.</param>
+    /// <param name="multiplicityOpening">The multiplicity-column opening.</param>
+    /// <param name="helperOpening">The helper-column opening.</param>
     internal LogUpProof(
         int variableCount,
         int witnessColumnCount,
@@ -86,12 +108,12 @@ public sealed class LogUpProof: IDisposable
         VariableCount = variableCount;
         WitnessColumnCount = witnessColumnCount;
         Curve = curve;
-        this.witnessCommitments = witnessCommitments;
+        this.WitnessCommitmentsArray = witnessCommitments;
         MultiplicityCommitment = multiplicityCommitment;
         HelperCommitment = helperCommitment;
-        this.roundEvaluations = roundEvaluations;
-        this.claimedEvaluations = claimedEvaluations;
-        this.witnessOpenings = witnessOpenings;
+        this.RoundEvaluations = roundEvaluations;
+        this.ClaimedEvaluations = claimedEvaluations;
+        this.WitnessOpeningsArray = witnessOpenings;
         MultiplicityOpening = multiplicityOpening;
         HelperOpening = helperOpening;
     }
@@ -105,7 +127,7 @@ public sealed class LogUpProof: IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
 
-        return roundEvaluations.Memory.Span[..(VariableCount * LogUpSumcheck.RoundEvaluationCount(WitnessColumnCount) * ScalarSize)];
+        return RoundEvaluations.Memory.Span[..(VariableCount * LogUpSumcheck.RoundEvaluationCount(WitnessColumnCount) * ScalarSize)];
     }
 
 
@@ -117,7 +139,7 @@ public sealed class LogUpProof: IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
 
-        return claimedEvaluations.Memory.Span[..((WitnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * ScalarSize)];
+        return ClaimedEvaluations.Memory.Span[..((WitnessColumnCount + LogUpSumcheck.AuxiliaryColumnCount) * ScalarSize)];
     }
 
 
@@ -275,11 +297,11 @@ public sealed class LogUpProof: IDisposable
         }
 
         disposed = true;
-        foreach(PolynomialCommitment commitment in witnessCommitments)
+        foreach(PolynomialCommitment commitment in WitnessCommitmentsArray)
         {
             commitment.Dispose();
         }
-        foreach(PolynomialOpening opening in witnessOpenings)
+        foreach(PolynomialOpening opening in WitnessOpeningsArray)
         {
             opening.Dispose();
         }
@@ -287,11 +309,16 @@ public sealed class LogUpProof: IDisposable
         HelperCommitment.Dispose();
         MultiplicityOpening.Dispose();
         HelperOpening.Dispose();
-        roundEvaluations.Dispose();
-        claimedEvaluations.Dispose();
+        RoundEvaluations.Dispose();
+        ClaimedEvaluations.Dispose();
     }
 
 
+    /// <summary>Throws unless every scalar-width chunk of a byte span encodes a canonical scalar under the curve's field order; round messages and claimed evaluations are absorbed into the transcript verbatim, so a non-canonical encoding would let one accepted proof exist as two byte-distinct transcripts.</summary>
+    /// <param name="scalars">The concatenated canonical scalars to check.</param>
+    /// <param name="curve">The curve whose scalar field order bounds each scalar.</param>
+    /// <param name="parameterName">The parameter name to report if a scalar is non-canonical.</param>
+    /// <exception cref="ArgumentException">When a scalar is at or above the curve's scalar field order.</exception>
     private static void ThrowIfNonCanonical(ReadOnlySpan<byte> scalars, CurveParameterSet curve, string parameterName)
     {
         for(int offset = 0; offset < scalars.Length; offset += ScalarSize)

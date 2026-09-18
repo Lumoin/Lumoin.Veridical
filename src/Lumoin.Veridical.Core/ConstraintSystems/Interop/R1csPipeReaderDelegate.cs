@@ -34,6 +34,16 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop;
 /// or the GC heap; the final
 /// <see cref="RawR1csInstance"/> rents from <paramref name="pool"/>.
 /// </param>
+/// <param name="maximumIntakeBytes">
+/// The largest number of bytes the reader admits from
+/// <paramref name="pipe"/> before rejecting the input with
+/// <see cref="R1csIntakeLimitExceededException"/>. The reader checks
+/// this ceiling as bytes accumulate, so an oversized stream is
+/// rejected before the rest of it is read into memory.
+/// <see cref="WellKnownR1csIntakeLimits.Unbounded"/> imposes no
+/// ceiling beyond the runtime's own addressable limit; a caller
+/// parsing untrusted input states a real budget instead.
+/// </param>
 /// <param name="cancellationToken">
 /// Cancellation for the read loop. Long-running reads of large
 /// circuit files honour cancellation between sections.
@@ -48,4 +58,5 @@ public delegate RawR1csInstance R1csPipeReaderDelegate(
     WellKnownR1csFormatLabel format,
     CurveParameterSet curve,
     BaseMemoryPool pool,
+    long maximumIntakeBytes,
     CancellationToken cancellationToken);

@@ -11,34 +11,57 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.ZkInterface;
 /// the vendored upstream <c>example.zkif</c>. The sample's contents are
 /// fixed and independently described by the upstream <c>example.json</c>
 /// (see <c>Fixtures/FIXTURES.md</c>), so these assertions pin the cursor's
-/// vtable walk, offset following, and scalar/vector/sub-table reads to a
-/// reference producer's bytes. A single LE/offset/vtable mistake surfaces
-/// here as a wrong value rather than as a downstream satisfaction failure.
+/// vtable walk, offset following, and scalar/vector/sub-table reads to
+/// bytes this repository did not itself encode. A single LE/offset/vtable
+/// mistake surfaces here as a wrong value rather than as a downstream
+/// satisfaction failure.
 /// </summary>
+/// <remarks>
+/// The slot constants below name each field's zero-based position in its
+/// declaring table's field list, per the <c>zkinterface.fbs</c> schema; a
+/// FlatBuffers vtable indexes a field by this slot, never by name.
+/// </remarks>
 [TestClass]
 internal sealed class FlatBufferCursorTests
 {
-    //Schema-declaration slot order (zkinterface.fbs). A FlatBuffers field's
-    //vtable slot is its zero-based position in its table's field list.
-    private const int RootMessageValueSlot = 1;            //Root.message (union value table)
+    /// <summary>The vtable slot of <c>Root.message</c>, the union value table.</summary>
+    private const int RootMessageValueSlot = 1;
 
-    private const int HeaderInstanceVariablesSlot = 0;     //CircuitHeader.instance_variables
-    private const int HeaderFreeVariableIdSlot = 1;        //CircuitHeader.free_variable_id
-    private const int HeaderFieldMaximumSlot = 2;          //CircuitHeader.field_maximum
+    /// <summary>The vtable slot of <c>CircuitHeader.instance_variables</c>.</summary>
+    private const int HeaderInstanceVariablesSlot = 0;
 
-    private const int VariablesIdsSlot = 0;                //Variables.variable_ids
-    private const int VariablesValuesSlot = 1;             //Variables.values
+    /// <summary>The vtable slot of <c>CircuitHeader.free_variable_id</c>.</summary>
+    private const int HeaderFreeVariableIdSlot = 1;
 
-    private const int ConstraintSystemConstraintsSlot = 0; //ConstraintSystem.constraints
-    private const int ConstraintLcASlot = 0;               //BilinearConstraint.linear_combination_a
-    private const int ConstraintLcBSlot = 1;               //BilinearConstraint.linear_combination_b
-    private const int ConstraintLcCSlot = 2;               //BilinearConstraint.linear_combination_c
+    /// <summary>The vtable slot of <c>CircuitHeader.field_maximum</c>.</summary>
+    private const int HeaderFieldMaximumSlot = 2;
 
-    private const int WitnessAssignedVariablesSlot = 0;    //Witness.assigned_variables
+    /// <summary>The vtable slot of <c>Variables.variable_ids</c>.</summary>
+    private const int VariablesIdsSlot = 0;
 
-    private const int ToyElementSizeBytes = 4;             //example.zkif uses 4-byte little-endian field elements
+    /// <summary>The vtable slot of <c>Variables.values</c>.</summary>
+    private const int VariablesValuesSlot = 1;
+
+    /// <summary>The vtable slot of <c>ConstraintSystem.constraints</c>.</summary>
+    private const int ConstraintSystemConstraintsSlot = 0;
+
+    /// <summary>The vtable slot of <c>BilinearConstraint.linear_combination_a</c>.</summary>
+    private const int ConstraintLcASlot = 0;
+
+    /// <summary>The vtable slot of <c>BilinearConstraint.linear_combination_b</c>.</summary>
+    private const int ConstraintLcBSlot = 1;
+
+    /// <summary>The vtable slot of <c>BilinearConstraint.linear_combination_c</c>.</summary>
+    private const int ConstraintLcCSlot = 2;
+
+    /// <summary>The vtable slot of <c>Witness.assigned_variables</c>.</summary>
+    private const int WitnessAssignedVariablesSlot = 0;
+
+    /// <summary>The width, in bytes, of each little-endian field element <c>example.zkif</c> stores.</summary>
+    private const int ToyElementSizeBytes = 4;
 
 
+    /// <summary>Decodes and asserts the <c>CircuitHeader.instance_variables</c> sub-table against the vendored sample's known contents.</summary>
     [TestMethod]
     public void CircuitHeaderInstanceVariablesDecode()
     {
@@ -64,6 +87,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Decodes and asserts the <c>ConstraintSystem.constraints</c> vector, including a third constraint whose B combination spans two variables.</summary>
     [TestMethod]
     public void ConstraintSystemConstraintsDecode()
     {
@@ -87,6 +111,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Decodes and asserts the <c>Witness.assigned_variables</c> sub-table against the vendored sample's known contents.</summary>
     [TestMethod]
     public void WitnessAssignedVariablesDecode()
     {
@@ -101,6 +126,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Asserts that a constraint's three linear combinations each hold exactly the one expected variable id.</summary>
     private static void AssertConstraint(FlatBufferTable constraint, ulong expectedA, ulong expectedB, ulong expectedC)
     {
         AssertLinearCombination(constraint, ConstraintLcASlot, [expectedA]);
@@ -109,6 +135,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Asserts that the linear combination in the given slot holds the expected variable ids, each with the field element 1 as its coefficient.</summary>
     private static void AssertLinearCombination(FlatBufferTable constraint, int slot, ulong[] expectedIds)
     {
         Assert.IsTrue(constraint.TryGetSubTable(slot, out FlatBufferTable combination), $"linear combination in slot {slot} present");
@@ -124,6 +151,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Reads every element of a <c>Variables</c>-shaped table's <c>variable_ids</c> vector.</summary>
     private static ulong[] VariableIds(FlatBufferTable variables)
     {
         Assert.IsTrue(variables.TryGetVector(VariablesIdsSlot, out FlatBufferVector ids), "variable_ids present");
@@ -137,6 +165,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Reads a <c>Variables</c>-shaped table's <c>values</c> byte vector, widening each little-endian element to a <see cref="uint"/>.</summary>
     private static uint[] ElementValues(FlatBufferTable variables, int expectedCount)
     {
         Assert.IsTrue(variables.TryGetVector(VariablesValuesSlot, out FlatBufferVector values), "values present");
@@ -165,6 +194,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Resolves a message span's root table and returns the sub-table held by its <c>Root.message</c> union value.</summary>
     private static FlatBufferTable UnionValueTable(byte[] file, ZkInterfaceMessageSpan span)
     {
         ReadOnlySpan<byte> messageBuffer = file.AsSpan(span.BufferStart, span.BufferLength);
@@ -174,6 +204,7 @@ internal sealed class FlatBufferCursorTests
     }
 
 
+    /// <summary>Locates the single message of the given type in the file, failing if none or more than one is present.</summary>
     private static ZkInterfaceMessageSpan SingleMessageOfType(byte[] file, ZkInterfaceMessageType type)
     {
         IReadOnlyList<ZkInterfaceMessageSpan> messages = ZkInterfaceCursorDecoder.LocateMessages(file);

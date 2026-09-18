@@ -257,6 +257,8 @@ internal static class TwoVectorInnerProductArgument
     }
 
 
+    /// <summary>The unguarded core of <see cref="Verify"/>: runs the fold rounds and the final algebraic check, letting a malformed input's exception propagate to the caller's catch.</summary>
+    /// <returns><see langword="true"/> iff the final algebraic check holds.</returns>
     private static bool VerifyCore(
         ReadOnlySpan<byte> pCommitment,
         ReadOnlySpan<byte> claimedInnerProductBytes,
@@ -372,6 +374,8 @@ internal static class TwoVectorInnerProductArgument
     }
 
 
+    /// <summary>Validates that every <see cref="Prove"/> buffer is exactly the length its role requires.</summary>
+    /// <exception cref="ArgumentException">When a buffer's length does not match its required size.</exception>
     private static void ValidateProveShape(
         ReadOnlySpan<byte> a,
         ReadOnlySpan<byte> b,
@@ -465,7 +469,7 @@ internal static class TwoVectorInnerProductArgument
     /// <summary>Folds a scalar vector with <c>v' = leftFactor · v_L + rightFactor · v_R</c>, written into the left half in place.</summary>
     private static void FoldScalarVector(
         Span<byte> left,
-        Span<byte> right,
+        ReadOnlySpan<byte> right,
         ReadOnlySpan<byte> leftFactor,
         ReadOnlySpan<byte> rightFactor,
         int sliceCount,
@@ -494,7 +498,7 @@ internal static class TwoVectorInnerProductArgument
     /// <summary>Folds a generator vector with <c>P' = leftFactor · P_L + rightFactor · P_R</c>, written into the left half in place.</summary>
     private static void FoldGeneratorVector(
         Span<byte> left,
-        Span<byte> right,
+        ReadOnlySpan<byte> right,
         ReadOnlySpan<byte> leftFactor,
         ReadOnlySpan<byte> rightFactor,
         int sliceCount,

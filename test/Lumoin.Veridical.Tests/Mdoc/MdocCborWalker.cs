@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// A byte-offset-tracking CBOR walker over a raw ISO 18013-5 DeviceResponse, a faithful port of the
 /// offset semantics of google/longfellow-zk's <c>CborDoc</c> (<c>lib/cbor/host_decoder.h</c>) that the
 /// reference witness filler (<c>ParsedMdoc</c> in <c>lib/circuits/mdoc/mdoc_witness.h</c>) relies on.
-/// Where <see cref="System.Formats.Cbor.CborReader"/> hides absolute offsets, this walker keeps the exact
+/// Where <see cref="Lumoin.Veritas.Cbor.CborReader"/> hides absolute offsets, this walker keeps the exact
 /// header byte position, content position and content length of every item, because the GF(2^128)
 /// hash-circuit witness column is built from those raw byte indices (the cbor-index region and the
 /// attribute shift/salted-hash witnesses are positions into the document).
@@ -19,24 +19,42 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// </remarks>
 internal sealed class MdocCborWalker
 {
+    /// <summary>The CBOR major type for an unsigned integer (RFC 8949 §3.1, major type 0).</summary>
     private const int MajorUnsigned = 0;
+
+    /// <summary>The CBOR major type for a negative integer (RFC 8949 §3.1, major type 1).</summary>
     private const int MajorNegative = 1;
+
+    /// <summary>The CBOR major type for a byte string (RFC 8949 §3.1, major type 2).</summary>
     private const int MajorByteString = 2;
+
+    /// <summary>The CBOR major type for a UTF-8 text string (RFC 8949 §3.1, major type 3).</summary>
     private const int MajorTextString = 3;
+
+    /// <summary>The CBOR major type for an array (RFC 8949 §3.1, major type 4).</summary>
     private const int MajorArray = 4;
+
+    /// <summary>The CBOR major type for a map (RFC 8949 §3.1, major type 5).</summary>
     private const int MajorMap = 5;
+
+    /// <summary>The CBOR major type for a tagged value (RFC 8949 §3.1, major type 6).</summary>
     private const int MajorTag = 6;
+
+    /// <summary>The CBOR major type for a primitive/simple/float value (RFC 8949 §3.1, major type 7).</summary>
     private const int MajorPrimitive = 7;
 
-    private readonly byte[] document;
+    /// <summary>The raw ISO 18013-5 DeviceResponse bytes this walker decodes offsets into.</summary>
+    private byte[] DocumentBytes { get; }
 
+    /// <summary>Wraps <paramref name="document"/> for offset-tracking decoding.</summary>
     public MdocCborWalker(byte[] document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        this.document = document;
+        this.DocumentBytes = document;
     }
 
-    public ReadOnlySpan<byte> Document => document;
+    /// <summary>The wrapped document bytes, as a read-only span.</summary>
+    public ReadOnlySpan<byte> Document => DocumentBytes;
 
 
     /// <summary>Decodes the item whose header begins at <paramref name="headerPos"/>.</summary>
@@ -60,10 +78,10 @@ internal sealed class MdocCborWalker
     public int SkipFrom(int headerPos) => Decode(headerPos).EndPos;
 
 
-    //Reads a definite-length head: returns the major type, the integer argument, and the offset after the head bytes.
+    /// <summary>Reads a definite-length CBOR head at <paramref name="p"/>: returns the major type, the integer argument, and the offset after the head bytes.</summary>
     private (int Major, ulong Argument, int AfterHeader) ReadHeader(int p)
     {
-        byte initial = document[p];
+        byte initial = DocumentBytes[p];
         int major = initial >> 5;
         int additional = initial & 0x1f;
         p++;
@@ -75,17 +93,17 @@ internal sealed class MdocCborWalker
         }
         else if(additional == 24)
         {
-            argument = document[p];
+            argument = DocumentBytes[p];
             p += 1;
         }
         else if(additional == 25)
         {
-            argument = (ulong)((document[p] << 8) | document[p + 1]);
+            argument = (ulong)((DocumentBytes[p] << 8) | DocumentBytes[p + 1]);
             p += 2;
         }
         else if(additional == 26)
         {
-            argument = ((ulong)document[p] << 24) | ((ulong)document[p + 1] << 16) | ((ulong)document[p + 2] << 8) | document[p + 3];
+            argument = ((ulong)DocumentBytes[p] << 24) | ((ulong)DocumentBytes[p + 1] << 16) | ((ulong)DocumentBytes[p + 2] << 8) | DocumentBytes[p + 3];
             p += 4;
         }
         else if(additional == 27)
@@ -93,7 +111,7 @@ internal sealed class MdocCborWalker
             argument = 0;
             for(int i = 0; i < 8; i++)
             {
-                argument = (argument << 8) | document[p + i];
+                argument = (argument << 8) | DocumentBytes[p + i];
             }
 
             p += 8;
@@ -107,6 +125,7 @@ internal sealed class MdocCborWalker
     }
 
 
+    /// <summary>Decodes a tag item at <paramref name="headerPos"/> whose head is already known, then decodes its tagged content item to compute the tag's end offset.</summary>
     private MdocCborItem DecodeTag(int headerPos, ulong tag, int afterHeader)
     {
         MdocCborItem inner = Decode(afterHeader);
@@ -115,6 +134,7 @@ internal sealed class MdocCborWalker
     }
 
 
+    /// <summary>Skips over an array's or map's contents (a map's pairs counted twice) starting at <paramref name="afterHeader"/>, returning the offset one past the last element.</summary>
     private int SkipContainerContents(int major, int count, int afterHeader)
     {
         int p = afterHeader;
@@ -134,17 +154,28 @@ internal sealed class MdocCborWalker
 /// </summary>
 internal readonly struct MdocCborItem
 {
+    /// <summary>The CBOR major type for a UTF-8 text string (RFC 8949 §3.1, major type 3).</summary>
     private const int MajorTextString = 3;
+
+    /// <summary>The CBOR major type for an array (RFC 8949 §3.1, major type 4).</summary>
     private const int MajorArray = 4;
+
+    /// <summary>The CBOR major type for a map (RFC 8949 §3.1, major type 5).</summary>
     private const int MajorMap = 5;
+
+    /// <summary>The CBOR major type for a tagged value (RFC 8949 §3.1, major type 6).</summary>
     private const int MajorTag = 6;
+
+    /// <summary>The CBOR major type for an unsigned integer (RFC 8949 §3.1, major type 0).</summary>
     private const int MajorUnsigned = 0;
 
-    private readonly MdocCborWalker walker;
+    /// <summary>The walker this item was decoded from, backing <see cref="TaggedValue"/>, <see cref="ArrayRef"/> and the map lookups.</summary>
+    private MdocCborWalker Walker { get; }
 
+    /// <summary>Wraps one decoded CBOR item's shape and byte offsets.</summary>
     public MdocCborItem(MdocCborWalker walker, int major, ulong argument, int headerPos, int contentPos, int length, int endPos)
     {
-        this.walker = walker;
+        this.Walker = walker;
         Major = major;
         Argument = argument;
         HeaderPos = headerPos;
@@ -185,7 +216,7 @@ internal readonly struct MdocCborItem
         }
 
         //The tag head occupies HeaderPos..Position; the tagged value's header starts at Position.
-        return walker.Decode(Position);
+        return Walker.Decode(Position);
     }
 
 
@@ -200,10 +231,10 @@ internal readonly struct MdocCborItem
         int p = Position;
         for(int i = 0; i < index; i++)
         {
-            p = walker.SkipFrom(p);
+            p = Walker.SkipFrom(p);
         }
 
-        return walker.Decode(p);
+        return Walker.Decode(p);
     }
 
 
@@ -217,20 +248,20 @@ internal readonly struct MdocCborItem
 
         int p = Position;
         int count = (int)Argument;
-        ReadOnlySpan<byte> document = walker.Document;
+        ReadOnlySpan<byte> document = Walker.Document;
         for(int i = 0; i < count; i++)
         {
-            MdocCborItem candidateKey = walker.Decode(p);
+            MdocCborItem candidateKey = Walker.Decode(p);
             int valuePos = candidateKey.EndPos;
             if(candidateKey.Major == MajorTextString && candidateKey.Length == key.Length && Matches(document.Slice(candidateKey.Position, candidateKey.Length), key))
             {
                 keyItem = candidateKey;
-                valueItem = walker.Decode(valuePos);
+                valueItem = Walker.Decode(valuePos);
 
                 return true;
             }
 
-            p = walker.SkipFrom(valuePos);
+            p = Walker.SkipFrom(valuePos);
         }
 
         keyItem = default;
@@ -252,17 +283,17 @@ internal readonly struct MdocCborItem
         int count = (int)Argument;
         for(int i = 0; i < count; i++)
         {
-            MdocCborItem candidateKey = walker.Decode(p);
+            MdocCborItem candidateKey = Walker.Decode(p);
             int valuePos = candidateKey.EndPos;
             if(candidateKey.Major == MajorUnsigned && candidateKey.Argument == key)
             {
                 keyItem = candidateKey;
-                valueItem = walker.Decode(valuePos);
+                valueItem = Walker.Decode(valuePos);
 
                 return true;
             }
 
-            p = walker.SkipFrom(valuePos);
+            p = Walker.SkipFrom(valuePos);
         }
 
         keyItem = default;
@@ -288,17 +319,17 @@ internal readonly struct MdocCborItem
         int count = (int)Argument;
         for(int i = 0; i < count; i++)
         {
-            MdocCborItem candidateKey = walker.Decode(p);
+            MdocCborItem candidateKey = Walker.Decode(p);
             int valuePos = candidateKey.EndPos;
             if(candidateKey.Major == 1 && candidateKey.Argument == encodedArgument)
             {
                 keyItem = candidateKey;
-                valueItem = walker.Decode(valuePos);
+                valueItem = Walker.Decode(valuePos);
 
                 return true;
             }
 
-            p = walker.SkipFrom(valuePos);
+            p = Walker.SkipFrom(valuePos);
         }
 
         keyItem = default;
@@ -308,6 +339,7 @@ internal readonly struct MdocCborItem
     }
 
 
+    /// <summary>Reports whether <paramref name="bytes"/> equals the ASCII encoding of <paramref name="ascii"/>, byte for byte.</summary>
     private static bool Matches(ReadOnlySpan<byte> bytes, string ascii)
     {
         for(int i = 0; i < ascii.Length; i++)

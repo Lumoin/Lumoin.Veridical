@@ -24,6 +24,7 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// </remarks>
 internal static class BaseFoldQueryPhase
 {
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -192,10 +193,16 @@ internal static class BaseFoldQueryPhase
     }
 
 
-    //Authenticates one fold-pair entry against its layer root. For a plain
-    //(non-hiding) step the leaf is the value verbatim; for a salted (hiding)
-    //step the leaf is hash(value ‖ salt), which is recomputed here from the
-    //revealed pair so the verifier never trusts a precomputed leaf digest.
+    /// <summary>
+    /// Authenticates one fold-pair entry against its layer root, recomputing
+    /// the leaf from the revealed material so the verifier never trusts a
+    /// precomputed leaf digest. A plain step's leaf is the value verbatim
+    /// exactly when the value is node-wide and the value's commitment
+    /// <c>hash(value ‖ ε)</c> otherwise; a salted step's leaf is
+    /// <c>hash(value ‖ salt)</c> at node width. The width predicate is the
+    /// one the prover's leaf commitment builds with, so the two sides cannot
+    /// disagree about which shape layer 0 holds.
+    /// </summary>
     private static bool AuthenticateLeaf(
         BaseFoldQueryStep step,
         MerkleAuthenticationPath path,
@@ -205,12 +212,30 @@ internal static class BaseFoldQueryPhase
         bool isFirst,
         MerkleHashDelegate merkleHash)
     {
-        if(!step.IsSalted)
+        int digestSize = layerRoot.AsReadOnlySpan().Length;
+
+        //A root wider than the Merkle surface's cap authenticates nothing the
+        //surface can walk; answering it as a non-match keeps the leaf
+        //recomputation's stack bound honest.
+        if(digestSize > WellKnownMerkleHashParameters.MaximumDigestSizeBytes)
         {
-            return path.Verify(layerRoot, leafIndex, value, merkleHash);
+            return false;
         }
 
-        int digestSize = layerRoot.AsReadOnlySpan().Length;
+        if(!step.IsSalted)
+        {
+            if(value.Length == digestSize)
+            {
+                return path.Verify(layerRoot, leafIndex, value, merkleHash);
+            }
+
+            Span<byte> plainLeaf = stackalloc byte[WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
+            plainLeaf = plainLeaf[..digestSize];
+            merkleHash(value, ReadOnlySpan<byte>.Empty, plainLeaf);
+
+            return path.Verify(layerRoot, leafIndex, plainLeaf, merkleHash);
+        }
+
         Span<byte> leaf = stackalloc byte[WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
         leaf = leaf[..digestSize];
         merkleHash(value, isFirst ? step.FirstSalt : step.SecondSalt, leaf);
@@ -219,6 +244,10 @@ internal static class BaseFoldQueryPhase
     }
 
 
+    /// <summary>Computes layer <paramref name="level"/>'s element count: <c>baseUnit · 2^level</c>.</summary>
+    /// <param name="baseUnit">The base layer's element count.</param>
+    /// <param name="level">The layer index, 0 at the base.</param>
+    /// <returns>The layer's element count.</returns>
     internal static int LayerLength(int baseUnit, int level)
     {
         return baseUnit << level;

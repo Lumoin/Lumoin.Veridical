@@ -8,7 +8,8 @@ namespace Lumoin.Veridical.Core.Algebraic;
 
 /// <summary>
 /// Extension members on <see cref="MultilinearExtension"/> that produce
-/// folded MLEs or scalar evaluations against BLS12-381 challenge points.
+/// folded MLEs or scalar evaluations against BLS12-381 or BN254 challenge
+/// points.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,21 +17,18 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <see cref="MultilinearExtension"/> type and the narrow
 /// <see cref="Scalar"/> type. The block is curve-broad: the receiver
 /// MLE's <see cref="MultilinearExtension.Curve"/> is threaded through the
-/// backend delegate and into the result's tag, and the buffers are sized
-/// by the receiver's <see cref="MultilinearExtension.FieldElementSizeBytes"/>.
-/// A guard rejects curves that are not yet wired (Bls12Curve381, Bn254).
-/// </para>
-/// <para>
-/// This replaced the original per-curve design (a planned parallel
-/// <c>MultilinearExtensionBn254ArithmeticExtensions</c>): when BN254 was
-/// wired (Batch U) the block was curve-broadened in place rather than
-/// duplicated, matching the delegate-per-backend composability model
-/// where the curve rides on the operand and delegate, not the call site.
+/// backend delegate and into the result's tag, the buffers are sized by
+/// the receiver's <see cref="MultilinearExtension.FieldElementSizeBytes"/>,
+/// and a guard accepts only BLS12-381 and BN254, rejecting every other
+/// curve; adding a curve extends that accepted set, because the curve
+/// travels with the operand and the arithmetic delegates rather than
+/// being fixed at the call site.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class MultilinearExtensionArithmeticExtensions
 {
+    /// <summary>Folding and evaluation members added to every <see cref="MultilinearExtension"/> instance.</summary>
     extension(MultilinearExtension mle)
     {
         /// <summary>
@@ -44,7 +42,7 @@ public static class MultilinearExtensionArithmeticExtensions
         /// <param name="pool">The pool to rent the destination buffer from.</param>
         /// <returns>A new MLE with <see cref="MultilinearExtension.VariableCount"/> equal to <c>this.VariableCount - 1</c>.</returns>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the receiver's <see cref="MultilinearExtension.Curve"/> is not BLS12-381 or has zero variables.</exception>
+        /// <exception cref="ArgumentException">When the receiver's <see cref="MultilinearExtension.Curve"/> is neither BLS12-381 nor BN254, or the receiver has zero variables.</exception>
         public MultilinearExtension Fold(
             Scalar challenge,
             MleFoldDelegate fold,
@@ -95,7 +93,7 @@ public static class MultilinearExtensionArithmeticExtensions
         /// <param name="pool">The pool to rent the destination buffer from.</param>
         /// <returns>A scalar wrapping the evaluation result.</returns>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the receiver's <see cref="MultilinearExtension.Curve"/> is not BLS12-381, or when <paramref name="point"/>'s length does not match <see cref="MultilinearExtension.VariableCount"/>.</exception>
+        /// <exception cref="ArgumentException">When the receiver's <see cref="MultilinearExtension.Curve"/> is neither BLS12-381 nor BN254, or when <paramref name="point"/>'s length does not match <see cref="MultilinearExtension.VariableCount"/>.</exception>
         public Scalar Evaluate(
             ReadOnlySpan<Scalar> point,
             MleEvaluateDelegate evaluate,

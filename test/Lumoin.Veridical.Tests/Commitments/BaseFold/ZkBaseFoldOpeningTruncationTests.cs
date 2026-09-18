@@ -24,29 +24,56 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class ZkBaseFoldOpeningTruncationTests
 {
+    /// <summary>The BLS12-381 scalar-field addition delegate under test.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar-field subtraction delegate under test.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar-field multiplication delegate under test.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar-field inversion delegate under test.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BLS12-381 scalar-field reduction delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 hash-to-scalar delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The BLS12-381 scalar-field random-sampling delegate from the BigInteger-backed reference implementation, drawing the zero-knowledge mask's blinding.</summary>
     private static ScalarRandomDelegate Random { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir hash delegate driving both the prover's and verifier's transcripts.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir squeeze delegate drawing challenges from the transcript.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The Merkle two-to-one compression delegate, backed by <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The byte width of one BLS12-381 scalar in this test's canonical scratch buffers.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The default Merkle digest width these gates hash at.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The BaseFold query count these truncation gates commit and open at.</summary>
     private const int TestQueryCount = 12;
 
-    //The minimal budget-meeting lift for a one-variable witness at
-    //TestQueryCount = 12 (GetMinimumExtraVariableCount).
+    /// <summary>The real (unlifted) variable count of the witness these gates commit and open.</summary>
     private const int RealVariableCount = 1;
+
+    /// <summary>The minimal budget-meeting lift width for a one-variable witness at <see cref="TestQueryCount"/> = 12 (GetMinimumExtraVariableCount).</summary>
     private const int ExtraVariableCount = 6;
 
+    /// <summary>The curve parameter set selecting the BLS12-381 instantiation throughout this class.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that an opening truncated by exactly one byte — everything present except the final byte of the nested weighted opening's last authentication path — is rejected with a false verdict rather than an exception.</summary>
     [TestMethod]
     public void OpeningTruncatedByOneByteIsRejectedWithoutThrowing()
     {
@@ -56,6 +83,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Verifies that an opening truncated inside the mask section — cut after com(C*)'s root and σ, so σ_F and the whole nested weighted opening are missing — is rejected with a false verdict rather than an exception.</summary>
     [TestMethod]
     public void OpeningTruncatedInsideTheMaskSectionIsRejectedWithoutThrowing()
     {
@@ -65,6 +93,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Verifies that an opening truncated halfway into the nested hiding weighted opening that binds the mask's terminal evaluation is rejected with a false verdict rather than an exception.</summary>
     [TestMethod]
     public void OpeningTruncatedInsideTheNestedWeightedOpeningIsRejectedWithoutThrowing()
     {
@@ -79,18 +108,22 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Computes the truncation length to test, given the full serialized opening's length.</summary>
     private delegate int TruncationLengthSelector(int fullLength);
 
 
-    //Commits and opens correctly, sanity-checks the intact opening verifies,
-    //then replays the verify with the opening cut to the selected length and
-    //asserts a clean false verdict.
+    /// <summary>
+    /// Checks that an opening truncated to the selected length is rejected: commits
+    /// and opens correctly, sanity-checks that the intact opening verifies, then
+    /// replays verification with the opening cut to the selected length and asserts
+    /// a clean false verdict.
+    /// </summary>
     private static void AssertTruncatedOpeningRejected(TruncationLengthSelector truncatedLengthSelector)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            Random, HashToScalar, ExtraVariableCount);
+            Random, HashToScalar, ExtraVariableCount, pool);
 
         using MultilinearExtension witness = BuildDeterministicMle(RealVariableCount, salt: 41, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 43, pool);
@@ -140,9 +173,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
-    //The mask section starts where the lift-only hiding proof ends; the v3
-    //layout opens with com(C*)'s root, then σ, then σ_F, then the nested
-    //hiding weighted opening.
+    /// <summary>Returns the byte offset where the mask section begins: the lift-only hiding proof ends there, and the v3 layout opens with com(C*)'s root, then σ, then σ_F, then the nested hiding weighted opening.</summary>
     private static int MaskSectionOffset()
     {
         return ZkBaseFoldPolynomialCommitmentScheme.GetZeroKnowledgeEvaluationProofSizeBytes(
@@ -150,6 +181,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random multilinear extension over the given variable count, seeded by <paramref name="salt"/> so different salts produce different but reproducible evaluation tables.</summary>
     private static MultilinearExtension BuildDeterministicMle(int variableCount, int salt, BaseMemoryPool pool)
     {
         int evaluationCount = 1 << variableCount;
@@ -168,6 +200,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random evaluation point over the given variable count, seeded by <paramref name="salt"/> so different salts produce different but reproducible points.</summary>
     private static Scalar[] BuildPoint(int variableCount, int salt, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -186,6 +219,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Disposes every coordinate scalar in a point built by <see cref="BuildPoint"/>.</summary>
     private static void DisposePoint(Scalar[] point)
     {
         foreach(Scalar coordinate in point)
@@ -195,6 +229,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Initializes a fresh Fiat-Shamir transcript under the BaseFold evaluation domain label, for either a prover's or a verifier's independent run.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -206,6 +241,7 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
+    /// <summary>Computes the Merkle two-to-one compression of <paramref name="left"/> and <paramref name="right"/> via BLAKE3.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -215,5 +251,6 @@ internal sealed class ZkBaseFoldOpeningTruncationTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.W27b.OpeningTruncation.Test"u8;
+    /// <summary>The domain-separation seed this class's provider is created with.</summary>
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.OpeningTruncation.Test"u8;
 }

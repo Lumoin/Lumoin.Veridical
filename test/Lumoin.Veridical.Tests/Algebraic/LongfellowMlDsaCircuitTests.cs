@@ -2,7 +2,9 @@ using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
@@ -17,8 +19,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// rejected in evaluation.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowMlDsaCircuitTests
+internal sealed class LongfellowMlDsaCircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The sextic extension's subfield width, selecting the three-way SHAKE re-anchoring split.</summary>
     private const int SexticSubfieldBits = 32;
 
@@ -162,6 +180,110 @@ internal sealed class LongfellowMlDsaCircuitTests
     }
 
 
+    /// <summary>Checks both malformed encoding and a mismatched commitment return every acquired rental before returning null.</summary>
+    /// <param name="malformedEncoding">Whether to truncate the signature instead of changing the signed message.</param>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void ARejectedSignatureReleasesAllWitnessRentals(bool malformedEncoding)
+    {
+        using var meter = new Meter(nameof(ARejectedSignatureReleasesAllWitnessRentals));
+        using var listener = new MeterListener();
+        long rents = 0;
+        long returns = 0;
+        listener.InstrumentPublished = (instrument, observer) =>
+        {
+            if(ReferenceEquals(instrument.Meter, meter))
+            {
+                observer.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) =>
+        {
+            if(instrument.Name == BaseMemoryPoolMetrics.BaseMemoryPoolRentOperationsTotal)
+            {
+                rents += measurement;
+            }
+            else if(instrument.Name == BaseMemoryPoolMetrics.BaseMemoryPoolReturnOperationsTotal)
+            {
+                returns += measurement;
+            }
+        });
+        listener.Start();
+        using BaseMemoryPool pool = new(meter);
+        LongfellowMlDsaSignatureExample example = LongfellowMlDsa44ExampleVectors.SignatureExamples[0];
+        byte[] signature = Convert.FromHexString(example.Signature);
+        byte[] message = Convert.FromHexString(example.Message);
+        if(!malformedEncoding)
+        {
+            message[0] ^= 1;
+        }
+
+        using LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(
+            LongfellowMlDsaParameters.MlDsa44,
+            Convert.FromHexString(example.PublicKey),
+            malformedEncoding ? signature.AsSpan(0, signature.Length - 1) : signature,
+            message,
+            Convert.FromHexString(example.Context),
+            pool);
+
+        Assert.IsNull(witness, "The invalid signature must be rejected.");
+        Assert.IsGreaterThan(0L, rents, "The rejection must exercise acquired storage.");
+        Assert.AreEqual(rents, returns, "A null result must release every witness and staging rental before returning.");
+    }
+
+
+    /// <summary>Checks an empty message and context compute with an algebraic zero-response fixture at both parameter sets.</summary>
+    /// <param name="useMlDsa65">Whether to exercise ML-DSA-65 instead of ML-DSA-44.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void AnEmptyMessageAndContextStillCompute(bool useMlDsa65)
+    {
+        //A zero rounded key vector and zero response make the reconstructed high bits zero.
+        const int SeedBytes = 32; //The public-key encoding starts with rho.
+        const int RoundedCoefficientBits = 10; //FIPS 204 packs each t1 coefficient into ten bits.
+        const int HeaderBytes = 2; //Pure mode binds the domain byte and context-length byte.
+        const int BitsPerByte = 8; //The encodings concatenate fixed-width coefficient bits.
+        LongfellowMlDsaParameters parameters = useMlDsa65 ? LongfellowMlDsaParameters.MlDsa65 : LongfellowMlDsaParameters.MlDsa44;
+        int publicKeyLength = SeedBytes + (parameters.RowCount * LongfellowMlDsaParameters.CoefficientCount * RoundedCoefficientBits / BitsPerByte);
+        int responseBytes = LongfellowMlDsaParameters.CoefficientCount * parameters.ResponseCoefficientBits / BitsPerByte;
+        int signatureLength = parameters.CommitmentBytes + (parameters.ColumnCount * responseBytes) + parameters.HintWeightBound + parameters.RowCount;
+        using IMemoryOwner<byte> publicKeyOwner = CircuitScope.Pool.Rent(publicKeyLength);
+        Span<byte> publicKey = publicKeyOwner.Memory.Span[..publicKeyLength];
+        publicKey.Clear();
+        using IMemoryOwner<byte> signatureOwner = CircuitScope.Pool.Rent(signatureLength);
+        Span<byte> signature = signatureOwner.Memory.Span[..signatureLength];
+        signature.Clear();
+        for(int column = 0; column < parameters.ColumnCount; column++)
+        {
+            for(int coefficient = 0; coefficient < LongfellowMlDsaParameters.CoefficientCount; coefficient++)
+            {
+                //The response decoder subtracts the packed value from gamma1; its single set bit encodes zero.
+                int bit = (coefficient * parameters.ResponseCoefficientBits) + parameters.ResponseCoefficientBits - 1;
+                signature[parameters.CommitmentBytes + (column * responseBytes) + (bit / BitsPerByte)] |= (byte)(1 << (bit % BitsPerByte));
+            }
+        }
+
+        Span<byte> muInput = stackalloc byte[LongfellowMlDsaReference.PublicKeyHashBytes + HeaderBytes];
+        muInput.Clear();
+        LongfellowSha3Witness.Shake256Hash(publicKey, muInput[..LongfellowMlDsaReference.PublicKeyHashBytes]);
+        int commitmentInputLength = MuBytes + (parameters.RowCount * parameters.HighBitsBytes);
+        using IMemoryOwner<byte> commitmentInputOwner = CircuitScope.Pool.Rent(commitmentInputLength);
+        Span<byte> commitmentInput = commitmentInputOwner.Memory.Span[..commitmentInputLength];
+        commitmentInput.Clear();
+        LongfellowSha3Witness.Shake256Hash(muInput, commitmentInput[..MuBytes]);
+        LongfellowSha3Witness.Shake256Hash(commitmentInput, signature[..parameters.CommitmentBytes]);
+
+        using LongfellowMlDsaWitness? witness = LongfellowMlDsaWitness.Compute(parameters, publicKey, signature, [], [], CircuitScope.Pool);
+
+        Assert.IsNotNull(witness, "An empty message and context must compute without a zero-length rental.");
+        Assert.IsEmpty(witness.Message);
+        Assert.AreSequenceEqual<byte>(commitmentInput[..MuBytes], witness.Mu);
+        Assert.AreSequenceEqual<byte>(signature[..parameters.CommitmentBytes], witness.RecomputedCommitmentHash);
+    }
+
+
     /// <summary>Pins that the SampleInBall assertion accepts each set's first transcribed reference vector under the evaluation backend; the remaining vectors run in the slow sweep.</summary>
     [TestMethod]
     public void TheSampleInBallAssertionAcceptsTheFirstReferenceVectorInEvaluation()
@@ -203,9 +325,9 @@ internal sealed class LongfellowMlDsaCircuitTests
     [TestMethod]
     public void TheNttAssertionsAcceptEveryReferenceVectorInEvaluation()
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, LongfellowMlDsaParameters.MlDsa44, SexticSubfieldBits);
 
         for(int t = 0; t < LongfellowMlDsa44EncodingVectors.NttVectors.Count; t++)
@@ -275,7 +397,7 @@ internal sealed class LongfellowMlDsaCircuitTests
         byte[] context = Convert.FromHexString(example.Context);
         byte[] message = Convert.FromHexString(example.Message);
 
-        LongfellowMlDsaWitness? witness = ComputeWitness(parameters, example);
+        using LongfellowMlDsaWitness? witness = ComputeWitness(parameters, example);
         Assert.IsNotNull(witness, "The example witness must compute.");
 
         var boundMessage = new byte[2 + context.Length + message.Length];
@@ -287,9 +409,9 @@ internal sealed class LongfellowMlDsaCircuitTests
         witness.Tr.CopyTo(spongeInput.AsSpan(0));
         boundMessage.CopyTo(spongeInput.AsSpan(witness.Tr.Length));
 
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         IReadOnlyList<LongfellowSha3BlockWitness> spongeWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(spongeInput, MuBytes);
@@ -300,8 +422,8 @@ internal sealed class LongfellowMlDsaCircuitTests
             InternBytes(logic, witness.Mu));
         Assert.IsFalse(backend.AssertionFailed, "The example's message representative must satisfy the sponge assertion.");
 
-        var corruptedBackend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var corruptedLogic = new LongfellowLogic(corruptedBackend, field);
+        using var corruptedBackend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var corruptedLogic = new LongfellowLogic(corruptedBackend, field);
         var corruptedVerify = new LongfellowMlDsaVerifyCircuit(corruptedLogic, parameters, SexticSubfieldBits);
 
         IReadOnlyList<LongfellowSha3BlockWitness> corruptedWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(spongeInput, MuBytes);
@@ -320,9 +442,9 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="seed">The transcribed expansion seed.</param>
     /// <param name="expected">The transcribed expected matrix.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertExpandA(LongfellowMlDsaParameters parameters, byte[] seed, uint[][][] expected, string setName)
+    private void AssertExpandA(LongfellowMlDsaParameters parameters, byte[] seed, uint[][][] expected, string setName)
     {
-        uint[][][] matrix = LongfellowMlDsaReference.ExpandMatrix(parameters, seed);
+        uint[][][] matrix = LongfellowMlDsaReference.ExpandMatrix(parameters, seed, CircuitScope.Pool);
 
         for(int row = 0; row < parameters.RowCount; row++)
         {
@@ -369,7 +491,7 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="parameters">The parameter set.</param>
     /// <param name="vectors">The transcribed vectors.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertHostW1Encode(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaW1EncodeVector> vectors, string setName)
+    private void AssertHostW1Encode(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaW1EncodeVector> vectors, string setName)
     {
         for(int t = 0; t < vectors.Count; t++)
         {
@@ -383,8 +505,11 @@ internal sealed class LongfellowMlDsaCircuitTests
                 }
             }
 
-            byte[] encoded = LongfellowMlDsaReference.W1Encode(parameters, highBits);
-            Assert.AreSequenceEqual(vectors[t].Encoded, encoded, $"The {setName} host w1Encode must reproduce reference vector {t}.");
+            int encodedLength = checked(parameters.RowCount * parameters.HighBitsBytes);
+            using IMemoryOwner<byte> owner = CircuitScope.Pool.Rent(encodedLength);
+            Span<byte> encoded = owner.Memory.Span[..encodedLength];
+            LongfellowMlDsaReference.W1Encode(parameters, highBits, encoded);
+            Assert.AreSequenceEqual<byte>(vectors[t].Encoded, (ReadOnlySpan<byte>)encoded, $"The {setName} host w1Encode must reproduce reference vector {t}.");
         }
     }
 
@@ -393,13 +518,13 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="parameters">The parameter set.</param>
     /// <param name="examples">The transcribed accepting examples.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertWitnessAccepts(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSignatureExample> examples, string setName)
+    private void AssertWitnessAccepts(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSignatureExample> examples, string setName)
     {
         for(int t = 0; t < examples.Count; t++)
         {
-            LongfellowMlDsaWitness? witness = ComputeWitness(parameters, examples[t]);
+            using LongfellowMlDsaWitness? witness = ComputeWitness(parameters, examples[t]);
             Assert.IsNotNull(witness, $"The {setName} witness must compute for example {t}.");
-            Assert.AreSequenceEqual(
+            Assert.AreSequenceEqual<byte>(
                 Convert.FromHexString(examples[t].Mu),
                 witness.Mu,
                 $"The {setName} witness must reproduce example {t}'s transcribed message representative.");
@@ -411,11 +536,11 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="parameters">The parameter set.</param>
     /// <param name="examples">The transcribed failing examples.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertWitnessRejects(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSignatureExample> examples, string setName)
+    private void AssertWitnessRejects(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSignatureExample> examples, string setName)
     {
         for(int t = 0; t < examples.Count; t++)
         {
-            LongfellowMlDsaWitness? witness = ComputeWitness(parameters, examples[t]);
+            using LongfellowMlDsaWitness? witness = ComputeWitness(parameters, examples[t]);
             Assert.IsNull(witness, $"The {setName} witness must reject failing example {t}.");
         }
     }
@@ -427,14 +552,14 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="firstVector">The inclusive first vector index.</param>
     /// <param name="vectorEnd">The exclusive end index.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertSampleInBallEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSampleInBallVector> vectors, int firstVector, int vectorEnd, string setName)
+    private void AssertSampleInBallEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSampleInBallVector> vectors, int firstVector, int vectorEnd, string setName)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
         Span<byte> stream = stackalloc byte[LongfellowMlDsaReference.SampleInBallHashBytes];
         for(int t = firstVector; t < vectorEnd; t++)
         {
-            var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-            var logic = new LongfellowLogic(backend, field);
+            using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+            using var logic = new LongfellowLogic(backend, field);
             var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
             byte[] seed = vectors[t].Seed;
@@ -479,7 +604,7 @@ internal sealed class LongfellowMlDsaCircuitTests
             var challenge = new LongfellowMlDsaPolynomialWires();
             for(int i = 0; i < LongfellowMlDsaParameters.CoefficientCount; i++)
             {
-                challenge.Coefficients[i] = backend.Constant(field.OfScalar(vectors[t].Coefficients[i]).Span);
+                challenge.Coefficients[i] = backend.ScalarConstant(vectors[t].Coefficients[i]);
             }
 
             verify.AssertSampleInBall(InternBytes(logic, seed), challenge, witness);
@@ -492,11 +617,11 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="parameters">The parameter set.</param>
     /// <param name="cases">The transcribed cases.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertUseHintSingleEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaUseHintCase> cases, string setName)
+    private void AssertUseHintSingleEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaUseHintCase> cases, string setName)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         for(int t = 0; t < cases.Count; t++)
@@ -521,12 +646,12 @@ internal sealed class LongfellowMlDsaCircuitTests
             ulong auxBits = shiftedRemainder | (signBit << parameters.LowBitsWidth);
 
             verify.AssertUseHintSingle(
-                backend.Constant(field.OfScalar(NormalizeModQ(testCase.Hint ? 1 : 0)).Span),
-                backend.Constant(field.OfScalar(NormalizeModQ(testCase.R)).Span),
-                backend.Constant(field.OfScalar(NormalizeModQ(highPart)).Span),
+                backend.ScalarConstant(NormalizeModQ(testCase.Hint ? 1 : 0)),
+                backend.ScalarConstant(NormalizeModQ(testCase.R)),
+                backend.ScalarConstant(NormalizeModQ(highPart)),
                 logic.BitVector(parameters.HighBitsWidth, NormalizeModQ(highPart)),
                 logic.BitVector(parameters.LowBitsWidth + 1, NormalizeModQ((long)auxBits)),
-                backend.Constant(field.OfScalar(testCase.Expected).Span),
+                backend.ScalarConstant(testCase.Expected),
                 logic.BitVector(parameters.HighBitsWidth, testCase.Expected));
             Assert.IsFalse(backend.AssertionFailed, $"The {setName} UseHintSingle assertion must accept reference case {t}.");
         }
@@ -537,11 +662,11 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="parameters">The parameter set.</param>
     /// <param name="vectors">The transcribed vectors.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertW1EncodeEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaW1EncodeVector> vectors, string setName)
+    private void AssertW1EncodeEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaW1EncodeVector> vectors, string setName)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         for(int t = 0; t < vectors.Count; t++)
@@ -574,16 +699,16 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="firstExample">The inclusive first example index.</param>
     /// <param name="exampleEnd">The exclusive end index.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertValidSignatureEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSignatureExample> examples, int firstExample, int exampleEnd, string setName)
+    private void AssertValidSignatureEvaluation(LongfellowMlDsaParameters parameters, IReadOnlyList<LongfellowMlDsaSignatureExample> examples, int firstExample, int exampleEnd, string setName)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
         for(int t = firstExample; t < exampleEnd; t++)
         {
-            LongfellowMlDsaWitness? witnessData = ComputeWitness(parameters, examples[t]);
+            using LongfellowMlDsaWitness? witnessData = ComputeWitness(parameters, examples[t]);
             Assert.IsNotNull(witnessData, $"The {setName} witness must compute for example {t}.");
 
-            var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-            var logic = new LongfellowLogic(backend, field);
+            using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+            using var logic = new LongfellowLogic(backend, field);
             var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
             LongfellowMlDsaPublicKeyWires publicKey = ConvertPublicKey(backend, logic, field, parameters, witnessData);
@@ -604,7 +729,7 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// </summary>
     /// <param name="parameters">The parameter set.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertInfinityNormRejection(LongfellowMlDsaParameters parameters, string setName)
+    private void AssertInfinityNormRejection(LongfellowMlDsaParameters parameters, string setName)
     {
         ulong bound = parameters.MaskingBound - parameters.RejectionBound;
 
@@ -631,11 +756,11 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <param name="probeBits">The probed coefficient's claimed shifted decomposition.</param>
     /// <param name="bound">The strict infinity-norm bound.</param>
     /// <param name="message">The failure message.</param>
-    private static void AssertInfinityNormProbe(LongfellowMlDsaParameters parameters, ulong probeValue, ulong probeBits, ulong bound, string message)
+    private void AssertInfinityNormProbe(LongfellowMlDsaParameters parameters, ulong probeValue, ulong probeBits, ulong bound, string message)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         var z = new LongfellowMlDsaPolynomialWires[parameters.ColumnCount];
@@ -647,7 +772,7 @@ internal sealed class LongfellowMlDsaCircuitTests
             for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
             {
                 bool isProbe = i == 0 && j == 0;
-                z[i].Coefficients[j] = backend.Constant(field.OfScalar(isProbe ? probeValue : 0UL).Span);
+                z[i].Coefficients[j] = backend.ScalarConstant(isProbe ? probeValue : 0UL);
                 zBits[i][j] = logic.BitVector(parameters.ResponseBitWidth, isProbe ? probeBits : bound - 1);
             }
         }
@@ -660,11 +785,11 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <summary>Runs one parameter set's UseHint sign-cheat rejection probe.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <param name="setName">The parameter set's name, for the failure messages.</param>
-    private static void AssertUseHintSignRejection(LongfellowMlDsaParameters parameters, string setName)
+    private void AssertUseHintSignRejection(LongfellowMlDsaParameters parameters, string setName)
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowMlDsaVerifyCircuit(logic, parameters, SexticSubfieldBits);
 
         ulong twoGamma2 = 2UL * parameters.RoundingRange;
@@ -674,11 +799,11 @@ internal sealed class LongfellowMlDsaCircuitTests
 
         verify.AssertUseHintSingle(
             backend.Constant(field.Compiler.One.Span),
-            backend.Constant(field.OfScalar(r).Span),
-            backend.Constant(field.OfScalar(ProbeHighPart).Span),
+            backend.ScalarConstant(r),
+            backend.ScalarConstant(ProbeHighPart),
             logic.BitVector(parameters.HighBitsWidth, ProbeHighPart),
             logic.BitVector(parameters.LowBitsWidth + 1, cheatedAuxBits),
-            backend.Constant(field.OfScalar(ProbeCheatedHint).Span),
+            backend.ScalarConstant(ProbeCheatedHint),
             logic.BitVector(parameters.HighBitsWidth, ProbeCheatedHint));
 
         Assert.IsTrue(backend.AssertionFailed, $"The {setName} UseHint assertion must reject the cheated sign bit.");
@@ -688,15 +813,16 @@ internal sealed class LongfellowMlDsaCircuitTests
     /// <summary>Computes the witness for one transcribed example.</summary>
     /// <param name="parameters">The parameter set.</param>
     /// <param name="example">The example.</param>
-    /// <returns>The witness, or <see langword="null"/> when the generator rejects it.</returns>
-    private static LongfellowMlDsaWitness? ComputeWitness(LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example)
+    /// <returns>The caller-owned disposable witness, or <see langword="null"/> when the generator rejects it.</returns>
+    private LongfellowMlDsaWitness? ComputeWitness(LongfellowMlDsaParameters parameters, LongfellowMlDsaSignatureExample example)
     {
         return LongfellowMlDsaWitness.Compute(
             parameters,
             Convert.FromHexString(example.PublicKey),
             Convert.FromHexString(example.Signature),
             Convert.FromHexString(example.Message),
-            Convert.FromHexString(example.Context));
+            Convert.FromHexString(example.Context),
+            CircuitScope.Pool);
     }
 
 
@@ -806,7 +932,7 @@ internal sealed class LongfellowMlDsaCircuitTests
         {
             for(int k = 0; k <= s; k++)
             {
-                wires.SampleInBall.PositionTrace[s][k] = logic.BitVector(LongfellowLogic.BitWidth8, witness.PositionTrace[s][k]);
+                wires.SampleInBall.PositionTrace[s][k] = logic.BitVector(LongfellowLogic.BitWidth8, witness.PositionTrace[((s * (s + 1)) / 2) + k]);
             }
         }
 
@@ -831,7 +957,7 @@ internal sealed class LongfellowMlDsaCircuitTests
                     highValue += (int)LongfellowMlDsaParameters.Modulus;
                 }
 
-                wires.W1[i].Coefficients[k] = backend.Constant(field.OfScalar((ulong)highValue).Span);
+                wires.W1[i].Coefficients[k] = backend.ScalarConstant((ulong)highValue);
                 wires.HintAuxBits[i][k] = logic.BitVector(parameters.LowBitsWidth + 1, witness.HintAuxBits[i][k]);
                 wires.W1Bits[i][k] = logic.BitVector(parameters.HighBitsWidth, witness.W1Bits[i][k]);
             }
@@ -841,7 +967,7 @@ internal sealed class LongfellowMlDsaCircuitTests
         {
             for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
             {
-                wires.WPrime1[i].Coefficients[k] = backend.Constant(field.OfScalar((ulong)witness.WPrime1[i][k]).Span);
+                wires.WPrime1[i].Coefficients[k] = backend.ScalarConstant((ulong)witness.WPrime1[i][k]);
                 wires.WPrime1Bits[i][k] = logic.BitVector(parameters.HighBitsWidth, witness.WPrime1Bits[i][k]);
             }
         }
@@ -871,7 +997,7 @@ internal sealed class LongfellowMlDsaCircuitTests
     {
         for(int i = 0; i < LongfellowMlDsaParameters.CoefficientCount; i++)
         {
-            destination.Coefficients[i] = backend.Constant(field.OfScalar(values[i]).Span);
+            destination.Coefficients[i] = backend.ScalarConstant(values[i]);
         }
     }
 

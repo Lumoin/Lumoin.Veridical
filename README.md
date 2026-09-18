@@ -99,7 +99,7 @@ Veridical's design is informed by published specifications and papers. The imple
 - **LogUp** (Haböck, 2022) — the logarithmic-derivative lookup argument.
 - **Anonymous Credentials from ECDSA** (Frigo, shelat, 2024) — the Longfellow-style ZK-over-ECDSA construction the P-256 and Ligero work targets.
 - **Bulletproofs** (Bünz, Bootle, Boneh, Poelstra, Wuille, Maxwell, 2018) — the range-proof construction.
-- **[An HSM-based EUDI wallet using Split-ECDSA (SECDSA)](https://wellet.nl/SECDSA-EUDI-wallet-latest.pdf)** (Verheul, version 21 June 2026) — the split-ECDSA sole-control construction, its discrete-log-equality NIZK, and the transaction-transparency evidence proofs in `Lumoin.Veridical.Secdsa`.
+- **[An HSM-based EUDI wallet using Split-ECDSA (SECDSA)](https://wellet.nl/SECDSA-EUDI-wallet-latest.pdf)** (Verheul, version 17 September 2026) — the split-ECDSA sole-control construction, its discrete-log-equality NIZK, and the transaction-transparency evidence proofs in `Lumoin.Veridical.Secdsa`.
 
 ## License
 

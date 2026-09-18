@@ -30,6 +30,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class MatrixMleEvaluationExtensions
 {
+    /// <summary>Multilinear-extension evaluation members added to every <see cref="MatrixMleEvaluation"/> instance.</summary>
     extension(MatrixMleEvaluation evaluation)
     {
         /// <summary>
@@ -199,6 +200,15 @@ public static class MatrixMleEvaluationExtensions
     }
 
 
+    /// <summary>
+    /// Validates that <paramref name="challenges"/> has exactly <paramref name="expectedLength"/>
+    /// entries and that none of them is <see langword="null"/>.
+    /// </summary>
+    /// <param name="challenges">The challenge vector to validate.</param>
+    /// <param name="expectedLength">The required length: the matrix's row or column variable count.</param>
+    /// <param name="parameterName">The caller's parameter name, attributed to a thrown exception.</param>
+    /// <exception cref="ArgumentException">When <paramref name="challenges"/>'s length does not equal <paramref name="expectedLength"/>.</exception>
+    /// <exception cref="ArgumentNullException">When any entry of <paramref name="challenges"/> is <see langword="null"/>.</exception>
     private static void ValidateChallengeVector(
         ReadOnlySpan<Scalar> challenges,
         int expectedLength,

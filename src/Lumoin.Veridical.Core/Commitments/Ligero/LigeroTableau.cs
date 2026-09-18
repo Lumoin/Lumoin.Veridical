@@ -43,23 +43,25 @@ namespace Lumoin.Veridical.Core.Commitments.Ligero;
 [DebuggerDisplay("LigeroTableau (RowCount = {Parameters.RowCount}, BlockEncoded = {Parameters.BlockEncoded})")]
 public sealed class LigeroTableau: IDisposable
 {
+    /// <summary>The byte width of a canonical scalar in the field the tableau was built over.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
+    /// <summary>The pooled, pinned backing storage for the tableau's rows, or <see langword="null"/> once disposed.</summary>
     private IMemoryOwner<byte>? buffer;
 
-    //The byte length of one row: BlockEncoded field elements. Cached so the
-    //row/column accessors do not recompute it per call.
-    private readonly int rowStrideBytes;
+    /// <summary>The byte length of one row: <see cref="LigeroParameters.BlockEncoded"/> field elements, cached so the row/column accessors do not recompute it per call.</summary>
+    private int RowStrideBytes { get; }
 
 
     /// <summary>The layout the tableau was built to.</summary>
     public LigeroParameters Parameters { get; }
 
 
+    /// <summary>Takes ownership of an already-filled tableau buffer under the given layout and row stride.</summary>
     private LigeroTableau(IMemoryOwner<byte> buffer, LigeroParameters parameters, int rowStrideBytes)
     {
         this.buffer = buffer;
-        this.rowStrideBytes = rowStrideBytes;
+        this.RowStrideBytes = rowStrideBytes;
         Parameters = parameters;
     }
 
@@ -80,7 +82,7 @@ public sealed class LigeroTableau: IDisposable
     /// <param name="invert">Scalar-invert backend.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent the tableau buffer and encoding scratch from.</param>
-    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path; <see langword="null"/> (the default) keeps today's barycentric encode. Consulted only in the <see cref="LigeroNodeDomain.ConsecutiveIntegers"/> domain, once per distinct <c>(messageLength, codewordLength)</c> shape for the whole build, never per row.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path; <see langword="null"/> (the default) keeps the default barycentric encode. Consulted only in the <see cref="LigeroNodeDomain.ConsecutiveIntegers"/> domain, once per distinct <c>(messageLength, codewordLength)</c> shape for the whole build, never per row.</param>
     /// <returns>The built tableau; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a backend, the parameters or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span length does not match the layout.</exception>
@@ -169,9 +171,7 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //The three ZK blinding rows: ILDT carries block random message entries;
-    //IDOT carries dblock random entries adjusted so its witness-block sums to
-    //zero; IQUAD carries dblock random entries with the witness block zeroed.
+    /// <summary>Fills the three ZK blinding rows: ILDT carries <c>block</c> random message entries; IDOT carries <c>dblock</c> random entries adjusted so its witness-block sums to zero; IQUAD carries <c>dblock</c> random entries with the witness block zeroed.</summary>
     private static void FillBlindingRows(
         Span<byte> tableau,
         LigeroParameters parameters,
@@ -217,8 +217,7 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //The witness rows: each carries r random padding entries then up to w
-    //witness values (the trailing row zero-pads past the witness count).
+    /// <summary>Fills the witness rows: each carries <c>r</c> random padding entries then up to <c>w</c> witness values (the trailing row zero-pads past the witness count).</summary>
     private static void FillWitnessRows(
         Span<byte> tableau,
         LigeroParameters parameters,
@@ -259,9 +258,7 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //The quadratic-constraint rows: three rows per triple holding the x, y and
-    //z operands of up to w constraints. The prover asserts each operand triple
-    //satisfies W[z] = W[x]·W[y] before committing.
+    /// <summary>Fills the quadratic-constraint rows: three rows per triple holding the x, y and z operands of up to <c>w</c> constraints. Asserts each operand triple satisfies <c>W[z] = W[x]·W[y]</c> before committing.</summary>
     private static void FillQuadraticRows(
         Span<byte> tableau,
         LigeroParameters parameters,
@@ -375,7 +372,7 @@ public sealed class LigeroTableau: IDisposable
             columnHash(column, leaves.Slice(j * ScalarSize, ScalarSize), hashAlgorithm);
         }
 
-        return MerkleTree.Build(leaves, paddedLeafCount, merkleHash, pool);
+        return MerkleTree.Build(leaves, paddedLeafCount, new MerkleCommitmentParameters(merkleHash, ScalarSize), pool);
     }
 
 
@@ -401,7 +398,7 @@ public sealed class LigeroTableau: IDisposable
         Span<byte> tableau = local.Memory.Span;
         for(int rowIndex = 0; rowIndex < Parameters.RowCount; rowIndex++)
         {
-            int offset = (rowIndex * rowStrideBytes) + (columnIndex * ScalarSize);
+            int offset = (rowIndex * RowStrideBytes) + (columnIndex * ScalarSize);
             tableau.Slice(offset, ScalarSize).CopyTo(destination.Slice(rowIndex * ScalarSize, ScalarSize));
         }
     }
@@ -420,7 +417,7 @@ public sealed class LigeroTableau: IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(rowIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(rowIndex, Parameters.RowCount);
 
-        return local.Memory.Span.Slice(rowIndex * rowStrideBytes, rowStrideBytes);
+        return local.Memory.Span.Slice(rowIndex * RowStrideBytes, RowStrideBytes);
     }
 
 
@@ -435,7 +432,7 @@ public sealed class LigeroTableau: IDisposable
             {
                 //The buffer holds witness values and prover blinding randomness;
                 //clear before returning it to the pool.
-                local.Memory.Span[..(Parameters.RowCount * rowStrideBytes)].Clear();
+                local.Memory.Span[..(Parameters.RowCount * RowStrideBytes)].Clear();
                 local.Dispose();
             }
             catch
@@ -446,17 +443,17 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //Returns the writable span of the whole row at the given index.
+    /// <summary>Returns the writable span of the whole row at the given index.</summary>
     private static Span<byte> RowSpan(Span<byte> tableau, int rowStrideBytes, int rowIndex) =>
         tableau.Slice(rowIndex * rowStrideBytes, rowStrideBytes);
 
 
-    //Returns the writable span of the single scalar at the given column within a row.
+    /// <summary>Returns the writable span of the single scalar at the given column within a row.</summary>
     private static Span<byte> ScalarAt(Span<byte> row, int columnIndex) =>
         row.Slice(columnIndex * ScalarSize, ScalarSize);
 
 
-    //Returns the witness at the given index, bounds-checked against the vector.
+    /// <summary>Returns the witness at the given index, bounds-checked against the vector.</summary>
     private static ReadOnlySpan<byte> WitnessAt(ReadOnlySpan<byte> witnesses, int index, int witnessCount)
     {
         if((uint)index >= (uint)witnessCount)
@@ -468,8 +465,7 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //Fills count consecutive scalars of the row, starting at firstColumn, with
-    //fresh prover randomness.
+    /// <summary>Fills <paramref name="count"/> consecutive scalars of the row, starting at <paramref name="firstColumn"/>, with fresh prover randomness.</summary>
     private static void FillRandomScalars(Span<byte> row, int firstColumn, int count, ScalarRandomDelegate random, CurveParameterSet curve, Tag scalarTag)
     {
         for(int k = 0; k < count; k++)
@@ -479,8 +475,7 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //Subtracts the sum of the witness block [r, r+w) from column r so that the
-    //block sums to the field's zero.
+    /// <summary>Subtracts the sum of the witness block <c>[r, r+w)</c> from column <paramref name="r"/> so that the block sums to the field's zero.</summary>
     private static void ZeroWitnessBlockSum(Span<byte> row, int r, int w, ScalarAddDelegate add, ScalarSubtractDelegate subtract, CurveParameterSet curve)
     {
         Span<byte> sum = stackalloc byte[ScalarSize];
@@ -497,11 +492,7 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //RS-extends the row's first messageLength entries to the full blockEnc
-    //codeword in place. The message is the row's own prefix, so the encoder's
-    //systematic copy is an identity copy of that region. When rowExtender is
-    //supplied there is nothing to copy either — the row already carries its
-    //message prefix — so the extender runs directly over the whole row.
+    /// <summary>RS-extends the row's first <paramref name="messageLength"/> entries to the full <paramref name="blockEncoded"/> codeword in place. The message is the row's own prefix, so the encoder's systematic copy is an identity copy of that region. When <paramref name="rowExtender"/> is supplied there is nothing to copy either — the row already carries its message prefix — so the extender runs directly over the whole row.</summary>
     private static void EncodeRow(
         Span<byte> row,
         int messageLength,
@@ -539,10 +530,7 @@ public sealed class LigeroTableau: IDisposable
     }
 
 
-    //Consults the factory for the given shape, but only in the domain the row
-    //extenders are specified against — LigeroNodeDomain.ConsecutiveIntegers. A
-    //null factory, a BinaryField-domain shape, or a decline (the factory returns
-    //null) all fall back to the barycentric path unchanged.
+    /// <summary>Consults <paramref name="factory"/> for the given shape, but only in the domain the row extenders are specified against — <see cref="LigeroNodeDomain.ConsecutiveIntegers"/>. A null factory, a <c>BinaryField</c>-domain shape, or a decline (the factory returns <see langword="null"/>) all fall back to the barycentric path unchanged.</summary>
     private static LigeroRowExtender? ResolveRowExtender(LigeroRowExtenderFactory? factory, LigeroNodeDomain nodeDomain, int messageLength, int codewordLength)
     {
         if(factory is null || nodeDomain != LigeroNodeDomain.ConsecutiveIntegers)

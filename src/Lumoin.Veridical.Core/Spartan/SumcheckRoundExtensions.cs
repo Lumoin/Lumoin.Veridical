@@ -18,8 +18,9 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// <para>
 /// The "compute" half of the round (running the round-polynomial
 /// computation against the prover's MLE state and absorbing the result
-/// into a transcript) lives with the prover driver in batch G.2. This
-/// G.1-shaped extension class only surfaces the data-shape accessors
+/// into a transcript) lives with the prover drivers
+/// (<see cref="OuterSumcheckProver"/>, <see cref="InnerSumcheckProver"/>).
+/// This extension class only surfaces the data-shape accessors
 /// that callers of any role — prover, verifier, inspector — need to
 /// pull a round's components into leaf-typed handles.
 /// </para>
@@ -27,6 +28,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class SumcheckRoundExtensions
 {
+    /// <summary>Extension members on <see cref="SumcheckRound"/>.</summary>
     extension(SumcheckRound round)
     {
         /// <summary>
@@ -56,9 +58,9 @@ public static class SumcheckRoundExtensions
         /// of the challenge byte slice.
         /// </summary>
         /// <param name="pool">The pool to rent the destination buffer from.</param>
-        /// <returns>A fresh BLS12-381 scalar; the caller owns its lifetime.</returns>
+        /// <returns>A fresh BLS12-381 or BN254 scalar; the caller owns its lifetime.</returns>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the round is not over BLS12-381.</exception>
+        /// <exception cref="ArgumentException">When the round's curve is neither BLS12-381 nor BN254.</exception>
         public Scalar GetChallenge(BaseMemoryPool pool)
         {
             ArgumentNullException.ThrowIfNull(round);

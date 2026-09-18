@@ -21,8 +21,9 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// when the commitments are hiding. BaseFold's commitment is a Merkle root over
 /// the codeword — binding but <em>not</em> hiding — so a masked Spartan proof
 /// over BaseFold is a sound argument of knowledge but does <em>not</em> achieve
-/// the witness privacy the "masked" name implies; full ZK needs a hiding
-/// BaseFold variant (a blinded codeword), which is out of scope. See the BaseFold design notes.
+/// the witness privacy the "masked" name implies; achieving full zero-knowledge
+/// requires a hiding BaseFold commitment (a blinded codeword), which this
+/// construction does not provide.
 /// </para>
 /// <para>
 /// Buffer layout, in order: witness root, outer-mask root, inner-mask root,
@@ -39,6 +40,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// </remarks>
 public sealed class BaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
 {
+    /// <summary>The width in bytes of one field element in its canonical scalar representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -58,6 +60,7 @@ public sealed class BaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanP
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>Wraps an already-populated wire-format buffer with its dimensions; <see cref="Build"/> and <see cref="FromBytes"/> are the only callers.</summary>
     internal BaseFoldMaskedSpartanProof(
         IMemoryOwner<byte> owner,
         int outerRoundCount,
@@ -275,32 +278,38 @@ public sealed class BaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanP
     }
 
 
+    /// <summary>The byte offset where the scheme-independent sumcheck middle begins: after the three commitment roots and the four mask/filler sums.</summary>
     private int MiddleStart() => (3 * DigestSizeBytes) + (4 * ScalarSize);
 
+    /// <summary>The byte offset where the four BaseFold openings begin: after the sumcheck middle.</summary>
     private int OpeningsStart() => MiddleStart() + SpartanSumcheckProofPart.GetSectionSizeBytes(OuterRoundCount, InnerRoundCount);
 
+    /// <summary>The byte size of the error opening, at the outer (row-variable) count.</summary>
     private int OuterOpeningSize() => OpeningSizeBytes(OuterRoundCount, Curve, QueryCount, DigestSizeBytes);
 
+    /// <summary>The byte size of the witness opening, at the inner (column-variable) count.</summary>
     private int InnerOpeningSize() => OpeningSizeBytes(InnerRoundCount, Curve, QueryCount, DigestSizeBytes);
 
+    /// <summary>The byte size of the outer mask's weighted opening, at its policy-resolved coefficient variable count.</summary>
     private int OuterMaskOpeningSize() => MaskOpeningSizeBytes(OuterRoundCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree, Curve, QueryCount, DigestSizeBytes);
 
+    /// <summary>The byte size of the inner mask's weighted opening, at its policy-resolved coefficient variable count.</summary>
     private int InnerMaskOpeningSize() => MaskOpeningSizeBytes(InnerRoundCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree, Curve, QueryCount, DigestSizeBytes);
 
 
+    /// <summary>Computes the wire byte size of a plain BaseFold evaluation opening over <paramref name="variableCount"/> variables.</summary>
     private static int OpeningSizeBytes(int variableCount, CurveParameterSet curve, int queryCount, int digestSizeBytes) =>
         BaseFoldPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes);
 
 
-    //A mask's weighted opening runs over its policy-resolved coefficient
-    //variable count (the unlifted shape the plain provider resolves), not the
-    //sumcheck's variable count.
+    /// <summary>Computes the wire byte size of a mask's weighted opening: it runs over the mask's policy-resolved coefficient variable count (the unlifted shape the plain provider resolves), not <paramref name="sumcheckVariableCount"/> itself.</summary>
     private static int MaskOpeningSizeBytes(int sumcheckVariableCount, int perVariableDegree, CurveParameterSet curve, int queryCount, int digestSizeBytes) =>
         BaseFoldPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(
             WellKnownStatisticalMaskParameters.CreatePedersenIpa(sumcheckVariableCount, perVariableDegree).CoefficientVariableCount,
             curve, queryCount, digestSizeBytes);
 
 
+    /// <summary>Copies <paramref name="source"/> into <paramref name="buffer"/> at <paramref name="offset"/>, returning the number of bytes written.</summary>
     private static int Copy(Span<byte> buffer, int offset, ReadOnlySpan<byte> source)
     {
         source.CopyTo(buffer.Slice(offset, source.Length));
@@ -308,6 +317,7 @@ public sealed class BaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanP
     }
 
 
+    /// <summary>Throws when <paramref name="commitment"/>'s wire bytes are not exactly one Merkle root (<paramref name="digestSizeBytes"/> bytes) wide.</summary>
     private static void ValidateCommitmentLength(PolynomialCommitment commitment, int digestSizeBytes, string parameterName)
     {
         if(commitment.AsReadOnlySpan().Length != digestSizeBytes)
@@ -319,6 +329,7 @@ public sealed class BaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanP
     }
 
 
+    /// <summary>Throws when <paramref name="opening"/>'s wire bytes do not match <paramref name="expected"/>.</summary>
     private static void ValidateOpeningLength(PolynomialOpening opening, int expected, string parameterName)
     {
         if(opening.AsReadOnlySpan().Length != expected)
@@ -330,6 +341,7 @@ public sealed class BaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanP
     }
 
 
+    /// <summary>Throws when any round in <paramref name="rounds"/> carries a curve other than <paramref name="curve"/> or a degree other than <paramref name="expectedDegree"/>; <paramref name="phase"/> names the sumcheck half in the message.</summary>
     private static void ValidateRoundShape(IReadOnlyList<SumcheckRound> rounds, int expectedDegree, string phase, CurveParameterSet curve)
     {
         for(int i = 0; i < rounds.Count; i++)
@@ -348,9 +360,11 @@ public sealed class BaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanP
     }
 
 
+    /// <summary>Builds this proof's tag from an empty starting tag: the algebraic role, the curve, the BaseFold commitment scheme, and the masked-statistical Spartan variant.</summary>
     private static Tag ComposeTag(CurveParameterSet curve) => MergeAlgebraicTag(Tag.Empty, curve);
 
 
+    /// <summary>Merges this proof's algebraic role, <paramref name="curve"/>, the BaseFold commitment scheme, and the masked-statistical Spartan variant into <paramref name="tag"/>.</summary>
     private static Tag MergeAlgebraicTag(Tag tag, CurveParameterSet curve) =>
         tag.With(AlgebraicRole.ZkProof)
             .With(curve)

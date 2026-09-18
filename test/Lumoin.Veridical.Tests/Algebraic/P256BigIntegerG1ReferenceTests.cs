@@ -7,8 +7,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
 /// Gates the P-256 G1 reference against known-answer vectors computed
-/// independently with CPython on the short-Weierstrass curve
-/// <c>y² = x³ − 3x + b</c> (an oracle outside this codebase), plus the group
+/// independently on the short-Weierstrass curve
+/// <c>y² = x³ − 3x + b</c>, plus the group
 /// laws the encoding must respect. The vectors pin the doubling and ladder
 /// formulas (which carry the <c>a = −3</c> term, unlike the pairing curves);
 /// the law checks — <c>G + (−G) = O</c>, <c>2G</c> via add equals via the
@@ -18,22 +18,67 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class P256BigIntegerG1ReferenceTests
 {
+    /// <summary>
+    /// The byte length of a SEC1 compressed P-256 point encoding: a one-byte parity prefix
+    /// followed by the 32-byte X-coordinate.
+    /// </summary>
     private const int CompressedSize = 33;
+
+    /// <summary>
+    /// The byte length of a P-256 scalar, matching the curve's 32-byte field and group order.
+    /// </summary>
     private const int ScalarSize = 32;
+
+    /// <summary>
+    /// The P-256 curve parameter set under test.
+    /// </summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
+    /// <summary>
+    /// The reference implementation's point-addition delegate for P-256.
+    /// </summary>
     private static G1AddDelegate Add { get; } = P256BigIntegerG1Reference.GetAdd();
+
+    /// <summary>
+    /// The reference implementation's point-negation delegate for P-256.
+    /// </summary>
     private static G1NegateDelegate Negate { get; } = P256BigIntegerG1Reference.GetNegate();
+
+    /// <summary>
+    /// The reference implementation's scalar-multiplication delegate for P-256.
+    /// </summary>
     private static G1ScalarMultiplyDelegate ScalarMultiply { get; } = P256BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>
+    /// The reference implementation's multi-scalar-multiplication delegate for P-256.
+    /// </summary>
     private static G1MultiScalarMultiplyDelegate Msm { get; } = P256BigIntegerG1Reference.GetMultiScalarMultiply();
 
-    //SEC1 compressed encodings, CPython on P-256.
+    /// <summary>
+    /// The SEC1 compressed encoding of the P-256 generator point <c>G</c>.
+    /// </summary>
     private const string GeneratorSec1 = "036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296";
+
+    /// <summary>
+    /// The SEC1 compressed encoding of <c>2G</c>, the P-256 generator doubled.
+    /// </summary>
     private const string DoubleGeneratorSec1 = "037cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978";
+
+    /// <summary>
+    /// The scalar <c>k</c> used by the scalar-multiplication vector below.
+    /// </summary>
     private const string K = "1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00";
+
+    /// <summary>
+    /// The SEC1 compressed encoding of <c>k·G</c> for the scalar <see cref="K"/>.
+    /// </summary>
     private const string KTimesGeneratorSec1 = "03b42872a9d76ae43dc72f7e5a92902f80f35f6c991ae9ba72ebcbd1cfad28f6c4";
 
 
+    /// <summary>
+    /// Verifies that doubling the generator, via point addition and via the scalar ladder,
+    /// both match the known <c>2G</c> vector.
+    /// </summary>
     [TestMethod]
     public void DoublingTheGeneratorMatchesTheVector()
     {
@@ -50,6 +95,9 @@ internal sealed class P256BigIntegerG1ReferenceTests
     }
 
 
+    /// <summary>
+    /// Verifies that scalar multiplication by <see cref="K"/> matches the known <c>k·G</c> vector.
+    /// </summary>
     [TestMethod]
     public void ScalarMultipleMatchesTheVector()
     {
@@ -60,6 +108,9 @@ internal sealed class P256BigIntegerG1ReferenceTests
     }
 
 
+    /// <summary>
+    /// Verifies that <c>G + (−G)</c> encodes the canonical point at infinity.
+    /// </summary>
     [TestMethod]
     public void GeneratorPlusNegationIsInfinity()
     {
@@ -75,6 +126,10 @@ internal sealed class P256BigIntegerG1ReferenceTests
     }
 
 
+    /// <summary>
+    /// Verifies that <c>n·G</c> encodes the canonical point at infinity, where <c>n</c> is the
+    /// generator's order.
+    /// </summary>
     [TestMethod]
     public void OrderTimesGeneratorIsInfinity()
     {
@@ -91,6 +146,10 @@ internal sealed class P256BigIntegerG1ReferenceTests
     }
 
 
+    /// <summary>
+    /// Verifies that SEC1 compressed decode/encode round-trips correctly for both the
+    /// <c>0x02</c> and <c>0x03</c> parity prefixes.
+    /// </summary>
     [TestMethod]
     public void Sec1CompressedRoundTripsBothParities()
     {
@@ -109,6 +168,10 @@ internal sealed class P256BigIntegerG1ReferenceTests
     }
 
 
+    /// <summary>
+    /// Verifies that a two-term multi-scalar multiplication matches the result of accumulating
+    /// each scalar multiplication and addition individually.
+    /// </summary>
     [TestMethod]
     public void MultiScalarMultiplyMatchesPerPointAccumulation()
     {
@@ -140,9 +203,19 @@ internal sealed class P256BigIntegerG1ReferenceTests
     }
 
 
+    /// <summary>
+    /// Decodes a hexadecimal string into raw bytes.
+    /// </summary>
+    /// <param name="hex">The hexadecimal string to decode.</param>
+    /// <returns>The decoded bytes.</returns>
     private static byte[] Hex(string hex) => Convert.FromHexString(hex);
 
 
+    /// <summary>
+    /// Builds a big-endian P-256 scalar encoding a small non-negative integer value.
+    /// </summary>
+    /// <param name="value">The value the low byte of the scalar must carry.</param>
+    /// <returns>A <see cref="ScalarSize"/>-byte big-endian scalar encoding <paramref name="value"/>.</returns>
     private static byte[] Scalar(int value)
     {
         byte[] s = new byte[ScalarSize];
@@ -152,10 +225,23 @@ internal sealed class P256BigIntegerG1ReferenceTests
     }
 
 
+    /// <summary>
+    /// Asserts that the lowercase hexadecimal encoding of <paramref name="actual"/> equals
+    /// <paramref name="expected"/>.
+    /// </summary>
+    /// <param name="expected">The expected lowercase hexadecimal encoding.</param>
+    /// <param name="actual">The actual bytes to encode and compare.</param>
+    /// <param name="label">A label identifying the comparison in the failure message.</param>
     private static void AssertHex(string expected, ReadOnlySpan<byte> actual, string label) =>
         Assert.AreEqual(expected, Convert.ToHexStringLower(actual), $"P-256 {label} mismatch.");
 
 
+    /// <summary>
+    /// Writes a <see cref="System.Numerics.BigInteger"/>'s unsigned value into a fixed-length
+    /// big-endian span, left-padding with zero bytes.
+    /// </summary>
+    /// <param name="value">The non-negative value to write.</param>
+    /// <param name="destination">The fixed-length span to fill.</param>
     private static void WriteBigEndian(System.Numerics.BigInteger value, Span<byte> destination)
     {
         destination.Clear();

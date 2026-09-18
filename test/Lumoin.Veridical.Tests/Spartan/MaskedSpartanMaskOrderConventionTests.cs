@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
 /// Pins the variable-order convention between Spartan's sumchecks and the
-/// statistical mask kernel (SM.7b): Spartan binds variables LOW-first (round
+/// statistical mask kernel: Spartan binds variables LOW-first (round
 /// <c>i</c> binds <c>x_{i+1}</c>, the low eval-table bit) while
 /// <see cref="MonomialBasisMask"/> binds HIGH-first (the BaseFold fold order),
 /// so the masked drivers relabel — Spartan round <c>i</c> blends at kernel
@@ -28,17 +28,34 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class MaskedSpartanMaskOrderConventionTests
 {
+    /// <summary>The BLS12-381 scalar field addition delegate, from the reference backend.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar field subtraction delegate, from the reference backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar field multiplication delegate, from the reference backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar reduction delegate (wide bytes to a canonical scalar), from the BigInteger reference.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
+    /// <summary>The width in bytes of one BLS12-381 scalar in its canonical representation.</summary>
     private const int ScalarSize = 32;
 
+    /// <summary>The curve every gate in this file runs over: BLS12-381.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+
+    /// <summary>The deterministic mask-sampling seed this file's chain draws its mask coefficients from.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan.mask-order-convention.test.v1");
 
 
+    /// <summary>
+    /// Verifies the Spartan/mask variable-order convention directly: replaying a low-first masked
+    /// chain (Spartan round <c>i</c> blending at kernel variable <c>d − i</c>) with a zero base
+    /// polynomial closes exactly at <c>ρ · s(reversed challenges)</c>, and does not close at the
+    /// unreversed (round-order) point — proving the reversal is load-bearing rather than vacuous.
+    /// </summary>
     [TestMethod]
     [DataRow(2, 2)]
     [DataRow(3, 2)]
@@ -51,7 +68,7 @@ internal sealed class MaskedSpartanMaskOrderConventionTests
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         ScalarRandomDelegate random = new DeterministicScalarRandom(MaskSeed).AsDelegate();
 
-        MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 0, perVariableDegree);
+        using MonomialBasis basis = MonomialBasis.SumOfUnivariatesWithPad(variableCount, padPairCount: 0, pool, perVariableDegree);
         using MonomialBasisMask mask = MonomialBasisMask.Sample(basis, random, Curve, pool);
 
         using Scalar rho = MakeScalar(7, pool);
@@ -157,6 +174,7 @@ internal sealed class MaskedSpartanMaskOrderConventionTests
     }
 
 
+    /// <summary>Builds the canonical scalar for the small nonnegative integer <paramref name="value"/>.</summary>
     private static Scalar MakeScalar(int value, BaseMemoryPool pool)
     {
         Span<byte> wide = stackalloc byte[ScalarSize];

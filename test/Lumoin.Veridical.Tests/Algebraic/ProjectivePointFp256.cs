@@ -9,7 +9,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <em>complete</em> Renes–Costello–Batina addition and doubling formulas
 /// (<see href="https://eprint.iacr.org/2015/1060.pdf">eprint 2015/1060</see>),
 /// ported operation-for-operation from
-/// <c>tempdocs/longfellow-zk-reference/lib/ec/elliptic_curve.h</c>.
+/// <c>lib/ec/elliptic_curve.h</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,16 +32,17 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </remarks>
 internal readonly struct ProjectivePointFp256
 {
+    /// <summary>The P-256 base field prime <c>p</c>, shared with <see cref="EcdsaNonceRecovery.P"/>.</summary>
     private static BigInteger Prime { get; } = EcdsaNonceRecovery.P;
 
-    //a_ in elliptic_curve.h: the P-256 curve coefficient a = p − 3 (not the literal −3).
+    /// <summary>The reference's <c>a_</c> (<c>elliptic_curve.h</c>): the P-256 curve coefficient <c>a = p − 3</c>, not the literal <c>−3</c>.</summary>
     private static BigInteger A { get; } = EcdsaNonceRecovery.A;
 
-    //k3b in elliptic_curve.h:65 — the EllipticCurve constructor sets k3b = mulf(of_scalar(3), b_),
-    //i.e. k3b = 3·b mod p, with b the P-256 curve coefficient.
+    /// <summary>The reference's <c>k3b</c> (<c>elliptic_curve.h:65</c>, set by the <c>EllipticCurve</c> constructor as <c>mulf(of_scalar(3), b_)</c>): <c>3·b mod p</c>, with <c>b</c> the P-256 curve coefficient.</summary>
     private static BigInteger K3b { get; } = Mod(3 * P256BigIntegerG1Reference.CurveB);
 
 
+    /// <summary>Wraps already-reduced projective coordinates; <see cref="Identity"/>, <see cref="FromAffine"/>, <see cref="Add(ProjectivePointFp256, ProjectivePointFp256)"/> and <see cref="Double"/> are the only callers.</summary>
     private ProjectivePointFp256(BigInteger x, BigInteger y, BigInteger z)
     {
         X = x;
@@ -191,13 +192,18 @@ internal readonly struct ProjectivePointFp256
     }
 
 
+    /// <summary>Field addition modulo <see cref="Prime"/>.</summary>
     private static BigInteger Add(BigInteger a, BigInteger b) => Mod(a + b);
 
+    /// <summary>Field subtraction modulo <see cref="Prime"/>.</summary>
     private static BigInteger Sub(BigInteger a, BigInteger b) => Mod(a - b);
 
+    /// <summary>Field multiplication modulo <see cref="Prime"/>.</summary>
     private static BigInteger Mul(BigInteger a, BigInteger b) => Mod(a * b);
 
+    /// <summary>Reduces <paramref name="value"/> into the nonnegative representative range <c>[0, p)</c>.</summary>
     private static BigInteger Mod(BigInteger value) => ((value % Prime) + Prime) % Prime;
 
+    /// <summary>Computes the field inverse of <paramref name="value"/> modulo <see cref="Prime"/> via Fermat's little theorem (<c>value^(p−2) mod p</c>).</summary>
     private static BigInteger ModInverse(BigInteger value) => BigInteger.ModPow(Mod(value), Prime - 2, Prime);
 }

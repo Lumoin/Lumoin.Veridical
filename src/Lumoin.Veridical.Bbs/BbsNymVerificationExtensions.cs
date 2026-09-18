@@ -23,6 +23,7 @@ namespace Lumoin.Veridical.Bbs;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BbsNymVerificationExtensions
 {
+    /// <summary>Per-verifier-pseudonym signature finalization members added to every <see cref="BbsBlindSignature"/> instance.</summary>
     extension(BbsBlindSignature signature)
     {
         /// <summary>
@@ -297,6 +298,8 @@ public static class BbsNymVerificationExtensions
     }
 
 
+    /// <summary>Disposes every non-null scalar in <paramref name="scalars"/>.</summary>
+    /// <param name="scalars">The array whose non-null elements are disposed.</param>
     private static void DisposeAll(Scalar?[] scalars)
     {
         for(int i = 0; i < scalars.Length; i++)

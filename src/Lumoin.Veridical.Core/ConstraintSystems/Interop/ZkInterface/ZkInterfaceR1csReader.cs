@@ -27,8 +27,8 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop.ZkInterface;
 /// uses the built-in <see cref="ZkInterfaceCursorDecoder"/> (hand-parsed,
 /// no <c>Google.FlatBuffers</c> dependency), and <see cref="CreateReader"/>
 /// binds an alternate decoder. The push/span contract keeps field elements
-/// off the managed heap, mirroring the rest of the library's pooled-memory
-/// discipline.
+/// off the managed heap, matching how the rest of the library sources its
+/// buffers from pools rather than allocating them there.
 /// </para>
 /// <para>
 /// Field handling: the header's <c>field_maximum</c> (the field order minus
@@ -53,21 +53,24 @@ public static class ZkInterfaceR1csReader
     public static R1csPipeReaderDelegate CreateReader(ZkInterfaceMessageDecoderDelegate decoder)
     {
         ArgumentNullException.ThrowIfNull(decoder);
-        return (pipe, format, curve, pool, cancellationToken) =>
-            ReadInternal(decoder, pipe, format, curve, pool, cancellationToken);
+        return (pipe, format, curve, pool, maximumIntakeBytes, cancellationToken) =>
+            ReadInternal(decoder, pipe, format, curve, pool, maximumIntakeBytes, cancellationToken);
     }
 
 
+    /// <summary>Decodes the complete stream with the caller's pool and assembles the owned R1CS result.</summary>
     private static RawR1csInstance ReadInternal(
         ZkInterfaceMessageDecoderDelegate decoder,
         PipeReader pipe,
         WellKnownR1csFormatLabel format,
         CurveParameterSet curve,
         BaseMemoryPool pool,
+        long maximumIntakeBytes,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(pipe);
         ArgumentNullException.ThrowIfNull(pool);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumIntakeBytes);
 
         if(format != WellKnownR1csFormatLabel.ZkInterface)
         {
@@ -78,12 +81,13 @@ public static class ZkInterfaceR1csReader
 
         WellKnownCurves.ThrowIfCurveNotWired(curve);
 
-        ReadOnlySequence<byte> buffer = DrainPipe(pipe, cancellationToken);
+        ReadOnlySequence<byte> buffer = R1csPipeIntake.DrainPipe(pipe, maximumIntakeBytes, cancellationToken);
 
         try
         {
             var builder = new ZkInterfaceR1csInstanceBuilder(curve, pool);
-            decoder(buffer, builder, cancellationToken);
+            decoder(buffer, builder, pool, cancellationToken);
+
             return builder.Build();
         }
         finally
@@ -91,29 +95,6 @@ public static class ZkInterfaceR1csReader
             //The instance owns its own pooled buffers once built, so the pipe's
             //bytes can be released regardless of outcome.
             pipe.AdvanceTo(buffer.End);
-        }
-    }
-
-
-    private static ReadOnlySequence<byte> DrainPipe(PipeReader pipe, CancellationToken cancellationToken)
-    {
-        while(true)
-        {
-            ReadResult result = pipe.ReadAsync(cancellationToken).AsTask().GetAwaiter().GetResult();
-
-            if(result.IsCanceled)
-            {
-                throw new OperationCanceledException(cancellationToken);
-            }
-
-            if(result.IsCompleted)
-            {
-                return result.Buffer;
-            }
-
-            //Examine everything, consume nothing, so the pipe keeps buffering
-            //until the whole (small) stream has arrived.
-            pipe.AdvanceTo(result.Buffer.Start, result.Buffer.End);
         }
     }
 }

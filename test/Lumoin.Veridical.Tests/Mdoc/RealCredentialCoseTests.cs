@@ -13,17 +13,22 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// Verifies the issuer's COSE_Sign1 signature on genuine ISO 18013-5 mdoc credentials out of
 /// circuit: parse the DeviceResponse with the minimal CBOR reader, extract the issuer DS
 /// certificate from the x5chain, reconstruct the COSE <c>Sig_structure</c>, and check the ECDSA
-/// signature with the certificate's public key. This is rung 2 — it proves we can consume a
-/// real credential's issuer signature end-to-end (the ground truth the in-circuit
-/// <c>AssertVerifiesMdocAttribute</c> is aimed at), establishing the parse + signed-bytes
-/// reconstruction before that same statement is proven in zero knowledge.
+/// signature with the certificate's public key, proving the parse and signed-bytes reconstruction
+/// can consume a real credential's issuer signature end-to-end (the ground truth the in-circuit
+/// <c>AssertVerifiesMdocAttribute</c> is aimed at) before that same statement is proven in zero
+/// knowledge.
 /// </summary>
 [TestClass]
 internal sealed class RealCredentialCoseTests
 {
+    /// <summary>The ambient MSTest context, used here for its cancellation token.</summary>
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>
+    /// The issuer's COSE_Sign1 signature over a genuine mdoc credential verifies against the
+    /// x5chain issuer DS certificate's public key.
+    /// </summary>
     [TestMethod]
     public async Task GenuineCredentialIssuerSignatureVerifiesOutOfCircuit()
     {
@@ -43,6 +48,10 @@ internal sealed class RealCredentialCoseTests
     }
 
 
+    /// <summary>
+    /// The issuer's COSE_Sign1 signature verifies, against its own embedded issuer DS
+    /// certificate, for every sourced credential.
+    /// </summary>
     [TestMethod]
     public async Task EverySourcedCredentialIssuerSignatureVerifiesOutOfCircuit()
     {
@@ -64,8 +73,10 @@ internal sealed class RealCredentialCoseTests
     }
 
 
-    //Verifies one sourced credential; returns an empty string on success or a diagnostic on
-    //failure.
+    /// <summary>
+    /// Verifies one sourced credential, <paramref name="name"/>, against its own embedded issuer
+    /// certificate; returns an empty string on success or a diagnostic message on failure.
+    /// </summary>
     private static async Task<string> VerifyOne(string name, CancellationToken cancellationToken)
     {
         try

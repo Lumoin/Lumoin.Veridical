@@ -30,54 +30,89 @@ namespace Lumoin.Veridical.Tests.Lookup;
 [TestClass]
 internal sealed class LogUpGkrProofTests
 {
+    /// <summary>The production BLAKE3 Fiat-Shamir hash delegate every provider's and every proof's transcript is built from.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir squeeze delegate every transcript in this class draws challenges through.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BigInteger reference scalar-reduction delegate for the BLS12-381 scalar field.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The validated BLS12-381 scalar addition delegate this test's lookup arithmetic runs on.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The validated BLS12-381 scalar subtraction delegate this test's lookup arithmetic runs on.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The validated BLS12-381 scalar multiplication delegate this test's lookup arithmetic runs on.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The validated BLS12-381 scalar inversion delegate the LogUp-GKR verifier's fraction arithmetic runs on.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BigInteger reference hash-to-scalar delegate the BaseFold provider derives its challenges through.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The BigInteger reference multilinear-extension evaluation delegate the prover and verifier evaluate claims with.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The two-to-one Merkle hash delegate backing the Ligero and BaseFold providers, implemented with production BLAKE3 through <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
+
+    /// <summary>The BigInteger reference G1 point-addition delegate for BLS12-381, used by the Hyrax provider.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BigInteger reference G1 scalar-multiplication delegate for BLS12-381, used by the Hyrax provider.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The validated BLS12-381 G1 multi-scalar-multiplication delegate the Hyrax provider's commitments run on.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The BigInteger reference on-curve check the Hyrax provider validates received points with.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BigInteger reference prime-order-subgroup check the Hyrax provider validates received points with.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BigInteger reference hash-to-curve delegate the Hyrax commitment key derives its generators with.</summary>
     private static G1HashToCurveDelegate G1HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
 
+    /// <summary>The in-memory scalar width in bytes, matching <see cref="Scalar.SizeBytes"/>, used for every table, witness and commitment stride in this class.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The Merkle digest width the Ligero and BaseFold providers and hash delegate use, taken from the library's default Merkle parameters.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    //Eight opened columns / query repetitions keep the fixtures fast;
-    //soundness margins are the ledger tests' concern.
+    /// <summary>The opened-column count every provider in this class uses; small enough to keep the fixtures fast, since soundness margins are exercised elsewhere.</summary>
     private const int TestQueryCount = 8;
 
-    //Three row variables (eight rows) gives a four-to-five-variable fraction
-    //tree, exercising multi-round layers while staying cheap.
+    /// <summary>The row-variable count for every fixture in this class: eight rows give a four-to-five-variable fraction tree, exercising multi-round layers while staying cheap.</summary>
     private const int TestVariableCount = 3;
 
+    /// <summary>The Fiat-Shamir domain-separation label for this test's transcript, distinguishing it from every other transcript domain in the suite.</summary>
     private const string TranscriptDomain = "veridical.logup.gkr.test.v1";
 
-    //Distinct salts keep the streams independent and reproducible; the
-    //offset selects a stream disjoint from the table's for the absent-value
-    //case.
+    /// <summary>The salt filling the lookup table's scalars; distinct from <see cref="OutOfTableFillSaltOffset"/> so the two fills are independent and reproducible.</summary>
     private const int TableFillSalt = 823;
+
+    /// <summary>The offset added to <see cref="TableFillSalt"/> to fill a scalar guaranteed absent from the table, for the unprovable-witness test.</summary>
     private const int OutOfTableFillSaltOffset = 991;
 
-    //Coprime-to-the-cube strides walk every witness row and column onto a
-    //distinct table position.
+    /// <summary>A stride coprime to the table size, walking each witness row onto a distinct table position.</summary>
     private const int WitnessRowStride = 5;
+
+    /// <summary>A stride coprime to the table size, offsetting each witness column's walk from every other column's.</summary>
     private const int WitnessColumnStride = 3;
 
+    /// <summary>The BLS12-381 curve parameter set this test's arithmetic and commitments run over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
-    //Domain-separated from the transcript label so the Hyrax Pedersen
-    //blinding stream is independent of the Fiat-Shamir stream.
+    /// <summary>The seed for the Hyrax provider's Pedersen blinding randomness, domain-separated from the transcript label so the blinding stream is independent of the Fiat-Shamir stream.</summary>
     private static byte[] HyraxBlindSeed { get; } = Encoding.UTF8.GetBytes("veridical.logup.gkr.test.hyrax.blind.v1");
 
 
+    /// <summary>Verifies that an honest single-column LogUp-GKR proof accepts against the Ligero provider.</summary>
     [TestMethod]
     public void SingleColumnLookupRoundTripsThroughLigero()
     {
@@ -91,6 +126,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that a two-column lookup, which leaves one of the four selector slots as neutral 0/1 padding, still round-trips.</summary>
     [TestMethod]
     public void TwoColumnLookupExercisesANeutralPaddingSlot()
     {
@@ -106,6 +142,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that a three-column lookup, which fills the four-slot selector cube exactly with no padding, still round-trips.</summary>
     [TestMethod]
     public void ThreeColumnLookupFillsTheSelectorCube()
     {
@@ -119,11 +156,12 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that an honest single-column LogUp-GKR proof accepts against the BaseFold provider, since the argument is provider-generic.</summary>
     [TestMethod]
     public void SingleColumnLookupRoundTripsThroughBaseFold()
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider pcs = BuildBaseFoldProvider();
+        using PolynomialCommitmentProvider pcs = BuildBaseFoldProvider(pool);
         using IMemoryOwner<byte> material = BuildLookupMaterial(TestVariableCount, witnessColumnCount: 1, pool);
 
         using LogUpGkrProof proof = Prove(material, TestVariableCount, witnessColumnCount: 1, pcs, pool);
@@ -132,6 +170,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that an honest single-column LogUp-GKR proof accepts against the Hyrax provider, the homomorphic Pedersen-family backend.</summary>
     [TestMethod]
     public void SingleColumnLookupRoundTripsThroughHyrax()
     {
@@ -145,6 +184,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that a table with a duplicated entry is harmless: the duplicate's multiplicity weight aggregates onto its first occurrence, and the proof still round-trips.</summary>
     [TestMethod]
     public void DuplicateTableEntriesAreAccepted()
     {
@@ -167,6 +207,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that proving the same material twice yields byte-identical root values, layer messages and claimed evaluations.</summary>
     [TestMethod]
     public void ProvingIsByteForByteDeterministic()
     {
@@ -183,6 +224,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that the prover refuses a witness value not present in the table, since that makes the lookup statement false.</summary>
     [TestMethod]
     public void WitnessValueAbsentFromTableIsUnprovable()
     {
@@ -201,6 +243,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the proof's root values makes verification reject.</summary>
     [TestMethod]
     public void TamperedRootValueIsRejected()
     {
@@ -208,6 +251,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the proof's layer messages makes verification reject.</summary>
     [TestMethod]
     public void TamperedLayerMessageIsRejected()
     {
@@ -215,6 +259,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of the proof's claimed evaluations makes verification reject.</summary>
     [TestMethod]
     public void TamperedClaimedEvaluationIsRejected()
     {
@@ -222,6 +267,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that a row-variable count whose fraction-tree total exceeds the reconstruction cap is rejected before any proof part is consumed.</summary>
     [TestMethod]
     public void HostileShapeIsRejectedAtReconstruction()
     {
@@ -244,6 +290,7 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies that the reconstruction funnel rejects a root scalar at or above the field order.</summary>
     [TestMethod]
     public void NonCanonicalRootBytesAreRejectedAtReconstruction()
     {
@@ -260,6 +307,10 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Proves honestly, clones the proof with one selected byte flipped, and asserts the tampered clone fails verification.</summary>
+    /// <param name="mutateRootByteOffset">The byte offset to flip within the root values, or <see langword="null"/> to leave them untouched.</param>
+    /// <param name="mutateLayerByteOffset">The byte offset to flip within the layer messages, or <see langword="null"/> to leave them untouched.</param>
+    /// <param name="mutateClaimedByteOffset">The byte offset to flip within the claimed evaluations, or <see langword="null"/> to leave them untouched.</param>
     private static void AssertTamperRejected(int? mutateRootByteOffset, int? mutateLayerByteOffset, int? mutateClaimedByteOffset)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
@@ -273,6 +324,13 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Proves a LogUp-GKR lookup over the given table/witness material with the supplied commitment provider.</summary>
+    /// <param name="material">The rented buffer holding the table followed by the witness columns.</param>
+    /// <param name="variableCount">The row-variable count sizing the table and witness columns.</param>
+    /// <param name="witnessColumnCount">The number of witness columns packed after the table in <paramref name="material"/>.</param>
+    /// <param name="pcs">The commitment provider backing the witness and multiplicity commitments.</param>
+    /// <param name="pool">The pool the prover rents its working buffers from.</param>
+    /// <returns>The resulting LogUp-GKR proof; the caller disposes it.</returns>
     private static LogUpGkrProof Prove(IMemoryOwner<byte> material, int variableCount, int witnessColumnCount, PolynomialCommitmentProvider pcs, BaseMemoryPool pool)
     {
         int size = 1 << variableCount;
@@ -286,6 +344,12 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Verifies a LogUp-GKR proof against the table half of the supplied material.</summary>
+    /// <param name="material">The rented buffer whose leading table bytes the verifier checks the proof against.</param>
+    /// <param name="proof">The proof to verify.</param>
+    /// <param name="pcs">The commitment provider the proof's commitments and openings are checked under.</param>
+    /// <param name="pool">The pool the verifier rents its working buffers from.</param>
+    /// <returns><see langword="true"/> when the proof verifies.</returns>
     private static bool Verify(IMemoryOwner<byte> material, LogUpGkrProof proof, PolynomialCommitmentProvider pcs, BaseMemoryPool pool)
     {
         int size = 1 << proof.VariableCount;
@@ -298,9 +362,19 @@ internal sealed class LogUpGkrProofTests
     }
 
 
-    //Clones a proof through the public reconstruction funnel, optionally
-    //flipping one byte of the root values, the layer messages, or the claimed
-    //evaluations.
+    /// <summary>
+    /// Clones a proof through the public reconstruction funnel <see cref="LogUpGkrProof.FromParts"/>, optionally
+    /// flipping one byte of the root values, the layer messages, or the claimed evaluations, or forcing the
+    /// root scalar to a non-canonical bit pattern.
+    /// </summary>
+    /// <param name="source">The proof to clone.</param>
+    /// <param name="pcs">The commitment provider the cloned commitments and openings are reconstructed under.</param>
+    /// <param name="pool">The pool the clone rents its working buffers from.</param>
+    /// <param name="mutateRootByteOffset">The byte offset to flip within the root values, or <see langword="null"/> to leave them untouched.</param>
+    /// <param name="mutateLayerByteOffset">The byte offset to flip within the layer messages, or <see langword="null"/> to leave them untouched.</param>
+    /// <param name="mutateClaimedByteOffset">The byte offset to flip within the claimed evaluations, or <see langword="null"/> to leave them untouched.</param>
+    /// <param name="forceNonCanonicalRootScalar">When <see langword="true"/>, overwrites the first root scalar with an all-<c>0xFF</c> pattern at or above the field order.</param>
+    /// <returns>The cloned (and possibly tampered) proof; the caller disposes it.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the cloned commitments and openings transfers to the proof returned by FromParts; the catch block disposes them when reconstruction throws.")]
     private static LogUpGkrProof CloneProof(
         LogUpGkrProof source,
@@ -386,6 +460,11 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Builds a deterministic table filled with <see cref="TableFillSalt"/> and one or more witness columns, each a strided permutation of the table's rows.</summary>
+    /// <param name="variableCount">The row-variable count sizing the table and each witness column.</param>
+    /// <param name="witnessColumnCount">The number of witness columns to build after the table.</param>
+    /// <param name="pool">The pool the returned buffer is rented from.</param>
+    /// <returns>A rented buffer holding the table followed by <paramref name="witnessColumnCount"/> witness columns; the caller disposes it.</returns>
     private static IMemoryOwner<byte> BuildLookupMaterial(int variableCount, int witnessColumnCount, BaseMemoryPool pool)
     {
         int size = 1 << variableCount;
@@ -408,6 +487,8 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Builds the Ligero-backed commitment provider shared by most tests in this class.</summary>
+    /// <returns>A new Ligero provider; the caller disposes it.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The Ligero provider holds no disposable key material; callers dispose the provider itself.")]
     private static PolynomialCommitmentProvider BuildLigeroProvider()
     {
@@ -417,17 +498,20 @@ internal sealed class LogUpGkrProofTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The BaseFold provider holds no disposable key material; callers dispose the provider itself.")]
-    private static PolynomialCommitmentProvider BuildBaseFoldProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider BuildBaseFoldProvider(BaseMemoryPool pool)
     {
         ReadOnlySpan<byte> codeSeed = "veridical.logup.gkr.test.basefold.code.v1"u8;
 
         return BaseFoldPolynomialCommitmentScheme.Create(
             codeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce,
-            Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 
+    /// <summary>Builds the Hyrax-backed commitment provider, deriving a fresh Pedersen commitment key sized for <see cref="TestVariableCount"/>.</summary>
+    /// <returns>A new Hyrax provider owning its derived key; the caller disposes it.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the derived commitment key transfers to the returned provider (ownsKey: true).")]
     private static PolynomialCommitmentProvider BuildHyraxProvider()
     {
@@ -442,6 +526,8 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Creates a fresh Fiat-Shamir transcript under this test's domain label, ready to absorb a prove or verify run.</summary>
+    /// <returns>A new transcript backed by the shared pool.</returns>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -453,6 +539,10 @@ internal sealed class LogUpGkrProofTests
     }
 
 
+    /// <summary>Concatenates two digests and hashes them with production BLAKE3, the two-to-one compression the Merkle-backed providers in this class use.</summary>
+    /// <param name="left">The left digest, placed first in the concatenation.</param>
+    /// <param name="right">The right digest, placed after <paramref name="left"/>.</param>
+    /// <param name="output">The buffer receiving the combined digest.</param>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];

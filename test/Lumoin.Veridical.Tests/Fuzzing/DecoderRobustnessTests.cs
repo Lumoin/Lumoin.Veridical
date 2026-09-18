@@ -20,25 +20,58 @@ namespace Lumoin.Veridical.Tests.Fuzzing;
 [TestClass]
 internal sealed class DecoderRobustnessTests
 {
-    //Keeps the normal CI leg fast: enough of the deterministic sweep to sample the front of
-    //every mutation family without paying for the full few-hundred-variant sweep every run.
+    /// <summary>
+    /// Keeps the normal CI leg fast: enough of the deterministic sweep to sample the front of
+    /// every mutation family without paying for the full few-hundred-variant sweep every run.
+    /// </summary>
     private const int SmokeMutationCount = 32;
 
+    /// <summary>
+    /// The Circom fixture directory, relative to the test project.
+    /// </summary>
     private const string CircomFixtureDirectoryRelative = "ConstraintSystems/Interop/Circom/Fixtures";
+
+    /// <summary>
+    /// The zkInterface fixture directory, relative to the test project.
+    /// </summary>
     private const string ZkInterfaceFixtureDirectoryRelative = "ConstraintSystems/Interop/ZkInterface/Fixtures";
+
+    /// <summary>
+    /// The path, relative to the test project, of the Longfellow circuit anchor that records the
+    /// small serialized circuit seed.
+    /// </summary>
     private const string LongfellowAnchorRelativePath = "TestMaterial/Longfellow/mdoc-circuit-anchor-output.txt";
 
-    //The compressed-round-poly and raw-r1cs-witness targets have no natural seed file; their
-    //edge-case inputs are sized against the wired curves' scalar width (both BLS12-381 and
-    //BN254 use the same 32-byte canonical scalar).
+    /// <summary>
+    /// The compressed-round-poly and raw-r1cs-witness targets have no natural seed file; their
+    /// edge-case inputs are sized against the wired curves' scalar width, since BLS12-381 and
+    /// BN254 share the same 32-byte canonical scalar.
+    /// </summary>
     private const int ScalarSizeBytesForFuzzing = WellKnownCurves.Bls12Curve381ScalarSizeBytes;
 
-    //Matches DecoderFuzzTargets' compressed-round-poly wiring (degree 3, Spartan's outer
-    //sumcheck), so the edge-case buffer length lines up with what FromCompressedBytes expects.
+    /// <summary>
+    /// Matches <see cref="DecoderFuzzTargets"/>' compressed-round-poly wiring (degree 3,
+    /// Spartan's outer sumcheck), so the edge-case buffer length lines up with what
+    /// <c>FromCompressedBytes</c> expects.
+    /// </summary>
     private const int RoundPolynomialDegreeForFuzzing = 3;
+
+    /// <summary>
+    /// The edge-case input length, in bytes, sized to a degree-<see cref="RoundPolynomialDegreeForFuzzing"/>
+    /// compressed round polynomial.
+    /// </summary>
     private const int RoundPolynomialLengthHint = RoundPolynomialDegreeForFuzzing * ScalarSizeBytesForFuzzing;
+
+    /// <summary>
+    /// The edge-case input length, in bytes, sized to one raw R1CS witness scalar.
+    /// </summary>
     private const int WitnessLengthHint = ScalarSizeBytesForFuzzing;
 
+    /// <summary>
+    /// The fuzz target names whose full mutation sweep runs against real external-format
+    /// decoders (Circom, zkInterface, and the Longfellow circuit reader), gating
+    /// <see cref="FullMutationSweepProducesOnlyDocumentedRejections"/> to only those targets.
+    /// </summary>
     private static string[] ExternalParserTargetNames { get; } =
     [
         "circom-r1cs",
@@ -50,6 +83,10 @@ internal sealed class DecoderRobustnessTests
     ];
 
 
+    /// <summary>
+    /// Verifies that the fuzz target registry is non-empty and that every registered target has
+    /// a unique name.
+    /// </summary>
     [TestMethod]
     public void RegistryIsNonEmptyWithUniqueNames()
     {
@@ -65,6 +102,12 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Runs a fast, fixed-size sample of the deterministic mutation sweep against the named
+    /// fuzz target's seed corpus, asserting every input either succeeds or throws only a
+    /// documented rejection.
+    /// </summary>
+    /// <param name="targetName">The registered fuzz target's name.</param>
     [TestMethod]
     [DataRow("circom-r1cs")]
     [DataRow("circom-wtns")]
@@ -98,6 +141,14 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Runs the full deterministic mutation sweep against one of the external-parser fuzz
+    /// targets' seed corpus, asserting every input either succeeds or throws only a documented
+    /// rejection.
+    /// </summary>
+    /// <param name="targetName">
+    /// The registered fuzz target's name; must be one of <see cref="ExternalParserTargetNames"/>.
+    /// </param>
     [TestMethod]
     [TestCategory("Slow")]
     [DataRow("circom-r1cs")]
@@ -124,6 +175,12 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Invokes <paramref name="target"/> on <paramref name="input"/> and fails the test if it
+    /// throws an exception that is not one of the target's documented rejection types.
+    /// </summary>
+    /// <param name="target">The fuzz target to invoke.</param>
+    /// <param name="input">The input bytes to feed to the target.</param>
     private static void AssertOnlyDocumentedRejection(FuzzTarget target, byte[] input)
     {
         string? failureMessage = null;
@@ -149,6 +206,13 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Determines whether <paramref name="exception"/> is an instance of one of the
+    /// <paramref name="expectedRejections"/> types.
+    /// </summary>
+    /// <param name="exception">The exception to classify.</param>
+    /// <param name="expectedRejections">The documented rejection types to check against.</param>
+    /// <returns><see langword="true"/> if the exception matches one of the expected types.</returns>
     private static bool IsDocumentedRejection(Exception exception, Type[] expectedRejections)
     {
         foreach(Type expected in expectedRejections)
@@ -163,6 +227,12 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Looks up the registered fuzz target with the given name.
+    /// </summary>
+    /// <param name="targetName">The registered fuzz target's name.</param>
+    /// <returns>The matching <see cref="FuzzTarget"/>.</returns>
+    /// <exception cref="ArgumentException">No target is registered under that name.</exception>
     private static FuzzTarget ResolveTarget(string targetName)
     {
         foreach(FuzzTarget target in DecoderFuzzTargets.All)
@@ -177,6 +247,12 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Resolves the seed corpus for the named fuzz target, dispatching to the target-specific
+    /// seed builder.
+    /// </summary>
+    /// <param name="targetName">The registered fuzz target's name.</param>
+    /// <returns>The seed inputs for that target.</returns>
     private static IReadOnlyList<byte[]> LoadSeedCorpus(string targetName) => targetName switch
     {
         "circom-r1cs" => CircomR1csSeeds(),
@@ -197,10 +273,14 @@ internal sealed class DecoderRobustnessTests
     };
 
 
-    //The two BBS blind-extension deserializers have no natural fixture file; each corpus pairs
-    //a hand-built WELL-FORMED container (generator-point filler, unit scalars) with the sized
-    //edge-case set, so the mutation families exercise the frame arithmetic from a passing
-    //baseline rather than only from rejections.
+    /// <summary>
+    /// Builds the seed corpus for the <c>bbs-commitment-with-proof</c> fuzz target: a hand-built,
+    /// well-formed container (a generator-point filler with unit scalars) paired with the sized
+    /// edge-case inputs, since that format has no natural fixture file to seed from. Seeding from
+    /// a passing baseline lets the mutation families exercise the frame arithmetic rather than
+    /// only immediate rejections.
+    /// </summary>
+    /// <returns>The seed inputs for the <c>bbs-commitment-with-proof</c> target.</returns>
     private static IReadOnlyList<byte[]> BbsCommitmentWithProofSeeds()
     {
         byte[] seed = new byte[BbsCommitmentWithProof.ComputeSizeBytes(committedMessageCount: 1)];
@@ -215,6 +295,12 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Builds the seed corpus for the <c>bbs-blind-proof</c> fuzz target: a hand-built,
+    /// well-formed blind proof (see <see cref="BuildBlindProofSeed"/>) paired with the sized
+    /// edge-case inputs, since that format has no natural fixture file to seed from.
+    /// </summary>
+    /// <returns>The seed inputs for the <c>bbs-blind-proof</c> target.</returns>
     private static IReadOnlyList<byte[]> BbsBlindProofSeeds() =>
         [BuildBlindProofSeed(), .. DeterministicMutations.EdgeCaseInputs(BbsBlindProof.MinimumSizeBytes)];
 
@@ -263,11 +349,16 @@ internal sealed class DecoderRobustnessTests
     }
 
 
-    //poseidon2.r1cs alone under-covers the header's own count fields: the real
-    //circom-compiled file places the constraint section first, so the header's fixed-offset
-    //nWires/nConstraints sit tens of kilobytes in, past every mutation family's reach. The
-    //small hand-crafted multiplier2 fixtures (already committed for CircomR1csReaderTests)
-    //put the header section at the front, so the near-the-start mutation families reach it.
+    /// <summary>
+    /// Builds the seed corpus for the <c>circom-r1cs</c> fuzz target from the committed Circom
+    /// R1CS fixtures. The <c>poseidon2.r1cs</c> fixtures alone under-cover the header's own
+    /// count fields, because a Circom-compiled file places the constraint section first, so the
+    /// header's fixed-offset <c>nWires</c>/<c>nConstraints</c> sit tens of kilobytes in, past
+    /// every mutation family's reach; the small hand-crafted multiplier2 fixtures (also used by
+    /// <c>CircomR1csReaderTests</c>) put the header section at the front, so the near-the-start
+    /// mutation families reach it.
+    /// </summary>
+    /// <returns>The seed inputs for the <c>circom-r1cs</c> target.</returns>
     private static IReadOnlyList<byte[]> CircomR1csSeeds() =>
     [
         LoadCircomFixtureBytes("bls12_381", "poseidon2.r1cs"),
@@ -277,6 +368,11 @@ internal sealed class DecoderRobustnessTests
     ];
 
 
+    /// <summary>
+    /// Builds the seed corpus for the <c>circom-wtns</c> fuzz target from the committed Circom
+    /// witness fixtures.
+    /// </summary>
+    /// <returns>The seed inputs for the <c>circom-wtns</c> target.</returns>
     private static IReadOnlyList<byte[]> CircomWitnessSeeds() =>
     [
         LoadCircomFixtureBytes("bls12_381", "poseidon2.wtns"),
@@ -285,6 +381,11 @@ internal sealed class DecoderRobustnessTests
     ];
 
 
+    /// <summary>
+    /// Builds the seed corpus shared by the zkInterface fuzz targets from the committed
+    /// zkInterface example and per-curve fixtures.
+    /// </summary>
+    /// <returns>The seed inputs shared by the zkInterface targets.</returns>
     private static IReadOnlyList<byte[]> ZkInterfaceSeeds() =>
     [
         LoadZkInterfaceExampleBytes(),
@@ -293,12 +394,29 @@ internal sealed class DecoderRobustnessTests
     ];
 
 
+    /// <summary>
+    /// Builds the seed corpus for the <c>longfellow-circuit</c> fuzz target from the small
+    /// serialized circuit seed.
+    /// </summary>
+    /// <returns>The seed inputs for the <c>longfellow-circuit</c> target.</returns>
     private static IReadOnlyList<byte[]> LongfellowSeeds() => [LoadLongfellowSmallSerializedSeed()];
 
 
+    /// <summary>
+    /// Builds a seed corpus of only the deterministic edge-case inputs, for targets with no
+    /// natural fixture file.
+    /// </summary>
+    /// <param name="lengthHint">The input length, in bytes, the edge cases are sized to.</param>
+    /// <returns>The edge-case seed inputs.</returns>
     private static IReadOnlyList<byte[]> EdgeCaseSeeds(int lengthHint) => [.. DeterministicMutations.EdgeCaseInputs(lengthHint)];
 
 
+    /// <summary>
+    /// Reads a committed Circom fixture file's raw bytes for the given curve.
+    /// </summary>
+    /// <param name="curveDirectory">The curve-named subdirectory under the Circom fixture directory.</param>
+    /// <param name="fileName">The fixture file's name.</param>
+    /// <returns>The fixture file's raw bytes.</returns>
     private static byte[] LoadCircomFixtureBytes(string curveDirectory, string fileName)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, CircomFixtureDirectoryRelative, curveDirectory);
@@ -319,6 +437,10 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Reads the vendored zkInterface example fixture's raw bytes.
+    /// </summary>
+    /// <returns>The example fixture's raw bytes.</returns>
     private static byte[] LoadZkInterfaceExampleBytes()
     {
         string directory = Path.Combine(AppContext.BaseDirectory, ZkInterfaceFixtureDirectoryRelative);
@@ -337,6 +459,11 @@ internal sealed class DecoderRobustnessTests
     }
 
 
+    /// <summary>
+    /// Reads a committed zkInterface fixture file's raw bytes for the given curve.
+    /// </summary>
+    /// <param name="curveDirectory">The curve-named subdirectory under the zkInterface fixture directory.</param>
+    /// <returns>The fixture file's raw bytes.</returns>
     private static byte[] LoadZkInterfaceFixtureBytes(string curveDirectory)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, ZkInterfaceFixtureDirectoryRelative, curveDirectory);
@@ -355,10 +482,13 @@ internal sealed class DecoderRobustnessTests
     }
 
 
-    //Reuses the small, provably-real serialized circuit LongfellowCircuitReaderTests anchors as
-    //"small_serialized" (produced by the reference generate_circuit tool, see that file's
-    //TheImportedSmallCircuitDrivesTheProverAndVerifier) rather than the ~99 MB mdoc bundle: it
-    //exercises the identical TryRead parse path while keeping a many-hundred-mutation sweep fast.
+    /// <summary>
+    /// Loads the small, genuine serialized circuit that
+    /// <see cref="Lumoin.Veridical.Tests.Algebraic.LongfellowCircuitReaderTests.TheImportedSmallCircuitDrivesTheProverAndVerifier"/>
+    /// also exercises, rather than the full ~99 MB multi-attribute mdoc bundle, so this sweep can
+    /// run the identical <c>TryRead</c> parse path many hundreds of times while staying fast.
+    /// </summary>
+    /// <returns>The small serialized circuit's raw bytes.</returns>
     private static byte[] LoadLongfellowSmallSerializedSeed()
     {
         string path = $"../../../{LongfellowAnchorRelativePath}";

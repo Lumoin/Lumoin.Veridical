@@ -8,7 +8,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <summary>
 /// Region-by-region byte-oracle gates for <see cref="EcdsaSignatureWitness"/>: the
 /// C# port of <c>VerifyWitness3</c>
-/// (<c>tempdocs/longfellow-zk-reference/lib/circuits/ecdsa/verify_witness.h</c>).
+/// (<c>lib/circuits/ecdsa/verify_witness.h</c>).
 /// A real P-256/SHA-256 ECDSA triple is produced with the platform
 /// <see cref="ECDsa"/>, then every region the circuit's nonce-recovery assertion
 /// reads is checked against an independent oracle: the recovered <c>R.x</c> equals
@@ -21,21 +21,29 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class EcdsaSignatureWitnessTests
 {
+    /// <summary>The canonical scalar width in bytes for a P-256 field or curve-order element.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The number of bits the double-and-add ladder steps over, the P-256 scalar bit width.</summary>
     private const int LadderBits = 256;
 
+    /// <summary>The P-256 base-field prime.</summary>
     private static BigInteger Prime { get; } = EcdsaNonceRecovery.P;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>a</c>.</summary>
     private static BigInteger CurveA { get; } = EcdsaNonceRecovery.A;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>b</c>.</summary>
     private static BigInteger CurveB { get; } = P256BigIntegerG1Reference.CurveB;
 
-    //A fixed message so the gate is deterministic given a key; the key itself is fixed below.
+    /// <summary>A fixed message so the gate is deterministic given a key; the key itself is fixed by <see cref="PrivateKeyHex"/>.</summary>
     private static ReadOnlySpan<byte> Message => "EcdsaSignatureWitness region byte-oracle gate."u8;
 
-    //A deterministic P-256 private key (a fixed in-range scalar d), so the whole column is reproducible —
-    //no ECDsa.Create()-generated key, no System.Random, no time. d is well below n.
+    /// <summary>A deterministic P-256 private key (a fixed in-range scalar <c>d</c>), so the whole column is reproducible: no <see cref="ECDsa.Create()"/>-generated key, no <see cref="Random"/>, no time. <c>d</c> is well below the curve order.</summary>
     private const string PrivateKeyHex = "00112233445566778899aabbccddeeff0123456789abcdef0011223344556677";
 
 
+    /// <summary>Verifies that the witnessed recovered nonce point's x-coordinate equals the signature's <c>r</c>, matches an independently recomputed recovery, and lies on the curve.</summary>
     [TestMethod]
     public void RecoveredRxEqualsSignatureRAndLiesOnCurve()
     {
@@ -54,6 +62,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies that each witnessed base-field inverse (of <c>rx</c>, of <c>pkX</c>, and of <c>(−s mod n)</c> reinterpreted in Fp) genuinely inverts its operand.</summary>
     [TestMethod]
     public void BaseFieldInversesInvert()
     {
@@ -72,6 +81,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies that each of the four witnessed precomputed table points lies on the curve and equals its independently computed affine sum (<c>G+Q</c>, <c>G+R</c>, <c>Q+R</c>, <c>G+R+Q</c>).</summary>
     [TestMethod]
     public void PrecomputedTablePointsAreOnCurveAndEqualTheAffineSums()
     {
@@ -97,6 +107,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies that every witnessed signed ladder digit <c>bi_[i]</c> decodes back to the reference's three-bit digit <c>b[i]</c> built from the corresponding bits of <c>e</c>, <c>r</c>, and <c>(−s mod n)</c>.</summary>
     [TestMethod]
     public void BiEncodingDecodesBackToTheLadderDigit()
     {
@@ -119,6 +130,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies the load-bearing end-to-end identity: the witnessed double-and-add ladder's final accumulator is the point at infinity, i.e. the column proves <c>e·G + r·Q − s·R = O</c>.</summary>
     [TestMethod]
     public void WitnessedLadderRecoversR()
     {
@@ -138,6 +150,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies that every witnessed intermediate ladder point matches an independently re-run muxed projective double-and-add ladder, pinning the store-after-double-and-add order.</summary>
     [TestMethod]
     public void IntermediateLadderPointsAreConsistentWithReRunningTheLadder()
     {
@@ -173,6 +186,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies that the filled column holds exactly the reference's 1034 elements, each a canonical 32-byte scalar.</summary>
     [TestMethod]
     public void ColumnHasExactlyTheReferenceElementCountAndShape()
     {
@@ -189,6 +203,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies that filling the column twice from the same signature triple produces element-for-element identical bytes.</summary>
     [TestMethod]
     public void ColumnIsDeterministicForTheSameTriple()
     {
@@ -205,6 +220,7 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Verifies that the platform-produced signature triple verifies under .NET's own ECDSA verifier, the independent oracle confirming the recovered nonce point is genuine.</summary>
     [TestMethod]
     public void RecoveredNoncePointMatchesTheDotNetSignature()
     {
@@ -223,6 +239,10 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Builds the eight-entry projective mux table the double-and-add ladder selects from at each step: identity, G, Q, G+Q, R, G+R, Q+R, G+R+Q.</summary>
+    /// <param name="triple">The signature triple supplying the public key point.</param>
+    /// <param name="r">The recovered nonce point.</param>
+    /// <returns>The eight mux table entries in the reference's selection order.</returns>
     private static ProjectivePointFp256[] BuildMux(Triple triple, (BigInteger X, BigInteger Y) r)
     {
         (BigInteger X, BigInteger Y) pk = (triple.PkX, triple.PkY);
@@ -245,7 +265,8 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
-    //A deterministic, valid P-256 ECDSA triple (pkX, pkY, e, r, s) from the fixed key over the fixed message.
+    /// <summary>Builds a deterministic, valid P-256 ECDSA triple <c>(pkX, pkY, e, r, s)</c> from the fixed key over the fixed message.</summary>
+    /// <returns>The sampled triple.</returns>
     private static Triple SampleTriple()
     {
         using ECDsa ecdsa = CreateKey();
@@ -254,6 +275,9 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Builds a valid P-256 ECDSA triple <c>(pkX, pkY, e, r, s)</c> by signing the fixed message with the given key.</summary>
+    /// <param name="ecdsa">The key to sign with and read the public point from.</param>
+    /// <returns>The sampled triple.</returns>
     private static Triple SampleTriple(ECDsa ecdsa)
     {
         ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
@@ -273,6 +297,8 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Imports the fixed deterministic P-256 private key and derives its public point through the reference scalar multiplication.</summary>
+    /// <returns>A key ready to sign or verify with; the caller disposes it.</returns>
     private static ECDsa CreateKey()
     {
         byte[] d = Convert.FromHexString(PrivateKeyHex);
@@ -294,6 +320,10 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Checks the short-Weierstrass curve equation <c>y^2 = x^3 + a*x + b (mod p)</c> for the given affine coordinates.</summary>
+    /// <param name="x">The candidate point's x-coordinate.</param>
+    /// <param name="y">The candidate point's y-coordinate.</param>
+    /// <returns><see langword="true"/> when the point lies on the curve.</returns>
     private static bool OnCurve(BigInteger x, BigInteger y)
     {
         //y² == x³ + a·x + b (mod p).
@@ -304,7 +334,9 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
-    //The signed representative of a base-field residue in (−p/2, p/2], so the (−7..7) bi_ encoding reads back.
+    /// <summary>Computes the signed representative of a base-field residue in <c>(−p/2, p/2]</c>, so the <c>(−7..7)</c> <c>bi_</c> encoding reads back.</summary>
+    /// <param name="residue">The base-field residue to reinterpret as a signed value.</param>
+    /// <returns>The signed representative in <c>(−p/2, p/2]</c>.</returns>
     private static BigInteger SignedResidue(BigInteger residue)
     {
         BigInteger reduced = ModP(residue);
@@ -313,12 +345,28 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
+    /// <summary>Reduces a value modulo the P-256 base-field prime into the non-negative representative.</summary>
+    /// <param name="value">The value to reduce.</param>
+    /// <returns>The non-negative residue in <c>[0, p)</c>.</returns>
     private static BigInteger ModP(BigInteger value) => ((value % Prime) + Prime) % Prime;
 
+    /// <summary>Reads the bit of <paramref name="value"/> at the given position.</summary>
+    /// <param name="value">The integer to read a bit from.</param>
+    /// <param name="position">The zero-based bit position, counted from the least significant bit.</param>
+    /// <returns>The bit's value, 0 or 1.</returns>
     private static int Bit(BigInteger value, int position) => (int)((value >> position) & BigInteger.One);
 
+    /// <summary>Interprets big-endian unsigned bytes as a non-negative integer.</summary>
+    /// <param name="bytes">The big-endian unsigned bytes to interpret.</param>
+    /// <returns>The decoded non-negative integer.</returns>
     private static BigInteger ToInteger(byte[] bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 
 
+    /// <summary>A sampled, valid P-256 ECDSA input triple: a public key point, a message digest integer, and a signature.</summary>
+    /// <param name="PkX">The issuer public key's x-coordinate.</param>
+    /// <param name="PkY">The issuer public key's y-coordinate.</param>
+    /// <param name="E">The message digest, interpreted as an integer.</param>
+    /// <param name="R">The signature's <c>r</c> component.</param>
+    /// <param name="S">The signature's <c>s</c> component.</param>
     private readonly record struct Triple(BigInteger PkX, BigInteger PkY, BigInteger E, BigInteger R, BigInteger S);
 }

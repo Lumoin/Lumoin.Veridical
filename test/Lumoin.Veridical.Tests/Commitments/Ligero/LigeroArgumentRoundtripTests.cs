@@ -16,7 +16,7 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 
 /// <summary>
-/// End-to-end gate for the Ligero argument (LF.4b.4–LF.4b.6): a correctly generated proof
+/// End-to-end gate for the Ligero argument: a correctly generated proof
 /// over a satisfying witness verifies, and the verifier rejects a flipped
 /// quadratic constraint, a tampered linear target, a corrupted opened column and
 /// a mismatched public input. It runs first over the small Mersenne-prime field
@@ -27,45 +27,57 @@ namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 [TestClass]
 internal sealed class LigeroArgumentRoundtripTests
 {
+    /// <summary>The byte width of a canonical scalar in every field this test class exercises.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //A satisfying witness: W[2] = W[0]·W[1] (6 = 2·3), W[5] = W[3]·W[4] (20 = 4·5).
+    /// <summary>A satisfying witness: <c>W[2] = W[0]·W[1]</c> (6 = 2·3) and <c>W[5] = W[3]·W[4]</c> (20 = 4·5).</summary>
     private static int[] WitnessValues { get; } = [2, 3, 6, 4, 5, 20];
+    /// <summary>The number of witness wires, matching <see cref="WitnessValues"/>'s length.</summary>
     private const int WitnessCount = 6;
 
+    /// <summary>The two quadratic constraints <see cref="WitnessValues"/> satisfies: <c>W[2] = W[0]·W[1]</c> and <c>W[5] = W[3]·W[4]</c>.</summary>
     private static LigeroQuadraticConstraint[] QuadraticConstraints { get; } =
     [
         new LigeroQuadraticConstraint(0, 1, 2),
         new LigeroQuadraticConstraint(3, 4, 5),
     ];
 
-    //Two linear constraints: c0: W[0] + W[1] = 5; c1: 2·W[3] = 8.
+    /// <summary>The number of linear constraints below.</summary>
     private const int LinearConstraintCount = 2;
+    /// <summary>Two linear constraints: <c>c0: W[0] + W[1] = 5</c> and <c>c1: 2·W[3] = 8</c>.</summary>
     private static LigeroLinearConstraint[] LinearConstraints { get; } =
     [
         new LigeroLinearConstraint(0, 0, Coefficient(1)),
         new LigeroLinearConstraint(0, 1, Coefficient(1)),
         new LigeroLinearConstraint(1, 3, Coefficient(2)),
     ];
+    /// <summary>The target values <c>[5, 8]</c> the linear constraints above must sum to.</summary>
     private static int[] LinearTargetValues { get; } = [5, 8];
 
-    //Soundness parameters. The interleaved-Reed-Solomon proximity error is about
-    //(1 − δ)^OpenedColumns, with δ ≈ 1 − 1/InverseRate the RS relative distance
-    //(plus lower-order RS/affine-line terms). At InverseRate = 4 the rate is 1/4,
-    //so δ ≈ 3/4 and each opened column contributes ≈ 2 bits; production targets
-    //128-bit soundness with ≈ 64 columns. This gate uses a smaller query count
-    //for speed — correctness of the prover/verifier is independent of the count,
-    //only the soundness margin scales with it.
+    /// <summary>
+    /// The Ligero code's inverse rate. The interleaved Reed–Solomon proximity error is about
+    /// <c>(1 − δ)^OpenedColumns</c> with δ ≈ 1 − 1/InverseRate the code's relative distance (plus
+    /// lower-order terms); at rate 1/4, δ ≈ 3/4 and each opened column contributes about 2 bits, so
+    /// production targets 128-bit soundness with about 64 columns. This test class uses a smaller
+    /// query count for speed: prover/verifier correctness is independent of the count, and only the
+    /// soundness margin scales with it.
+    /// </summary>
     private const int InverseRate = 4;
+    /// <summary>The number of columns opened per proof; see <see cref="InverseRate"/> for how this test's smaller count trades soundness margin for speed without affecting correctness.</summary>
     private const int OpenedColumns = 8;
+    /// <summary>The Ligero code's block length.</summary>
     private const int Block = 16;
 
-    private static byte[] TranscriptSeed { get; } = [0x4C, 0x46, 0x34, 0x62, 0x36]; //"LF4b6"
-    private static byte[] RandomnessSeed { get; } = [0x72, 0x61, 0x6E, 0x64];        //"rand"
+    /// <summary>The Fiat–Shamir transcript seed for the honest-proof and rejection tests that do not perturb the public input.</summary>
+    private static byte[] TranscriptSeed { get; } = "Lumoin.Veridical.Ligero.ArgumentRoundtrip.Test"u8.ToArray();
+    /// <summary>The prover-randomness seed, the ASCII bytes for <c>rand</c>.</summary>
+    private static byte[] RandomnessSeed { get; } = [0x72, 0x61, 0x6E, 0x64];
 
+    /// <summary>The two-to-one Merkle compression function, delegated to <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
 
+    /// <summary>Verifies that a correctly generated proof over a satisfying witness verifies, across the small Mersenne-prime field, the P-256 scalar field, and the P-256 base field.</summary>
     [TestMethod]
     [DataRow("small field")]
     [DataRow("p-256")]
@@ -82,6 +94,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies that re-wiring a quadratic constraint to a relation the witness does not satisfy causes verification to fail, across all three fields.</summary>
     [TestMethod]
     [DataRow("small field")]
     [DataRow("p-256")]
@@ -106,6 +119,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies that claiming a linear-constraint target different from the true sum causes verification to fail, across all three fields.</summary>
     [TestMethod]
     [DataRow("small field")]
     [DataRow("p-256")]
@@ -125,6 +139,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies that flipping a byte of an opened column causes verification to fail because its Merkle leaf no longer matches the committed root, across all three fields.</summary>
     [TestMethod]
     [DataRow("small field")]
     [DataRow("p-256")]
@@ -145,6 +160,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies that replaying a different public-input seed draws different challenges and opened-column indices, so a genuine proof fails to verify, across all three fields.</summary>
     [TestMethod]
     [DataRow("small field")]
     [DataRow("p-256")]
@@ -164,6 +180,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies that fixed blinding randomness yields a byte-identical commitment and byte-identical responses across two independent proving runs, since the prover's arithmetic is a pure function of its inputs.</summary>
     [TestMethod]
     public void ProvingIsDeterministicInTheProverRandomness()
     {
@@ -182,6 +199,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies that the prover throws when the witness's quadratic relations hold but a linear constraint is violated, across all three fields.</summary>
     [TestMethod]
     [DataRow("small field")]
     [DataRow("p-256")]
@@ -199,6 +217,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies that supplying a row-extender factory (the FFT-accelerated encode path) produces a byte-identical commitment and responses compared to the default barycentric encode, over the P-256 base field — the field the FFT convolution engine serves.</summary>
     [TestMethod]
     public void TheProofIsByteIdenticalWithAndWithoutTheRowExtenderFactory()
     {
@@ -212,7 +231,9 @@ internal sealed class LigeroArgumentRoundtripTests
         LigeroParameters parameters = NewParameters();
 
         using LigeroProof reference = BuildProof(backend, parameters);
-        using Fp256LigeroRowExtenders extenders = NewRowExtenders(backend);
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFft(backend, fftPool);
+        using Fp256LigeroRowExtenders extenders = NewRowExtenders(backend, fft, fftPool);
         using LigeroProof accelerated = BuildProof(backend, parameters, RandomnessSeed, LinearTargetValues, extenders.Create);
 
         Assert.IsTrue(accelerated.Root.AsReadOnlySpan().SequenceEqual(reference.Root.AsReadOnlySpan()), "The commitment root must be byte-identical with and without the extender.");
@@ -225,16 +246,31 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
-    private static Fp256LigeroRowExtenders NewRowExtenders(FieldBackend backend)
+    /// <summary>Creates extenders borrowing a caller-owned FFT through proof generation.</summary>
+    /// <param name="backend">The arithmetic delegates.</param>
+    /// <param name="fft">The live FFT.</param>
+    /// <param name="pool">The caller pool.</param>
+    /// <returns>The disposable row extenders.</returns>
+    private static Fp256LigeroRowExtenders NewRowExtenders(FieldBackend backend, Fp256RealFft fft, BaseMemoryPool pool)
     {
-        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
-        LongfellowFp256Encoding.RootOfUnity(root);
-        var fft = new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
-
-        return new Fp256LigeroRowExtenders(fft, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256LigeroRowExtenders(fft, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, pool);
     }
 
 
+    /// <summary>Creates an FFT owned through the accelerated proof operation.</summary>
+    /// <param name="backend">The arithmetic delegates.</param>
+    /// <param name="pool">The caller pool retained through FFT disposal.</param>
+    /// <returns>The disposable FFT.</returns>
+    private static Fp256RealFft NewFft(FieldBackend backend, BaseMemoryPool pool)
+    {
+        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
+        LongfellowFp256Encoding.RootOfUnity(root);
+
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, backend.Add, backend.Subtract, backend.Multiply, backend.Invert, OfScalarCanonical, CurveParameterSet.None, pool);
+    }
+
+
+    /// <summary>Writes <paramref name="value"/> as a canonical big-endian scalar into <paramref name="destination"/>, zero-padded on the left.</summary>
     private static void OfScalarCanonical(uint value, Span<byte> destination)
     {
         destination.Clear();
@@ -242,14 +278,17 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Builds the Ligero parameters shared by every field backend in this test class.</summary>
     private static LigeroParameters NewParameters() =>
         new(WitnessCount, QuadraticConstraints.Length, InverseRate, OpenedColumns, Block);
 
 
+    /// <summary>Builds a proof using the default randomness seed and linear targets.</summary>
     private static LigeroProof BuildProof(FieldBackend backend, LigeroParameters parameters) =>
         BuildProof(backend, parameters, RandomnessSeed, LinearTargetValues);
 
 
+    /// <summary>Builds a Ligero proof over the fixed witness and constraints for the given field backend, randomness seed, and target values, optionally through a row-extender factory.</summary>
     private static LigeroProof BuildProof(FieldBackend backend, LigeroParameters parameters, ReadOnlySpan<byte> randomnessSeed, ReadOnlySpan<int> targetValues, LigeroRowExtenderFactory? rowExtenderFactory = null)
     {
         Span<byte> witnesses = stackalloc byte[WitnessCount * ScalarSize];
@@ -285,6 +324,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Verifies a Ligero proof against the given quadratic constraints, linear target values, and transcript seed for the given field backend.</summary>
     private static bool VerifyProof(
         FieldBackend backend,
         LigeroParameters parameters,
@@ -319,6 +359,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Resolves the named field's arithmetic delegates: <c>"small field"</c> (a hand-checkable Mersenne prime), <c>"p-256"</c> (the P-256 scalar field), or <c>"p-256 base"</c> (the P-256 base field Longfellow's ECDSA circuit runs in).</summary>
     private static FieldBackend Backend(string field) => field switch
     {
         "small field" => new FieldBackend(
@@ -337,7 +378,7 @@ internal sealed class LigeroArgumentRoundtripTests
             P256BigIntegerScalarReference.FieldOrder),
         //The P-256 BASE field Fp — the field Longfellow's ECDSA circuit runs in
         //(the sumcheck field equals the curve base field). Exercising the argument
-        //here proves the substrate for the native in-circuit ECDSA gadget (LF.5).
+        //here proves the substrate for the native in-circuit ECDSA gadget.
         "p-256 base" => new FieldBackend(
             P256BaseFieldReference.GetAdd(),
             P256BaseFieldReference.GetSubtract(),
@@ -349,6 +390,7 @@ internal sealed class LigeroArgumentRoundtripTests
     };
 
 
+    /// <summary>Encodes <paramref name="value"/> as a canonical scalar stored in a <c>byte[]</c> rather than scratch memory, since <see cref="LigeroLinearConstraint"/> retains the coefficient beyond the call.</summary>
     private static ReadOnlyMemory<byte> Coefficient(int value)
     {
         //A stored constraint coefficient, not scratch, so a byte[] is the right shape.
@@ -359,6 +401,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Writes each value in <paramref name="values"/> as a canonical big-endian scalar into consecutive <see cref="ScalarSize"/>-sized slots of <paramref name="destination"/>.</summary>
     private static void FillScalars(ReadOnlySpan<int> values, Span<byte> destination)
     {
         for(int i = 0; i < values.Length; i++)
@@ -368,6 +411,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Computes the two-to-one Merkle compression of <paramref name="left"/> and <paramref name="right"/> using BLAKE3.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * ScalarSize];
@@ -377,6 +421,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
+    /// <summary>Writes <paramref name="value"/> as a canonical big-endian 32-bit scalar into <paramref name="destination"/>, zero-padded on the left.</summary>
     private static void WriteCanonical(int value, Span<byte> destination)
     {
         destination.Clear();
@@ -384,8 +429,7 @@ internal sealed class LigeroArgumentRoundtripTests
     }
 
 
-    //The field arithmetic backend under test. The reference delegates ignore the
-    //curve identity, so both fields are exercised by the same field-generic code.
+    /// <summary>The field arithmetic backend under test for one named field. The reference delegates ignore the curve identity, so the same field-generic prover and verifier code exercises every field this class names.</summary>
     private sealed class FieldBackend(
         ScalarAddDelegate add,
         ScalarSubtractDelegate subtract,
@@ -394,48 +438,58 @@ internal sealed class LigeroArgumentRoundtripTests
         ScalarReduceDelegate reduce,
         BigInteger fieldOrder)
     {
+        /// <summary>The field addition delegate.</summary>
         public ScalarAddDelegate Add { get; } = add;
+        /// <summary>The field subtraction delegate.</summary>
         public ScalarSubtractDelegate Subtract { get; } = subtract;
+        /// <summary>The field multiplication delegate.</summary>
         public ScalarMultiplyDelegate Multiply { get; } = multiply;
+        /// <summary>The field inversion delegate.</summary>
         public ScalarInvertDelegate Invert { get; } = invert;
+        /// <summary>The field reduction delegate.</summary>
         public ScalarReduceDelegate Reduce { get; } = reduce;
+        /// <summary>The field's prime order.</summary>
         public BigInteger FieldOrder { get; } = fieldOrder;
     }
 
 
-    //A reproducible prover-randomness source over an arbitrary prime field: each
-    //call hashes seed ‖ counter through BLAKE3-XOF and reduces the wide output
-    //modulo the field order. Test-only; production draws from a CSPRNG.
+    /// <summary>A reproducible prover-randomness source over an arbitrary prime field: each call hashes <c>seed ‖ counter</c> through BLAKE3 and reduces the wide output modulo the field order. Test-only; production code draws randomness from a CSPRNG.</summary>
     private sealed class DeterministicFieldRandom
     {
-        private readonly byte[] seed;
-        private readonly BigInteger fieldOrder;
+        /// <summary>The fixed seed mixed with the call counter to derive each output.</summary>
+        private byte[] Seed { get; }
+        /// <summary>The prime field order each output is reduced modulo.</summary>
+        private BigInteger FieldOrder { get; }
+        /// <summary>The number of outputs produced so far; mixed into the hash input so consecutive calls differ.</summary>
         private int counter;
 
 
+        /// <summary>Captures the seed and field order this instance will draw reduced randomness from.</summary>
         public DeterministicFieldRandom(ReadOnlySpan<byte> seed, BigInteger fieldOrder)
         {
-            this.seed = seed.ToArray();
-            this.fieldOrder = fieldOrder;
+            this.Seed = seed.ToArray();
+            this.FieldOrder = fieldOrder;
             counter = 0;
         }
 
 
+        /// <summary>Exposes this instance's <see cref="Fill"/> method as a <see cref="ScalarRandomDelegate"/>.</summary>
         public ScalarRandomDelegate AsDelegate() => Fill;
 
 
+        /// <summary>Derives the next output by hashing the seed and call counter with BLAKE3 and reducing the wide result modulo the field order, then advances the counter.</summary>
         private Tag Fill(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
         {
-            Span<byte> input = stackalloc byte[seed.Length + sizeof(int)];
-            seed.CopyTo(input);
-            BinaryPrimitives.WriteInt32BigEndian(input[seed.Length..], counter);
+            Span<byte> input = stackalloc byte[Seed.Length + sizeof(int)];
+            Seed.CopyTo(input);
+            BinaryPrimitives.WriteInt32BigEndian(input[Seed.Length..], counter);
             counter++;
 
             Span<byte> wide = stackalloc byte[64];
             Blake3.Hash(input, wide);
 
             BigInteger value = new(wide, isUnsigned: true, isBigEndian: true);
-            BigInteger reduced = value % fieldOrder;
+            BigInteger reduced = value % FieldOrder;
 
             destination.Clear();
             reduced.TryWriteBytes(destination, out int written, isUnsigned: true, isBigEndian: true);

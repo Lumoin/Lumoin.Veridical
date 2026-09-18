@@ -20,8 +20,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// This gate exists because BBS+ generator derivation depends on byte-
 /// faithful agreement with the RFC 9380 §8.8.1 SSWU-RO + 11-isogeny +
 /// cofactor-clearing construction. Algebraic-invariant tests (on-curve,
-/// in-subgroup) are necessary but not sufficient — they did not catch
-/// the try-and-increment divergence the BBS+.1 batch uncovered, because
+/// in-subgroup) are necessary but not sufficient — they cannot catch a
+/// try-and-increment implementation masquerading as SSWU-RO, because
 /// try-and-increment also produces valid subgroup points. Byte equality
 /// against published vectors does catch that class of bug.
 /// </para>
@@ -35,10 +35,12 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381G1HashToCurveByteFaithfulTests
 {
+    /// <summary>The RFC 9380 Appendix J.9.1 published vectors, wrapped for <see cref="DynamicDataAttribute"/>.</summary>
     public static IEnumerable<object[]> VectorData =>
         Rfc9380J9_1Vectors.All.Select(v => new object[] { v });
 
 
+    /// <summary>Verifies that hashing each RFC 9380 §J.9.1 vector's message produces exactly the vector's published compressed point encoding.</summary>
     [TestMethod]
     [DynamicData(nameof(VectorData))]
     public void HashToCurveProducesPublishedCompressedEncoding(Rfc9380J9_1Vector vector)
@@ -64,6 +66,11 @@ internal sealed class Bls12Curve381G1HashToCurveByteFaithfulTests
     }
 
 
+    /// <summary>
+    /// Verifies that the SHA-256 and SHAKE-256 hash-to-curve ciphersuites produce distinct G1
+    /// points for the same message and DST, since RFC 9380 publishes no SHAKE-256 G1 vectors to
+    /// check byte-for-byte here.
+    /// </summary>
     [TestMethod]
     public void Sha256AndShake256HashToCurveProduceDifferentPoints()
     {

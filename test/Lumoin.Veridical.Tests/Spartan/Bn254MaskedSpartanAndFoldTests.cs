@@ -17,36 +17,74 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// End-to-end BN254 coverage of the masked Spartan prover/verifier and the
 /// Category-B <see cref="FoldChain"/>. Mirrors the BLS12-381
 /// <see cref="MaskedSpartanRoundtripTests"/> and <see cref="FoldChainRoundtripTests"/>
-/// with the BN254 reference backends. These exercise the U.10 curve-broadening
-/// of <c>MaskedSpartanProof</c> and the fold path (<c>RelaxedR1csFold</c> /
+/// with the BN254 reference backends. These exercise <c>MaskedSpartanProof</c>
+/// and the fold path (<c>RelaxedR1csFold</c> /
 /// <c>RawR1csInstanceExtensions.Prepare</c>, including the curve-correct G1
-/// identity encoding) with a real second curve.
+/// identity encoding) with a real second curve, confirming both constructions
+/// are curve-generic rather than tied to BLS12-381.
 /// </summary>
 [TestClass]
 internal sealed class Bn254MaskedSpartanAndFoldTests
 {
+    /// <summary>The Blake3 Fiat-Shamir hash delegate driving both the prover and verifier transcripts.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The Blake3 Fiat-Shamir squeeze delegate drawing challenges from the transcript.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BN254 scalar-field reduction delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bn254BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BN254 scalar-field addition delegate under test.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bn254.Add;
+
+    /// <summary>The BN254 scalar-field subtraction delegate under test.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bn254.Subtract;
+
+    /// <summary>The BN254 scalar-field multiplication delegate under test.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bn254.Multiply;
+
+    /// <summary>The BN254 scalar-field inversion delegate under test.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bn254.Invert;
+
+    /// <summary>The BN254 scalar-field random-sampling delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarRandomDelegate ScalarRandom { get; } = Bn254BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The BN254 G1 addition delegate from the BigInteger-backed reference implementation.</summary>
     private static G1AddDelegate G1Add { get; } = Bn254BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BN254 G1 scalar-multiplication delegate from the BigInteger-backed reference implementation.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bn254BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BN254 G1 multi-scalar-multiplication delegate under test.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bn254Msm;
+
+    /// <summary>The BN254 G1 on-curve check delegate from the BigInteger-backed reference implementation.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BN254 G1 prime-order-subgroup membership delegate from the BigInteger-backed reference implementation.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bn254BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BN254 G1 hash-to-curve delegate from the BigInteger-backed reference implementation, used to derive the Hyrax commitment key's generators.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bn254BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The multilinear-extension evaluation delegate from the BigInteger-backed reference implementation.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The multilinear-extension fold delegate from the BigInteger-backed reference implementation.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
 
+    /// <summary>The BN254 scalar-field order, used to reduce canonical witness values into range.</summary>
     private static BigInteger Order { get; } = Bn254BigIntegerScalarReference.FieldOrder;
+
+    /// <summary>The curve parameter set selecting the BN254 instantiation throughout this class.</summary>
     private static CurveParameterSet Curve => CurveParameterSet.Bn254;
+
+    /// <summary>The shared memory pool this class's helpers rent scratch buffers from.</summary>
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 
 
+    /// <summary>Verifies that the masked Spartan prover and verifier round-trip over BN254 for the trivial one-multiply instance.</summary>
     [TestMethod]
     public void MaskedTrivialInstanceRoundtrip()
     {
@@ -54,6 +92,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Verifies that the masked Spartan prover and verifier round-trip over BN254 for the larger two-multiply instance.</summary>
     [TestMethod]
     public void MaskedLargerInstanceRoundtrip()
     {
@@ -61,6 +100,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Verifies that folding two witnesses for the one-multiply instance compresses to a proof that verifies against the final folded accumulator, over BN254.</summary>
     [TestMethod]
     public void FoldChainOfTwoOneMultiplyVerifies()
     {
@@ -71,6 +111,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Verifies that folding two witnesses for the two-multiply instance compresses to a proof that verifies against the final folded accumulator, over BN254.</summary>
     [TestMethod]
     public void FoldChainOfTwoTwoMultiplyVerifies()
     {
@@ -81,6 +122,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Verifies that folding a witness which violates the first constraint completes without a satisfaction check, but that finalizing the chain then throws because the accumulated statement is unsatisfied.</summary>
     [TestMethod]
     public void FoldingUnsatisfiedStatementFailsToCompress()
     {
@@ -90,6 +132,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Verifies that folding a witness one unit off from satisfying completes without a satisfaction check, but that finalizing the chain then throws because the accumulated statement is unsatisfied.</summary>
     [TestMethod]
     public void FoldingOffByOneStatementFailsToCompress()
     {
@@ -98,6 +141,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Asserts that folding the given unsatisfying witness into a fresh chain leaves the accumulator unsatisfied, so finalizing the chain throws <see cref="R1csNotSatisfiedException"/>.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; the unsatisfying witness is consumed by the fold step.")]
     private static void AssertUnsatisfiedFoldFailsToCompress(RawR1csWitness unsatisfyingWitness)
     {
@@ -125,7 +169,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
-    //z = (1, 3, 5, 99): violates c0 (3·5 != 99).
+    /// <summary>Builds the witness z = (1, 3, 5, 99), which violates constraint c0 (3·5 != 99).</summary>
     private static RawR1csWitness BuildUnsatisfyingWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -137,7 +181,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
-    //z = (1, 3, 5, 16): off-by-one in the product slot.
+    /// <summary>Builds the witness z = (1, 3, 5, 16), off by one from satisfying in the product slot.</summary>
     private static RawR1csWitness BuildOffByOneWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -149,10 +193,14 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Produces a fresh raw R1CS instance for a test's fold or round-trip exercise.</summary>
     private delegate RawR1csInstance RawInstanceFactory();
+
+    /// <summary>Produces a fresh raw R1CS witness for a test's fold or round-trip exercise.</summary>
     private delegate RawR1csWitness RawWitnessFactory();
 
 
+    /// <summary>Proves and verifies a masked Spartan instance built from the given factories, asserting that the round-trip verifies.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; disposal happens before the assertion completes.")]
     private static void ExerciseMaskedRoundtrip(
         RawInstanceFactory instanceFactory,
@@ -182,6 +230,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Folds one or more witnesses for the given instance factory into a chain, finalizes it, and asserts that the resulting proof verifies against the final folded instance.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; disposal happens before the assertion completes.")]
     private static void ExerciseFoldRoundtrip(
         RawInstanceFactory instanceFactory,
@@ -222,6 +271,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Prepares a raw instance and witness into a relaxed accumulator with a zero error-opening blind sized to the matrix row count, and steps the fold chain with it.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The raw instance and witness are disposed within this method; the prepared relaxed objects transfer to the accumulator the chain step consumes.")]
     private static void StepRaw(FoldChain chain, RawR1csInstance rawInstance, RawR1csWitness rawWitness)
     {
@@ -247,6 +297,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Builds a masked Spartan prover over a fresh Hyrax provider sized for the given vector length.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned MaskedSpartanProver.")]
     private static MaskedSpartanProver BuildMaskedProver(int hyraxVectorLength)
     {
@@ -254,6 +305,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Builds a masked Spartan verifier over a fresh Hyrax provider sized for the given vector length.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of intermediate disposables transfers to the returned MaskedSpartanVerifier.")]
     private static MaskedSpartanVerifier BuildMaskedVerifier(int hyraxVectorLength)
     {
@@ -261,6 +313,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Builds a Hyrax polynomial commitment provider over BN254 that takes ownership of the given commitment key.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The provider takes ownership of the key (ownsKey: true) and transfers to whatever owns the provider.")]
     private static PolynomialCommitmentProvider BuildProvider(HyraxCommitmentKey commitmentKey)
     {
@@ -273,18 +326,21 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>
+    /// Derives a Hyrax commitment key sized for at least <paramref name="vectorLength"/>. The statistical
+    /// masks' single-row vector commitments need more generators than the small witness matrices; a longer
+    /// key derives the same per-index generators, so flooring the length is byte-neutral for the rest.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the derived key transfers to the caller's using declaration.")]
     private static HyraxCommitmentKey BuildCommitmentKey(int vectorLength)
     {
-        //The statistical masks' single-row vector commitments need more
-        //generators than the small witness matrices; a longer key derives the
-        //same per-index generators, so flooring is byte-neutral for the rest.
         return HyraxCommitmentKey.Derive(
             Math.Max(vectorLength, MaskedSpartanTestFixtures.MaskedVectorLengthFloor),
             WellKnownHyraxDomainLabels.CanonicalSeedV1, Curve, HashToCurve, Pool);
     }
 
 
+    /// <summary>Initializes a fresh Fiat-Shamir transcript under the Spartan domain label, for either a prover's or a verifier's independent run.</summary>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -293,7 +349,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
-    //One multiplication plus padding: c0 z[1]·z[2]=z[3], c1 z[0]·z[0]=z[0]. (m=2, n=4).
+    /// <summary>Builds a one-multiplication-plus-padding R1CS instance: c0 z[1]·z[2]=z[3], c1 z[0]·z[0]=z[0] (m=2, n=4).</summary>
     private static RawR1csInstance BuildOneMultiplyInstance()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -313,7 +369,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
-    //z = (1, 3, 5, 15): c0 3·5=15, c1 1·1=1.
+    /// <summary>Builds the satisfying witness z = (1, 3, 5, 15) for the one-multiply instance: c0 3·5=15, c1 1·1=1.</summary>
     private static RawR1csWitness BuildOneMultiplyWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -325,7 +381,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
-    //Alternative valid witness for the one-multiply instance: z = (1, 2, 7, 14).
+    /// <summary>Builds an alternative satisfying witness for the one-multiply instance: z = (1, 2, 7, 14).</summary>
     private static RawR1csWitness BuildAlternativeOneMultiplyWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -337,7 +393,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
-    //Two multiplications: c0 z[1]·z[2]=z[3], c1 z[4]·z[5]=z[6]. (m=2, n=8).
+    /// <summary>Builds a two-multiplication R1CS instance: c0 z[1]·z[2]=z[3], c1 z[4]·z[5]=z[6] (m=2, n=8).</summary>
     private static RawR1csInstance BuildTwoMultiplyInstance()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -357,7 +413,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
-    //z = (1, 3, 5, 15, 2, 7, 14, 0): c0 3·5=15, c1 2·7=14.
+    /// <summary>Builds the satisfying witness z = (1, 3, 5, 15, 2, 7, 14, 0) for the two-multiply instance: c0 3·5=15, c1 2·7=14.</summary>
     private static RawR1csWitness BuildTwoMultiplyWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -373,6 +429,7 @@ internal sealed class Bn254MaskedSpartanAndFoldTests
     }
 
 
+    /// <summary>Reduces a value modulo the BN254 scalar order into [0, Order) and writes it into <paramref name="destination"/> as a canonical big-endian scalar, throwing if it does not fit.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 
 /// <summary>
 /// The Fp256 mdoc SIGNATURE-circuit WITNESS FILLER: the C# port of the 3739-element dense input column that
-/// google/longfellow-zk's <c>fill_witness</c> (<c>tempdocs/longfellow-zk-reference/lib/circuits/mdoc/mdoc_zk.cc</c>,
+/// google/longfellow-zk's <c>fill_witness</c> (<c>lib/circuits/mdoc/mdoc_zk.cc</c>,
 /// the <c>fill_b</c> / <c>Fp256Base</c> side) plus <c>MdocSignatureWitness::fill_witness</c>
 /// (<c>lib/circuits/mdoc/mdoc_witness.h:603-613</c>) lay into the version-7 SIG circuit for a one-attribute
 /// mdoc proof. The column splits 900 public + 2839 private.
@@ -19,16 +19,16 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// <para>
 /// Every element is a canonical (non-Montgomery) base-field value emitted as 32 big-endian bytes — the
 /// established C# filler convention (the reference's <c>to_bytes_field</c> little-endian conversion is
-/// applied only at the Phase-6 public-input/coefficient boundary). The two ECDSA halves reuse
+/// applied only at the public-input/coefficient boundary). The two ECDSA halves reuse
 /// <see cref="EcdsaSignatureWitness"/> unchanged: the ISSUER half over the REAL credential's
-/// <c>(pkX, pkY, e_, r, s)</c> and the DEVICE half over the SYNTHESIZED <c>(dpkx, dpky, e2, r2, s2)</c>
-/// (coordinator decision OQ1).
+/// <c>(pkX, pkY, e_, r, s)</c> and the DEVICE half over the SYNTHESIZED <c>(dpkx, dpky, e2, r2, s2)</c>,
+/// which stands in for a live device credential so the column is self-consistent without one.
 /// </para>
 /// <para>
 /// The column region map (one-attribute, version 7; total 3739 elements):
 /// </para>
 /// <list type="bullet">
-///   <item><description><b>[0,4)</b> <c>one</c>, <c>pkX</c>, <c>pkY</c>, <c>e2</c> (fill_signature_inputs, mdoc_zk.cc:167-173). <c>e2</c> is the DEVICE/transcript hash (PUBLIC, OQ6).</description></item>
+///   <item><description><b>[0,4)</b> <c>one</c>, <c>pkX</c>, <c>pkY</c>, <c>e2</c> (fill_signature_inputs, mdoc_zk.cc:167-173). <c>e2</c> is the DEVICE/transcript hash (PUBLIC).</description></item>
 ///   <item><description><b>[4,772)</b> the six MACs, each a 128-bit GF(2^128) value expanded to 128 Fp256 one/zero wires (fill_gf2k, mac_reference.h:63).</description></item>
 ///   <item><description><b>[772,900)</b> the <c>av</c> key, 128 Fp256 one/zero wires. This is <c>npub_in = 900</c>.</description></item>
 ///   <item><description><b>[900,903)</b> the issuer hash <c>e_</c>, the device key <c>dpkx</c>, <c>dpky</c> (MdocSignatureWitness::fill_witness).</description></item>
@@ -40,17 +40,28 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// The reference fills the public macs/av with <c>Fs.zero()</c> at commit and overwrites them post-commit
 /// via <c>update_macs</c> (mdoc_zk.cc:247-249, 286-303). Here the two-phase commit/update is collapsed into
 /// a single deterministic fill of the COMMITTED values: with chosen-constant <c>ap</c> keys and a chosen
-/// <c>av</c> (OQ2), <c>mac[i] = (av + ap_i)·m_i</c> over GF(2^128) is computed and expanded, so the column
+/// <c>av</c>, <c>mac[i] = (av + ap_i)·m_i</c> over GF(2^128) is computed and expanded, so the column
 /// is directly provable. The <c>av</c> here is a fixed constant rather than the transcript-derived value.
 /// </para>
 /// </remarks>
 internal sealed class MdocSignatureWitnessFiller
 {
+    /// <summary>The byte width of a canonical Fp256 base-field scalar.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The bit width of a GF(2^128) element.</summary>
     private const int Gf2kBits = 128;
+
+    /// <summary>The byte width of a GF(2^128) element's little-endian encoding.</summary>
     private const int Gf2kBytes = 16;
+
+    /// <summary>The number of polynomial-coefficient bits packed into one MAC plucker code (<c>kMACPluckerBits</c>).</summary>
     private const int MacPluckerBits = 2;
+
+    /// <summary>The number of distinct MAC plucker codes, <c>2^MacPluckerBits</c>.</summary>
     private const int MacPluckerCount = 1 << MacPluckerBits;
+
+    /// <summary>The number of packed Fp256 elements one GF(2^128) element expands to when plucked <see cref="MacPluckerBits"/> bits at a time.</summary>
     private const int MacPackedWordElements = (Gf2kBits + MacPluckerBits - 1) / MacPluckerBits;
 
     /// <summary>The total SIG-circuit input count (npub_in 900 + private 2839).</summary>
@@ -59,13 +70,21 @@ internal sealed class MdocSignatureWitnessFiller
     /// <summary>The public-input count (one,pkX,pkY,e2 + 6 macs + av, each gf2k 128-bit-expanded).</summary>
     public const int PublicInputCount = 900;
 
+    /// <summary>The P-256 base-field order, used to reduce the plucker-code inputs.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
-    //The six per-element MAC keys ap and the verifier key av, chosen deterministic GF(2^128) constants
-    //(OQ2). The MAC relation mac=(av+ap)·m is satisfied by construction for any choice; these are pinned for
-    //reproducibility. Each is a fixed 16-byte little-endian polynomial (the gf2k of_bytes_field convention).
+    /// <summary>
+    /// The verifier's MAC key <c>av</c>, a fixed 16-byte little-endian polynomial (the gf2k
+    /// <c>of_bytes_field</c> convention). Because the MAC relation <c>mac=(av+ap)·m</c> holds by
+    /// construction for any choice of keys, this constant is pinned only for reproducibility.
+    /// </summary>
     private static byte[] AvKey { get; } = Gf2kFromHexLittleEndian("a3f10e5572c4901bd6883f2147ac55e0");
 
+    /// <summary>
+    /// The six per-element MAC keys <c>ap</c>, each a fixed 16-byte little-endian polynomial (the
+    /// gf2k <c>of_bytes_field</c> convention). Because the MAC relation <c>mac=(av+ap)·m</c> holds by
+    /// construction for any choice of keys, these constants are pinned only for reproducibility.
+    /// </summary>
     private static byte[][] ApKeys { get; } =
     [
         Gf2kFromHexLittleEndian("11223344556677889900aabbccddeeff"),
@@ -76,37 +95,45 @@ internal sealed class MdocSignatureWitnessFiller
         Gf2kFromHexLittleEndian("cafebabedeadbeef0123456789abcdef"),
     ];
 
+    /// <summary>The GF(2^128) addition delegate used to key each MAC message with its <c>av</c>/<c>ap</c> keys.</summary>
     private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+    /// <summary>The GF(2^128) multiplication delegate used to compute each committed MAC.</summary>
     private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
+    /// <summary>The Fp256 base-field subtraction delegate used to build the MAC plucker codes.</summary>
     private static ScalarSubtractDelegate FpSubtract { get; } = P256BaseFieldReference.GetSubtract();
 
-    private readonly byte[] one;
-    private readonly byte[] zero;
-    private readonly byte[][] pluckerCodes;
+    /// <summary>The canonical Fp256 encoding of 1, pushed for every set polynomial bit.</summary>
+    private byte[] One { get; }
+    /// <summary>The canonical Fp256 encoding of 0, pushed for every clear polynomial bit.</summary>
+    private byte[] Zero { get; }
+    /// <summary>This instance's four MAC plucker codes, built once at construction.</summary>
+    private byte[][] PluckerCodeTable { get; }
 
-    private readonly List<byte[]> column = [];
+    /// <summary>The elements pushed so far, in fill order; flattened into the returned column.</summary>
+    private List<byte[]> Column { get; } = [];
 
 
+    /// <summary>Initializes the one/zero wire encodings and this instance's MAC plucker codes.</summary>
     public MdocSignatureWitnessFiller()
     {
-        zero = new byte[ScalarSize];
-        one = new byte[ScalarSize];
-        one[ScalarSize - 1] = 0x01;
+        Zero = new byte[ScalarSize];
+        One = new byte[ScalarSize];
+        One[ScalarSize - 1] = 0x01;
 
-        pluckerCodes = BuildPluckerCodes();
+        PluckerCodeTable = BuildPluckerCodes();
     }
 
 
     /// <summary>The element count the fill produced (must equal <see cref="ElementCount"/>).</summary>
-    public int Count => column.Count;
+    public int Count => Column.Count;
 
-    /// <summary>The four OQ4 2-bit MAC plucker codes <c>encode(v)=of_scalar(2v)−of_scalar(3)</c>, exposed for the gate.</summary>
-    public byte[][] PluckerCodes => pluckerCodes;
+    /// <summary>The four 2-bit MAC plucker codes <c>encode(v)=of_scalar(2v)−of_scalar(3)</c>, exposed for the gate.</summary>
+    public byte[][] PluckerCodes => PluckerCodeTable;
 
-    /// <summary>The chosen <c>av</c> key (OQ2), exposed for the MAC-algebra gate.</summary>
+    /// <summary>The chosen <c>av</c> key, exposed for the MAC-algebra gate.</summary>
     public static byte[] Av => AvKey;
 
-    /// <summary>The six chosen <c>ap</c> keys (OQ2), exposed for the MAC-algebra gate.</summary>
+    /// <summary>The six chosen <c>ap</c> keys, exposed for the MAC-algebra gate.</summary>
     public static byte[][] Ap => ApKeys;
 
 
@@ -143,8 +170,8 @@ internal sealed class MdocSignatureWitnessFiller
         //per common value), expanded with av into the public prefix.
         byte[][] macs = ComputeMacs(macMessages);
 
-        //fill_signature_inputs (mdoc_zk.cc:169-172): one, pkX, pkY, e2 (e2 = the DEVICE hash, OQ6).
-        Push(one);
+        //fill_signature_inputs (mdoc_zk.cc:169-172): one, pkX, pkY, e2 (e2 = the DEVICE hash).
+        Push(One);
         Push(Element(pkX));
         Push(Element(pkY));
         Push(Element(e2));
@@ -180,7 +207,7 @@ internal sealed class MdocSignatureWitnessFiller
 
 
     /// <summary>
-    /// Builds the SIG-circuit column for the DUAL-FIELD DRIVER (C3): the issuer half over the REAL credential
+    /// Builds the SIG-circuit column for the DUAL-FIELD DRIVER: the issuer half over the REAL credential
     /// and the device half over the REAL extracted device tuple (<paramref name="device"/>), with the public
     /// mac/av region <c>[4, 900)</c> filled with ZEROS — the reference's commit-time state, which the driver
     /// overwrites post-commit via <c>update_macs</c> from the transcript-squeezed <c>a_v</c>
@@ -211,7 +238,7 @@ internal sealed class MdocSignatureWitnessFiller
         ];
 
         //fill_signature_inputs (mdoc_zk.cc:169-172): one, pkX, pkY, e2 (e2 = the REAL device-auth hash).
-        Push(one);
+        Push(One);
         Push(Element(pkX));
         Push(Element(pkY));
         Push(Element(e2));
@@ -220,7 +247,7 @@ internal sealed class MdocSignatureWitnessFiller
         //The driver overwrites these post-commit via update_macs.
         for(int i = 0; i < 7 * Gf2kBits; i++)
         {
-            Push(zero);
+            Push(Zero);
         }
 
         //MdocSignatureWitness::fill_witness (mdoc_witness.h:604-606): e_, dpkx_, dpky_.
@@ -279,7 +306,7 @@ internal sealed class MdocSignatureWitnessFiller
 
 
     /// <summary>
-    /// The issuer MSO hash <c>e_</c> (PRIVATE wire 900, OQ6): <c>nat_from_hash(tagged_mso_bytes_)</c> =
+    /// The issuer MSO hash <c>e_</c> (PRIVATE wire 900): <c>nat_from_hash(tagged_mso_bytes_)</c> =
     /// SHA-256 of the COSE <c>Sig_structure</c> read big-endian (mdoc_witness.h:626, 391-398). The
     /// <c>tagged_mso_bytes_</c> is exactly <see cref="MdocDisclosure.SignedStructure"/>.
     /// </summary>
@@ -338,8 +365,7 @@ internal sealed class MdocSignatureWitnessFiller
     }
 
 
-    //to_bytes_field(value): the canonical little-endian 32 bytes of the base-field element (the reference's
-    //buf for the MAC messages — from_montgomery then to_bytes, fp_generic.h:378-380).
+    /// <summary>Computes <c>to_bytes_field(value)</c>: the canonical little-endian 32 bytes of the base-field element (the reference implementation's buffer layout for the MAC messages: from Montgomery form, then to bytes; fp_generic.h lines 378-380).</summary>
     private static byte[] ToBytesField(BigInteger value)
     {
         byte[] bigEndian = Element(value);
@@ -353,19 +379,17 @@ internal sealed class MdocSignatureWitnessFiller
     }
 
 
-    //fill_gf2k (mac_reference.h:63-68): for bit i in 0..127, push m[i] ? one : zero (LSB-first polynomial
-    //bit indexing). m is a GF(2^128) element in the backend's canonical-scalar layout.
+    /// <summary>Implements <c>fill_gf2k</c> (mac_reference.h lines 63-68): for each bit i in 0..127 of <paramref name="element"/>, pushes the one- or zero-wire encoding using LSB-first polynomial bit indexing. <paramref name="element"/> is a GF(2^128) element in the backend's canonical-scalar layout.</summary>
     private void FillGf2k(byte[] element)
     {
         for(int i = 0; i < Gf2kBits; i++)
         {
-            Push(Gf2kBit(element, i) != 0 ? one : zero);
+            Push(Gf2kBit(element, i) != 0 ? One : Zero);
         }
     }
 
 
-    //MacWitness::fill_witness (mac_witness.h:38-54): ap_[0], ap_[1], then x_[0], x_[1], each a packed_v128
-    //(64 Fp256 elements: the 128 polynomial bits plucked 2 at a time, LSB-first).
+    /// <summary>Implements <c>MacWitness::fill_witness</c> (mac_witness.h lines 38-54): pushes <paramref name="ap0"/>, <paramref name="ap1"/>, then the two message halves of <paramref name="message"/>, each as a packed <c>packed_v128</c> (64 Fp256 elements: the 128 polynomial bits plucked 2 at a time, LSB-first).</summary>
     private void FillMacWitness(byte[] ap0, byte[] ap1, byte[] message)
     {
         PushPackedGf2k(ap0);
@@ -375,20 +399,18 @@ internal sealed class MdocSignatureWitnessFiller
     }
 
 
-    //pack<packed_v128>(bits, 128) with LOGN=2 (bit_plucker_encoder.h:55-68): r[k] = encode(bits[2k] + 2·bits[2k+1])
-    //for k=0..63, where bits[j] is the j-th polynomial coefficient of the GF(2^128) element.
+    /// <summary>Implements <c>pack&lt;packed_v128&gt;(bits, 128)</c> with <c>LOGN=2</c> (bit_plucker_encoder.h lines 55-68): pushes <c>r[k] = encode(bits[2k] + 2·bits[2k+1])</c> for k=0..63, where <c>bits[j]</c> is the j-th polynomial coefficient of <paramref name="element"/>.</summary>
     private void PushPackedGf2k(byte[] element)
     {
         for(int k = 0; k < MacPackedWordElements; k++)
         {
             int v = Gf2kBit(element, 2 * k) + (2 * Gf2kBit(element, (2 * k) + 1));
-            Push(pluckerCodes[v]);
+            Push(PluckerCodeTable[v]);
         }
     }
 
 
-    //The j-th polynomial coefficient of a GF(2^128) element in the backend's canonical-scalar layout: the
-    //low limb (bits 0..63) sits big-endian in bytes [24,32), the high limb (bits 64..127) in bytes [16,24).
+    /// <summary>Reads the <paramref name="bit"/>-th polynomial coefficient of <paramref name="element"/>, a GF(2^128) element in the backend's canonical-scalar layout: the low limb (bits 0..63) sits big-endian in bytes [24,32), the high limb (bits 64..127) in bytes [16,24).</summary>
     private static int Gf2kBit(byte[] element, int bit)
     {
         int limbBase = bit < 64 ? 24 : 16;
@@ -399,9 +421,12 @@ internal sealed class MdocSignatureWitnessFiller
     }
 
 
-    //The four OQ4 2-bit MAC plucker codes encode(v) = subf(of_scalar(2v), of_scalar(N-1)) with N=4
-    //(bit_plucker_constants.h:29-31, kMACPluckerBits=2): of_scalar(2v) − of_scalar(3) over Fp256, genuine
-    //modular subtraction (NOT the GF XOR of the SHA plucker, and N-1=3 NOT 15).
+    /// <summary>
+    /// The four 2-bit MAC plucker codes <c>encode(v) = subf(of_scalar(2v), of_scalar(N-1))</c> with
+    /// <c>N=4</c> (<c>bit_plucker_constants.h:29-31</c>, <c>kMACPluckerBits=2</c>): <c>of_scalar(2v) −
+    /// of_scalar(3)</c> over Fp256, genuine modular subtraction (not the GF XOR of the SHA plucker, and
+    /// <c>N-1=3</c> not 15).
+    /// </summary>
     private static byte[][] BuildPluckerCodes()
     {
         byte[] ofScalar3 = OfScalarFp256(3);
@@ -417,10 +442,11 @@ internal sealed class MdocSignatureWitnessFiller
     }
 
 
-    //of_scalar(u) over Fp256: the integer u reduced mod p, canonical big-endian.
+    /// <summary>Computes <c>of_scalar(u)</c> over Fp256: reduces <paramref name="value"/> modulo the field prime and returns it as a canonical big-endian scalar.</summary>
     private static byte[] OfScalarFp256(uint value) => Element(new BigInteger(value) % Prime);
 
 
+    /// <summary>Pushes every element of <paramref name="elements"/> onto the column, in order.</summary>
     private void AppendColumn(IReadOnlyList<byte[]> elements)
     {
         for(int i = 0; i < elements.Count; i++)
@@ -430,30 +456,32 @@ internal sealed class MdocSignatureWitnessFiller
     }
 
 
-    private void Push(byte[] element) => column.Add(element);
+    /// <summary>Appends one element to the column.</summary>
+    private void Push(byte[] element) => Column.Add(element);
 
 
+    /// <summary>Concatenates every pushed element's 32 canonical bytes into the flat column array returned to the caller.</summary>
     private byte[] Flatten()
     {
-        byte[] result = new byte[column.Count * ScalarSize];
-        for(int i = 0; i < column.Count; i++)
+        byte[] result = new byte[Column.Count * ScalarSize];
+        for(int i = 0; i < Column.Count; i++)
         {
-            column[i].CopyTo(result.AsSpan(i * ScalarSize, ScalarSize));
+            Column[i].CopyTo(result.AsSpan(i * ScalarSize, ScalarSize));
         }
 
         return result;
     }
 
 
-    //A canonical 32-byte big-endian base-field scalar (the library's Scalar form, EcdsaNonceRecovery.Bytes).
+    /// <summary>Encodes <paramref name="value"/> as a canonical 32-byte big-endian base-field scalar (the library's <c>Scalar</c> form, via <see cref="EcdsaNonceRecovery"/>'s byte conversion).</summary>
     private static byte[] Element(BigInteger value) => EcdsaNonceRecovery.Bytes(value);
 
 
+    /// <summary>Reads <paramref name="bytes"/> as a canonical big-endian unsigned integer.</summary>
     private static BigInteger ToInteger(byte[] bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 
 
-    //A GF(2^128) constant from 32 hex nibbles read as a 16-byte little-endian polynomial (byte 0 = bits
-    //0..7), in the backend's canonical-scalar layout (the element in the low 16 bytes, big-endian).
+    /// <summary>Decodes <paramref name="hex"/> (32 hex nibbles) as a 16-byte little-endian GF(2^128) polynomial (byte 0 = bits 0..7) and re-encodes it in the backend's canonical-scalar layout (the element in the low 16 bytes, big-endian).</summary>
     private static byte[] Gf2kFromHexLittleEndian(string hex)
     {
         byte[] littleEndian = Convert.FromHexString(hex);

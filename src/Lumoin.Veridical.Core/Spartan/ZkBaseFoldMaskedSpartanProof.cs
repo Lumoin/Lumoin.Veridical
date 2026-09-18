@@ -16,8 +16,8 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// sections, but its witness opening is a full zero-knowledge BaseFold opening
 /// (the dimension lift plus the CFS-2017 sumcheck mask) and its two mask
 /// openings are <em>hiding weighted openings</em> of the salted-and-lifted mask
-/// coefficient vectors (design v3 — the filler laundering replaces the old
-/// recursive full-ZK opening, shrinking the proof).
+/// coefficient vectors — the filler laundering replaces a recursive full-ZK
+/// opening, shrinking the proof.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -43,6 +43,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// </remarks>
 public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
 {
+    /// <summary>The in-memory canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -65,6 +66,15 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>Wraps an already-populated wire-format buffer with its dimensions, taking ownership of <paramref name="owner"/>.</summary>
+    /// <param name="owner">The rented buffer holding the wire-format proof bytes.</param>
+    /// <param name="outerRoundCount">The outer-sumcheck round count.</param>
+    /// <param name="innerRoundCount">The inner-sumcheck round count.</param>
+    /// <param name="queryCount">The BaseFold IOPP query repetition count the openings were produced under.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes.</param>
+    /// <param name="extraVariableCount">The dimension-lift <c>t</c> the full-ZK provider committed each polynomial by.</param>
+    /// <param name="curve">The curve identifying the scalar field.</param>
+    /// <param name="tag">The algebraic tag identifying this memory's role and curve.</param>
     internal ZkBaseFoldMaskedSpartanProof(
         IMemoryOwner<byte> owner,
         int outerRoundCount,
@@ -153,7 +163,7 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
         //deterministically (plain), and is recomputed by the verifier, so its
         //opening is the plain (unlifted, unmasked) size. The witness is full-ZK
         //size; the two masks are hiding weighted openings at their
-        //policy-resolved lifted shapes (design v3).
+        //policy-resolved lifted shapes.
         int errorOpeningSize = PlainOpeningSizeBytes(outerRoundCount, curve, queryCount, digestSizeBytes);
         int outerMaskOpeningSize = MaskOpeningSizeBytes(outerRoundCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree, curve, queryCount, digestSizeBytes);
         int innerMaskOpeningSize = MaskOpeningSizeBytes(innerRoundCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree, curve, queryCount, digestSizeBytes);
@@ -294,30 +304,63 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     }
 
 
+    /// <summary>Computes the byte offset of the scheme-independent sumcheck middle, right after the three roots and the four scalar sums.</summary>
+    /// <returns>The sumcheck middle's start offset.</returns>
     private int MiddleStart() => (3 * DigestSizeBytes) + (4 * ScalarSize);
 
+    /// <summary>Computes the byte offset of the first BaseFold opening, right after the sumcheck middle.</summary>
+    /// <returns>The openings section's start offset.</returns>
     private int OpeningsStart() => MiddleStart() + SpartanSumcheckProofPart.GetSectionSizeBytes(OuterRoundCount, InnerRoundCount);
 
+    /// <summary>Computes this proof's error opening's byte length (plain, at the outer round count).</summary>
+    /// <returns>The error opening's byte length.</returns>
     private int ErrorOpeningSize() => PlainOpeningSizeBytes(OuterRoundCount, Curve, QueryCount, DigestSizeBytes);
 
+    /// <summary>Computes this proof's outer-mask opening's byte length (hiding weighted, at its policy-resolved lifted shape).</summary>
+    /// <returns>The outer-mask opening's byte length.</returns>
     private int OuterMaskOpeningSize() => MaskOpeningSizeBytes(OuterRoundCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree, Curve, QueryCount, DigestSizeBytes);
 
+    /// <summary>Computes this proof's inner-mask opening's byte length (hiding weighted, at its policy-resolved lifted shape).</summary>
+    /// <returns>The inner-mask opening's byte length.</returns>
     private int InnerMaskOpeningSize() => MaskOpeningSizeBytes(InnerRoundCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree, Curve, QueryCount, DigestSizeBytes);
 
+    /// <summary>Computes this proof's witness opening's byte length (full zero-knowledge, at the inner round count lifted by <see cref="ExtraVariableCount"/>).</summary>
+    /// <returns>The witness opening's byte length.</returns>
     private int WitnessOpeningSize() => ZkOpeningSizeBytes(InnerRoundCount, ExtraVariableCount, Curve, QueryCount, DigestSizeBytes);
 
 
+    /// <summary>Computes a plain (non-hiding, non-lifted) BaseFold evaluation opening's byte length, the shape the public error opening uses.</summary>
+    /// <param name="variableCount">The committed polynomial's variable count.</param>
+    /// <param name="curve">The curve the code is over.</param>
+    /// <param name="queryCount">The IOPP query repetition count.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes.</param>
+    /// <returns>The plain opening's byte length.</returns>
     private static int PlainOpeningSizeBytes(int variableCount, CurveParameterSet curve, int queryCount, int digestSizeBytes) =>
         BaseFoldPolynomialCommitmentScheme.GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes);
 
 
+    /// <summary>Computes a full zero-knowledge (dimension-lifted plus CFS-2017-masked) BaseFold evaluation opening's byte length, the shape the witness opening uses.</summary>
+    /// <param name="variableCount">The real witness's variable count.</param>
+    /// <param name="extraVariableCount">The dimension lift <c>t</c> the provider was built with.</param>
+    /// <param name="curve">The curve the code is over.</param>
+    /// <param name="queryCount">The IOPP query repetition count.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes.</param>
+    /// <returns>The full zero-knowledge opening's byte length.</returns>
     private static int ZkOpeningSizeBytes(int variableCount, int extraVariableCount, CurveParameterSet curve, int queryCount, int digestSizeBytes) =>
         ZkBaseFoldPolynomialCommitmentScheme.GetFullZeroKnowledgeEvaluationProofSizeBytes(variableCount, extraVariableCount, curve, queryCount, digestSizeBytes);
 
 
-    //A mask's hiding weighted opening runs over its policy-resolved LIFTED
-    //variable count (the salted-and-lifted vector commit of the full-ZK
-    //provider), in Hiding mode — not the recursive full-ZK opening shape.
+    /// <summary>
+    /// Computes a mask's hiding weighted-opening byte length. A mask's opening runs over its
+    /// policy-resolved lifted variable count (the salted-and-lifted vector commit of the full-ZK
+    /// provider), in hiding mode — not the recursive full-ZK opening shape.
+    /// </summary>
+    /// <param name="sumcheckVariableCount">The sumcheck round count the mask covers.</param>
+    /// <param name="perVariableDegree">The mask's per-variable polynomial degree.</param>
+    /// <param name="curve">The curve the code is over.</param>
+    /// <param name="queryCount">The IOPP query repetition count.</param>
+    /// <param name="digestSizeBytes">The Merkle digest size in bytes.</param>
+    /// <returns>The mask's hiding weighted opening's byte length.</returns>
     private static int MaskOpeningSizeBytes(int sumcheckVariableCount, int perVariableDegree, CurveParameterSet curve, int queryCount, int digestSizeBytes)
     {
         StatisticalMaskParameters shape = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(sumcheckVariableCount, curve, queryCount, perVariableDegree);
@@ -326,6 +369,11 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     }
 
 
+    /// <summary>Copies a section's bytes into the buffer at the given offset.</summary>
+    /// <param name="buffer">The destination wire-format buffer.</param>
+    /// <param name="offset">The byte offset to write at.</param>
+    /// <param name="source">The section bytes to copy.</param>
+    /// <returns>The number of bytes written, i.e. <c>source.Length</c>.</returns>
     private static int Copy(Span<byte> buffer, int offset, ReadOnlySpan<byte> source)
     {
         source.CopyTo(buffer.Slice(offset, source.Length));
@@ -333,6 +381,11 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     }
 
 
+    /// <summary>Throws unless a commitment is exactly one Merkle root wide.</summary>
+    /// <param name="commitment">The commitment to check.</param>
+    /// <param name="digestSizeBytes">The expected Merkle digest size in bytes.</param>
+    /// <param name="parameterName">The parameter name to report if the check fails.</param>
+    /// <exception cref="ArgumentException">When the commitment's length does not equal <paramref name="digestSizeBytes"/>.</exception>
     private static void ValidateCommitmentLength(PolynomialCommitment commitment, int digestSizeBytes, string parameterName)
     {
         if(commitment.AsReadOnlySpan().Length != digestSizeBytes)
@@ -344,6 +397,11 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     }
 
 
+    /// <summary>Throws unless an opening is exactly the expected byte length.</summary>
+    /// <param name="opening">The opening to check.</param>
+    /// <param name="expected">The expected byte length.</param>
+    /// <param name="parameterName">The parameter name to report if the check fails.</param>
+    /// <exception cref="ArgumentException">When the opening's length does not equal <paramref name="expected"/>.</exception>
     private static void ValidateOpeningLength(PolynomialOpening opening, int expected, string parameterName)
     {
         if(opening.AsReadOnlySpan().Length != expected)
@@ -355,6 +413,12 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     }
 
 
+    /// <summary>Throws unless every round in a sumcheck phase shares the given curve and per-round polynomial degree.</summary>
+    /// <param name="rounds">The sumcheck rounds to check.</param>
+    /// <param name="expectedDegree">The required per-round polynomial degree.</param>
+    /// <param name="phase">The phase name ("outer" or "inner") used in the exception message.</param>
+    /// <param name="curve">The curve every round must share.</param>
+    /// <exception cref="ArgumentException">When a round's curve or degree does not match.</exception>
     private static void ValidateRoundShape(IReadOnlyList<SumcheckRound> rounds, int expectedDegree, string phase, CurveParameterSet curve)
     {
         for(int i = 0; i < rounds.Count; i++)
@@ -373,9 +437,16 @@ public sealed class ZkBaseFoldMaskedSpartanProof: SensitiveMemory, IMaskedSparta
     }
 
 
+    /// <summary>Builds this proof type's default algebraic tag for the given curve, starting from an empty tag.</summary>
+    /// <param name="curve">The curve to tag the memory with.</param>
+    /// <returns>A tag identifying this proof's role, curve, scheme and variant.</returns>
     private static Tag ComposeTag(CurveParameterSet curve) => MergeAlgebraicTag(Tag.Empty, curve);
 
 
+    /// <summary>Merges this proof type's role, scheme and variant onto a caller-supplied tag for the given curve.</summary>
+    /// <param name="tag">The base tag to merge onto.</param>
+    /// <param name="curve">The curve to tag the memory with.</param>
+    /// <returns>The merged tag.</returns>
     private static Tag MergeAlgebraicTag(Tag tag, CurveParameterSet curve) =>
         tag.With(AlgebraicRole.ZkProof)
             .With(curve)

@@ -40,8 +40,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowRoutingTests
+internal sealed class LongfellowRoutingTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The sweep's lowest <c>logn</c>: a single amount bit, the narrowest possible round schedule.</summary>
     private const int MinLogAmountBitWidth = 1;
 
@@ -51,13 +67,13 @@ internal sealed class LongfellowRoutingTests
     /// <summary>The sweep's lowest source/destination lane count.</summary>
     private const int MinLaneCount = 1;
 
-    /// <summary>The sweep's highest source/destination lane count, narrowed from the reference's 16; halved again from an initial 12 once the full sweep measured about 24 seconds locally, over the ~20-second budget.</summary>
+    /// <summary>The sweep's highest source/destination lane count, narrowed from the reference's 16 to keep the exhaustive sweep's wall-clock time within its budget.</summary>
     private const int MaxLaneCount = 6;
 
     /// <summary>The sweep's lowest shift amount.</summary>
     private const int MinShift = 0;
 
-    /// <summary>The sweep's highest shift amount, narrowed from the reference's 16; halved again alongside <see cref="MaxLaneCount"/> for the same wall-clock reason.</summary>
+    /// <summary>The sweep's highest shift amount, narrowed from the reference's 16 alongside <see cref="MaxLaneCount"/> to keep the exhaustive sweep's wall-clock time within its budget.</summary>
     private const int MaxShift = 6;
 
     /// <summary>The sweep's lowest per-round unroll budget.</summary>
@@ -87,13 +103,16 @@ internal sealed class LongfellowRoutingTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
+
     /// <summary>The P-256 base field bundle gated over by every test in this class.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, CircuitScope.Pool));
 
 
     /// <summary>Pins the reference's <c>one_test</c> shift/unshift semantics across the bounded sweep, over all three lane kinds.</summary>
@@ -125,14 +144,14 @@ internal sealed class LongfellowRoutingTests
     /// <param name="k">The destination lane count.</param>
     /// <param name="shift">The shift amount, before reduction modulo <c>2^logn</c>.</param>
     /// <param name="unroll">The per-round amount-bit budget.</param>
-    private static void AssertOneCombination(int logn, int n, int k, int shift, int unroll)
+    private void AssertOneCombination(int logn, int n, int k, int shift, int unroll)
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var routing = new LongfellowRouting(logic);
 
         LongfellowBitWire bitDefault = logic.Bit(DefaultBitValue);
-        int elementDefault = backend.Constant(Fp256Field.OfScalar(DefaultElementValue).Span);
+        int elementDefault = backend.ScalarConstant(DefaultElementValue);
         LongfellowBitWire[] vectorDefault = logic.BitVector(VectorLaneWidth, DefaultVectorValue);
 
         var bitSource = new LongfellowBitWire[n];
@@ -141,7 +160,7 @@ internal sealed class LongfellowRoutingTests
         for(int i = 0; i < n; i++)
         {
             bitSource[i] = logic.Bit((i ^ (i >> 2) ^ (i >> 5)) & 1);
-            elementSource[i] = backend.Constant(Fp256Field.OfScalar((ulong)i + LaneValueOffset).Span);
+            elementSource[i] = backend.ScalarConstant((ulong)i + LaneValueOffset);
             vectorSource[i] = logic.BitVector(VectorLaneWidth, ((ulong)i + LaneValueOffset) & VectorLaneMask);
         }
 

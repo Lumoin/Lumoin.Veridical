@@ -14,32 +14,36 @@ using System.Threading;
 namespace Lumoin.Veridical.Tests.ConstraintSystems.Interop.Circom;
 
 /// <summary>
-/// Real-world fixture gate: the two-input Poseidon R1CS instance and matching
-/// witness, compiled by circom + circomlib from the owned source
-/// <c>Fixtures/circuits/poseidon2.circom</c> (one fixture per curve target),
-/// parse through both adapters into a well-formed <see cref="RawR1csInstance"/>
-/// and <see cref="RawR1csWitness"/> and satisfy <c>A·z ∘ B·z = C·z</c> in the
+/// Real-world fixture gate: a two-input Poseidon R1CS instance and its
+/// matching witness, one fixture per curve target, parse through both
+/// adapters into a well-formed <see cref="RawR1csInstance"/> and
+/// <see cref="RawR1csWitness"/> and satisfy <c>A·z ∘ B·z = C·z</c> in the
 /// curve's scalar arithmetic.
 /// </summary>
 /// <remarks>
 /// The satisfaction check is the load-bearing assertion: it exercises every
 /// coefficient in all three matrices against the parsed witness, so a single
 /// LE/BE byte-order mistake, section-payload slicing error, or row/column
-/// transposition surfaces here as a non-satisfaction. Multiplier2 already proved
-/// the parser end-to-end through Spartan; this proves it scales to a non-trivial
-/// audited circuit (a few hundred constraints) and that snarkjs's
-/// constraints-first section ordering is handled. The exact constraint/wire
-/// counts are circomlib-version-specific, so the structural assertions check
-/// consistency and scale, not frozen numbers.
-/// Poseidon's shape is not a power of two, so it does not feed the Spartan prover.
+/// transposition surfaces here as a non-satisfaction. Multiplier2 already
+/// proved the parser end-to-end through Spartan; this proves it scales to a
+/// non-trivial circuit (a few hundred constraints) whose constraint section
+/// precedes its header section in file order, exercising the reader's
+/// variable section-order handling. The exact constraint and wire counts
+/// are specific to how the circuit was compiled, so the structural
+/// assertions check consistency and scale, not frozen numbers. Poseidon's
+/// shape is not a power of two, so it does not feed the Spartan prover.
 /// </remarks>
 [TestClass]
 internal sealed class CircomPoseidonFixtureTests
 {
+    /// <summary>The fixture directory, relative to the test output, holding the per-curve Circom Poseidon fixture files.</summary>
     private const string FixtureDirectoryRelative = "ConstraintSystems/Interop/Circom/Fixtures";
+
+    /// <summary>The minimum constraint row count a compiled two-input Poseidon circuit must have to count as a non-trivial fixture.</summary>
     private const int PoseidonConstraintLowerBound = 200;
 
 
+    /// <summary>Verifies that the BLS12-381 Poseidon(2) fixture parses and satisfies its constraints under the curve's scalar arithmetic.</summary>
     [TestMethod]
     public void Bls12Curve381PoseidonFixtureParsesAndSatisfies()
     {
@@ -51,6 +55,7 @@ internal sealed class CircomPoseidonFixtureTests
     }
 
 
+    /// <summary>Verifies that the BN254 Poseidon(2) fixture parses and satisfies its constraints under the curve's scalar arithmetic.</summary>
     [TestMethod]
     public void Bn254PoseidonFixtureParsesAndSatisfies()
     {
@@ -62,6 +67,11 @@ internal sealed class CircomPoseidonFixtureTests
     }
 
 
+    /// <summary>Loads <paramref name="curveDirectory"/>'s Poseidon fixture, parses its instance and witness, and asserts structural consistency and constraint satisfaction.</summary>
+    /// <param name="curveDirectory">The fixture subdirectory naming the curve, matching the committed fixture layout.</param>
+    /// <param name="curve">The curve the fixture bytes are declared under.</param>
+    /// <param name="add">The reference scalar addition used to check satisfaction.</param>
+    /// <param name="multiply">The reference scalar multiplication used to check satisfaction.</param>
     private static void ExercisePoseidonFixture(
         string curveDirectory,
         CurveParameterSet curve,
@@ -103,6 +113,8 @@ internal sealed class CircomPoseidonFixtureTests
     }
 
 
+    /// <summary>Reads the Poseidon <c>.r1cs</c> and <c>.wtns</c> fixture bytes for <paramref name="curveDirectory"/>.</summary>
+    /// <param name="curveDirectory">The fixture subdirectory naming the curve.</param>
     private static (byte[] R1csBytes, byte[] WtnsBytes) LoadFixtureBytes(string curveDirectory)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, FixtureDirectoryRelative, curveDirectory);
@@ -132,28 +144,38 @@ internal sealed class CircomPoseidonFixtureTests
     }
 
 
+    /// <summary>Parses the R1CS instance from raw Circom <c>.r1cs</c> bytes, with no intake ceiling.</summary>
+    /// <param name="bytes">The complete <c>.r1cs</c> file bytes.</param>
+    /// <param name="curve">The curve the instance is declared under.</param>
     private static RawR1csInstance ParseR1cs(byte[] bytes, CurveParameterSet curve)
     {
         var stream = new MemoryStream(bytes, writable: false);
         PipeReader pipe = PipeReader.Create(stream);
+
         return CircomR1csReader.Reader(
             pipe,
             WellKnownR1csFormatLabel.CircomBinary,
             curve,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 
 
+    /// <summary>Parses the R1CS witness from raw Circom <c>.wtns</c> bytes, with no intake ceiling.</summary>
+    /// <param name="bytes">The complete <c>.wtns</c> file bytes.</param>
+    /// <param name="curve">The curve the witness is declared under.</param>
     private static RawR1csWitness ParseWtns(byte[] bytes, CurveParameterSet curve)
     {
         var stream = new MemoryStream(bytes, writable: false);
         PipeReader pipe = PipeReader.Create(stream);
+
         return CircomWitnessReader.Reader(
             pipe,
             WellKnownR1csFormatLabel.CircomWitness,
             curve,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 }

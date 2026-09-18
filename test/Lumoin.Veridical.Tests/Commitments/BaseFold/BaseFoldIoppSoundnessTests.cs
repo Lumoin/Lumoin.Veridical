@@ -15,34 +15,52 @@ using System.Diagnostics.CodeAnalysis;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// AB.6 soundness validation for the BaseFold IOPP: the checks the honest
+/// Soundness validation for the BaseFold IOPP: the checks the honest
 /// round-trip and Merkle-tamper tests do not directly target.
 /// <list type="bullet">
-///   <item><description>A <em>malicious prover</em> that Merkle-commits an intermediate fold oracle which is NOT the honest fold. Its openings authenticate (valid Merkle paths against the committed root) and its transcript is self-consistent, so the only check that can catch it is the per-layer fold-consistency relation — this confirms that relation rejects, distinct from the Merkle-binding tampers AB.3 exercises.</description></item>
+///   <item><description>A <em>malicious prover</em> that Merkle-commits an intermediate fold oracle which is NOT the honest fold. Its openings authenticate (valid Merkle paths against the committed root) and its transcript is self-consistent, so the only check that can catch it is the per-layer fold-consistency relation — this confirms that relation rejects, distinct from the Merkle-binding tampers <see cref="BaseFoldIoppTests"/> exercises.</description></item>
 ///   <item><description>An informational rejection sweep: random words far from the code are rejected (the IOPP's base-code and fold-consistency checks).</description></item>
 /// </list>
 /// </summary>
 [TestClass]
 internal sealed class BaseFoldIoppSoundnessTests
 {
+    /// <summary>The BLS12-381 scalar-field addition delegate this test's fold and encode steps use.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    /// <summary>The BLS12-381 scalar-field subtraction delegate this test's fold and encode steps use.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    /// <summary>The BLS12-381 scalar-field multiplication delegate this test's fold and encode steps use.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    /// <summary>The BLS12-381 scalar-field inversion delegate this test's fold step uses.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    /// <summary>The BLS12-381 scalar-field canonical-reduction delegate this test uses to build random codewords and evaluate challenges.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    /// <summary>The BLS12-381 scalar-field hash-to-scalar delegate used to derive the foldable code's per-layer challenges.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    /// <summary>The Fiat–Shamir hash delegate this test's transcripts use, backed by the BLAKE3 reference.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    /// <summary>The Fiat–Shamir squeeze delegate this test's transcripts use, backed by the BLAKE3 reference.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    /// <summary>The Merkle two-to-one hash delegate this test's commitment trees use, backed by <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
+    /// <summary>The byte width of one canonical scalar this test's codewords and challenges use.</summary>
     private const int ScalarSize = 32;
+    /// <summary>The digest width, in bytes, this test's Merkle hashing uses.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+    /// <summary>The number of IOPP queries this test's prover and verifier exchange.</summary>
     private const int TestQueryCount = 16;
+    /// <summary>The number of random codewords the informational rejection sweep samples per layer count.</summary>
     private const int SweepIterations = 20;
 
+    /// <summary>The curve this test's scalars and codewords operate over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that a malicious prover who commits a non-fold intermediate oracle — self-consistent in its transcript and Merkle openings — is still rejected by the per-layer fold-consistency check.</summary>
     [TestMethod]
     public void MaliciousProverWithInconsistentOracleIsRejected()
     {
@@ -68,7 +86,7 @@ internal sealed class BaseFoldIoppSoundnessTests
         //below is attributable to the injected inconsistency, not the harness.
         using(FiatShamirTranscript honestProverTx = NewTranscript())
         using(BaseFoldIoppProof honestProof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, honestProverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool))
+            code, codeword, TestQueryCount, honestProverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool))
         using(FiatShamirTranscript honestVerifierTx = NewTranscript())
         {
             Assert.IsTrue(
@@ -90,13 +108,14 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
+    /// <summary>Verifies, across a sample of random codeword-shaped inputs, that a word overwhelmingly far from the code is rejected by the IOPP's base-code and fold-consistency checks.</summary>
     [TestMethod]
     public void RandomWordsFarFromCodeAreAlwaysRejected()
     {
         //Informational soundness sweep: words built from independent random
         //scalars are, with overwhelming probability, far from the code, so the
-        //IOPP rejects every one. (A single case is covered by AB.3; this confirms
-        //the behaviour across a sample.)
+        //IOPP rejects every one. (A single case is covered by the Merkle-binding
+        //tamper tests; this confirms the behaviour across a sample.)
         Gen.Int[2, 4]
             .SelectMany(layerCount =>
             {
@@ -120,7 +139,7 @@ internal sealed class BaseFoldIoppSoundnessTests
                 using MerkleRoot commitment = BuildCommitment(word, codewordElements, pool);
                 using FiatShamirTranscript proverTx = NewTranscript();
                 using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-                    code, word, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+                    code, word, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
                 using FiatShamirTranscript verifierTx = NewTranscript();
                 //A random word is far from the code: rejection is the expected,
@@ -131,12 +150,21 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
-    //A dishonest IOPP prover: honest in every respect except that, after folding
-    //into layer tamperLayer, it replaces that oracle with (honest fold + 1) in
-    //every coordinate before committing it, then continues folding the tampered
-    //oracle downward. The transcript stays self-consistent (the verifier replays
-    //the tampered roots) and every Merkle opening authenticates, so only the
-    //fold-consistency relation can catch the substitution.
+    /// <summary>
+    /// Runs a dishonest IOPP prover: honest in every respect except that, after folding into
+    /// layer <paramref name="tamperLayer"/>, it replaces that oracle with (honest fold + 1) in
+    /// every coordinate before committing it, then continues folding the tampered oracle
+    /// downward. The transcript stays self-consistent (the verifier replays the tampered roots)
+    /// and every Merkle opening authenticates, so only the fold-consistency relation can catch
+    /// the substitution.
+    /// </summary>
+    /// <param name="code">The foldable code the prover folds against.</param>
+    /// <param name="inputCodeword">The honest top-layer codeword to fold from.</param>
+    /// <param name="queryCount">The number of IOPP queries to answer.</param>
+    /// <param name="tamperLayer">The layer index whose committed oracle is replaced with a non-fold.</param>
+    /// <param name="transcript">The prover's transcript.</param>
+    /// <param name="pool">The pool proof and working buffers are rented from.</param>
+    /// <returns>The dishonest proof, ready for a verifier to reject.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "Working codewords and trees are disposed in the finally block; the buffers the proof keeps are copied into the returned proof, which owns them.")]
     private static BaseFoldIoppProof ProveWithTamperedLayer(
         FoldableCode code,
@@ -222,6 +250,7 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
+    /// <summary>Copies each intermediate layer's Merkle root (levels <c>d-1</c> down to <c>1</c>) into independently owned roots for the proof to keep.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Each copied root transfers ownership to the returned array, which the proof owns and disposes.")]
     private static MerkleRoot[] CopyFoldRoots(MerkleTree?[] trees, int d, BaseMemoryPool pool)
     {
@@ -236,9 +265,11 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
+    /// <summary>The element count of a fold layer at the given level: the base unit doubled once per level.</summary>
     private static int LayerLength(int baseUnit, int level) => baseUnit << level;
 
 
+    /// <summary>Rents a pooled buffer and copies the source bytes into it, optionally tracking the rented owner for later disposal.</summary>
     private static IMemoryOwner<byte> RentCopy(ReadOnlySpan<byte> source, BaseMemoryPool pool, List<IDisposable>? track)
     {
         IMemoryOwner<byte> owner = pool.Rent(source.Length);
@@ -249,24 +280,27 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
+    /// <summary>Builds a Merkle tree over a codeword's leading leaves and tracks it in the disposables list for later release.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tree is tracked in the disposables list and released in the finally block.")]
     private static MerkleTree BuildTree(IMemoryOwner<byte> codeword, int leafCount, BaseMemoryPool pool, List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, Merkle, pool);
+        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, TreeParameters, pool);
         disposables.Add(tree);
 
         return tree;
     }
 
 
+    /// <summary>Builds a Merkle tree over a full codeword and returns an independently owned copy of its root.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Ownership of the returned root transfers to the caller's using declaration.")]
     private static MerkleRoot BuildCommitment(ReadOnlySpan<byte> codeword, int codewordElements, BaseMemoryPool pool)
     {
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, pool);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, TreeParameters, pool);
         return MerkleRoot.FromBytes(tree.Root.AsReadOnlySpan(), pool);
     }
 
 
+    /// <summary>Builds a small deterministic message (each element <c>2i+1</c>) and encodes it into a codeword under the given foldable code.</summary>
     private static void EncodeSmallMessage(FoldableCode code, FoldableCodeParameters parameters, Span<byte> codeword, BaseMemoryPool pool)
     {
         int messageElements = parameters.MessageLength;
@@ -282,6 +316,7 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
+    /// <summary>Creates a fresh Fiat–Shamir transcript for one prove or verify run, seeded with the BaseFold IOPP domain label.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -293,6 +328,7 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
+    /// <summary>Computes the BLAKE3 two-to-one Merkle compression of two digests.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -302,5 +338,6 @@ internal sealed class BaseFoldIoppSoundnessTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB6.Soundness"u8;
+    /// <summary>The domain-separation seed this test derives its foldable codes from.</summary>
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.Iopp.Soundness"u8;
 }

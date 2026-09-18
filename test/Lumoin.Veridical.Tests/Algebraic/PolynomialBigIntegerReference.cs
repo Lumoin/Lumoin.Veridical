@@ -24,6 +24,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </remarks>
 internal static class PolynomialBigIntegerReference
 {
+    /// <summary>The BLS12-381 scalar field order <c>r</c> every reduction is taken modulo.</summary>
     private static BigInteger FieldOrder { get; } = Bls12Curve381BigIntegerScalarReference.FieldOrder;
 
 
@@ -37,6 +38,7 @@ internal static class PolynomialBigIntegerReference
     public static PolynomialMultiplyDelegate GetMultiply() => Multiply;
 
 
+    /// <summary>Evaluates the polynomial at <paramref name="point"/> via Horner's scheme, high-to-low.</summary>
     private static void Evaluate(
         ReadOnlySpan<byte> coefficients,
         ReadOnlySpan<byte> point,
@@ -65,6 +67,7 @@ internal static class PolynomialBigIntegerReference
     }
 
 
+    /// <summary>Adds two same-degree polynomials coefficient-wise, reduced modulo the field order.</summary>
     private static void Add(
         ReadOnlySpan<byte> a,
         ReadOnlySpan<byte> b,
@@ -89,6 +92,7 @@ internal static class PolynomialBigIntegerReference
     }
 
 
+    /// <summary>Multiplies two polynomials via the schoolbook <c>O((aDegree + 1)·(bDegree + 1))</c> convolution.</summary>
     private static void Multiply(
         ReadOnlySpan<byte> a,
         int aDegree,
@@ -125,6 +129,7 @@ internal static class PolynomialBigIntegerReference
     }
 
 
+    /// <summary>Rejects a negative degree or a buffer whose length does not match <paramref name="degree"/> plus one coefficients.</summary>
     private static void ValidatePolynomialBuffer(ReadOnlySpan<byte> buffer, int degree, string paramName, int elementSize)
     {
         if(degree < 0)
@@ -144,10 +149,7 @@ internal static class PolynomialBigIntegerReference
     }
 
 
-    private static void ValidatePolynomialBuffer(Span<byte> buffer, int degree, string paramName, int elementSize) =>
-        ValidatePolynomialBuffer((ReadOnlySpan<byte>)buffer, degree, paramName, elementSize);
-
-
+    /// <summary>Rejects a span whose length is not exactly one scalar element.</summary>
     private static void ValidateSlot(ReadOnlySpan<byte> slot, int elementSize, string paramName)
     {
         if(slot.Length != elementSize)
@@ -159,10 +161,7 @@ internal static class PolynomialBigIntegerReference
     }
 
 
-    private static void ValidateSlot(Span<byte> slot, int elementSize, string paramName) =>
-        ValidateSlot((ReadOnlySpan<byte>)slot, elementSize, paramName);
-
-
+    /// <summary>Writes <paramref name="value"/> to <paramref name="destination"/> as a canonical big-endian scalar, zero-padded on the left.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

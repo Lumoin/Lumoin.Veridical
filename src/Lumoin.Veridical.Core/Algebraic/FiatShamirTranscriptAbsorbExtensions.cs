@@ -5,7 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Lumoin.Veridical.Core.Algebraic;
 
 /// <summary>
-/// Typed absorbs of BLS12-381 algebraic values onto a
+/// Typed absorbs of algebraic values onto a
 /// <see cref="FiatShamirTranscript"/>. Each absorb writes the operand's
 /// canonical byte layout into the transcript via
 /// <see cref="FiatShamirTranscriptByteAbsorbExtensions.AbsorbBytes"/>.
@@ -16,14 +16,16 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// what bytes it absorbs). The composite-operand absorbs
 /// (<c>AbsorbMultilinearExtension</c>, <c>AbsorbPolynomial</c>) absorb
 /// the operand's canonical bytes regardless of curve and guard only that
-/// the operand's curve is wired (Bls12Curve381, Bn254); they were
-/// curve-broadened in place when BN254 was wired (Batch U) rather than
-/// duplicated into a parallel per-curve file.
+/// the operand's curve is wired (Bls12Curve381, Bn254). The block is
+/// curve-broad: each additional curve extends the guard list, because
+/// the curve identity travels with the operand rather than being fixed
+/// by the block itself.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FiatShamirTranscriptAbsorbExtensions
 {
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for absorbing algebraic operands.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>
@@ -56,10 +58,10 @@ public static class FiatShamirTranscriptAbsorbExtensions
 
 
         /// <summary>
-        /// Absorbs a multilinear extension over BLS12-381 by all of its
-        /// canonical evaluations, in storage order.
+        /// Absorbs a multilinear extension over BLS12-381 or BN254 by all
+        /// of its canonical evaluations, in storage order.
         /// </summary>
-        /// <exception cref="ArgumentException">When <paramref name="mle"/> is not over BLS12-381.</exception>
+        /// <exception cref="ArgumentException">When <paramref name="mle"/>'s curve is neither BLS12-381 nor BN254.</exception>
         public void AbsorbMultilinearExtension(
             FiatShamirOperationLabel label,
             MultilinearExtension mle,
@@ -74,10 +76,10 @@ public static class FiatShamirTranscriptAbsorbExtensions
 
 
         /// <summary>
-        /// Absorbs a univariate polynomial over BLS12-381 by all of its
-        /// canonical coefficients, low-degree first.
+        /// Absorbs a univariate polynomial over BLS12-381 or BN254 by all
+        /// of its canonical coefficients, low-degree first.
         /// </summary>
-        /// <exception cref="ArgumentException">When <paramref name="polynomial"/> is not over BLS12-381.</exception>
+        /// <exception cref="ArgumentException">When <paramref name="polynomial"/>'s curve is neither BLS12-381 nor BN254.</exception>
         public void AbsorbPolynomial(
             FiatShamirOperationLabel label,
             Polynomial polynomial,

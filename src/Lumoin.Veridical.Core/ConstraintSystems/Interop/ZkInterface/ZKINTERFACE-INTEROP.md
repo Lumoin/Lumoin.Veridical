@@ -131,11 +131,7 @@ allocation.
 ## § 6 What the fixture tests demonstrate, and reproducibility
 
 The fixture gate proves **interop correctness** against the reference
-implementation. The owned `bls12_381/multiplier2.zkif` and
-`bn254/multiplier2.zkif` are serialised by the **canonical `zkinterface`
-crate's own FlatBuffers code** — not by Veridical — so a reader that parses them
-correctly has agreed with the reference producer, not merely with our own
-serialiser (Veridical has none; it never emits `.zkif`). The end-to-end test parses
+implementation. The end-to-end test parses
 instance and witness, checks that the witness *satisfies* the instance under
 in-field arithmetic (`CheckSatisfiedBy` — the load-bearing assertion, since an
 endianness or column error parses cleanly yet fails satisfaction), and, for the

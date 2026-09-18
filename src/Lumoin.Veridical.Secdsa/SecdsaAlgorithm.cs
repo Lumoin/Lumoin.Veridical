@@ -28,7 +28,7 @@ namespace Lumoin.Veridical.Secdsa;
 /// <para>
 /// <b>Delegate-injected arithmetic.</b> Every scalar (mod <c>n</c>) and group operation is supplied by the
 /// caller as a named delegate, so the package carries no concrete field/group backend. The choice of mod-<c>n</c>
-/// implementation — the BigInteger reference today, a constant-time backend later — is entirely a call-site
+/// implementation — a BigInteger reference, a constant-time backend, or any other — is entirely a call-site
 /// concern; this algorithm is byte-for-byte stable across it.
 /// </para>
 /// <para>
@@ -36,8 +36,8 @@ namespace Lumoin.Veridical.Secdsa;
 /// and the zero tests on <c>P</c>, <c>u</c>, and the derived intermediates — are <i>branchless</i>: they
 /// inspect every byte with no data-dependent early exit, so they do not leak by an early return where a key
 /// and the order first differ. This is best-effort in managed code, not a hard constant-time guarantee, and it
-/// is the cheap part: the dominant variable-time cost is the <i>injected</i> mod-<c>n</c> arithmetic (the
-/// BigInteger reference today; a constant-time scalar backend is a call-site choice) and the RFC 6979 nonce
+/// is the cheap part: the dominant variable-time cost is the <i>injected</i> mod-<c>n</c> arithmetic (a
+/// BigInteger reference is variable-time; a constant-time scalar backend is a call-site choice) and the RFC 6979 nonce
 /// derivation (see <see cref="Core.Cryptography.Rfc6979DeterministicNonce"/>) — so genuine constant-time
 /// signing requires a constant-time scalar backend, which this algorithm is byte-for-byte stable across.
 /// Key-derived scratch is cleared before return.
@@ -51,6 +51,7 @@ public static class SecdsaAlgorithm
     /// <summary>The P-256 SEC1 compressed point length (the public key and the intermediate <c>R = k·G</c>).</summary>
     public const int CompressedPointSizeBytes = WellKnownCurves.P256CompressedSizeBytes;
 
+    /// <summary>The NIST P-256 curve tag every delegate call in this algorithm routes over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
 
@@ -525,9 +526,13 @@ public static class SecdsaAlgorithm
     }
 
 
-    //Recovers R = (e·s⁻¹)·G + (r·s⁻¹)·Y for a standard ECDSA (r, s). Returns false when (r, s) is out of
-    //[1, n−1] or R is the point at infinity; may throw (a malformed public key, a degenerate inversion) for the
-    //public callers to translate into a rejection. Shared by Verify and RecoverNoncePoint so both agree bit-for-bit.
+    /// <summary>
+    /// Recovers <c>R = (e·s⁻¹)·G + (r·s⁻¹)·Y</c> for a standard ECDSA (r, s). Returns
+    /// <see langword="false"/> when (r, s) is out of [1, n−1] or R is the point at infinity; may
+    /// throw (a malformed public key, a degenerate inversion) for the public callers to translate
+    /// into a rejection. Shared by <see cref="Verify"/> and <see cref="RecoverNoncePoint"/> so both
+    /// agree bit-for-bit.
+    /// </summary>
     private static bool TryRecoverNoncePoint(
         ReadOnlySpan<byte> publicKeyCompressed,
         ReadOnlySpan<byte> messageHash,
@@ -616,9 +621,12 @@ public static class SecdsaAlgorithm
     }
 
 
-    //Blind: writes e' = P⁻¹·e mod n into blindedHash. Validates P in [1, n−1]; reduces the digest to a
-    //canonical e first so the multiply operands are canonical for any mod-n backend (reduction is a ring
-    //homomorphism, so this is byte-identical to multiplying the raw digest). Clears its own key-derived scratch.
+    /// <summary>
+    /// Blinds the hash: writes <c>e' = P⁻¹·e mod n</c> into <paramref name="blindedHash"/>. Validates
+    /// P in [1, n−1]; reduces the digest to a canonical e first so the multiply operands are
+    /// canonical for any mod-n backend (reduction is a ring homomorphism, so this is byte-identical
+    /// to multiplying the raw digest). Clears its own key-derived scratch.
+    /// </summary>
     private static void BlindHash(
         ReadOnlySpan<byte> pinKey,
         ReadOnlySpan<byte> messageHash,

@@ -15,8 +15,8 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This realises the handoff's "Merkle-path-correlation" experiment through the
-/// commitment root rather than the per-query authentication-path bytes. The root
+/// This targets the Merkle-path-correlation leak through the commitment root rather
+/// than the per-query authentication-path bytes. The root
 /// is the binding commitment the whole codeword (hence every queried path) is
 /// derived from, so it is the cleanest deterministic fingerprint; and the
 /// per-query revealed entries are not extractable at the analysis layer without
@@ -33,6 +33,7 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// </remarks>
 public static class BaseFoldCommitmentRecoverabilityExperiment
 {
+    /// <summary>This experiment's name, reported in <see cref="BaseFoldLeakageExperimentResult.Experiment"/>.</summary>
     private const string Name = "commitment-recoverability";
 
 

@@ -6,7 +6,7 @@ using System.Linq;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR parameter-schedule derivation (4.2 phase A): the
+/// Tests for the WHIR parameter-schedule derivation: the
 /// per-round rate/proximity/query schedule of WHIR Construction 5.1 and the
 /// round-by-round soundness ledger of WHIR Theorem 5.2. The query schedules
 /// are pinned to hand-derived values from the paper's formulas so any drift
@@ -18,19 +18,23 @@ namespace Lumoin.Veridical.Tests.Commitments.Whir;
 [TestClass]
 internal sealed class WhirParameterScheduleTests
 {
-    //The pinned shape: a 2^20-coefficient message at initial rate 1/2 with the
-    //paper's constant folding parameter k = 4 gives five iterations and a
-    //constant final polynomial — large enough to exercise the rate improvement
-    //across five distinct rates, small enough to derive by hand.
+    /// <summary>The pinned shape's message size: a 2^20-coefficient message, large enough to exercise the rate improvement across five distinct rates while staying small enough to derive by hand.</summary>
     private const int PinnedVariableCount = 20;
+
+    /// <summary>The pinned shape's initial rate exponent (rate 1/2).</summary>
     private const int PinnedInitialRateLog2 = 1;
+
+    /// <summary>The pinned shape's expected iteration count: with the paper's constant folding parameter <c>k = 4</c>, a 2^20-variable message folds to a constant final polynomial in exactly five iterations.</summary>
     private const int PinnedIterationCount = 5;
 
+    /// <summary>The wired classical security target in bits, read from the library's default WHIR parameters.</summary>
     private const double ClassicalSecurityBits = WellKnownWhirParameters.ClassicalSecurityLevelBits;
 
+    /// <summary>The curve every schedule in this class is derived over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that the unique-decoding regime's per-round query counts for the pinned shape match the hand-derived values from WHIR Theorem 5.2.</summary>
     [TestMethod]
     public void UniqueDecodingQueryScheduleMatchesPinnedCounts()
     {
@@ -51,6 +55,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that the Johnson list-decoding regime's per-round query counts for the pinned shape match the hand-derived STIR-style decay.</summary>
     [TestMethod]
     public void JohnsonQueryScheduleMatchesPinnedCounts()
     {
@@ -69,6 +74,8 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that every round row's oracle index, variable count, domain size and rate exponent follow the fold-by-<c>k</c> recurrence, that its proximity parameter is a valid probability, and that query counts never decrease round over round.</summary>
+    /// <param name="regime">The soundness regime to derive the schedule under.</param>
     [TestMethod]
     [DataRow(WhirSoundnessRegime.UniqueDecoding)]
     [DataRow(WhirSoundnessRegime.ListDecodingJohnson)]
@@ -103,6 +110,8 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies the soundness ledger's row count and shape, that every row meets the classical security target, and that the union bound sits strictly below the ledger's worst (minimum-bits) row.</summary>
+    /// <param name="regime">The soundness regime to derive the schedule under.</param>
     [TestMethod]
     [DataRow(WhirSoundnessRegime.UniqueDecoding)]
     [DataRow(WhirSoundnessRegime.ListDecodingJohnson)]
@@ -130,6 +139,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that requesting a full schedule under the conjectured-capacity regime is rejected, since that regime is wired only for the standalone query-count comparison.</summary>
     [TestMethod]
     public void CapacityRegimeIsRejectedBySchedule()
     {
@@ -141,6 +151,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that the conjectured-capacity regime's standalone query count is reproducible, while its list-size and mutual-correlated-agreement helpers, which no schedule carries, still reject that regime.</summary>
     [TestMethod]
     public void CapacityRegimeStaysAvailableForQueryComparison()
     {
@@ -164,6 +175,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that a shape whose initial domain would exceed a curve's two-adicity is rejected on that curve, while the same shape schedules successfully on a curve with enough two-adicity, and that a nonzero folding remainder is reported as the final variable count.</summary>
     [TestMethod]
     public void InitialDomainBeyondTwoAdicityIsRejected()
     {
@@ -186,6 +198,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that a shape whose required query count exceeds its folded query domain's size fails loudly instead of silently pricing less than the target soundness.</summary>
     [TestMethod]
     public void QueryCountBeyondFoldedDomainIsRejected()
     {
@@ -202,6 +215,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies each regime's proximity parameter at rate 1/2 against its hand-computed value from Section 6.2 of the WHIR paper.</summary>
     [TestMethod]
     public void ProximityParametersMatchPaperFormulas()
     {
@@ -215,6 +229,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that unique decoding pins a list size of one codeword, and that the Johnson list bound at the wired slack equals <c>10/ρ</c>.</summary>
     [TestMethod]
     public void ListSizeBoundsMatchJohnsonBound()
     {
@@ -228,6 +243,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that the unique-decoding mutual-correlated-agreement error, at list parameter <c>ℓ = 2</c>, matches Corollary 4.11's closed form exactly.</summary>
     [TestMethod]
     public void MutualCorrelatedAgreementErrorMatchesCorollaryUnderUniqueDecoding()
     {
@@ -246,6 +262,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that, at the same target soundness and shape, the Johnson regime's larger proximity radius prices strictly fewer queries than unique decoding in every round and in total, while both still meet the classical security target.</summary>
     [TestMethod]
     public void JohnsonRegimePricesFewerQueriesThanUniqueDecoding()
     {
@@ -287,6 +304,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that the Johnson mutual-correlated-agreement error at the default Johnson parameter matches BCHKS25 Theorem 1.5's closed form to a literal, hand-computed bit count.</summary>
     [TestMethod]
     public void MutualCorrelatedAgreementErrorMatchesBchks25TheoremUnderJohnson()
     {
@@ -310,6 +328,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies the Johnson mutual-correlated-agreement error against a small shape hand-derived independently from BCHKS25 Theorem 1.5, anchoring the constant and both exponents against a value derived outside this codebase's formula.</summary>
     [TestMethod]
     public void JohnsonAgreementErrorMatchesIndependentTheoremAnchor()
     {
@@ -334,6 +353,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that the proven BCHKS25 mutual-correlated-agreement bound prices strictly more error bits than the superseded Conjecture 4.12 Item 1 pricing at every wired shape, so the theorem upgrade can never silently weaken a ledger row.</summary>
     [TestMethod]
     public void Bchks25ErrorStrictlyImprovesOnSupersededConjecturePricing()
     {
@@ -357,6 +377,7 @@ internal sealed class WhirParameterScheduleTests
     }
 
 
+    /// <summary>Verifies that choosing a non-default Johnson proximity parameter self-prices consistently across the radius, list-size bound and error-bit formulas, and that the trade-off (smaller parameter, smaller radius, more queries, fewer error bits) moves in the expected direction relative to the default.</summary>
     [TestMethod]
     public void JohnsonProximityParameterSelfPricesRadiusListAndError()
     {

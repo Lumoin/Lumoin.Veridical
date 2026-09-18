@@ -231,11 +231,10 @@ the dual-field zero-knowledge stack. A change that would alter a proof's bytes i
 The `draft-google-cfrg-libzk` Internet-Draft is expired (`-01` is the latest revision; not adopted by CFRG),
 so the `google/longfellow-zk` repository is the de-facto specification. The conformance pin is upstream
 commit `3dfaac72abed4a6fbcd0ab8688b39168bb224133` (2026-07-26, the upstream `main` HEAD as of 2026-07-28).
-The committed Longfellow fixtures are reference dumps captured at commit
+The committed Longfellow fixtures are reference values captured at commit
 `d8ad8f65187c7c364a3c2181ad484bcab03f0ec2` (2026-05-29) and re-verified at the pin: the upstream range
 between the two commits contains no change to the serialization, transcript, prover, scheduler or circuit
-generation surfaces, the reference's own test suite passes at the pin in the local oracle, and every pinned
-compile-counter dump reproduces identically there. The fixtures target the circuit generation the upstream
+generation surfaces. The fixtures target the circuit generation the upstream
 `kZkSpecs` table names
 `longfellow-libzk-v1` version 7. Two registry rows are pinned: the one-attribute bundle (`block_enc`
 4151/4096) and the four-attribute breadth bundle (`kZkSpecs[3]`, `block_enc` 4415/4096, sharing the
@@ -254,8 +253,7 @@ reference anchors by the default suite. Two identity subtleties are deliberate:
 - **Re-pin tripwires.** An upstream release newer than `v0.9`, a `kZkSpecs` table change (a new circuit
   version or changed hashes), or a normative `docs/specs` change that alters transcript or wire bytes each
   trigger re-verification of the Longfellow fixtures against the new upstream state before any claim of
-  conformance to it. The per-fixture provenance inventory lives at
-  `test/Lumoin.Veridical.Tests/TestMaterial/Longfellow/PROVENANCE.md`.
+  conformance to it.
 
 ### BBS extension drafts (blind signatures, per-verifier pseudonyms)
 
@@ -272,7 +270,7 @@ changes the semantics; a mismatch is a hard verification failure.
   proof with committed disclosure) has no published test vectors** (draft §10: fixtures are being regenerated)
   — it is gated by self-consistency roundtrips and tamper suites, and the draft-defect interpretation choices
   are marked as fixture-pending at their decision sites in code. Also fixture-pending, and the highest-risk
-  unpinned byte choice of the batch, is the **blind interface's `e`-scalar derivation**: `BlindSign` follows
+  of these unpinned byte choices, is the **blind interface's `e`-scalar derivation**: `BlindSign` follows
   the blind `-03` text and binds the domain into `e` (`serialize((SK, B, domain))`), while the pseudonym
   interface pins the domain-free `serialize((SK, B))` form that the nym `-03` vectors byte-anchor (see
   `BbsBlindAlgorithm.DeriveBlindSigningScalar`); if the regenerated blind fixtures pin the domain-free form,
@@ -319,8 +317,8 @@ Three standing caveats:
   (Algorithm 12's three-share chain against a direct Algorithm 16 under the composed key, with the composition
   computed in the opposite operation order so the two paths are independent).
 - **Re-diff tripwire.** A changed `Last-Modified`/version line on the rolling URL triggers a protocol re-diff
-  against the implemented surfaces before any claim of conformance to the new revision (the 2026-07-09 pass is
-  recorded in `tempdocs/W2.6-SECDSA-V2-DIFF.md`).
+  against the implemented surfaces before any claim of conformance to the new revision; the "verified" date on
+  the pinned revision above marks the most recent such diff.
 
 The paper frames "sole control" through the certification regime rather than new cryptography: CIR (EU)
 2024/2981 wallet certification, the Common Criteria protection profiles EN 419221-5 (the wallet-provider HSM)

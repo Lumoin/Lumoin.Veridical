@@ -17,6 +17,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class RawR1csInstanceExtensions
 {
+    /// <summary>Satisfaction-check members added to every <see cref="RawR1csInstance"/>.</summary>
     extension(RawR1csInstance instance)
     {
         /// <summary>
@@ -207,24 +208,44 @@ public static class RawR1csInstanceExtensions
         /// Merkle root for BaseFold), not a pairing-group identity.
         /// </summary>
         /// <remarks>
-        /// Use this overload only when <paramref name="pcs"/>'s commitment is a
+        /// This works only where <paramref name="pcs"/>'s commitment is a
         /// deterministic function of the polynomial (no per-commitment blinding),
         /// so the prover and verifier independently reproduce the identical
-        /// error commitment. For a hiding scheme (Hyrax) use the delegate-free
-        /// <see cref="Prepare(RawR1csInstance, BaseMemoryPool)"/>,
-        /// whose zero-error commitment is the deterministic group identity.
+        /// error commitment, and it refuses a provider for which that does not
+        /// hold. A hiding provider draws fresh randomness on every commit, so the
+        /// commitment produced here would be one the other side never made and
+        /// the transcript would diverge at the first absorb; the blind that could
+        /// open it is discarded on the next line besides. A hiding scheme instead
+        /// carries its error commitment as public relaxed-instance data, the way
+        /// a folded instance already carries a non-zero one, and enters through
+        /// the relaxed prove and verify overloads. For a hiding scheme whose
+        /// zero-error commitment is the deterministic group identity (Hyrax) the
+        /// delegate-free <see cref="Prepare(RawR1csInstance, BaseMemoryPool)"/>
+        /// applies, because it consults no provider at all.
         /// </remarks>
         /// <param name="pcs">The transparent commitment provider used to commit the zero error vector.</param>
         /// <param name="pool">Pool for the relaxed instance's allocations.</param>
         /// <returns>The prepared relaxed instance with <c>u = 1</c> and a scheme-shaped zero-error commitment.</returns>
         /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">When the R1CS row count is not a power of two.</exception>
+        /// <exception cref="InvalidOperationException">When <paramref name="pcs"/> is hiding.</exception>
         [SuppressMessage("Reliability", "CA2000", Justification = "The committed error commitment transfers ownership to CreateRelaxedFromRaw, which transfers it to RelaxedR1csInstance.Create (disposed through its Dispose chain) or disposes it on the failure path.")]
         public RelaxedR1csInstance Prepare(PolynomialCommitmentProvider pcs, BaseMemoryPool pool)
         {
             ArgumentNullException.ThrowIfNull(instance);
             ArgumentNullException.ThrowIfNull(pcs);
             ArgumentNullException.ThrowIfNull(pool);
+
+            //The whole method rests on both sides reaching the same commitment
+            //from the same zero vector, which a hiding provider cannot do. The
+            //check belongs here rather than at each entry point because this is
+            //where the assumption is spent: every caller that reaches it has
+            //already committed to reconstructing, not receiving, the commitment.
+            if(pcs.IsHiding)
+            {
+                throw new InvalidOperationException(
+                    $"The {pcs.Scheme} provider is hiding, so committing the zero error vector here draws fresh randomness and yields a commitment the other side never made. Carry the error commitment as public relaxed-instance data and use the relaxed prove and verify overloads instead.");
+            }
 
             int m = instance.A.RowCount;
             if(!BitOperations.IsPow2(m))
@@ -235,8 +256,8 @@ public static class RawR1csInstanceExtensions
 
             int variableCount = BitOperations.Log2((uint)m);
 
-            //Commit the zero error vector through the provider. For a transparent
-            //hash-based scheme this is deterministic, so prover and verifier reach
+            //Commit the zero error vector through the provider. The guard above
+            //establishes that this is deterministic, so prover and verifier reach
             //the identical commitment. The placeholder blind is discarded — the
             //raw instance has no hiding randomness.
             using MultilinearExtension zeroError = MultilinearExtension.Zero(variableCount, instance.Curve, pool);
@@ -248,10 +269,16 @@ public static class RawR1csInstanceExtensions
     }
 
 
-    //Builds the relaxed instance shell (u = 1, cloned matrices, public inputs)
-    //around an already-built zero-error commitment, whose ownership it takes.
-    //Shared by both Prepare overloads so the matrix-clone and u handling live
-    //once; the overloads differ only in how they form the zero-error commitment.
+    /// <summary>
+    /// Builds the relaxed instance shell (<c>u = 1</c>, cloned matrices, public inputs) around an
+    /// already-built zero-error commitment, whose ownership it takes. Shared by both <c>Prepare</c>
+    /// overloads so the matrix-clone and <c>u</c> handling live once; the overloads differ only in how
+    /// they form the zero-error commitment.
+    /// </summary>
+    /// <param name="instance">The raw instance to relax.</param>
+    /// <param name="errorCommitment">The zero-error commitment; ownership transfers to the result.</param>
+    /// <param name="pool">The pool the cloned matrices rent from.</param>
+    /// <returns>The prepared relaxed instance.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "Cloned matrices and the error commitment transfer to RelaxedR1csInstance.Create; on any failure path each is disposed before rethrow.")]
     private static RelaxedR1csInstance CreateRelaxedFromRaw(
         RawR1csInstance instance,
@@ -311,6 +338,10 @@ public static class RawR1csInstanceExtensions
     }
 
 
+    /// <summary>Copies a matrix's triples into a freshly built, independently owned matrix over the same pool.</summary>
+    /// <param name="source">The matrix to copy.</param>
+    /// <param name="pool">The pool the copy rents from.</param>
+    /// <returns>The cloned matrix.</returns>
     private static R1csMatrix CloneMatrix(R1csMatrix source, BaseMemoryPool pool)
     {
         int nnz = source.NonzeroCount;
@@ -329,6 +360,13 @@ public static class RawR1csInstanceExtensions
     }
 
 
+    /// <summary>Builds the <see cref="R1csSatisfaction.Violated"/> result for a failing row, capturing the mismatched sides and the row's involved variables.</summary>
+    /// <param name="instance">The instance being checked.</param>
+    /// <param name="row">The failing constraint's row index.</param>
+    /// <param name="lhsBytes">The computed <c>(Az·Bz)</c> value at the row.</param>
+    /// <param name="rhsBytes">The claimed <c>Cz</c> value at the row.</param>
+    /// <param name="pool">The pool the captured scalars rent from.</param>
+    /// <returns>The violation result.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The scalars take ownership of their pool-rented buffers and are returned to the caller through R1csSatisfaction.Violated; the caller's Dispose chains through.")]
     private static R1csSatisfaction.Violated BuildViolatedResult(
         RawR1csInstance instance,
@@ -372,6 +410,10 @@ public static class RawR1csInstanceExtensions
     }
 
 
+    /// <summary>Adds every column index that <paramref name="matrix"/>'s row <paramref name="row"/> touches to <paramref name="destination"/>.</summary>
+    /// <param name="matrix">The matrix to scan.</param>
+    /// <param name="row">The row to collect columns from.</param>
+    /// <param name="destination">Receives the touched column indices.</param>
     private static void CollectFromRow(R1csMatrix matrix, int row, SortedSet<int> destination)
     {
         for(int i = 0; i < matrix.NonzeroCount; i++)

@@ -6,7 +6,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Secdsa;
 
 /// <summary>
-/// A Chaum–Pedersen / Schnorr discrete-log-equality proof <c>(r, s)</c> (Verheul Algorithm 19), serialised as
+/// A Chaum–Pedersen / Schnorr discrete-log-equality proof <c>(r, s)</c> (Verheul Algorithm 20), serialised as
 /// 64 bytes in <c>r || s</c> order. The proof attests that a set of public keys <c>D_i</c> share one private
 /// key <c>d</c> across their respective generators <c>G_i</c> (statement (9): <c>D_i = d·G_i</c>), without
 /// revealing <c>d</c>.
@@ -44,6 +44,7 @@ public sealed class DlEqualityProof: SensitiveMemory
         .With(CurveParameterSet.P256);
 
 
+    /// <summary>Wraps an already-populated, already-validated rental; only <see cref="FromCanonical"/> constructs a proof.</summary>
     internal DlEqualityProof(IMemoryOwner<byte> owner, Tag tag) : base(owner, tag)
     {
     }
@@ -99,6 +100,7 @@ public sealed class DlEqualityProof: SensitiveMemory
     public ReadOnlySpan<byte> GetSBytes() => AsReadOnlySpan().Slice(SOffset, SSizeBytes);
 
 
+    /// <summary>Merges a caller-supplied provenance tag with this type's zero-knowledge-proof/P-256 algebraic-identity entries.</summary>
     private static Tag MergeWithAlgebraicTag(Tag tag)
     {
         return tag.With(AlgebraicRole.ZkProof)

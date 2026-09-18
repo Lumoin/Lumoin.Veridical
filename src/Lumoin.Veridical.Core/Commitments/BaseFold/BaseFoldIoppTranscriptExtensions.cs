@@ -27,12 +27,15 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BaseFoldIoppTranscriptExtensions
 {
-    //Bytes squeezed for a query index. Eight bytes give a 64-bit value; the
-    //query domain is a power of two, so masking is unbiased regardless of the
-    //byte count, but eight bytes comfortably cover any practical domain size.
+    /// <summary>
+    /// Bytes squeezed for a query index. Eight bytes give a 64-bit value; the
+    /// query domain is a power of two, so masking is unbiased regardless of the
+    /// byte count, but eight bytes comfortably cover any practical domain size.
+    /// </summary>
     private const int QueryIndexSqueezeBytes = sizeof(ulong);
 
 
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for the BaseFold IOPP's absorb and squeeze operations.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>

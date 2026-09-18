@@ -18,27 +18,35 @@ namespace Lumoin.Veridical.Core.Commitments.Ligero;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FiatShamirTranscriptLigeroExtensions
 {
+    /// <summary>The byte width of one canonical scalar, spacing consecutive squeezed challenges in a destination span.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //64 bytes per challenge scalar: the field width plus 32 bytes of extra
-    //entropy bound the modular-reduction bias by 2^-256, matching the scalar
-    //squeeze in FiatShamirTranscriptSqueezeExtensions.
+    /// <summary>
+    /// 64 bytes per challenge scalar: the field width plus 32 bytes of extra
+    /// entropy bound the modular-reduction bias by 2^-256, matching the scalar
+    /// squeeze in <see cref="FiatShamirTranscriptSqueezeExtensions"/>.
+    /// </summary>
     private const int SqueezeWideBytes = 64;
 
-    //Eight bytes give a 64-bit draw per opened-column index. The extension
-    //width is not in general a power of two, so the value is mapped into range
-    //by bias-free rejection rather than masking.
+    /// <summary>
+    /// Eight bytes give a 64-bit draw per opened-column index. The extension
+    /// width is not in general a power of two, so the value is mapped into range
+    /// by bias-free rejection rather than masking.
+    /// </summary>
     private const int IndexSqueezeBytes = sizeof(ulong);
 
-    //A generous cap on rejection re-squeezes per opened-column index. Bias
-    //rejection is astronomically rare (the width is at most 2^31, far below
-    //2^64) and duplicate rejection happens with probability below
-    //filled/width < 1, so the expected attempt count per index is barely above
-    //one; the cap exists only to turn a pathological transcript into a thrown
-    //error rather than a hang, and applies identically on both sides.
+    /// <summary>
+    /// A generous cap on rejection re-squeezes per opened-column index. Bias
+    /// rejection is astronomically rare (the width is at most 2^31, far below
+    /// 2^64) and duplicate rejection happens with probability below
+    /// filled/width &lt; 1, so the expected attempt count per index is barely above
+    /// one; the cap exists only to turn a pathological transcript into a thrown
+    /// error rather than a hang, and applies identically on both sides.
+    /// </summary>
     private const int MaximumAttemptsPerIndex = 1024;
 
 
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for the Ligero argument's absorb and squeeze operations.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>
@@ -163,8 +171,21 @@ public static class FiatShamirTranscriptLigeroExtensions
     }
 
 
-    //Re-squeezes until a draw is both inside the unbiased range and distinct
-    //from every already-chosen index, returning that index.
+    /// <summary>
+    /// Re-squeezes under <paramref name="label"/> until a draw is both inside the
+    /// unbiased <paramref name="range"/>, as bounded by <paramref name="acceptanceLimit"/>,
+    /// and distinct from every index already in <paramref name="chosen"/>, then returns that index.
+    /// </summary>
+    /// <param name="transcript">The transcript to squeeze from.</param>
+    /// <param name="label">The pinned operation label naming this squeeze.</param>
+    /// <param name="range">The number of columns to sample from.</param>
+    /// <param name="acceptanceLimit">The largest multiple of <paramref name="range"/> at or below 2^64; a draw at or above this value is the biased tail and is rejected.</param>
+    /// <param name="chosen">The indices drawn so far, checked to keep the result distinct from all of them.</param>
+    /// <param name="bytes">Scratch buffer that receives each squeeze's raw bytes.</param>
+    /// <param name="squeeze">The XOF backend.</param>
+    /// <param name="hash">The fixed-output hash backend, used by the post-squeeze state update.</param>
+    /// <returns>A fresh index in <c>[0, range)</c> that is not already present in <paramref name="chosen"/>.</returns>
+    /// <exception cref="InvalidOperationException">When no fresh index is found within <see cref="MaximumAttemptsPerIndex"/> attempts.</exception>
     private static int DrawFreshIndex(
         FiatShamirTranscript transcript,
         FiatShamirOperationLabel label,

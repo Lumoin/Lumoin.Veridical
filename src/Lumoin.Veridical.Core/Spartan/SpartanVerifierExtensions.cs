@@ -32,6 +32,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class SpartanVerifierExtensions
 {
+    /// <summary>Verification members added to every <see cref="SpartanVerifier"/> instance.</summary>
     extension(SpartanVerifier verifier)
     {
         /// <summary>
@@ -218,27 +219,27 @@ public static class SpartanVerifierExtensions
 
 
         /// <summary>
-        /// Verifies a BaseFold-backed Spartan2 proof against a relaxed R1CS
-        /// <paramref name="instance"/>. BaseFold is hash-based and transparent —
-        /// no group operations — so this surface needs only the field-arithmetic
-        /// backends plus the transcript backends; the opening verification's
-        /// hashing is captured inside the verifying key's BaseFold provider.
+        /// Verifies a <see cref="CommitmentSpartanProof"/> against a relaxed R1CS
+        /// instance, under whatever commitment scheme the verifying key's provider
+        /// implements. The proof records the scheme it was produced under and this
+        /// refuses a mismatch, so a proof cannot be checked against a scheme other
+        /// than the one that made it.
         /// </summary>
-        /// <param name="proof">The BaseFold Spartan proof to verify.</param>
-        /// <param name="instance">The relaxed R1CS instance the proof claims satisfaction of.</param>
-        /// <param name="transcript">A fresh transcript matching the prover's setup.</param>
-        /// <param name="scalarAdd">Scalar-add backend.</param>
-        /// <param name="scalarMultiply">Scalar-multiply backend.</param>
-        /// <param name="scalarSubtract">Scalar-subtract backend.</param>
-        /// <param name="scalarReduce">Scalar-reduce backend.</param>
-        /// <param name="hash">Fixed-output hash backend used by the transcript.</param>
-        /// <param name="squeeze">XOF squeeze backend used by the transcript.</param>
-        /// <param name="pool">The pool to rent every buffer from.</param>
-        /// <returns><c>true</c> iff the proof verifies; <c>false</c> otherwise.</returns>
+        /// <param name="proof">The proof to verify.</param>
+        /// <param name="instance">The relaxed R1CS instance the proof is about.</param>
+        /// <param name="transcript">The live Fiat-Shamir transcript the verification replays.</param>
+        /// <param name="scalarAdd">Scalar addition backend.</param>
+        /// <param name="scalarMultiply">Scalar multiplication backend.</param>
+        /// <param name="scalarSubtract">Scalar subtraction backend.</param>
+        /// <param name="scalarReduce">Scalar reduction backend.</param>
+        /// <param name="hash">Fiat-Shamir absorb backend.</param>
+        /// <param name="squeeze">Fiat-Shamir squeeze backend.</param>
+        /// <param name="pool">The pool for scratch allocations.</param>
+        /// <returns><see langword="true"/> iff the proof verifies.</returns>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the proof's curve or dimensions do not match the instance.</exception>
-        public bool VerifyBaseFold(
-            BaseFoldSpartanProof proof,
+        /// <exception cref="ArgumentException">When the proof's curve, scheme or dimensions do not match.</exception>
+        public bool VerifyCommitted(
+            CommitmentSpartanProof proof,
             RelaxedR1csInstance instance,
             FiatShamirTranscript transcript,
             ScalarAddDelegate scalarAdd,
@@ -267,125 +268,10 @@ public static class SpartanVerifierExtensions
                 throw new ArgumentException($"Proof curve {proof.Curve} does not match verifier curve {curve}.");
             }
 
-            int rows = instance.A.RowCount;
-            int columns = instance.A.ColumnCount;
-            if(!BitOperations.IsPow2(rows) || !BitOperations.IsPow2(columns))
-            {
-                throw new ArgumentException(
-                    $"Spartan requires power-of-two R1CS dimensions; instance has rows = {rows}, columns = {columns}.");
-            }
-
-            int rowVariableCount = BitOperations.Log2((uint)rows);
-            int columnVariableCount = BitOperations.Log2((uint)columns);
-
-            if(proof.OuterRoundCount != rowVariableCount)
-            {
-                throw new ArgumentException(
-                    $"Proof outer-round count {proof.OuterRoundCount} does not match instance row variable count {rowVariableCount}.");
-            }
-
-            if(proof.InnerRoundCount != columnVariableCount)
-            {
-                throw new ArgumentException(
-                    $"Proof inner-round count {proof.InnerRoundCount} does not match instance column variable count {columnVariableCount}.");
-            }
-
             PolynomialCommitmentProvider pcs = verifier.VerifyingKey.Pcs;
-
-            CryptographicOperationCounters.Increment(CryptographicOperationKind.SpartanVerifierVerify, curve);
-
-            try
+            if(proof.Scheme != pcs.Scheme)
             {
-                return VerifyCore(
-                    proof.GetSumcheckPart(),
-                    proof.GetWitnessCommitmentBytes(),
-                    proof.GetErrorOpeningProofBytes(),
-                    proof.GetWitnessOpeningProofBytes(),
-                    instance, transcript, scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool, rowVariableCount, columnVariableCount, pcs);
-            }
-            catch(Exception ex) when (ex is InvalidOperationException or ArgumentException)
-            {
-                return false;
-            }
-        }
-
-
-        /// <summary>
-        /// Convenience overload that verifies a BaseFold-backed proof against a
-        /// <em>raw</em> R1CS instance: prepares the raw instance into its relaxed
-        /// equivalent and forwards to the relaxed <c>VerifyBaseFold</c>.
-        /// </summary>
-        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance is disposed in the finally block once VerifyBaseFold returns.")]
-        public bool VerifyBaseFold(
-            BaseFoldSpartanProof proof,
-            RawR1csInstance instance,
-            FiatShamirTranscript transcript,
-            ScalarAddDelegate scalarAdd,
-            ScalarMultiplyDelegate scalarMultiply,
-            ScalarSubtractDelegate scalarSubtract,
-            ScalarReduceDelegate scalarReduce,
-            FiatShamirHashDelegate hash,
-            FiatShamirSqueezeDelegate squeeze,
-            BaseMemoryPool pool)
-        {
-            ArgumentNullException.ThrowIfNull(verifier);
-            ArgumentNullException.ThrowIfNull(proof);
-            ArgumentNullException.ThrowIfNull(instance);
-            ArgumentNullException.ThrowIfNull(pool);
-
-            //Prepare the zero-error commitment through the same BaseFold provider
-            //the prover used, so both reach the identical (deterministic) relaxed
-            //instance.
-            RelaxedR1csInstance relaxedInstance = instance.Prepare(verifier.VerifyingKey.Pcs, pool);
-            try
-            {
-                return verifier.VerifyBaseFold(
-                    proof, relaxedInstance, transcript,
-                    scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool);
-            }
-            finally
-            {
-                relaxedInstance.Dispose();
-            }
-        }
-
-
-        /// <summary>
-        /// Verifies a Ligero-backed Spartan2 proof against a relaxed R1CS
-        /// instance. The Ligero-shaped sibling of <see cref="VerifyBaseFold(SpartanVerifier, BaseFoldSpartanProof, RelaxedR1csInstance, FiatShamirTranscript, ScalarAddDelegate, ScalarMultiplyDelegate, ScalarSubtractDelegate, ScalarReduceDelegate, FiatShamirHashDelegate, FiatShamirSqueezeDelegate, BaseMemoryPool)"/>;
-        /// the opening verification lives in the provider's delegate, so the body is the same scheme-neutral core.
-        /// </summary>
-        /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the proof's curve or dimensions do not match the instance.</exception>
-        public bool VerifyLigero(
-            LigeroSpartanProof proof,
-            RelaxedR1csInstance instance,
-            FiatShamirTranscript transcript,
-            ScalarAddDelegate scalarAdd,
-            ScalarMultiplyDelegate scalarMultiply,
-            ScalarSubtractDelegate scalarSubtract,
-            ScalarReduceDelegate scalarReduce,
-            FiatShamirHashDelegate hash,
-            FiatShamirSqueezeDelegate squeeze,
-            BaseMemoryPool pool)
-        {
-            ArgumentNullException.ThrowIfNull(verifier);
-            ArgumentNullException.ThrowIfNull(proof);
-            ArgumentNullException.ThrowIfNull(instance);
-            ArgumentNullException.ThrowIfNull(transcript);
-            ArgumentNullException.ThrowIfNull(scalarAdd);
-            ArgumentNullException.ThrowIfNull(scalarMultiply);
-            ArgumentNullException.ThrowIfNull(scalarSubtract);
-            ArgumentNullException.ThrowIfNull(scalarReduce);
-            ArgumentNullException.ThrowIfNull(hash);
-            ArgumentNullException.ThrowIfNull(squeeze);
-            ArgumentNullException.ThrowIfNull(pool);
-
-            CurveParameterSet curve = instance.Curve;
-            if(proof.Curve.Code != curve.Code)
-            {
-                throw new ArgumentException($"Proof curve {proof.Curve} does not match verifier curve {curve}.");
+                throw new ArgumentException($"Proof scheme {proof.Scheme} does not match the verifying key's provider scheme {pcs.Scheme}.");
             }
 
             int rows = instance.A.RowCount;
@@ -411,8 +297,6 @@ public static class SpartanVerifierExtensions
                     $"Proof inner-round count {proof.InnerRoundCount} does not match instance column variable count {columnVariableCount}.");
             }
 
-            PolynomialCommitmentProvider pcs = verifier.VerifyingKey.Pcs;
-
             CryptographicOperationCounters.Increment(CryptographicOperationKind.SpartanVerifierVerify, curve);
 
             try
@@ -430,16 +314,40 @@ public static class SpartanVerifierExtensions
             }
         }
 
-
         /// <summary>
-        /// Convenience overload that verifies a Ligero-backed proof against a
-        /// <em>raw</em> R1CS instance: prepares the raw instance into its relaxed
-        /// equivalent and forwards to the relaxed <c>VerifyLigero</c>.
+        /// Convenience overload that verifies a
+        /// <see cref="CommitmentSpartanProof"/> against a <em>raw</em> R1CS
+        /// instance: prepares the raw instance into its relaxed equivalent and
+        /// forwards to the relaxed overload.
         /// </summary>
+        /// <param name="proof">The proof to verify.</param>
+        /// <param name="instance">The raw R1CS instance the proof is about.</param>
+        /// <param name="transcript">The live Fiat-Shamir transcript the verification replays.</param>
+        /// <param name="scalarAdd">Scalar addition backend.</param>
+        /// <param name="scalarMultiply">Scalar multiplication backend.</param>
+        /// <param name="scalarSubtract">Scalar subtraction backend.</param>
+        /// <param name="scalarReduce">Scalar reduction backend.</param>
+        /// <param name="hash">Fiat-Shamir absorb backend.</param>
+        /// <param name="squeeze">Fiat-Shamir squeeze backend.</param>
+        /// <param name="pool">The pool for scratch allocations.</param>
+        /// <returns><see langword="true"/> iff the proof verifies.</returns>
+        /// <remarks>
+        /// This reconstructs the relaxed instance by recommitting the zero error
+        /// vector, which reproduces the prover's error commitment only where the
+        /// provider's commitment is a deterministic function of the polynomial. A
+        /// hiding provider draws a fresh blind on every commit, so the commitment
+        /// reconstructed here is one no prover ever produced and every honest
+        /// proof would fail. It refuses a hiding provider rather than returning
+        /// that as a plain <see langword="false"/>, which is indistinguishable
+        /// from a forgery. A hiding scheme verifies against a relaxed instance
+        /// built from the error commitment the prover published, through the
+        /// relaxed overload, mirroring how it proved.
+        /// </remarks>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance is disposed in the finally block once VerifyLigero returns.")]
-        public bool VerifyLigero(
-            LigeroSpartanProof proof,
+        /// <exception cref="InvalidOperationException">When the verifying key's provider is hiding.</exception>
+        [SuppressMessage("Reliability", "CA2000", Justification = "The prepared relaxed instance is disposed in the finally block once the relaxed overload returns.")]
+        public bool VerifyCommitted(
+            CommitmentSpartanProof proof,
             RawR1csInstance instance,
             FiatShamirTranscript transcript,
             ScalarAddDelegate scalarAdd,
@@ -455,10 +363,21 @@ public static class SpartanVerifierExtensions
             ArgumentNullException.ThrowIfNull(instance);
             ArgumentNullException.ThrowIfNull(pool);
 
-            RelaxedR1csInstance relaxedInstance = instance.Prepare(verifier.VerifyingKey.Pcs, pool);
+            //Stated here as well as inside Prepare, and stated before the
+            //reconstruction rather than after it, because the remedy differs by
+            //side: a prover samples the blind, a verifier receives the commitment.
+            //Naming the caller's own way out is worth the repetition.
+            PolynomialCommitmentProvider pcs = verifier.VerifyingKey.Pcs;
+            if(pcs.IsHiding)
+            {
+                throw new InvalidOperationException(
+                    $"The {pcs.Scheme} provider is hiding, so recommitting the zero error vector here would draw a fresh blind and reconstruct a commitment the prover never made. Build the relaxed instance from the error commitment the prover published and verify against that instead.");
+            }
+
+            RelaxedR1csInstance relaxedInstance = instance.Prepare(pcs, pool);
             try
             {
-                return verifier.VerifyLigero(
+                return verifier.VerifyCommitted(
                     proof, relaxedInstance, transcript,
                     scalarAdd, scalarMultiply, scalarSubtract, scalarReduce, hash, squeeze, pool);
             }
@@ -470,6 +389,12 @@ public static class SpartanVerifierExtensions
     }
 
 
+    /// <summary>
+    /// The scheme-neutral verification core shared by both <c>Verify</c> overloads and both
+    /// <c>VerifyCommitted</c> overloads: replays the transcript schedule, runs the outer and inner
+    /// sumcheck verifications, reconstructs and checks the error and witness openings through
+    /// <paramref name="pcs"/>, and checks the outer and inner terminating identities.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Intermediate disposables flow through using declarations.")]
     private static bool VerifyCore(
         SpartanSumcheckProofPart sumcheckPart,
@@ -705,16 +630,21 @@ public static class SpartanVerifierExtensions
     /// </summary>
     private readonly struct MatrixMleEvaluationOwner: IDisposable
     {
+        /// <summary>The wrapped matrix-MLE evaluation view.</summary>
         public MatrixMleEvaluation View { get; }
 
+        /// <summary>Wraps an already-constructed view; <see cref="From"/> is the only caller.</summary>
         private MatrixMleEvaluationOwner(MatrixMleEvaluation view) { View = view; }
 
+        /// <summary>Builds the evaluation view over <paramref name="matrix"/>, wrapped for uniform disposal.</summary>
         public static MatrixMleEvaluationOwner From(R1csMatrix matrix) => new(new MatrixMleEvaluation(matrix));
 
+        /// <summary>A no-op: the view does not own <c>matrix</c>, so there is nothing to release.</summary>
         public void Dispose() { }
     }
 
 
+    /// <summary>Squeezes <paramref name="count"/> fresh scalar challenges from the transcript, all under <paramref name="label"/>, in order.</summary>
     private static Scalar[] SqueezeChallenges(
         FiatShamirTranscript transcript,
         int count,
@@ -737,6 +667,7 @@ public static class SpartanVerifierExtensions
     }
 
 
+    /// <summary>Copies <paramref name="source"/> into a freshly pool-owned <see cref="Scalar"/> array, preserving order and each element's curve.</summary>
     private static Scalar[] ToScalarArray(IReadOnlyList<Scalar> source, BaseMemoryPool pool)
     {
         Scalar[] result = new Scalar[source.Count];
@@ -749,6 +680,7 @@ public static class SpartanVerifierExtensions
     }
 
 
+    /// <summary>Disposes every non-null scalar in <paramref name="scalars"/>.</summary>
     private static void DisposeAll(Scalar[] scalars)
     {
         for(int i = 0; i < scalars.Length; i++)
@@ -758,6 +690,7 @@ public static class SpartanVerifierExtensions
     }
 
 
+    /// <summary>Computes <c>a · b</c> as a fresh pool-owned scalar.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned scalar transfers ownership to the caller.")]
     private static Scalar MultiplyScalars(
         Scalar a,

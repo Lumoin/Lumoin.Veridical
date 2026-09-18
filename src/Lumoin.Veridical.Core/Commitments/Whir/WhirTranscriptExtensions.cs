@@ -33,6 +33,7 @@ public static class WhirTranscriptExtensions
     private const int QueryIndexSqueezeBytes = sizeof(ulong);
 
 
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for the WHIR protocol's absorb and squeeze operations.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>

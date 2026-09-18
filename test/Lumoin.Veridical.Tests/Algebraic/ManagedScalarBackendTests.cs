@@ -10,16 +10,22 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// bundle composes SIMD add/subtract (when supported) with the BigInteger
 /// reference for the rest; the composed operations must agree byte-for-byte with
 /// the BigInteger reference, and the hardware-acceleration flag must reflect the
-/// host. The BN254 bundle is BigInteger-only today.
+/// host. The BN254 bundle is BigInteger-only.
 /// </summary>
 [TestClass]
 internal sealed class ManagedScalarBackendTests
 {
+    /// <summary>The canonical scalar width in bytes, shared by both curves under test.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The BLS12-381 curve identity the SIMD-composed bundle is exercised against.</summary>
     private static CurveParameterSet Bls { get; } = CurveParameterSet.Bls12Curve381;
+
+    /// <summary>The BN254 curve identity the BigInteger-only bundle is exercised against.</summary>
     private static CurveParameterSet Bn { get; } = CurveParameterSet.Bn254;
 
 
+    /// <summary>Pins that the BLS12-381 bundle's add, subtract, multiply and invert all agree byte-for-byte with the BigInteger reference, and that its hardware-acceleration flag matches the SIMD backend's own support check.</summary>
     [TestMethod]
     public void BlsBundleComposedOperationsAgreeWithReference()
     {
@@ -66,6 +72,7 @@ internal sealed class ManagedScalarBackendTests
     }
 
 
+    /// <summary>Pins that the BN254 bundle's add, subtract, multiply and invert all agree byte-for-byte with the BigInteger reference, that it reports no hardware acceleration, and that it exposes no hash-to-scalar delegate.</summary>
     [TestMethod]
     public void Bn254BundleComposedOperationsAgreeWithReference()
     {
@@ -110,8 +117,10 @@ internal sealed class ManagedScalarBackendTests
     }
 
 
-    //Builds a reduced, non-zero canonical scalar from a fill byte via the curve's
-    //reduce backend, so the value is a valid field element.
+    /// <summary>Builds a reduced, non-zero canonical scalar from a fill byte via the curve's reduce backend, so the value is a valid field element.</summary>
+    /// <param name="destination">Receives the canonical scalar.</param>
+    /// <param name="fill">The byte every input limb is filled with before reduction.</param>
+    /// <param name="curve">The curve whose reduce delegate and field the scalar is valid for.</param>
     private static void BuildScalar(Span<byte> destination, byte fill, CurveParameterSet curve)
     {
         Span<byte> wide = stackalloc byte[64];

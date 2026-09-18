@@ -17,15 +17,16 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Gkr;
 
 /// <summary>
-/// E2E.3 — the full mdoc disclosure chain, entirely on the GF(2^128) side: the disclosed
+/// The full mdoc disclosure chain, entirely on the GF(2^128) side: the disclosed
 /// <c>IssuerSignedItem</c> is hashed in-circuit as a SECOND SHA-256 preimage on the SAME
 /// commitment that carries the Sig_structure hash, the item's digest is glued to the signed
 /// Sig_structure bytes at the public <c>ItemDigestOffset</c> (this is how "the signed MSO holds
 /// SHA-256(item)" is proven), and the item's bytes at the public <c>AttributeOffset</c> are pinned
-/// to the public disclosure pattern (the <c>age_over_18</c> claim). Combined with E2E.2's MAC and
-/// ECDSA binding this closes the Longfellow statement: a holder proves the issuer signed a
-/// Sig_structure whose MSO commits to an item that discloses the named attribute, the item's
-/// non-disclosed bytes staying private behind the schedule virtual predecessors.
+/// to the public disclosure pattern (the <c>age_over_18</c> claim). Combined with the MAC and
+/// ECDSA binding proven in <see cref="GkrMdocEcdsaTests"/> this closes the Longfellow statement: a
+/// holder proves the issuer signed a Sig_structure whose MSO commits to an item that discloses the
+/// named attribute, the item's non-disclosed bytes staying private behind the schedule virtual
+/// predecessors.
 /// <para>
 /// TRADEOFF: the item-digest offset, the attribute offset and the disclosure pattern are PUBLIC by
 /// design. Cost calibration rejected a private-offset one-hot selection (~300k extra quadratics)
@@ -37,49 +38,83 @@ namespace Lumoin.Veridical.Tests.Gkr;
 [TestClass]
 internal sealed class GkrMdocDisclosureTests
 {
+    /// <summary>The byte width of one GF(2^128) scalar.</summary>
     private const int ScalarSize = GkrGf2kShaSupport.ScalarSize;
+
+    /// <summary>The bit width of one half of a split MAC value.</summary>
     private const int HalfBits = GkrGf2kMacSupport.HalfBits;
+
+    /// <summary>The number of halves a MAC value is split into.</summary>
     private const int Halves = GkrGf2kMacSupport.CopyCount;
+
+    /// <summary>The number of Fp witness scalars the MAC region and ECDSA gadget together occupy.</summary>
     private const int FpWitnessCount = GkrCrossFieldMacSupport.FpWitnessCount;
+
+    /// <summary>The byte width of a SHA-256 digest.</summary>
     private const int DigestBytes = GkrShaRoundSupport.DigestBytes;
+
+    /// <summary>The bit width of a SHA-256 digest.</summary>
     private const int DigestBits = DigestBytes * GkrShaRoundSupport.BitsPerByte;
 
+    /// <summary>The Reed-Solomon code rate's inverse used by the test Ligero parameters.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of columns the Ligero verifier opens per proof.</summary>
     private const int OpenedColumns = 4;
+
+    /// <summary>The Ligero block size shared by the Fp and GF parameter sets.</summary>
     private const int Block = 64;
 
+    /// <summary>The Fiat-Shamir domain label that scopes every transcript this file builds.</summary>
     private static FiatShamirDomainLabel Domain { get; } = new("veridical.gkr.mdoc.disclosure.test");
 
+    /// <summary>The Fiat-Shamir label under which the Fp proving seed is squeezed from the shared transcript.</summary>
     private static FiatShamirOperationLabel FpSeedLabel { get; } = new("veridical.gkr.mdoc.disclosure.fp.seed");
 
+    /// <summary>The fixed seed for the Fp commitment's deterministic randomness source.</summary>
     private static byte[] FpRandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.mdoc.disclosure.fp.rng.v1");
 
+    /// <summary>The fixed seed for the GF commitment's deterministic randomness source.</summary>
     private static byte[] GfRandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.mdoc.disclosure.gf.rng.v1");
 
+    /// <summary>The fixed seed for the ECDSA gadget's masking randomness.</summary>
     private static byte[] MaskSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.mdoc.disclosure.mask.v1");
 
+    /// <summary>The two fixed MAC key shares the tests combine into the verifier's probe key.</summary>
     private static byte[][] KeyShares { get; } =
     [
         GkrCrossFieldMacSupport.Element(0x243f6a8885a308d3UL, 0x13198a2e03707344UL),
         GkrCrossFieldMacSupport.Element(0xa4093822299f31d0UL, 0x082efa98ec4e6c89UL),
     ];
 
+    /// <summary>The real mdoc disclosure fixture (signed structure, issuer-signed item, disclosed attribute and its offset) loaded once for every test.</summary>
     private static MdocDisclosure Disclosure { get; } = LoadDisclosure();
 
+    /// <summary>The disclosed credential's signed Sig_structure bytes, the base for the item-digest and MAC glue.</summary>
     private static byte[] SignedStructure { get; } = Disclosure.SignedStructure;
 
+    /// <summary>The GF(2^128) circuit support built over the real disclosure fixture and key shares, shared by every test.</summary>
     private static GkrMdocSupport Support { get; } =
         new(Disclosure.SignedStructure, Disclosure.IssuerSignedItem, Disclosure.Attribute, Disclosure.AttributeOffset, KeyShares);
 
+    /// <summary>The P-256 curve coefficient <c>a</c>, read from the reference curve constants.</summary>
     private static BigInteger A { get; } = P256BigIntegerG1Reference.CurveA;
 
+    /// <summary>The P-256 curve coefficient <c>b</c>, read from the reference curve constants.</summary>
     private static BigInteger B { get; } = P256BigIntegerG1Reference.CurveB;
 
+    /// <summary>The curve coefficient <c>a</c>, encoded to canonical bytes for the ECDSA gadget.</summary>
     private static byte[] CurveABytes { get; } = EcdsaNonceRecovery.Bytes(A);
 
+    /// <summary>The curve coefficient <c>b</c>, encoded to canonical bytes for the ECDSA gadget.</summary>
     private static byte[] CurveBBytes { get; } = EcdsaNonceRecovery.Bytes(B);
 
 
+    /// <summary>
+    /// Verifies out of circuit, on the genuine credential bytes, that the signed Sig_structure holds
+    /// SHA-256 of the item at the located digest offset and that the item's bytes at the attribute
+    /// offset equal the disclosure pattern.
+    /// </summary>
     [TestMethod]
     public void TheRealCredentialSatisfiesTheClaimedDisclosureStructure()
     {
@@ -95,6 +130,11 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
+    /// <summary>
+    /// Verifies that reading the packed witness back through the byte-to-wire mapping reproduces
+    /// both the item's real SHA-256 digest and the disclosure pattern, the falsifiable gate on the
+    /// mapping itself.
+    /// </summary>
     [TestMethod]
     public void TheWireMappingReadsTheItemDigestAndAttributeBackFromTheWitness()
     {
@@ -127,6 +167,11 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
+    /// <summary>
+    /// Verifies that every SHA instance (for the message's components and the item) evaluates to an
+    /// all-zero output and the MAC instance evaluates to the macs of the real digest, all on the flat
+    /// honest witness.
+    /// </summary>
     [TestMethod]
     public void EveryInstanceClosesOnTheRealPackedWitness()
     {
@@ -155,6 +200,11 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
+    /// <summary>
+    /// Verifies that the full disclosure statement holds over the honest witness, then that it
+    /// breaks under two duals: a tampered public attribute byte, and an item-digest offset shifted
+    /// by one.
+    /// </summary>
     [TestMethod]
     public void TheFullStatementIsSatisfiedAndTheDisclosureDualsBreakIt()
     {
@@ -184,6 +234,12 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
+    /// <summary>
+    /// Verifies that a one-byte-tampered item still hashes consistently to its own digest, so its
+    /// SHA instances close, but the disclosure statement itself rejects it because that digest no
+    /// longer matches the signed Sig_structure and the flipped byte no longer matches the attribute
+    /// pins.
+    /// </summary>
     [TestMethod]
     public void ATamperedItemByteBreaksTheDisclosureStatement()
     {
@@ -224,12 +280,18 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
+    /// <summary>
+    /// Verifies the full mdoc statement end to end: one Fp256 commitment carries the MAC region and
+    /// the ECDSA gadget while one GF commitment carries the Sig_structure hash, the item hash and
+    /// the disclosure statement, bound by a shared transcript; a genuine proof verifies, a flipped
+    /// mac is rejected, and a verifier-side tampered attribute is rejected without a re-prove.
+    /// </summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void TheFullMdocStatementProvesAndVerifiesOnOneCommitment()
     {
         //THE FULL MDOC CAPSTONE: one Fp256 commitment carries the MAC region and the ECDSA gadget
-        //(E2E.2, unchanged), one GF commitment carries the Sig_structure hash, the item hash and
+        //(the digest-plus-ECDSA binding GkrMdocEcdsaTests proves standalone), one GF commitment carries the Sig_structure hash, the item hash and
         //the disclosure statement. The shared transcript binds both. Verify true, then a flipped
         //mac is rejected on both sides, then a verifier-side tampered attribute is rejected by
         //rebuilding the verifier's statement with one flipped pattern byte.
@@ -273,10 +335,13 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The full prover protocol, E2E.2's transcript order with the disclosure GF support: commit the
-    //combined Fp system (MAC region + ECDSA gadget), commit GF (both roots absorbed), squeeze the
-    //verifier key, compute the macs, prove all GF instances under the disclosure statement, then
-    //prove the Fp linear statement over the Montgomery backend.
+    /// <summary>
+    /// Runs the full prover protocol: commits the combined Fp system (MAC region plus ECDSA
+    /// gadget), commits GF with both roots absorbed, squeezes the verifier key, computes the macs,
+    /// proves every GF instance under the disclosure statement, then proves the Fp linear statement
+    /// over the Montgomery backend, retaining its pooled builder witness snapshot. The transcript
+    /// order matches <see cref="GkrMdocEcdsaTests"/>'s combined MAC-and-ECDSA binding.
+    /// </summary>
     private static (LigeroProof FpProof, GkrCommittedProof GfProof) ProveCrossField(
         LigeroConstraintSystemBuilder builder,
         ReadOnlySpan<byte> fpWitness,
@@ -294,8 +359,9 @@ internal sealed class GkrMdocDisclosureTests
 
         using FiatShamirTranscript transcript = NewTranscript();
 
+        using IMemoryOwner<byte>? witnessOwner = builder.WitnessBytes();
         using LigeroCommitment fpCommitment = LigeroProver.Commit(
-            fpParameters, builder.WitnessBytes(), fpQuadratics, new GkrCrossFieldMacSupport.FpDeterministicRandom(FpRandomnessSeed).AsDelegate(),
+            fpParameters, (witnessOwner?.Memory ?? Memory<byte>.Empty).Span, fpQuadratics, new GkrCrossFieldMacSupport.FpDeterministicRandom(FpRandomnessSeed).AsDelegate(),
             Montgomery.Add, Montgomery.Subtract, Montgomery.Multiply, Montgomery.Invert,
             GkrTestSupport.Hash, WellKnownHashAlgorithms.Blake3, GkrTestSupport.Merkle, CurveParameterSet.None,
             BaseMemoryPool.Shared);
@@ -343,9 +409,11 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The full verifier protocol, mirroring the prover's transcript order exactly. The GF statement
-    //and targets are passed so the tampered-attribute dual can move the verifier's pins without a
-    //re-prove. As in E2E.2 the verifier reuses the prover's builder for the gadget structure.
+    /// <summary>
+    /// Runs the full verifier protocol, mirroring the prover's transcript order exactly and reusing
+    /// the prover's builder for the gadget structure. The GF statement and targets are passed
+    /// separately so the tampered-attribute dual can move the verifier's pins without a re-prove.
+    /// </summary>
     private static bool VerifyCrossField(
         LigeroConstraintSystemBuilder builder, LigeroProof fpProof, GkrCommittedProof gfProof, ReadOnlySpan<byte> macs, ulong[] maskedQuotients,
         LigeroLinearConstraint[] statement, byte[] targets)
@@ -389,8 +457,10 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The combined Fp system's quadratics: the ECDSA gadget's own quadratics followed by the MAC
-    //product and bitness triples (E2E.2's structure verbatim).
+    /// <summary>
+    /// Builds the combined Fp system's quadratics: the ECDSA gadget's own quadratics followed by the
+    /// MAC product and bitness triples.
+    /// </summary>
     private static LigeroQuadraticConstraint[] CombinedQuadratics(LigeroConstraintSystemBuilder builder)
     {
         LigeroQuadraticConstraint[] gadget = builder.QuadraticConstraints();
@@ -403,14 +473,18 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The combined Fp linear statement: the builder's gadget constraints, then the MAC parity
-    //statement re-indexed past them (E2E.2's structure verbatim).
+    /// <summary>
+    /// Builds the combined Fp linear statement: the builder's gadget constraints, then the MAC
+    /// parity statement re-indexed past them, copying the gadget targets before returning their
+    /// owner.
+    /// </summary>
     private static (int LinearCount, LigeroLinearConstraint[] Constraints, byte[] Targets) CombinedLinear(
         LigeroConstraintSystemBuilder builder, ReadOnlySpan<byte> verifierKey, ReadOnlySpan<byte> macs, ulong[] maskedQuotients)
     {
         int gadgetCount = builder.LinearConstraintCount;
         LigeroLinearConstraint[] gadget = builder.LinearConstraints();
-        byte[] gadgetTargets = builder.TargetBytes();
+        using IMemoryOwner<byte>? gadgetTargetsOwner = builder.TargetBytes();
+        ReadOnlySpan<byte> gadgetTargets = (gadgetTargetsOwner?.Memory ?? Memory<byte>.Empty).Span;
         (LigeroLinearConstraint[] parity, byte[] parityTargets) = GkrCrossFieldMacSupport.BuildParityStatement(verifierKey, macs, maskedQuotients);
 
         int linearCount = gadgetCount + (Halves * HalfBits);
@@ -423,16 +497,18 @@ internal sealed class GkrMdocDisclosureTests
         }
 
         byte[] combinedTargets = new byte[gadgetTargets.Length + parityTargets.Length];
-        gadgetTargets.CopyTo(combinedTargets, 0);
+        gadgetTargets.CopyTo(combinedTargets);
         parityTargets.CopyTo(combinedTargets, gadgetTargets.Length);
 
         return (linearCount, combined, combinedTargets);
     }
 
 
-    //Builds the combined Fp builder over the real credential's signature, the MAC region first
-    //then the ECDSA gadget consuming the committed digest bits as its e·G scalar — E2E.2's
-    //construction verbatim (the disclosure changes nothing on the Fp side).
+    /// <summary>
+    /// Builds the combined Fp builder over the real credential's signature: the MAC region first,
+    /// then the ECDSA gadget consuming the committed digest bits as its e·G scalar. The disclosure
+    /// statement changes nothing on the Fp side.
+    /// </summary>
     private static LigeroConstraintSystemBuilder BuildEcdsaBuilder(ReadOnlySpan<byte> fpWitness, ReadOnlySpan<byte> digest)
     {
         var builder = new LigeroConstraintSystemBuilder(
@@ -470,8 +546,9 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The 256 MAC message wires that hold the digest, most-significant digest bit first — E2E.2's
-    //mapping verbatim.
+    /// <summary>
+    /// Returns the 256 MAC message wires that hold the digest, most-significant digest bit first.
+    /// </summary>
     private static int[] DigestBitWires()
     {
         int[] eBits = new int[DigestBits];
@@ -488,8 +565,10 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //The byte assembled from value-bit k (k = 0 the least-significant) of the witness at the given
-    //wire — the bit lives in the last byte of the scalar.
+    /// <summary>
+    /// Assembles one byte from value-bit k (k = 0 the least-significant) of the witness at the wire
+    /// the given selector names for that bit; the bit lives in the last byte of the scalar.
+    /// </summary>
     private static byte ReadByte(ReadOnlySpan<byte> witness, Func<int, int> wireOfBit)
     {
         int value = 0;
@@ -502,8 +581,10 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
-    //Σ coefficient·W per constraint over GF(2^128) (addition is XOR, multiply the field multiply),
-    //each compared to its target.
+    /// <summary>
+    /// Sums coefficient·W per constraint over GF(2^128), where addition is XOR and multiply is the
+    /// field multiply, and returns whether every sum equals its target.
+    /// </summary>
     private static bool StatementSatisfied(LigeroLinearConstraint[] constraints, byte[] targets, ReadOnlySpan<byte> witness)
     {
         int constraintCount = targets.Length / ScalarSize;
@@ -530,31 +611,45 @@ internal sealed class GkrMdocDisclosureTests
     }
 
 
+    /// <summary>
+    /// Reads the real mdoc credential fixture from disk and extracts its signed structure, issuer-
+    /// signed item and the disclosed <c>age_over_18</c> attribute. A static initializer feeds this,
+    /// so the read stays synchronous and cannot await.
+    /// </summary>
     private static MdocDisclosure LoadDisclosure()
     {
-        //A static initializer feeds this, so the read stays synchronous (it cannot await).
         byte[] credential = File.ReadAllBytes("../../../TestMaterial/Mdoc/mdoc-00.cbor");
 
         return MdocDisclosure.Extract(credential, "org.iso.18013.5.1", "age_over_18");
     }
 
 
+    /// <summary>
+    /// Builds a fresh Fiat-Shamir transcript scoped to this file's fixed domain and seed.
+    /// </summary>
     private static FiatShamirTranscript NewTranscript() =>
         GkrGf2kTestSupport.NewTranscript(Domain, "veridical.gkr.mdoc.disclosure.seed"u8, []);
 
 
-    //The production Montgomery Fp256 backend delegates (the validated faster encoder path),
-    //byte-identical to the reference — used for the large real-credential Fp commitment.
+    /// <summary>
+    /// The production Montgomery Fp256 backend delegates, byte-identical to the reference
+    /// implementation, used for the large real-credential Fp commitment.
+    /// </summary>
     private static class Montgomery
     {
+        /// <summary>The Montgomery-domain Fp256 addition delegate.</summary>
         public static ScalarAddDelegate Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
 
+        /// <summary>The Montgomery-domain Fp256 subtraction delegate.</summary>
         public static ScalarSubtractDelegate Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
 
+        /// <summary>The Montgomery-domain Fp256 multiplication delegate.</summary>
         public static ScalarMultiplyDelegate Multiply { get; } = P256BaseFieldMontgomeryBackend.GetMultiply();
 
+        /// <summary>The Montgomery-domain Fp256 inversion delegate.</summary>
         public static ScalarInvertDelegate Invert { get; } = P256BaseFieldMontgomeryBackend.GetInvert();
 
+        /// <summary>The delegate that reduces an Fp256 accumulator back into the Montgomery domain.</summary>
         public static ScalarReduceDelegate Reduce { get; } = P256BaseFieldMontgomeryBackend.GetReduce();
     }
 }

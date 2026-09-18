@@ -249,6 +249,7 @@ internal static class InnerProductArgument
     }
 
 
+    /// <summary>Runs the IPA verifier's algebraic check, assuming the shape validation in <see cref="Verify"/> has already passed.</summary>
     private static bool VerifyCore(
         ReadOnlySpan<byte> initialCommitment,
         ReadOnlySpan<byte> claimedValueBytes,
@@ -365,6 +366,7 @@ internal static class InnerProductArgument
     }
 
 
+    /// <summary>Throws if any prover buffer's length does not match the shape <paramref name="initialLength"/> and <paramref name="roundCount"/> imply.</summary>
     private static void ValidatePlanShape(
         ReadOnlySpan<byte> f,
         ReadOnlySpan<byte> g,
@@ -468,7 +470,7 @@ internal static class InnerProductArgument
     /// <summary>Folds the scalar vector <c>f</c> with <c>f' = x · f_L + x_inv · f_R</c>. Writes the folded half-length vector into <c>fLeft</c> in place.</summary>
     private static void FoldScalarVector(
         Span<byte> fLeft,
-        Span<byte> fRight,
+        ReadOnlySpan<byte> fRight,
         ReadOnlySpan<byte> challenge,
         ReadOnlySpan<byte> challengeInv,
         int sliceCount,
@@ -497,7 +499,7 @@ internal static class InnerProductArgument
     /// <summary>Folds the public scalar vector <c>R</c> with <c>R' = x_inv · R_L + x · R_R</c> (swapped challenge convention vs <see cref="FoldScalarVector"/>).</summary>
     private static void FoldScalarVectorWithSwappedChallenge(
         Span<byte> rLeft,
-        Span<byte> rRight,
+        ReadOnlySpan<byte> rRight,
         ReadOnlySpan<byte> challenge,
         ReadOnlySpan<byte> challengeInv,
         int sliceCount,
@@ -526,7 +528,7 @@ internal static class InnerProductArgument
     /// <summary>Folds the generator vector <c>G</c> with <c>G' = x_inv · G_L + x · G_R</c>.</summary>
     private static void FoldGeneratorVector(
         Span<byte> gLeft,
-        Span<byte> gRight,
+        ReadOnlySpan<byte> gRight,
         ReadOnlySpan<byte> challenge,
         ReadOnlySpan<byte> challengeInv,
         int sliceCount,

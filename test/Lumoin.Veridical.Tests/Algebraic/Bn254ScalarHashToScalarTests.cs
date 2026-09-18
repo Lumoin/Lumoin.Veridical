@@ -23,7 +23,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <c>SHA256</c>). BN254 has no IETF BBS+ ciphersuite, so there are no
 /// primary-source vectors; the known-answer vectors here were produced by an
 /// independent CPython <c>expand_message_xmd</c> (the same one whose output was
-/// already shown to match the library's in the U.3b hash-to-curve vectors)
+/// already shown to match the library's in <see cref="Bn254G1HashToCurveTests"/>)
 /// followed by a big-integer reduction modulo <c>r</c>, and locked as internal
 /// regression vectors.
 /// </para>
@@ -31,34 +31,39 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254ScalarHashToScalarTests
 {
+    /// <summary>The RFC 9380 <c>expand_message_xmd</c> delegate (SHA-256) this test injects into the hash-to-scalar delegate.</summary>
     private static ExpandMessageDelegate ExpandSha256 { get; } = Rfc9380ExpandMessage.ExpandMessageXmdSha256;
+    /// <summary>The BN254 hash-to-scalar delegate under test, built from <see cref="ExpandSha256"/>.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bn254BigIntegerScalarReference.GetHashToScalar(ExpandSha256);
 
+    /// <summary>The BN254 scalar-field order, used to check that every produced scalar is canonical.</summary>
     private static BigInteger Order { get; } = Bn254BigIntegerG1Reference.ScalarFieldOrder;
 
-    //Arbitrary fixed message length for the property sweep; the hash-to-scalar
-    //properties (determinism, canonical range) are independent of message size.
+    /// <summary>The fixed message length the property sweep samples at; the hash-to-scalar properties under test (determinism, canonical range) are independent of message size.</summary>
     private const int PropertyMessageBytes = 32;
 
-    //CsCheck iterations for the determinism/canonical property.
+    /// <summary>The number of CsCheck-sampled messages the determinism/canonical property sweep checks.</summary>
     private const long PropertyIterationCount = 200;
 
-    //Coarse uniformity guard: count how many of this many scalars land in the
-    //lower half of [0, r). Expected ~half; the band is a loose 3σ binomial
-    //envelope (σ = sqrt(n·0.25) ≈ 11 for n = 512, so ±56 covers >4σ) sized
-    //never to flake while still catching gross bias.
+    /// <summary>The number of deterministically indexed messages the coarse uniformity guard hashes.</summary>
     private const int UniformitySampleCount = 512;
+    /// <summary>The minimum count of <see cref="UniformitySampleCount"/> scalars expected in the lower half of <c>[0, r)</c>: a loose 3σ binomial envelope (σ ≈ 11 for n = 512, so ±56 covers &gt;4σ) sized never to flake while still catching gross bias.</summary>
     private const int UniformityLowerBound = 200;
+    /// <summary>The maximum count of <see cref="UniformitySampleCount"/> scalars expected in the lower half of <c>[0, r)</c>, mirroring <see cref="UniformityLowerBound"/>'s envelope.</summary>
     private const int UniformityUpperBound = 312;
 
+    /// <summary>The memory pool this test's scalars are allocated from.</summary>
     private static BaseMemoryPool Pool => BaseMemoryPool.Shared;
 
+    /// <summary>The domain-separation tag this test's hash-to-scalar calls use.</summary>
     private static ReadOnlySpan<byte> Dst => "VERIDICAL-BN254-H2S-XMD-SHA256-V1"u8;
 
 
+    /// <summary>The MSTest-supplied context for this test class.</summary>
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>Verifies that hashing four known messages to a BN254 scalar matches the independently computed known-answer vectors.</summary>
     [TestMethod]
     public void MatchesIndependentVectors()
     {
@@ -70,6 +75,7 @@ internal sealed class Bn254ScalarHashToScalarTests
     }
 
 
+    /// <summary>Hashes a message to a scalar and asserts its canonical big-endian hex matches the expected known-answer value.</summary>
     private static void AssertVector(ReadOnlySpan<byte> message, string expectedScalarHex)
     {
         using Scalar scalar = Scalar.FromHashToScalar(message, Dst, HashToScalar, CurveParameterSet.Bn254, Pool);
@@ -77,6 +83,7 @@ internal sealed class Bn254ScalarHashToScalarTests
     }
 
 
+    /// <summary>Verifies, across sampled random messages, that hashing the same message and DST twice yields identical scalars, and that every produced scalar is strictly less than the scalar-field order.</summary>
     [TestMethod]
     public void OutputIsCanonicalAndDeterministic()
     {
@@ -98,6 +105,7 @@ internal sealed class Bn254ScalarHashToScalarTests
     }
 
 
+    /// <summary>Verifies, over a deterministic spread of messages, that roughly half the produced scalars fall in the lower half of <c>[0, r)</c>, as a coarse guard against gross bias.</summary>
     [TestMethod]
     public void OutputIsApproximatelyUniform()
     {
@@ -127,6 +135,7 @@ internal sealed class Bn254ScalarHashToScalarTests
     }
 
 
+    /// <summary>Verifies that a hash-to-scalar result carries provenance tags naming the producing reference, the scalar algebraic role, and the BN254 curve.</summary>
     [TestMethod]
     public void ProducesScalarsCarryingProvenance()
     {

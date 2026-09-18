@@ -14,7 +14,7 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The wire-format-conformant END-TO-END ZK PROVER (conformance step C.9), gated as a faithful port of
+/// The wire-format-conformant END-TO-END ZK PROVER, gated as a faithful port of
 /// google/longfellow-zk's <c>ZkProver</c> (<c>lib/zk/zk_prover.h</c>): commit a sumcheck witness and a
 /// random pad encrypting the sumcheck transcript, run the sumcheck emitting the padded transcript, then
 /// prove with Ligero that the committed witness and pad satisfy the sumcheck verifier — producing a
@@ -22,12 +22,11 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The zk anchor (zk-anchor-output.txt in TestMaterial/Longfellow) is computed by the reference
-/// implementation in its own build environment via development tooling outside this repository. It
-/// compiles the same small GF2_128&lt;4&gt; circuit C.7/C.8 used (the field-satisfiable relation
-/// <c>w == (x + y)·(x + z)·x</c>, logc = 0, nl = 3), runs the real ZkProver (commit + prove) under the
-/// fixed FS seed "zk8" and the counter random engine (the k-th byte = k &amp; 0xFF), serializes the whole
-/// ZkProof envelope, and runs the reference ZkVerifier over the parsed bytes. The fixed witnesses are
+/// The zk anchor (zk-anchor-output.txt in TestMaterial/Longfellow) records google/longfellow-zk's
+/// ZkProver output for a small GF2_128&lt;4&gt; circuit (the field-satisfiable relation
+/// <c>w == (x + y)·(x + z)·x</c>, logc = 0, nl = 3): the complete ZkProof envelope for that circuit
+/// under the fixed FS seed "zk8" and the counter random engine (the k-th byte = k &amp; 0xFF), together
+/// with the reference verifier's own acceptance of that envelope. The fixed witnesses are
 /// x = of_scalar(3) (public), y = of_scalar(5), z = of_scalar(7), w = the field product (private);
 /// W[0] is the constant-one wire.
 /// </para>
@@ -36,47 +35,87 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// <list type="bullet">
 ///   <item><description><b>Byte identity</b>: our prover's complete ZkProof envelope equals the reference's 1864 proof bytes, segment for segment (the commitment root, the sumcheck segment, the Ligero proof).</description></item>
-///   <item><description><b>Self-verify</b>: our C.8 verifier accepts our prover's proof.</description></item>
+///   <item><description><b>Self-verify</b>: our end-to-end verifier accepts our prover's proof.</description></item>
 ///   <item><description><b>Witness dual</b>: a different satisfying witness produces a different but still-accepted proof; an unsatisfying witness is unprovable (the circuit output is non-zero).</description></item>
 ///   <item><description><b>Seed dual</b>: a different Fiat–Shamir seed produces a different but still-accepted proof.</description></item>
 /// </list>
 /// <para>
-/// The reverse gate — feeding our proof bytes to the reference's ZkVerifier in Docker — is recorded by
-/// the anchor's <c>ref_zk_verify</c> over the byte-identical bytes (our envelope equals the reference's,
-/// so the reference's own accept over those bytes is the reverse gate; the C.8 anchor already records it).
+/// The reverse gate — that the reference's own verifier accepts our proof bytes — follows from byte
+/// identity: our envelope equals the reference's, so the anchor's <c>ref_zk_verify</c> field already
+/// records the reference's accept over those same bytes.
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowZkProveTests
+internal sealed class LongfellowZkProveTests: IDisposable
 {
-    private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
 
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
+    /// <summary>The path, relative to the test project directory, to the GF(2^128) end-to-end ZK anchor this test cross-checks against.</summary>
+    private const string ZkAnchorRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+
+    /// <summary>The on-wire element width, in bytes, for the GF(2^128) field.</summary>
     private const int ElementBytes = 16;
+
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The SHA-256 digest width in bytes, matching the commitment root size.</summary>
     private const int DigestSize = 32;
+
+    /// <summary>The transcript wire-format version (6, the deployed mdoc flow's value) the prover and verifier must agree on to derive the identical challenge stream.</summary>
     private const int TranscriptVersion = 6;
 
+    /// <summary>The GF(2^128) field element width in bytes.</summary>
     private const int FieldBytes = 16;
+
+    /// <summary>The GF(2^128) subfield element width in bytes that the LCH14 production-16 additive-FFT engine operates over.</summary>
     private const int Production16SubFieldBytes = 2;
+
+    /// <summary>The Ligero code's inverse rate this test fixes for the anchor circuit's Ligero parameters.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of Ligero columns opened per proof for the anchor circuit's Ligero parameters.</summary>
     private const int OpenedColumnCount = 2;
 
-    //The anchor's subfield_boundary is 0 (the reference rebases it: 0 < npub_in, so it stays 0).
+    /// <summary>The anchor's <c>subfield_boundary</c>, rebased to start at the public-input count; zero because zero is already below <c>npub_in</c>, so rebasing leaves it at zero.</summary>
     private const int SubfieldBoundary = 0;
 
+    /// <summary>The Fiat–Shamir transcript seed matching the anchor's recorded values.</summary>
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
+    /// <summary>The GF(2^128) addition delegate (XOR).</summary>
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) subtraction delegate (coincides with addition).</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) multiplication delegate.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) inversion delegate.</summary>
     private static ScalarInvertDelegate Invert { get; } = Gf2k128Backend.GetInvert();
 
-    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
+    /// <summary>The parsed key/value map loaded from the GF(2^128) end-to-end ZK anchor.</summary>
+    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkAnchorRelativePath);
 
 
+    /// <summary>Verifies that our prover's complete <c>ZkProof</c> envelope is byte-identical to the reference's proof bytes.</summary>
     [TestMethod]
     public void TheProofEnvelopeMatchesTheReferenceByteForByte()
     {
@@ -87,18 +126,12 @@ internal sealed class LongfellowZkProveTests
 
         byte[] expected = Convert.FromHexString(Anchors["proof_bytes"]);
 
-        //Write the proof for the out-of-repo Docker reverse gate (the reference ZkVerifier over our bytes).
-        string? reverseGatePath = Environment.GetEnvironmentVariable("ZK_REVERSE_GATE_PATH");
-        if(reverseGatePath is not null)
-        {
-            File.WriteAllBytes(reverseGatePath, proof.Bytes.ToArray());
-        }
-
         Assert.AreEqual(expected.Length, proof.Length, "The proof length must match the reference's 1864 bytes.");
         Assert.IsTrue(proof.Bytes.SequenceEqual(expected), "The full proof envelope must be byte-identical to the reference.");
     }
 
 
+    /// <summary>Verifies that the commitment-root and sumcheck-segment lengths, and the commitment root's bytes, match the reference's anchor values.</summary>
     [TestMethod]
     public void TheSegmentBoundariesMatchTheReference()
     {
@@ -121,6 +154,7 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>Verifies that our verifier accepts our prover's proof for the anchor circuit and witness.</summary>
     [TestMethod]
     public void OurVerifierAcceptsOurProof()
     {
@@ -133,6 +167,7 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>Verifies that a different satisfying witness produces a different proof, and that the different proof still verifies.</summary>
     [TestMethod]
     public void ADifferentSatisfyingWitnessProducesADifferentButValidProof()
     {
@@ -149,6 +184,7 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>Verifies that proving a witness column that does not satisfy the circuit relation throws <see cref="InvalidOperationException"/>.</summary>
     [TestMethod]
     public void AnUnsatisfyingWitnessIsUnprovable()
     {
@@ -162,6 +198,7 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>Verifies that a different Fiat–Shamir seed produces a different proof, and that the different proof still verifies under that seed.</summary>
     [TestMethod]
     public void ADifferentSeedProducesADifferentButValidProof()
     {
@@ -176,8 +213,11 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //Runs the full prover over the witness column and the seed, returning the pooled proof envelope;
-    //the caller disposes it.
+    /// <summary>Runs the full prover over the witness column and the seed.</summary>
+    /// <param name="circuit">The circuit to prove.</param>
+    /// <param name="witnessColumn">The full canonical-scalar witness column.</param>
+    /// <param name="seed">The transcript seed.</param>
+    /// <returns>The pooled proof envelope; the caller disposes it.</returns>
     private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, byte[] witnessColumn, byte[] seed)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
@@ -207,6 +247,12 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>Verifies <paramref name="proof"/> and asserts the acceptance verdict matches <paramref name="expectedAccept"/>.</summary>
+    /// <param name="circuit">The circuit the proof was produced for.</param>
+    /// <param name="proof">The candidate proof bytes.</param>
+    /// <param name="publicInputs">The public input bytes.</param>
+    /// <param name="expectedAccept">The expected verification verdict.</param>
+    /// <param name="alternativeSeed">The transcript seed, when different from <see cref="TranscriptSeed"/>.</param>
     private static void AssertVerifies(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> proof, byte[] publicInputs, bool expectedAccept, byte[]? alternativeSeed = null)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, FieldBytes, Production16SubFieldBytes);
@@ -237,8 +283,8 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //Reconstructs the circuit shape with its per-layer Quad terms from the anchor's dumped parameters.
-    private static LongfellowSumcheckCircuit BuildCircuit()
+    /// <summary>Reconstructs the circuit shape with its per-layer Quad terms from the anchor's recorded parameters, with circuit owners released at test cleanup.</summary>
+    private LongfellowSumcheckCircuit BuildCircuit()
     {
         int nl = Anchor("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -263,7 +309,7 @@ internal sealed class LongfellowZkProveTests
 
         byte[] id = Convert.FromHexString(Anchors["id"]);
 
-        return new LongfellowSumcheckCircuit(
+        return CircuitScope.CreateCircuit(
             Anchor("nv"),
             Anchor("logv"),
             Anchor("nc"),
@@ -275,7 +321,9 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //The full witness column (all ninputs) as canonical scalars, from the anchor's input0..input(n-1).
+    /// <summary>Builds the full witness column (all <c>ninputs</c>) as canonical scalars, from the anchor's <c>input0..input(n-1)</c> values.</summary>
+    /// <param name="circuit">The circuit whose <see cref="LongfellowSumcheckCircuit.InputCount"/> sizes the column.</param>
+    /// <returns>The canonical-scalar witness column.</returns>
     private static byte[] BuildWitnessColumn(LongfellowSumcheckCircuit circuit)
     {
         byte[] column = new byte[circuit.InputCount * ScalarSize];
@@ -289,9 +337,16 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //Builds a satisfying witness column [one, x, y, z, w] from the small-integer field values, where
-    //x/y/z are of_scalar(...) (the LCH14 subfield basis) and w = (x+y)·(x+z)·x. The constant-one wire is
-    //the field one.
+    /// <summary>
+    /// Builds a satisfying witness column <c>[one, x, y, z, w]</c> from the small-integer field values,
+    /// where <c>x</c>/<c>y</c>/<c>z</c> are <c>of_scalar(...)</c> (the LCH14 subfield basis) and
+    /// <c>w = (x+y)·(x+z)·x</c>. The constant-one wire is the field one.
+    /// </summary>
+    /// <param name="circuit">The circuit whose <see cref="LongfellowSumcheckCircuit.InputCount"/> sizes the column.</param>
+    /// <param name="x">The public witness value.</param>
+    /// <param name="y">A private witness value.</param>
+    /// <param name="z">A private witness value.</param>
+    /// <returns>The canonical-scalar witness column.</returns>
     private static byte[] BuildSatisfyingColumn(LongfellowSumcheckCircuit circuit, uint x, uint y, uint z)
     {
         using Lch14AdditiveFft fft = NewFft();
@@ -320,8 +375,14 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //of_scalar(u): the GF(2^128) element Σ_bit beta_[bit], the subfield basis combination the reference
-    //of_scalar computes. beta_[k] = NodeElement basis; the FFT's BasisElement(k) is beta_[k].
+    /// <summary>
+    /// Computes <c>of_scalar(u)</c>: the GF(2^128) element <c>Σ_bit beta_[bit]</c>, the subfield basis
+    /// combination the reference <c>of_scalar</c> computes. <c>beta_[k]</c> is the basis element the
+    /// FFT's <see cref="Lch14AdditiveFft.BasisElement"/> returns for <c>k</c>.
+    /// </summary>
+    /// <param name="fft">The additive-FFT engine supplying the subfield basis.</param>
+    /// <param name="value">The integer to encode.</param>
+    /// <param name="destination">Receives the canonical big-endian scalar.</param>
     private static void OfScalar(Lch14AdditiveFft fft, uint value, Span<byte> destination)
     {
         destination.Clear();
@@ -345,7 +406,10 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //The public input element bytes (little-endian to_bytes_field): the first npub_in witness elements.
+    /// <summary>Produces the public-input element bytes (little-endian <c>to_bytes_field</c>): the first <c>npub_in</c> witness elements.</summary>
+    /// <param name="circuit">The circuit whose <see cref="LongfellowSumcheckCircuit.PublicInputCount"/> bounds the slice.</param>
+    /// <param name="witnessColumn">The full canonical-scalar witness column.</param>
+    /// <returns>The public inputs, little-endian and element-width framed.</returns>
     private static byte[] PublicInputBytes(LongfellowSumcheckCircuit circuit, byte[] witnessColumn)
     {
         byte[] publicInputs = new byte[circuit.PublicInputCount * ElementBytes];
@@ -358,8 +422,12 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //A fresh deterministic counter source: the k-th byte produced is (k & 0xFF), identical to the C++
-    //oracle's CounterRandomEngine. Each call returns a new source so a test restarts the stream at 0.
+    /// <summary>
+    /// Creates a fresh deterministic counter source: the k-th byte produced is <c>k &amp; 0xFF</c>,
+    /// identical to the C++ oracle's <c>CounterRandomEngine</c>. Each call returns a new source so a
+    /// test restarts the stream at zero.
+    /// </summary>
+    /// <returns>A deterministic counter-based random byte source.</returns>
     private static LongfellowRandomByteSource NewCounterSource()
     {
         ulong counter = 0;
@@ -375,7 +443,9 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //Parses a 16-byte little-endian element into a 32-byte big-endian canonical scalar.
+    /// <summary>Parses a 16-byte little-endian element, hex-encoded, into a 32-byte big-endian canonical scalar.</summary>
+    /// <param name="hex">The little-endian element bytes, hex-encoded.</param>
+    /// <returns>The canonical big-endian scalar.</returns>
     private static byte[] ParseElement(string hex)
     {
         byte[] littleEndian = Convert.FromHexString(hex);
@@ -389,7 +459,9 @@ internal sealed class LongfellowZkProveTests
     }
 
 
-    //to_bytes_field: the low 16 big-endian bytes of a canonical scalar reverse into 16 little-endian bytes.
+    /// <summary>Computes <c>to_bytes_field</c>: the low 16 big-endian bytes of a canonical scalar reversed into 16 little-endian bytes.</summary>
+    /// <param name="canonical">The canonical big-endian scalar.</param>
+    /// <param name="littleEndian">Receives the little-endian element bytes.</param>
     private static void ToBytesField(ReadOnlySpan<byte> canonical, Span<byte> littleEndian)
     {
         for(int i = 0; i < ElementBytes; i++)
@@ -399,23 +471,39 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>Parses the anchor's <paramref name="key"/> value as a base-10 integer.</summary>
+    /// <param name="key">The anchor key to look up.</param>
+    /// <returns>The parsed integer value.</returns>
     private static int Anchor(string key) => int.Parse(Anchors[key], CultureInfo.InvariantCulture);
 
 
+    /// <summary>Creates a transcript seeded and sized the way the reference seeds the prover's.</summary>
+    /// <param name="seed">The transcript seed bytes.</param>
+    /// <returns>The new transcript.</returns>
     private static LongfellowTranscript NewTranscript(byte[] seed) =>
         new(seed, TranscriptVersion, 16, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
+    /// <summary>Creates the LCH14 additive-FFT engine over the GF(2^128) production subfield.</summary>
+    /// <returns>The new additive-FFT engine.</returns>
     private static Lch14AdditiveFft NewFft() =>
         new(Lch14Subfield.Production16, Add, Subtract, Multiply, Invert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
+    /// <summary>Computes a one-shot SHA-256 digest of <paramref name="input"/>; <paramref name="hashFunction"/> is accepted for signature compatibility and unused, since this delegate is always bound to SHA-256.</summary>
+    /// <param name="input">The bytes to hash.</param>
+    /// <param name="output">Receives the 32-byte digest.</param>
+    /// <param name="hashFunction">The requested hash algorithm name; ignored.</param>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
     {
         SHA256.HashData(input, output);
     }
 
 
+    /// <summary>Computes the two-to-one Merkle compression <c>SHA256(left ‖ right)</c>.</summary>
+    /// <param name="left">The left digest.</param>
+    /// <param name="right">The right digest.</param>
+    /// <param name="output">Receives the combined digest.</param>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[left.Length + right.Length];
@@ -425,6 +513,10 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>Encrypts one block with AES-256 in ECB mode and no padding: the transcript's PRF squeezes through this primitive.</summary>
+    /// <param name="key">The 32-byte AES key.</param>
+    /// <param name="input">The plaintext block.</param>
+    /// <param name="output">Receives the ciphertext block.</param>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = Aes.Create();
@@ -433,6 +525,13 @@ internal sealed class LongfellowZkProveTests
     }
 
 
+    /// <summary>
+    /// Loads the anchor file at <paramref name="relativePath"/> (resolved from the test binary's output
+    /// directory) into a flat key/value map, splitting each non-empty line on spaces and each token on its
+    /// first <c>=</c>.
+    /// </summary>
+    /// <param name="relativePath">The anchor file's path, relative to the test project directory.</param>
+    /// <returns>The parsed key/value map.</returns>
     private static Dictionary<string, string> LoadAnchors(string relativePath)
     {
         string path = $"../../../{relativePath}";

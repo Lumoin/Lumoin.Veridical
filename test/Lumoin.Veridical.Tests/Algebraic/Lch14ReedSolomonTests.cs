@@ -29,58 +29,137 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Lch14ReedSolomonTests
 {
+    /// <summary>
+    /// The canonical scalar size in bytes, shared by every element buffer these gates allocate.
+    /// </summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The two subfields as MSTest data-row values, so the instantiation-generic gates run over both.
+    /// <summary>
+    /// The <see cref="Lch14Subfield.Production16"/> subfield, exposed as an MSTest data-row value so
+    /// the instantiation-generic gates run over it.
+    /// </summary>
     private const Lch14Subfield Production16 = Lch14Subfield.Production16;
+
+    /// <summary>
+    /// The <see cref="Lch14Subfield.TestParity32"/> subfield, exposed as an MSTest data-row value so
+    /// the instantiation-generic gates run over it.
+    /// </summary>
     private const Lch14Subfield TestParity32 = Lch14Subfield.TestParity32;
 
-    //WHatRef is exponential in i (2^i products), so the conformance gate caps i as the reference
-    //does (it limits to 16; 12 keeps the test fast while still exercising several recursion levels).
+    /// <summary>
+    /// The row cap for the Ŵ conformance gate. <see cref="WHatRef"/> is exponential in <c>i</c> (2^i
+    /// products); google/longfellow-zk's own gate limits <c>i</c> to 16, and 12 keeps this gate fast
+    /// while still exercising several recursion levels.
+    /// </summary>
     private const int WHatGateRows = 12;
 
-    //The number of trailing big-endian bytes that hold the GF(2^128) element in a canonical scalar:
-    //the 128-bit element lives in bytes 16..31, bytes 0..15 are zero.
+    /// <summary>
+    /// The number of trailing big-endian bytes that hold the <c>GF(2^128)</c> element in a canonical
+    /// scalar: the 128-bit element lives in bytes 16..31, and bytes 0..15 are zero.
+    /// </summary>
     private const int ElementBytes = 16;
 
-    //The (n, m) of the first anchored codeword. fftn = 16 for n = 9, so m = 23 straddles a coset
-    //(the partial-copy path), covering the bidirectional pass and the straddling-coset branch.
+    /// <summary>
+    /// The dimension <c>n</c> of the first anchored codeword. Paired with
+    /// <see cref="AnchorStraddleBlockLength"/>, it covers the bidirectional pass and the
+    /// straddling-coset branch.
+    /// </summary>
     private const int AnchorStraddleDimension = 9;
+
+    /// <summary>
+    /// The block length <c>m</c> of the first anchored codeword. With <c>fftn = 16</c> and
+    /// <see cref="AnchorStraddleDimension"/>, <c>m = 23</c> straddles a coset (the partial-copy
+    /// path).
+    /// </summary>
     private const int AnchorStraddleBlockLength = 23;
 
-    //The (n, m) of the second anchored codeword. m = 64 with fftn = 16 fills whole cosets and never
-    //straddles; the spot anchors sit at coset boundaries.
+    /// <summary>
+    /// The dimension <c>n</c> of the second anchored codeword, paired with
+    /// <see cref="AnchorFullCosetBlockLength"/>.
+    /// </summary>
     private const int AnchorFullCosetDimension = 9;
+
+    /// <summary>
+    /// The block length <c>m</c> of the second anchored codeword. With <c>fftn = 16</c>, <c>m =
+    /// 64</c> fills whole cosets and never straddles, so its spot anchors sit at coset boundaries.
+    /// </summary>
     private const int AnchorFullCosetBlockLength = 64;
 
-    //The reference Interpolation test uses l = 5 (n = 32) across 7 cosets.
+    /// <summary>
+    /// The FFT dimension <c>l</c> for the cross-coset interpolation gate, matching
+    /// google/longfellow-zk's own <c>Interpolation</c> test (<c>l = 5</c>, <c>n = 32</c>).
+    /// </summary>
     private const int InterpolationDimension = 5;
+
+    /// <summary>
+    /// The number of cosets the cross-coset interpolation gate checks against each other, matching
+    /// google/longfellow-zk's own <c>Interpolation</c> test.
+    /// </summary>
     private const int InterpolationCosets = 7;
 
-    //The reference BidirectionalFFT test uses l = 10; a smaller l exercises the identical kernel
-    //(every k from 0 to 2^l) far faster over the slow reference field.
+    /// <summary>
+    /// The FFT dimension <c>l</c> for the truncated-Fourier round-trip gate. google/longfellow-zk's
+    /// own <c>BidirectionalFFT</c> test uses <c>l = 10</c>; this smaller <c>l</c> exercises the
+    /// identical kernel (every <c>k</c> from 0 to 2^l) far faster over the slow reference field.
+    /// </summary>
     private const int BidirectionalDimension = 7;
 
-    //The reference ReedSolomon test's exact block-length set.
+    /// <summary>
+    /// The exact block-length set google/longfellow-zk's own <c>ReedSolomon</c> test iterates over.
+    /// </summary>
     private static int[] ReedSolomonBlockLengths { get; } = [1, 7, 8, 9, 63, 64, 65, 99, 128];
 
+    /// <summary>
+    /// The fast production backend's scalar addition delegate.
+    /// </summary>
     private static ScalarAddDelegate FastAdd { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>
+    /// The fast production backend's scalar subtraction delegate.
+    /// </summary>
     private static ScalarSubtractDelegate FastSubtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>
+    /// The fast production backend's scalar multiplication delegate.
+    /// </summary>
     private static ScalarMultiplyDelegate FastMultiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>
+    /// The fast production backend's scalar inversion delegate.
+    /// </summary>
     private static ScalarInvertDelegate FastInvert { get; } = Gf2k128Backend.GetInvert();
 
+    /// <summary>
+    /// The slow, independently defined reference backend's scalar addition delegate, used to
+    /// cross-check <see cref="FastAdd"/>.
+    /// </summary>
     private static ScalarAddDelegate ReferenceAdd { get; } = Gf2k128Reference.GetAdd();
 
+    /// <summary>
+    /// The slow, independently defined reference backend's scalar subtraction delegate, used to
+    /// cross-check <see cref="FastSubtract"/>.
+    /// </summary>
     private static ScalarSubtractDelegate ReferenceSubtract { get; } = Gf2k128Reference.GetSubtract();
 
+    /// <summary>
+    /// The slow, independently defined reference backend's scalar multiplication delegate, used to
+    /// cross-check <see cref="FastMultiply"/>.
+    /// </summary>
     private static ScalarMultiplyDelegate ReferenceMultiply { get; } = Gf2k128Reference.GetMultiply();
 
+    /// <summary>
+    /// The slow, independently defined reference backend's scalar inversion delegate, used to
+    /// cross-check <see cref="FastInvert"/>.
+    /// </summary>
     private static ScalarInvertDelegate ReferenceInvert { get; } = Gf2k128Reference.GetInvert();
 
 
+    /// <summary>
+    /// Asserts that <see cref="Lch14AdditiveFft.NormalizedWHat"/> matches the slow, direct
+    /// definition <see cref="WHatRef"/> computes, for every row up to <see cref="WHatGateRows"/> and
+    /// every basis column, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -103,6 +182,12 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that <see cref="Lch14AdditiveFft.ComputeTwiddleTable"/>'s linear-time table matches
+    /// <see cref="Lch14AdditiveFft.Twiddle"/> computed per index, for every stage of a dimension
+    /// within both subfields' transform bound.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -131,6 +216,12 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that inverse-transforming one coset's evaluations to novel-basis coefficients and then
+    /// forward-transforming to every other coset matches an independent Newton-interpolant evaluation
+    /// at each target coset's nodes, for both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -193,6 +284,12 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that <see cref="Lch14AdditiveFft.BidirectionalTransform"/> round-trips against
+    /// <see cref="Lch14AdditiveFft.ForwardTransform"/>: for every split point <c>k</c>, it recovers
+    /// the missing coefficients or evaluations from the ones supplied, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -244,6 +341,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that <see cref="Lch14ReedSolomon.Interpolate"/> matches monomial evaluation for every
+    /// <c>(n, m)</c> pair drawn from <see cref="ReedSolomonBlockLengths"/>, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -260,6 +362,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that interpolating with <c>n == m</c> — including the degenerate <c>n == m == 1</c>
+    /// singleton — leaves the codeword prefix unchanged, since there is nothing to extend.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -276,6 +383,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that the fast backend and the slow reference backend produce byte-identical
+    /// interpolated codewords for the same inputs, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -305,6 +417,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that <see cref="Lch14AdditiveFft.NormalizedWHat"/> agrees between the fast backend and
+    /// the slow reference backend for every row and column, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -325,6 +442,10 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that the test-parity subfield's generator, basis vectors, nodes and interpolated
+    /// codewords all match the pinned anchor values.
+    /// </summary>
     [TestMethod]
     public void TheBasisNodesAndCodewordsMatchTheReferenceImplementationForTheTestParitySubfield()
     {
@@ -351,6 +472,10 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that the production subfield's generator, basis vectors, nodes and interpolated
+    /// codewords all match the pinned anchor values.
+    /// </summary>
     [TestMethod]
     public void TheBasisNodesAndCodewordsMatchTheReferenceImplementationForTheProductionSubfield()
     {
@@ -378,6 +503,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that flipping one bit of an extended evaluation makes the systematic codeword no
+    /// longer match the monomial polynomial at that node, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -414,6 +544,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that constructing an <see cref="Lch14ReedSolomon"/> with a block length below its
+    /// dimension throws <see cref="ArgumentOutOfRangeException"/>, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -425,6 +560,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that <see cref="Lch14AdditiveFft.ForwardTransform"/> rejects a dimension one past the
+    /// subfield's basis width, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -441,6 +581,11 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Asserts that <see cref="Lch14ReedSolomon.Interpolate"/> rejects a buffer sized for fewer
+    /// elements than the block length, over both subfields.
+    /// </summary>
+    /// <param name="subfield">The GF(2)-subfield instantiation this gate runs over.</param>
     [TestMethod]
     [DataRow(Production16)]
     [DataRow(TestParity32)]
@@ -456,9 +601,17 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Runs one reference ReedSolomon case: build a random degree-<n monomial polynomial, evaluate
-    //at the first n nodes, interpolate to m, and assert every output equals the monomial evaluation
-    //at that node.
+    /// <summary>
+    /// Runs one Reed–Solomon case: builds a monomial polynomial of degree less than
+    /// <paramref name="n"/>, evaluates it at the first <paramref name="n"/> nodes, interpolates to
+    /// <paramref name="m"/> outputs, and asserts every output equals the monomial evaluation at that
+    /// node.
+    /// </summary>
+    /// <param name="fft">The additive FFT to transform and interpolate under.</param>
+    /// <param name="n">The number of known input evaluations.</param>
+    /// <param name="m">The block length to interpolate to.</param>
+    /// <param name="add">The scalar addition delegate the monomial evaluation uses.</param>
+    /// <param name="multiply">The scalar multiplication delegate the monomial evaluation uses.</param>
     private static void RunReedSolomonCase(Lch14AdditiveFft fft, int n, int m, ScalarAddDelegate add, ScalarMultiplyDelegate multiply)
     {
         using IMemoryOwner<byte> monomialOwner = BaseMemoryPool.Shared.Rent(n * ScalarSize);
@@ -488,15 +641,30 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Extends one codeword in place. The LCH14 encoder holds no state — its precompute lives in the
-    //shared additive-FFT engine — so a one-shot construct-and-interpolate is the natural shape for these
-    //byte-comparison gates (unlike the commitment, which reuses one encoder across every tableau row).
+    /// <summary>
+    /// Extends one codeword in place. <see cref="Lch14ReedSolomon"/> holds no state of its own — its
+    /// precompute lives in the shared additive-FFT engine — so a one-shot construct-and-interpolate is
+    /// the natural shape for these byte-comparison gates, unlike a commitment scheme, which reuses one
+    /// encoder across every tableau row.
+    /// </summary>
+    /// <param name="dimension">The number of known input evaluations.</param>
+    /// <param name="blockLength">The block length to interpolate to.</param>
+    /// <param name="fft">The additive FFT to interpolate under.</param>
+    /// <param name="codeword">The buffer holding the known evaluations, extended in place.</param>
     private static void InterpolateOnce(int dimension, int blockLength, Lch14AdditiveFft fft, Span<byte> codeword) =>
         new Lch14ReedSolomon(dimension, blockLength, fft, BaseMemoryPool.Shared).Interpolate(codeword);
 
 
-    //The reference seeds the n input evaluations as the monomial polynomial's values at the first
-    //n nodes; this helper writes those inputs directly into y's prefix and zeroes the rest.
+    /// <summary>
+    /// Seeds the <paramref name="n"/> known input evaluations as a monomial polynomial's values at
+    /// the first <paramref name="n"/> nodes, following google/longfellow-zk's own seeding convention:
+    /// writes those inputs directly into <paramref name="y"/>'s prefix and zeroes the rest.
+    /// </summary>
+    /// <param name="fft">The additive FFT whose nodes the monomial is evaluated at.</param>
+    /// <param name="n">The number of known input evaluations.</param>
+    /// <param name="m">The block length <paramref name="y"/> is sized for.</param>
+    /// <param name="y">The buffer to seed: filled with the first <paramref name="n"/> evaluations,
+    /// then zeroed for the rest.</param>
     private static void SeedInputs(Lch14AdditiveFft fft, int n, int m, Span<byte> y)
     {
         using IMemoryOwner<byte> monomialOwner = BaseMemoryPool.Shared.Rent(n * ScalarSize);
@@ -512,9 +680,16 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Writes the reference's deterministic monomial coefficients M[i] = of_scalar(i² + 42 + (m+11)(n+22)).
-    //The coordinate value stays well below 2^32 for the whole reference set, so it maps directly
-    //through of_scalar (no masking — the reference does not mask either).
+    /// <summary>
+    /// Writes google/longfellow-zk's deterministic monomial coefficients
+    /// <c>M[i] = of_scalar(i² + 42 + (m+11)(n+22))</c>. The coordinate value stays well below 2^32 for
+    /// every <paramref name="n"/>/<paramref name="m"/> pair this file uses, so it maps directly
+    /// through <c>of_scalar</c> with no masking, matching the upstream formula.
+    /// </summary>
+    /// <param name="fft">The additive FFT supplying <c>of_scalar</c> node evaluation.</param>
+    /// <param name="n">The number of monomial coefficients to write.</param>
+    /// <param name="m">The block length the coefficients are parameterized by.</param>
+    /// <param name="monomial">The buffer to receive the <paramref name="n"/> coefficients.</param>
     private static void SeedMonomial(Lch14AdditiveFft fft, int n, int m, Span<byte> monomial)
     {
         for(int i = 0; i < n; i++)
@@ -525,7 +700,18 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Horner evaluation of the monomial polynomial M at node of_scalar(nodeIndex).
+    /// <summary>
+    /// Evaluates the monomial polynomial <c>M</c> at node <c>of_scalar(nodeIndex)</c> by Horner's
+    /// method.
+    /// </summary>
+    /// <param name="fft">The additive FFT supplying <c>of_scalar</c> node evaluation.</param>
+    /// <param name="monomial">The polynomial's coefficients, indexed so that <c>monomial[i]</c> is
+    /// the coefficient of <c>x^i</c>.</param>
+    /// <param name="degreeCount">The number of coefficients in <paramref name="monomial"/>.</param>
+    /// <param name="nodeIndex">The node index to evaluate at.</param>
+    /// <param name="result">Receives the evaluation.</param>
+    /// <param name="add">The scalar addition delegate.</param>
+    /// <param name="multiply">The scalar multiplication delegate.</param>
     private static void EvaluateMonomial(Lch14AdditiveFft fft, ReadOnlySpan<byte> monomial, int degreeCount, uint nodeIndex, Span<byte> result, ScalarAddDelegate add, ScalarMultiplyDelegate multiply)
     {
         Span<byte> x = stackalloc byte[ScalarSize];
@@ -544,8 +730,17 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //The slow direct W_hat: W_i(x) = Π_{j<2^i} (x − of_scalar(j)), then divided by W_i(β_i). The
-    //reference's WHatRef, the independent oracle for the precomputed table.
+    /// <summary>
+    /// The slow, direct definition of <c>Ŵ_i</c>: <c>W_i(x) = Π_{j&lt;2^i} (x − of_scalar(j))</c>,
+    /// divided by <c>W_i(β_i)</c>. The independent oracle the normalized, precomputed <c>Ŵ</c> table
+    /// is checked against.
+    /// </summary>
+    /// <param name="fft">The additive FFT supplying nodes and basis elements.</param>
+    /// <param name="i">The row index.</param>
+    /// <param name="x">The point to evaluate <c>Ŵ_i</c> at.</param>
+    /// <param name="result">Receives the evaluation.</param>
+    /// <param name="multiply">The scalar multiplication delegate.</param>
+    /// <param name="invert">The scalar inversion delegate.</param>
     private static void WHatRef(Lch14AdditiveFft fft, int i, ReadOnlySpan<byte> x, Span<byte> result, ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert)
     {
         Span<byte> wAtX = stackalloc byte[ScalarSize];
@@ -560,7 +755,14 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //W_i(x) = Π_{j < 2^i} (x − of_scalar(j)). Subtraction is XOR in characteristic two.
+    /// <summary>
+    /// <c>W_i(x) = Π_{j &lt; 2^i} (x − of_scalar(j))</c>. Subtraction is XOR in characteristic two.
+    /// </summary>
+    /// <param name="fft">The additive FFT supplying nodes.</param>
+    /// <param name="i">The row index.</param>
+    /// <param name="x">The point to evaluate <c>W_i</c> at.</param>
+    /// <param name="result">Receives the evaluation.</param>
+    /// <param name="multiply">The scalar multiplication delegate.</param>
     private static void WRef(Lch14AdditiveFft fft, int i, ReadOnlySpan<byte> x, Span<byte> result, ScalarMultiplyDelegate multiply)
     {
         Span<byte> product = stackalloc byte[ScalarSize];
@@ -587,10 +789,21 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Builds the Newton divided-difference table over the given nodes and values, in place into
-    //`dividedDifferences`. The table depends only on (values, nodes), so the cross-coset oracle
-    //builds it once and Horner-evaluates many points against it — keeping the O(n²) Fermat
-    //inversions out of the per-point loop.
+    /// <summary>
+    /// Builds the Newton divided-difference table over <paramref name="nodes"/> and
+    /// <paramref name="values"/>, in place into <paramref name="dividedDifferences"/>. The table
+    /// depends only on <paramref name="values"/> and <paramref name="nodes"/>, so
+    /// <see cref="CrossCosetInterpolationMatchesTheNewtonOracle"/> builds it once per coset and
+    /// Horner-evaluates many points against it, keeping the O(n²) Fermat inversions out of the
+    /// per-point loop.
+    /// </summary>
+    /// <param name="values">The known evaluations at <paramref name="nodes"/>.</param>
+    /// <param name="nodes">The nodes the evaluations were taken at.</param>
+    /// <param name="count">The number of nodes and values.</param>
+    /// <param name="dividedDifferences">Receives the divided-difference table.</param>
+    /// <param name="subtract">The scalar subtraction delegate.</param>
+    /// <param name="multiply">The scalar multiplication delegate.</param>
+    /// <param name="invert">The scalar inversion delegate.</param>
     private static void BuildDividedDifferences(
         ReadOnlySpan<byte> values,
         ReadOnlySpan<byte> nodes,
@@ -620,9 +833,20 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Evaluates the Newton interpolant at x from a precomputed divided-difference table:
-    //acc = acc·(x − node[idx]) + divided[idx], descending. An independent route from the FFT to
-    //the same polynomial value, so a self-consistent but wrong transform is caught.
+    /// <summary>
+    /// Evaluates the Newton interpolant at <paramref name="x"/> from a precomputed
+    /// divided-difference table: <c>acc = acc·(x − node[idx]) + divided[idx]</c>, descending from the
+    /// last index. An independent route from the FFT to the same polynomial value, so a
+    /// self-consistent but wrong transform is caught.
+    /// </summary>
+    /// <param name="dividedDifferences">The precomputed divided-difference table.</param>
+    /// <param name="nodes">The nodes the table was built over.</param>
+    /// <param name="count">The number of nodes and table entries.</param>
+    /// <param name="x">The point to evaluate the interpolant at.</param>
+    /// <param name="result">Receives the evaluation.</param>
+    /// <param name="add">The scalar addition delegate.</param>
+    /// <param name="subtract">The scalar subtraction delegate.</param>
+    /// <param name="multiply">The scalar multiplication delegate.</param>
     private static void NewtonHorner(
         ReadOnlySpan<byte> dividedDifferences,
         ReadOnlySpan<byte> nodes,
@@ -648,10 +872,15 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Interpolates a Reed–Solomon codeword for (n, m) under the reference's deterministic seeding and
-    //asserts the requested elements equal the pinned reference bytes. The seeding mirrors anchor.cc:
-    //monomial coefficients M[i] = of_scalar(i² + 42 + (m+11)(n+22)), inputs Y[i] = the monomial
-    //evaluated at of_scalar(i) for i < n, then interpolate to m outputs in place.
+    /// <summary>
+    /// Interpolates a Reed–Solomon codeword for <paramref name="n"/>/<paramref name="m"/> under the
+    /// deterministic seeding <see cref="SeedMonomial"/> and <see cref="EvaluateMonomial"/> define,
+    /// and asserts the requested elements equal <paramref name="anchors"/>.
+    /// </summary>
+    /// <param name="fft">The additive FFT to interpolate under.</param>
+    /// <param name="n">The number of known input evaluations.</param>
+    /// <param name="m">The block length to interpolate to.</param>
+    /// <param name="anchors">The pinned elements to check the interpolated codeword against.</param>
     private static void AssertReferenceCodeword(Lch14AdditiveFft fft, int n, int m, ReferenceCodewordElement[] anchors)
     {
         using IMemoryOwner<byte> monomialOwner = BaseMemoryPool.Shared.Rent(n * ScalarSize);
@@ -680,7 +909,14 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Asserts a canonical 32-byte element equals the reference's 32-hex-character little-endian dump.
+    /// <summary>
+    /// Asserts that a canonical 32-byte element equals the expected value encoded as 32 hex
+    /// characters.
+    /// </summary>
+    /// <param name="referenceHex">The expected value, as 32 hex characters (16 little-endian
+    /// bytes).</param>
+    /// <param name="actual">The canonical 32-byte element to check.</param>
+    /// <param name="message">The assertion failure message.</param>
     private static void AssertReferenceElement(string referenceHex, ReadOnlySpan<byte> actual, string message)
     {
         Span<byte> expected = stackalloc byte[ScalarSize];
@@ -689,9 +925,14 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
-    //Converts the reference's to_bytes_field output — the 128-bit element as 16 little-endian bytes,
-    //printed as 32 hex characters — into the project's canonical 32-byte big-endian scalar: the 16
-    //reference bytes reversed into positions 16..31, the leading 16 bytes left zero.
+    /// <summary>
+    /// Converts a hex-encoded field element in google/longfellow-zk's <c>to_bytes_field</c> format —
+    /// the 128-bit element as 16 little-endian bytes, printed as 32 hex characters — into this
+    /// project's canonical 32-byte big-endian scalar: the 16 bytes reversed into positions 16..31,
+    /// with the leading 16 bytes left zero.
+    /// </summary>
+    /// <param name="referenceHex">The hex-encoded field element to convert.</param>
+    /// <param name="destination">Receives the canonical 32-byte scalar.</param>
     private static void ReferenceElementToCanonical(string referenceHex, Span<byte> destination)
     {
         destination.Clear();
@@ -703,46 +944,117 @@ internal sealed class Lch14ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Constructs an <see cref="Lch14AdditiveFft"/> over <paramref name="subfield"/> using the fast
+    /// production backend's scalar delegates.
+    /// </summary>
+    /// <param name="subfield">The subfield to construct the transform over.</param>
+    /// <returns>The constructed transform.</returns>
     private static Lch14AdditiveFft NewFastFft(Lch14Subfield subfield) =>
         new(subfield, FastAdd, FastSubtract, FastMultiply, FastInvert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
+    /// <summary>
+    /// Constructs an <see cref="Lch14AdditiveFft"/> over <paramref name="subfield"/> using the slow,
+    /// independently defined reference backend's scalar delegates.
+    /// </summary>
+    /// <param name="subfield">The subfield to construct the transform over.</param>
+    /// <returns>The constructed transform.</returns>
     private static Lch14AdditiveFft NewReferenceFft(Lch14Subfield subfield) =>
         new(subfield, ReferenceAdd, ReferenceSubtract, ReferenceMultiply, ReferenceInvert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //One pinned reference codeword element: its index in the codeword and the reference's hex dump.
+    /// <summary>
+    /// One pinned codeword element.
+    /// </summary>
+    /// <param name="Index">The element's index within the codeword.</param>
+    /// <param name="ReferenceHex">The element's expected value, as 32 hex characters.</param>
     private readonly record struct ReferenceCodewordElement(int Index, string ReferenceHex);
 
 
-    //The anchor values below are computed by the reference implementation's LCH14 over GF(2^128)
-    //with the GF(2^32) test-parity subfield (the GF2_128<5> instantiation, kSubFieldBits = 32).
-    //Each string is the reference's to_bytes_field hex output (16 little-endian bytes of the 128-bit
-    //element). The raw dump lives in TestMaterial/Lch14/anchor-output.txt; it is produced by running
-    //the reference implementation in its own build environment (the procedure is development
-    //tooling, outside this repository). Pinning these bytes anchors the port's basis, nodes and
-    //transform to the reference rather than to the port's own self-consistent definitions.
+    /// <summary>
+    /// The test-parity subfield's generator <c>g</c>, from google/longfellow-zk's
+    /// <c>GF2_128&lt;5&gt;</c> instantiation, as 16 little-endian bytes in hex. Equal to
+    /// <see cref="AnchorBeta1"/>, since the generator is basis vector <c>β_1</c>.
+    /// </summary>
     private const string AnchorGenerator = "5ed02f3c88a430056b1f25adfc41e392";
+
+    /// <summary>
+    /// The test-parity subfield's basis vector <c>β_1</c>, from google/longfellow-zk's
+    /// <c>GF2_128&lt;5&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string AnchorBeta1 = "5ed02f3c88a430056b1f25adfc41e392";
+
+    /// <summary>
+    /// The test-parity subfield's basis vector <c>β_5</c>, from google/longfellow-zk's
+    /// <c>GF2_128&lt;5&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string AnchorBeta5 = "8b7d79d022e97273fbbf761f1911818f";
+
+    /// <summary>
+    /// The test-parity subfield's basis vector <c>β_31</c>, from google/longfellow-zk's
+    /// <c>GF2_128&lt;5&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string AnchorBeta31 = "72008237d5c1ec925810af7d64d216de";
+
+    /// <summary>
+    /// <c>of_scalar(11)</c> in the test-parity subfield, from google/longfellow-zk's
+    /// <c>GF2_128&lt;5&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string AnchorNode11 = "2b24fbf40390c1d95ef29104e2905d69";
+
+    /// <summary>
+    /// <c>of_scalar(200)</c> in the test-parity subfield, from google/longfellow-zk's
+    /// <c>GF2_128&lt;5&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string AnchorNode200 = "8ed6ffe88eca96b953b9ac3dd493272c";
 
 
-    //The same anchor set over the GF(2^16) production subfield (the GF2_128<> default instantiation,
-    //kSubFieldBits = 16) — the wire-format conformant one. The reference labels these g4/beta4_*/
-    //node4_*/cw4_* in anchor-output.txt. The top basis index is β_15 (16 basis vectors).
+    /// <summary>
+    /// The production subfield's generator <c>g</c>, from google/longfellow-zk's default
+    /// <c>GF2_128&lt;&gt;</c> instantiation (the wire-format-conformant one), as 16 little-endian
+    /// bytes in hex. Equal to <see cref="ProductionAnchorBeta1"/>, since the generator is basis
+    /// vector <c>β_1</c>.
+    /// </summary>
     private const string ProductionAnchorGenerator = "4cda4fb6011e87f1b8d401758771595c";
+
+    /// <summary>
+    /// The production subfield's basis vector <c>β_1</c>, from google/longfellow-zk's default
+    /// <c>GF2_128&lt;&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string ProductionAnchorBeta1 = "4cda4fb6011e87f1b8d401758771595c";
+
+    /// <summary>
+    /// The production subfield's basis vector <c>β_5</c>, from google/longfellow-zk's default
+    /// <c>GF2_128&lt;&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string ProductionAnchorBeta5 = "9e689f62934eaff7ed9c26a5f44f9454";
+
+    /// <summary>
+    /// The production subfield's top basis vector <c>β_15</c> (the field has 16 basis vectors), from
+    /// google/longfellow-zk's default <c>GF2_128&lt;&gt;</c> instantiation, as 16 little-endian bytes
+    /// in hex.
+    /// </summary>
     private const string ProductionAnchorBeta15 = "5357e550230183b6e85a3c83b6bbd418";
+
+    /// <summary>
+    /// <c>of_scalar(11)</c> in the production subfield, from google/longfellow-zk's default
+    /// <c>GF2_128&lt;&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string ProductionAnchorNode11 = "a0a4b04fa3f60acee4b2f8675d7947ea";
+
+    /// <summary>
+    /// <c>of_scalar(200)</c> in the production subfield, from google/longfellow-zk's default
+    /// <c>GF2_128&lt;&gt;</c> instantiation, as 16 little-endian bytes in hex.
+    /// </summary>
     private const string ProductionAnchorNode200 = "c7bd54b7464e9d0a864d2761993bcbab";
 
 
-    //The full interpolated codeword for (n = 9, m = 23) over the test-parity subfield: every element
-    //pinned. fftn = 16, so m = 23 exercises the straddling-coset partial copy.
+    /// <summary>
+    /// The full interpolated codeword for <c>(n = 9, m = 23)</c> over the test-parity subfield: every
+    /// element pinned. With <c>fftn = 16</c>, <c>m = 23</c> exercises the straddling-coset partial
+    /// copy.
+    /// </summary>
     private static ReferenceCodewordElement[] AnchorStraddleCodeword { get; } =
     [
         new(0, "bb3fa07dcec2f48cbca3e5481921995c"),
@@ -771,9 +1083,12 @@ internal sealed class Lch14ReedSolomonTests
     ];
 
 
-    //Spot anchors of the (n = 9, m = 64) test-parity codeword at coset boundaries (fftn = 16, no
-    //straddle): the first element, the last element of the first coset and the first of the second
-    //(15, 16), the second/third coset boundary (31, 32), and the final element (63).
+    /// <summary>
+    /// Spot anchors of the <c>(n = 9, m = 64)</c> test-parity codeword at coset boundaries
+    /// (<c>fftn = 16</c>, no straddle): the first element, the last element of the first coset and
+    /// the first of the second (15, 16), the second/third coset boundary (31, 32), and the final
+    /// element (63).
+    /// </summary>
     private static ReferenceCodewordElement[] AnchorFullCosetSpotChecks { get; } =
     [
         new(0, "aa8b3ab4602065abc82565d742b47abe"),
@@ -786,8 +1101,10 @@ internal sealed class Lch14ReedSolomonTests
     ];
 
 
-    //The full interpolated codeword for (n = 9, m = 23) over the GF(2^16) production subfield: every
-    //element pinned (cw4_9x23 in anchor-output.txt). fftn = 16, so m = 23 straddles a coset.
+    /// <summary>
+    /// The full interpolated codeword for <c>(n = 9, m = 23)</c> over the <c>GF(2^16)</c> production
+    /// subfield: every element pinned. With <c>fftn = 16</c>, <c>m = 23</c> straddles a coset.
+    /// </summary>
     private static ReferenceCodewordElement[] ProductionAnchorStraddleCodeword { get; } =
     [
         new(0, "3e2514f0a2e00a2fd254042c0aef6348"),
@@ -816,8 +1133,10 @@ internal sealed class Lch14ReedSolomonTests
     ];
 
 
-    //Spot anchors of the (n = 9, m = 64) production codeword at coset boundaries (cw4_9x64 in
-    //anchor-output.txt; fftn = 16, no straddle): the same indices as the test-parity spot checks.
+    /// <summary>
+    /// Spot anchors of the <c>(n = 9, m = 64)</c> production codeword at coset boundaries
+    /// (<c>fftn = 16</c>, no straddle): the same indices as the test-parity spot checks.
+    /// </summary>
     private static ReferenceCodewordElement[] ProductionAnchorFullCosetSpotChecks { get; } =
     [
         new(0, "9861e95ec280653f891c1827fe45507c"),

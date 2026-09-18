@@ -26,7 +26,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </para>
 /// <para>
 /// Add, subtract, and the batch forms are implemented here; multiplication and
-/// inversion are the shared Montgomery path (a separate sub-batch). The carry/borrow
+/// inversion are the shared Montgomery path. The carry/borrow
 /// chains across limbs are serial, but the batch quartet advances four scalars
 /// through that chain at once, one per 64-bit lane.
 /// </para>
@@ -93,6 +93,12 @@ internal static class Bn254Avx2ScalarBackend
     public static ScalarInvertDelegate GetInvert() => Invert;
 
 
+    /// <summary>The <see cref="ScalarAddDelegate"/> this backend exposes: constant-time BN254 scalar addition.</summary>
+    /// <param name="a">The first canonical big-endian operand.</param>
+    /// <param name="b">The second canonical big-endian operand.</param>
+    /// <param name="result">The buffer receiving the canonical big-endian sum.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
     private static void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         if(!Avx2.IsSupported)
@@ -130,6 +136,12 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>The <see cref="ScalarSubtractDelegate"/> this backend exposes: constant-time BN254 scalar subtraction.</summary>
+    /// <param name="a">The minuend, canonical big-endian.</param>
+    /// <param name="b">The subtrahend, canonical big-endian.</param>
+    /// <param name="result">The buffer receiving the canonical big-endian difference.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
     private static void Subtract(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         if(!Avx2.IsSupported)
@@ -168,6 +180,12 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>The <see cref="ScalarMultiplyDelegate"/> this backend exposes: the shared, ISA-independent serial Montgomery multiply.</summary>
+    /// <param name="a">The first canonical big-endian operand.</param>
+    /// <param name="b">The second canonical big-endian operand.</param>
+    /// <param name="result">The buffer receiving the canonical big-endian product.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
     private static void Multiply(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
     {
         if(!Avx2.IsSupported)
@@ -183,6 +201,11 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>The <see cref="ScalarInvertDelegate"/> this backend exposes: Fermat inversion over the shared Montgomery multiply.</summary>
+    /// <param name="a">The canonical big-endian operand to invert; must be nonzero.</param>
+    /// <param name="result">The buffer receiving the canonical big-endian inverse.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
     private static void Invert(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         if(!Avx2.IsSupported)
@@ -195,6 +218,11 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>The <see cref="ScalarNegateDelegate"/> this backend exposes: modular negation <c>r - a</c>, with zero mapping to zero.</summary>
+    /// <param name="a">The canonical big-endian operand to negate.</param>
+    /// <param name="result">The buffer receiving the canonical big-endian negation.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
     private static void Negate(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         if(!Avx2.IsSupported)
@@ -218,10 +246,11 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Reads a canonical big-endian scalar into its four little-endian 64-bit limbs.</summary>
+    /// <param name="canonical"><see cref="Scalar.SizeBytes"/> big-endian bytes, most significant first.</param>
+    /// <param name="limbs">The buffer receiving the limbs; <c>limbs[0]</c> is the least significant 64 bits, <c>limbs[LimbCount - 1]</c> the most.</param>
     private static void LoadCanonicalToLimbs(ReadOnlySpan<byte> canonical, Span<ulong> limbs)
     {
-        //canonical: Scalar.SizeBytes big-endian bytes, MSB first.
-        //limbs: limbs[0] is the least significant 64 bits, limbs[LimbCount - 1] the most.
         for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
         {
             int offset = (LimbCount - 1 - limbIndex) * BytesPerLimb;
@@ -230,6 +259,9 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Writes four little-endian 64-bit limbs as a canonical big-endian scalar, the inverse of <see cref="LoadCanonicalToLimbs"/>.</summary>
+    /// <param name="limbs">The limbs to write; <c>limbs[0]</c> is the least significant 64 bits, <c>limbs[LimbCount - 1]</c> the most.</param>
+    /// <param name="canonical">The buffer receiving <see cref="Scalar.SizeBytes"/> big-endian bytes.</param>
     private static void StoreLimbsToCanonical(ReadOnlySpan<ulong> limbs, Span<byte> canonical)
     {
         for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
@@ -240,6 +272,11 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Adds two 256-bit values held as four 64-bit limbs each, with carry propagation across all four limbs.</summary>
+    /// <param name="a">The first operand's limbs, least significant first.</param>
+    /// <param name="b">The second operand's limbs, least significant first.</param>
+    /// <param name="result">The buffer receiving the sum's limbs, least significant first.</param>
+    /// <returns><see langword="true"/> when the addition carried out of the most significant limb.</returns>
     private static bool AddWithCarry256(ReadOnlySpan<ulong> a, ReadOnlySpan<ulong> b, Span<ulong> result)
     {
         UInt128 carry = UInt128.Zero;
@@ -254,6 +291,10 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Subtracts two 256-bit values held as four 64-bit limbs each, in place on <paramref name="a"/>, with borrow propagation across all four limbs.</summary>
+    /// <param name="a">The minuend's limbs on entry, least significant first; overwritten with the difference's limbs.</param>
+    /// <param name="b">The subtrahend's limbs, least significant first.</param>
+    /// <returns><see langword="true"/> when the subtraction borrowed out of the most significant limb (the true difference is negative).</returns>
     private static bool SubtractWithBorrow256(Span<ulong> a, ReadOnlySpan<ulong> b)
     {
         ulong borrow = 0UL;
@@ -305,6 +346,14 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>The <see cref="ScalarBatchAddDelegate"/> this backend exposes: adds <paramref name="count"/> scalar pairs, four per SIMD quartet with a serial fallback for the trailing 1-3.</summary>
+    /// <param name="leftOperandsConcatenated">The first operands, <paramref name="count"/> canonical scalars concatenated.</param>
+    /// <param name="rightOperandsConcatenated">The second operands, <paramref name="count"/> canonical scalars concatenated.</param>
+    /// <param name="resultsConcatenated">The buffer receiving <paramref name="count"/> concatenated canonical sums.</param>
+    /// <param name="count">The number of scalar pairs to add.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
+    /// <exception cref="ArgumentException">When a buffer's length does not match <paramref name="count"/>.</exception>
     private static void BatchAdd(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -347,6 +396,14 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>The <see cref="ScalarBatchSubtractDelegate"/> this backend exposes: subtracts <paramref name="count"/> scalar pairs, four per SIMD quartet with a serial fallback for the trailing 1-3.</summary>
+    /// <param name="minuendsConcatenated">The minuends, <paramref name="count"/> canonical scalars concatenated.</param>
+    /// <param name="subtrahendsConcatenated">The subtrahends, <paramref name="count"/> canonical scalars concatenated.</param>
+    /// <param name="resultsConcatenated">The buffer receiving <paramref name="count"/> concatenated canonical differences.</param>
+    /// <param name="count">The number of scalar pairs to subtract.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
+    /// <exception cref="ArgumentException">When a buffer's length does not match <paramref name="count"/>.</exception>
     private static void BatchSubtract(
         ReadOnlySpan<byte> minuendsConcatenated,
         ReadOnlySpan<byte> subtrahendsConcatenated,
@@ -387,6 +444,13 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Throws unless each of the three buffers is exactly <c>count * stride</c> bytes.</summary>
+    /// <param name="first">The first buffer to check.</param>
+    /// <param name="second">The second buffer to check.</param>
+    /// <param name="third">The third buffer to check.</param>
+    /// <param name="count">The number of elements each buffer must hold.</param>
+    /// <param name="stride">The byte width of one element.</param>
+    /// <exception cref="ArgumentException">When any buffer's length does not equal <c>count * stride</c>.</exception>
     private static void ValidateBatchedLengths(
         ReadOnlySpan<byte> first,
         ReadOnlySpan<byte> second,
@@ -404,6 +468,10 @@ internal static class Bn254Avx2ScalarBackend
 
 
     /// <summary>SIMD inner loop: adds four scalars in parallel, four 64-bit lanes per <see cref="Vector256{T}"/>, one limb position per register.</summary>
+    /// <summary>Adds four independent scalars in parallel, one 64-bit limb per lane, reducing per lane against the field modulus.</summary>
+    /// <param name="aQuartet">The four first operands, concatenated canonical scalars.</param>
+    /// <param name="bQuartet">The four second operands, concatenated canonical scalars.</param>
+    /// <param name="resultQuartet">The buffer receiving the four concatenated canonical sums.</param>
     private static void AddQuartet(
         ReadOnlySpan<byte> aQuartet,
         ReadOnlySpan<byte> bQuartet,
@@ -455,6 +523,10 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Subtracts four independent scalar pairs in parallel, one 64-bit limb per lane, reducing per lane against the field modulus.</summary>
+    /// <param name="aQuartet">The four minuends, concatenated canonical scalars.</param>
+    /// <param name="bQuartet">The four subtrahends, concatenated canonical scalars.</param>
+    /// <param name="resultQuartet">The buffer receiving the four concatenated canonical differences.</param>
     private static void SubtractQuartet(
         ReadOnlySpan<byte> aQuartet,
         ReadOnlySpan<byte> bQuartet,
@@ -543,10 +615,16 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
-    /// <summary>Per-lane broadcasts of the four limbs of the BN254 scalar modulus <c>r</c>; each lane of every register holds the same limb, because the quartet shares the modulus.</summary>
+    /// <summary>The BN254 scalar modulus's least-significant 64-bit limb, broadcast to every lane so the quartet shares the modulus.</summary>
     private static Vector256<ulong> FieldOrderLane0 { get; } = Vector256.Create(0x43e1f593f0000001UL);
+
+    /// <summary>The BN254 scalar modulus's second 64-bit limb, broadcast to every lane so the quartet shares the modulus.</summary>
     private static Vector256<ulong> FieldOrderLane1 { get; } = Vector256.Create(0x2833e84879b97091UL);
+
+    /// <summary>The BN254 scalar modulus's third 64-bit limb, broadcast to every lane so the quartet shares the modulus.</summary>
     private static Vector256<ulong> FieldOrderLane2 { get; } = Vector256.Create(0xb85045b68181585dUL);
+
+    /// <summary>The BN254 scalar modulus's most-significant 64-bit limb, broadcast to every lane so the quartet shares the modulus.</summary>
     private static Vector256<ulong> FieldOrderLane3 { get; } = Vector256.Create(0x30644e72e131a029UL);
 
 
@@ -558,21 +636,23 @@ internal static class Bn254Avx2ScalarBackend
         out Vector256<ulong> limb2,
         out Vector256<ulong> limb3)
     {
-        Span<ulong> scalar0 = stackalloc ulong[LimbCount];
-        Span<ulong> scalar1 = stackalloc ulong[LimbCount];
-        Span<ulong> scalar2 = stackalloc ulong[LimbCount];
-        Span<ulong> scalar3 = stackalloc ulong[LimbCount];
-
         int stride = Scalar.SizeBytes;
-        LoadCanonicalToLimbs(quartetBytes.Slice(0 * stride, stride), scalar0);
-        LoadCanonicalToLimbs(quartetBytes.Slice(1 * stride, stride), scalar1);
-        LoadCanonicalToLimbs(quartetBytes.Slice(2 * stride, stride), scalar2);
-        LoadCanonicalToLimbs(quartetBytes.Slice(3 * stride, stride), scalar3);
+        Vector256<ulong> scalar0 = LoadScalarLimbs(quartetBytes.Slice(0 * stride, stride));
+        Vector256<ulong> scalar1 = LoadScalarLimbs(quartetBytes.Slice(1 * stride, stride));
+        Vector256<ulong> scalar2 = LoadScalarLimbs(quartetBytes.Slice(2 * stride, stride));
+        Vector256<ulong> scalar3 = LoadScalarLimbs(quartetBytes.Slice(3 * stride, stride));
 
-        limb0 = Vector256.Create(scalar0[0], scalar1[0], scalar2[0], scalar3[0]);
-        limb1 = Vector256.Create(scalar0[1], scalar1[1], scalar2[1], scalar3[1]);
-        limb2 = Vector256.Create(scalar0[2], scalar1[2], scalar2[2], scalar3[2]);
-        limb3 = Vector256.Create(scalar0[3], scalar1[3], scalar2[3], scalar3[3]);
+        TransposeQuartetLanes(scalar0, scalar1, scalar2, scalar3, out limb0, out limb1, out limb2, out limb3);
+    }
+
+
+    /// <summary>Reads one scalar's <see cref="Scalar.SizeBytes"/> canonical big-endian bytes as its four 64-bit limbs, in the same <c>limb0..limb3</c> order <see cref="LoadCanonicalToLimbs"/> produces.</summary>
+    private static Vector256<ulong> LoadScalarLimbs(ReadOnlySpan<byte> canonical)
+    {
+        Vector256<byte> canonicalBytes = Vector256.Create(canonical);
+        Vector256<byte> littleEndianBytes = Vector256.Reverse(canonicalBytes);
+
+        return littleEndianBytes.AsUInt64();
     }
 
 
@@ -584,29 +664,68 @@ internal static class Bn254Avx2ScalarBackend
         Vector256<ulong> limb3,
         Span<byte> quartetBytes)
     {
-        Span<ulong> scalarLimbs = stackalloc ulong[LimbCount];
+        TransposeQuartetLanes(limb0, limb1, limb2, limb3, out Vector256<ulong> scalar0, out Vector256<ulong> scalar1, out Vector256<ulong> scalar2, out Vector256<ulong> scalar3);
+
         int stride = Scalar.SizeBytes;
-        for(int scalarIndex = 0; scalarIndex < ScalarsPerQuartet; scalarIndex++)
-        {
-            scalarLimbs[0] = limb0.GetElement(scalarIndex);
-            scalarLimbs[1] = limb1.GetElement(scalarIndex);
-            scalarLimbs[2] = limb2.GetElement(scalarIndex);
-            scalarLimbs[3] = limb3.GetElement(scalarIndex);
-            StoreLimbsToCanonical(scalarLimbs, quartetBytes.Slice(scalarIndex * stride, stride));
-        }
+        StoreScalarLimbs(scalar0, quartetBytes.Slice(0 * stride, stride));
+        StoreScalarLimbs(scalar1, quartetBytes.Slice(1 * stride, stride));
+        StoreScalarLimbs(scalar2, quartetBytes.Slice(2 * stride, stride));
+        StoreScalarLimbs(scalar3, quartetBytes.Slice(3 * stride, stride));
     }
 
 
-    //Lane-interleaved batch Montgomery multiply (32-bit-limb CIOS)
+    /// <summary>Writes one scalar's four 64-bit limbs, in <c>limb0..limb3</c> order, as its <see cref="Scalar.SizeBytes"/> canonical big-endian bytes — the inverse of <see cref="LoadScalarLimbs"/>.</summary>
+    private static void StoreScalarLimbs(Vector256<ulong> limbs, Span<byte> canonical)
+    {
+        Vector256<byte> littleEndianBytes = limbs.AsByte();
+        Vector256<byte> canonicalBytes = Vector256.Reverse(littleEndianBytes);
 
+        canonicalBytes.CopyTo(canonical);
+    }
+
+
+    /// <summary>Transposes four <see cref="Vector256{T}"/> of <see cref="ulong"/>, each holding one source's four values, into four vectors each holding one position with lane <c>i</c> carrying source <c>i</c>'s contribution at that position — a 4x4 transpose over (source index, position index), its own inverse, so every quartet load and store in this file shares this one implementation for both directions.</summary>
+    private static void TransposeQuartetLanes(
+        Vector256<ulong> v0,
+        Vector256<ulong> v1,
+        Vector256<ulong> v2,
+        Vector256<ulong> v3,
+        out Vector256<ulong> w0,
+        out Vector256<ulong> w1,
+        out Vector256<ulong> w2,
+        out Vector256<ulong> w3)
+    {
+        Vector256<ulong> lo01 = Vector256.ZipLower(v0, v1);
+        Vector256<ulong> hi01 = Vector256.ZipUpper(v0, v1);
+        Vector256<ulong> lo23 = Vector256.ZipLower(v2, v3);
+        Vector256<ulong> hi23 = Vector256.ZipUpper(v2, v3);
+
+        w0 = Vector256.ConcatLowerLower(lo01, lo23);
+        w1 = Vector256.ConcatUpperUpper(lo01, lo23);
+        w2 = Vector256.ConcatLowerLower(hi01, hi23);
+        w3 = Vector256.ConcatUpperUpper(hi01, hi23);
+    }
+
+
+    /// <summary>The number of 32-bit limbs that compose a BN254 scalar in the lane-interleaved batch Montgomery multiply (256 bits / 32 bits per limb).</summary>
     private const int Limb32Count = 8;
 
+    /// <summary>A per-lane mask selecting the low 32 bits of each 64-bit lane, used to keep each 32-bit-limb accumulator from bleeding into its neighbour.</summary>
     private static Vector256<ulong> Low32Mask { get; } = Vector256.Create(0xFFFFFFFFUL);
+
+    /// <summary>The Montgomery reduction constant <c>n' mod 2^32</c>, broadcast to every lane of every 64-bit slot.</summary>
     private static Vector256<ulong> NPrime32Broadcast { get; } = Vector256.Create((ulong)Bn254MontgomeryParameters.NPrime32);
+
+    /// <summary>The BN254 scalar modulus's eight 32-bit limbs, each broadcast to every lane, indexed the same way as <see cref="Bn254MontgomeryParameters.Modulus32Limbs"/>.</summary>
     private static Vector256<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.Modulus32Limbs);
+
+    /// <summary>The Montgomery constant <c>R² mod r</c>'s eight 32-bit limbs, each broadcast to every lane, indexed the same way as <see cref="Bn254MontgomeryParameters.RSquared32Limbs"/>.</summary>
     private static Vector256<ulong>[] RSquared32Broadcast { get; } = BuildBroadcast(Bn254MontgomeryParameters.RSquared32Limbs);
 
 
+    /// <summary>Broadcasts each of eight 32-bit limbs to every lane of its own <see cref="Vector256{T}"/>.</summary>
+    /// <param name="limbs32">The eight 32-bit limbs to broadcast, least significant first.</param>
+    /// <returns>Eight vectors, one per limb, each lane holding that limb's value.</returns>
     private static Vector256<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)
     {
         var vectors = new Vector256<ulong>[Limb32Count];
@@ -619,6 +738,14 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>The <see cref="ScalarBatchMultiplyDelegate"/> this backend exposes: multiplies <paramref name="count"/> scalar pairs, four per SIMD quartet through the lane-interleaved 32-bit-limb Montgomery multiply, with a serial fallback for the trailing 1-3.</summary>
+    /// <param name="leftOperandsConcatenated">The first operands, <paramref name="count"/> canonical scalars concatenated.</param>
+    /// <param name="rightOperandsConcatenated">The second operands, <paramref name="count"/> canonical scalars concatenated.</param>
+    /// <param name="resultsConcatenated">The buffer receiving <paramref name="count"/> concatenated canonical products.</param>
+    /// <param name="count">The number of scalar pairs to multiply.</param>
+    /// <param name="curve">The curve the operation is counted against.</param>
+    /// <exception cref="PlatformNotSupportedException">When the host CPU lacks AVX2.</exception>
+    /// <exception cref="ArgumentException">When a buffer's length does not match <paramref name="count"/>.</exception>
     private static void BatchMultiply(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -728,6 +855,9 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Conditionally subtracts the modulus from each lane's 33-limb (8×32-bit plus overflow) accumulator, per lane selecting the subtracted value when it did not borrow or the accumulator overflowed its 256-bit range.</summary>
+    /// <param name="t">The nine-limb accumulator per lane (eight 32-bit limbs plus one overflow limb), from the Montgomery reduction.</param>
+    /// <param name="result">The buffer receiving the reduced eight-limb result per lane.</param>
     private static void ConditionalSubtractModulusQuartet(ReadOnlySpan<Vector256<ulong>> t, Span<Vector256<ulong>> result)
     {
         Vector256<ulong> mask = Low32Mask;
@@ -753,56 +883,62 @@ internal static class Bn254Avx2ScalarBackend
     }
 
 
+    /// <summary>Transposes the four scalar-major canonical encodings of a quartet into eight limb-major registers, each holding one 32-bit limb position with lane <c>i</c> carrying scalar <c>i</c>'s limb (zero-extended into the lane's low 32 bits).</summary>
     private static void LoadQuartetTo32LimbVectors(ReadOnlySpan<byte> quartetBytes, Span<Vector256<ulong>> limbVectors)
     {
-        Span<uint> scalar0 = stackalloc uint[Limb32Count];
-        Span<uint> scalar1 = stackalloc uint[Limb32Count];
-        Span<uint> scalar2 = stackalloc uint[Limb32Count];
-        Span<uint> scalar3 = stackalloc uint[Limb32Count];
-
         int stride = Scalar.SizeBytes;
-        LoadCanonicalTo32Limbs(quartetBytes.Slice(0 * stride, stride), scalar0);
-        LoadCanonicalTo32Limbs(quartetBytes.Slice(1 * stride, stride), scalar1);
-        LoadCanonicalTo32Limbs(quartetBytes.Slice(2 * stride, stride), scalar2);
-        LoadCanonicalTo32Limbs(quartetBytes.Slice(3 * stride, stride), scalar3);
+        LoadScalarLowHighLimbs(quartetBytes.Slice(0 * stride, stride), out Vector256<ulong> scalar0Low, out Vector256<ulong> scalar0High);
+        LoadScalarLowHighLimbs(quartetBytes.Slice(1 * stride, stride), out Vector256<ulong> scalar1Low, out Vector256<ulong> scalar1High);
+        LoadScalarLowHighLimbs(quartetBytes.Slice(2 * stride, stride), out Vector256<ulong> scalar2Low, out Vector256<ulong> scalar2High);
+        LoadScalarLowHighLimbs(quartetBytes.Slice(3 * stride, stride), out Vector256<ulong> scalar3Low, out Vector256<ulong> scalar3High);
 
-        for(int k = 0; k < Limb32Count; k++)
-        {
-            limbVectors[k] = Vector256.Create((ulong)scalar0[k], scalar1[k], scalar2[k], scalar3[k]);
-        }
+        TransposeQuartetLanes(scalar0Low, scalar1Low, scalar2Low, scalar3Low, out Vector256<ulong> limb0, out Vector256<ulong> limb1, out Vector256<ulong> limb2, out Vector256<ulong> limb3);
+        limbVectors[0] = limb0;
+        limbVectors[1] = limb1;
+        limbVectors[2] = limb2;
+        limbVectors[3] = limb3;
+
+        TransposeQuartetLanes(scalar0High, scalar1High, scalar2High, scalar3High, out Vector256<ulong> limb4, out Vector256<ulong> limb5, out Vector256<ulong> limb6, out Vector256<ulong> limb7);
+        limbVectors[4] = limb4;
+        limbVectors[5] = limb5;
+        limbVectors[6] = limb6;
+        limbVectors[7] = limb7;
     }
 
 
+    /// <summary>Reads one scalar's <see cref="Scalar.SizeBytes"/> canonical big-endian bytes as its eight 32-bit limbs, zero-extended into two <see cref="Vector256{T}"/> of <see cref="ulong"/>: <paramref name="low"/> holds limbs 0-3, <paramref name="high"/> holds limbs 4-7, in the same increasing-significance order <see cref="LoadScalarLimbs"/> uses at 64-bit granularity.</summary>
+    private static void LoadScalarLowHighLimbs(ReadOnlySpan<byte> canonical, out Vector256<ulong> low, out Vector256<ulong> high)
+    {
+        Vector256<byte> canonicalBytes = Vector256.Create(canonical);
+        Vector256<byte> littleEndianBytes = Vector256.Reverse(canonicalBytes);
+        Vector256<uint> limbs32 = littleEndianBytes.AsUInt32();
+
+        low = Vector256.WidenLower(limbs32);
+        high = Vector256.WidenUpper(limbs32);
+    }
+
+
+    /// <summary>Inverse of <see cref="LoadQuartetTo32LimbVectors"/>: writes eight limb-major 32-bit-limb registers as <see cref="ScalarsPerQuartet"/> scalar-major canonical encodings.</summary>
     private static void Store32LimbVectorsToQuartet(ReadOnlySpan<Vector256<ulong>> limbVectors, Span<byte> quartetBytes)
     {
+        TransposeQuartetLanes(limbVectors[0], limbVectors[1], limbVectors[2], limbVectors[3], out Vector256<ulong> scalar0Low, out Vector256<ulong> scalar1Low, out Vector256<ulong> scalar2Low, out Vector256<ulong> scalar3Low);
+        TransposeQuartetLanes(limbVectors[4], limbVectors[5], limbVectors[6], limbVectors[7], out Vector256<ulong> scalar0High, out Vector256<ulong> scalar1High, out Vector256<ulong> scalar2High, out Vector256<ulong> scalar3High);
+
         int stride = Scalar.SizeBytes;
-        Span<uint> scalarLimbs = stackalloc uint[Limb32Count];
-        for(int scalarIndex = 0; scalarIndex < ScalarsPerQuartet; scalarIndex++)
-        {
-            for(int k = 0; k < Limb32Count; k++)
-            {
-                scalarLimbs[k] = (uint)limbVectors[k].GetElement(scalarIndex);
-            }
-
-            StoreCanonicalFrom32Limbs(scalarLimbs, quartetBytes.Slice(scalarIndex * stride, stride));
-        }
+        StoreScalarLowHighLimbs(scalar0Low, scalar0High, quartetBytes.Slice(0 * stride, stride));
+        StoreScalarLowHighLimbs(scalar1Low, scalar1High, quartetBytes.Slice(1 * stride, stride));
+        StoreScalarLowHighLimbs(scalar2Low, scalar2High, quartetBytes.Slice(2 * stride, stride));
+        StoreScalarLowHighLimbs(scalar3Low, scalar3High, quartetBytes.Slice(3 * stride, stride));
     }
 
 
-    private static void LoadCanonicalTo32Limbs(ReadOnlySpan<byte> canonical, Span<uint> limbs)
+    /// <summary>Writes one scalar's eight 32-bit limbs, held zero-extended across <paramref name="low"/> (limbs 0-3) and <paramref name="high"/> (limbs 4-7), as its <see cref="Scalar.SizeBytes"/> canonical big-endian bytes — the inverse of <see cref="LoadScalarLowHighLimbs"/>.</summary>
+    private static void StoreScalarLowHighLimbs(Vector256<ulong> low, Vector256<ulong> high, Span<byte> canonical)
     {
-        for(int i = 0; i < Limb32Count; i++)
-        {
-            limbs[i] = BinaryPrimitives.ReadUInt32BigEndian(canonical.Slice((Limb32Count - 1 - i) * sizeof(uint), sizeof(uint)));
-        }
-    }
+        Vector256<uint> limbs32 = Vector256.Narrow(low, high);
+        Vector256<byte> littleEndianBytes = limbs32.AsByte();
+        Vector256<byte> canonicalBytes = Vector256.Reverse(littleEndianBytes);
 
-
-    private static void StoreCanonicalFrom32Limbs(ReadOnlySpan<uint> limbs, Span<byte> canonical)
-    {
-        for(int i = 0; i < Limb32Count; i++)
-        {
-            BinaryPrimitives.WriteUInt32BigEndian(canonical.Slice((Limb32Count - 1 - i) * sizeof(uint), sizeof(uint)), limbs[i]);
-        }
+        canonicalBytes.CopyTo(canonical);
     }
 }
