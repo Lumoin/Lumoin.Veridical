@@ -15,6 +15,13 @@
     <IsTestApplication>true</IsTestApplication>
     <MSTestAnalysisMode>Recommended</MSTestAnalysisMode>
     <!--
+      MSTest.Sdk 4.4.1 only assigns its own default versions to these two testing-platform
+      extensions when the properties are still unset, so pinning them here takes their newer
+      patch releases without waiting on a new MSTest.Sdk version.
+      -->
+    <MicrosoftTestingExtensionsCodeCoverageVersion>18.11.2</MicrosoftTestingExtensionsCodeCoverageVersion>
+    <MicrosoftTestingExtensionsFakesVersion>18.10.0</MicrosoftTestingExtensionsFakesVersion>
+    <!--
       The tests mimic an application consuming real credentials and artifacts, so they read
       their JSON fixtures (Wycheproof vectors, predicate-proof envelopes) with System.Text.Json.
       The library itself stays serialization-free and is fed parsed bytes/offsets (or a parse

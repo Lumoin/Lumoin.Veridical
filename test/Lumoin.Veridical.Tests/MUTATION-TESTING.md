@@ -33,7 +33,7 @@ so an ordinary `dotnet build` or `dotnet test` is never affected. The `--concurr
 override above takes precedence over the value in the tracked config — see the
 concurrency caution below for why the first run on a given host should always pass it
 explicitly rather than relying on the tracked default. The output folder is given on
-the command line because Stryker 4.16 rejects an `output` key inside the config file.
+the command line because Stryker 5 rejects an `output` key inside the config file.
 The switched build restores without the package lock file in the test project and in
 the Benchmarks project (which references it), so a Stryker run leaves every tracked
 `packages.lock.json` untouched. Stryker builds the whole solution in place and then
@@ -73,7 +73,7 @@ tests) instead of the whole non-Slow suite. Stryker compiles every mutant of the
 into the assembly under test before the `mutate` list narrows what is tested, so a
 whole-suite coverage run executes the BigInteger reference arithmetic with every mutation
 point instrumented and takes hours; the fourteen classes give the same kill power for the
-kernels in minutes. The filter is a config key: Stryker 4.16 has no command-line option for
+kernels in minutes. The filter is a config key: Stryker 5 has no command-line option for
 it. That config also sets `coverage-analysis` to `off`: with a test set this small, running every
 filtered test against every mutant costs little, and it removes the per-test coverage attribution
 that otherwise decides which tests a mutant sees — attribution that has been observed to drop a
