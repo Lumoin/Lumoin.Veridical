@@ -6,25 +6,27 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Mdoc;
 
 /// <summary>
-/// The REAL device half of the mdoc SIG circuit extracted from a credential's DeviceResponse (coordinator
-/// decision 2026-06-14: the fully-real path). It reads the device public key <c>(dpkx, dpky)</c> from the
+/// The REAL device half of the mdoc SIG circuit extracted from a credential's DeviceResponse: every device
+/// value comes from the credential itself. It reads the device public key <c>(dpkx, dpky)</c> from the
 /// MSO <c>deviceKeyInfo</c> — the very bytes <see cref="MdocHashWitnessState"/> reads — and the device
 /// signature <c>(r2, s2)</c> from <c>documents[0].deviceSigned.deviceAuth.deviceSignature</c> (the
 /// COSE_Sign1 array's 64-byte signature bstr). The device-auth message hash <c>e2</c> (the PUBLIC wire 3,
 /// the reference's <c>ne2 = to_montgomery(compute_transcript_hash)</c> in canonical form) is supplied by the
-/// caller, since the byte-exact transcript-hash CBOR construction is the reference's, captured in the crown
-/// gate's <c>sig_template[3]</c> fixture (reversed from little-endian to canonical big-endian per the spike).
+/// caller because it depends on the session transcript, not on the credential:
+/// <see cref="MdocDeviceAuthentication.ComputeDeviceHash"/> builds it from the transcript and document type,
+/// and the crown gate's <c>sig_template[3]</c> fixture (reversed from little-endian to canonical big-endian)
+/// records the same value.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The spike (2026-06-14) validated this tuple over mdoc-00: our <see cref="EcdsaNonceRecovery"/> recovered
+/// Over mdoc-00 the tuple is a genuine ECDSA verification: our <see cref="EcdsaNonceRecovery"/> recovers
 /// <c>R2 = (e2/s2)G + (r2/s2)Q2</c> with <c>Q2 = (dpkx, dpky)</c> and <c>R.x mod n == r2</c> exactly, and
 /// .NET's <c>ECDsa.VerifyHash</c> (nistP256, <c>e2</c> as the 32-byte big-endian pre-hashed digest, 64-byte
-/// <c>r||s</c>) passed. The SIG circuit's device <c>VerifyWitness3</c> column then terminates at the point at
+/// <c>r||s</c>) passes. The SIG circuit's device <c>VerifyWitness3</c> column then terminates at the point at
 /// infinity, so the real tuple is in-circuit valid.
 /// </para>
 /// <para>
-/// Byte conventions (the spike's gotchas): <c>dpkx</c>/<c>dpky</c> are the RAW big-endian coordinate bytes
+/// Byte conventions: <c>dpkx</c>/<c>dpky</c> are the RAW big-endian coordinate bytes
 /// (the ECDSA integer <c>Q2</c> path uses them un-reversed; <see cref="MdocHashWitnessState"/> reverses them
 /// only to form the little-endian MAC-message bytes, so the common values still match after the shared
 /// convention). <c>r2</c>/<c>s2</c> are the big-endian halves of the 64-byte signature. <c>e2</c> is the
@@ -33,6 +35,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// </remarks>
 internal sealed class MdocDeviceSignature
 {
+    /// <summary>Wraps an already-extracted device tuple; <see cref="Extract"/> is the only caller.</summary>
     private MdocDeviceSignature(BigInteger dpkx, BigInteger dpky, BigInteger e2, BigInteger r2, BigInteger s2)
     {
         DeviceKeyX = dpkx;
@@ -96,7 +99,7 @@ internal sealed class MdocDeviceSignature
 
 
     /// <summary>
-    /// The independent oracle the spike used: recover <c>R2 = (e2/s2)G + (r2/s2)Q2</c> and check
+    /// An independent check for a genuine ECDSA verification: recover <c>R2 = (e2/s2)G + (r2/s2)Q2</c> and check
     /// <c>R2.x mod n == r2</c> — the property the device <c>VerifyWitness3</c> column relies on. A fast sanity
     /// gate that the extracted tuple is a genuine nonce point before the full prove.
     /// </summary>
@@ -108,6 +111,7 @@ internal sealed class MdocDeviceSignature
     }
 
 
+    /// <summary>Looks up <paramref name="key"/> in <paramref name="map"/>, throwing when the map carries no such entry.</summary>
     private static MdocCborItem RequireLookup(MdocCborItem map, string key)
     {
         if(!map.TryLookup(key, out _, out MdocCborItem value))

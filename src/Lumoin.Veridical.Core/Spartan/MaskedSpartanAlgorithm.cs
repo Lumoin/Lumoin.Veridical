@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 
 /// <summary>
 /// Internal algorithmic helpers for the statistical-mask ZK construction
-/// implemented by <c>MaskedSpartanProver</c> (SM.7b): the masked outer and
+/// implemented by <c>MaskedSpartanProver</c>: the masked outer and
 /// inner sumcheck drivers with the sum-of-univariates kernel mask
 /// (<see cref="MonomialBasisMask"/>) blended closed-form into each round's
 /// coefficients.
@@ -20,11 +20,12 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// <para>
 /// The construction is the Libra sum-of-univariates mask (Xie et al,
 /// CRYPTO 2019, §4.1; lineage Chiesa, Forbes, Spooner 2017, IACR ePrint
-/// 2017/305) with the v3 filler-laundered weighted-opening binding of
-/// the statistical-mask design notes. The mask's univariates match the
-/// masked round degree (3 for the outer sumcheck, 2 for the inner), so every
-/// revealed round coefficient — including the top one a multilinear mask
-/// left bare — is uniform given the mask's degrees of freedom.
+/// 2017/305) with a filler term laundered into the weighted-opening binding
+/// so the opening reveals no more than the sum it certifies. The mask's
+/// univariates match the masked round degree (3 for the outer sumcheck, 2
+/// for the inner), so every revealed round coefficient — including the top
+/// one a multilinear mask left bare — is uniform given the mask's degrees
+/// of freedom.
 /// </para>
 /// <para>
 /// <b>Variable-order convention.</b> The kernel binds variables high-first
@@ -50,13 +51,25 @@ internal static class MaskedSpartanAlgorithm
     /// </summary>
     internal sealed class OuterResult: IDisposable
     {
+        /// <summary>The masked outer sumcheck's per-round compressed messages, in round order.</summary>
         public IReadOnlyList<SumcheckRound> Rounds { get; }
+
+        /// <summary>The outer sumcheck's challenge vector <c>r_x</c>, one per round, in round order.</summary>
         public IReadOnlyList<Scalar> Challenges { get; }
+
+        /// <summary>The base <c>Az</c> MLE folded down to its terminal evaluation at <c>r_x</c>.</summary>
         public Scalar TerminatingAz { get; }
+
+        /// <summary>The base <c>Bz</c> MLE folded down to its terminal evaluation at <c>r_x</c>.</summary>
         public Scalar TerminatingBz { get; }
+
+        /// <summary>The base <c>Cz</c> MLE folded down to its terminal evaluation at <c>r_x</c>.</summary>
         public Scalar TerminatingCz { get; }
+
+        /// <summary>The error MLE <c>E</c> folded down to its terminal evaluation at <c>r_x</c>.</summary>
         public Scalar TerminatingE { get; }
 
+        /// <summary>Wraps the already-computed rounds, challenges and terminating evaluations a masked outer sumcheck run produced.</summary>
         internal OuterResult(
             IReadOnlyList<SumcheckRound> rounds,
             IReadOnlyList<Scalar> challenges,
@@ -73,6 +86,7 @@ internal static class MaskedSpartanAlgorithm
             TerminatingE = terminatingE;
         }
 
+        /// <summary>Disposes every round, challenge and terminating evaluation this result owns.</summary>
         public void Dispose()
         {
             foreach(SumcheckRound r in Rounds)
@@ -100,11 +114,19 @@ internal static class MaskedSpartanAlgorithm
     /// </summary>
     internal sealed class InnerResult: IDisposable
     {
+        /// <summary>The masked inner sumcheck's per-round compressed messages, in round order.</summary>
         public IReadOnlyList<SumcheckRound> Rounds { get; }
+
+        /// <summary>The inner sumcheck's challenge vector <c>r_y</c>, one per round, in round order.</summary>
         public IReadOnlyList<Scalar> Challenges { get; }
+
+        /// <summary>The batched <c>ABC</c> slice MLE folded down to its terminal evaluation at <c>r_y</c>.</summary>
         public Scalar TerminatingAbc { get; }
+
+        /// <summary>The <c>z</c> assignment MLE folded down to its terminal evaluation at <c>r_y</c>.</summary>
         public Scalar TerminatingZ { get; }
 
+        /// <summary>Wraps the already-computed rounds, challenges and terminating evaluations a masked inner sumcheck run produced.</summary>
         internal InnerResult(
             IReadOnlyList<SumcheckRound> rounds,
             IReadOnlyList<Scalar> challenges,
@@ -117,6 +139,7 @@ internal static class MaskedSpartanAlgorithm
             TerminatingZ = terminatingZ;
         }
 
+        /// <summary>Disposes every round, challenge and terminating evaluation this result owns.</summary>
         public void Dispose()
         {
             foreach(SumcheckRound r in Rounds)
@@ -428,7 +451,7 @@ internal static class MaskedSpartanAlgorithm
     /// <summary>
     /// Builds the weighted opening's public weight vector
     /// <c>w⁺ = (basis monomials at the kernel point ‖ 1…1 on the filler)</c>
-    /// over the mask vector's <c>2^ℓ₂</c> coordinates (design v3): the basis
+    /// over the mask vector's <c>2^ℓ₂</c> coordinates: the basis
     /// weights bind the mask's terminal evaluation, the all-ones filler
     /// weights add the precommitted <c>σ_F</c> to the claim and launder the
     /// opening's reveals. Shared between the prover and the verifier so the

@@ -17,17 +17,18 @@ using System.Collections.Generic;
 namespace Lumoin.Veridical.Tests.Analysis;
 
 /// <summary>
-/// The programmable-Fiat-Shamir-oracle simulator gates for hiding WHIR (4.2
-/// phase C3), the ZK-BaseFold mold applied to HVZK-WHIR.
+/// The programmable-Fiat-Shamir-oracle simulator gates for hiding WHIR: the
+/// ZK-BaseFold mold applied to HVZK-WHIR.
 /// <see cref="ZkWhirOpeningSimulator"/> produces, from the public statement
 /// alone, a commitment and opening that a verifier holding the programmed
 /// oracle accepts; the structural gates assert the acceptance and that the
 /// programming is doing real work (the same output is rejected under the
 /// real oracle, where the patched batch-0 mask total breaks every
 /// post-divergence challenge derivation). The two-sample experiment then
-/// compares real and simulated proof bytes; per the established doctrine its
-/// verdicts are logged, not asserted — a Detected or NotDetected finding is
-/// an honest outcome at test-suite sample scales.
+/// compares real and simulated proof bytes; its verdicts are logged, not
+/// asserted, because a Detected or NotDetected finding is a legitimate
+/// outcome of the statistical test at test-suite sample scales, not
+/// evidence of a defect.
 /// </summary>
 [TestClass]
 internal sealed class ZkWhirSimulatorTests
@@ -98,6 +99,7 @@ internal sealed class ZkWhirSimulatorTests
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Pins that a witness-free simulated opening — produced from the public statement alone — verifies under the programmed oracle, whose replay squeeze sequence matches the simulator's recorded sequence one-to-one.</summary>
     [TestMethod]
     public void SimulatedOpeningVerifiesUnderTheProgrammedOracle()
     {
@@ -136,6 +138,7 @@ internal sealed class ZkWhirSimulatorTests
     }
 
 
+    /// <summary>Pins that the same simulated opening is rejected under the real, unprogrammed oracle, because the patched mask total diverges the transcript at the post-divergence challenges — confirming the simulation is a random-oracle-model capability, not a forgery.</summary>
     [TestMethod]
     public void SimulatedOpeningIsRejectedByTheRealOracle()
     {
@@ -171,6 +174,7 @@ internal sealed class ZkWhirSimulatorTests
     }
 
 
+    /// <summary>Runs the two-sample comparison of real and simulated proof bytes — mean proof byte per opening under Kolmogorov-Smirnov, and per-proof byte histograms under a label-permutation chi-squared test — and asserts only that both tests produce well-formed p-values, since a Detected or NotDetected verdict is itself a legitimate outcome at test-suite sample scales.</summary>
     [TestMethod]
     public void RealAndSimulatedOpeningsCompareInTwoSampleTests()
     {

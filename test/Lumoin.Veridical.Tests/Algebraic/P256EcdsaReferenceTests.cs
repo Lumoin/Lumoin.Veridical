@@ -12,23 +12,28 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// independent oracle, in both directions: a signature .NET produces must
 /// verify here, and a signature produced here must verify in .NET. Round-trip
 /// and rejection cases pin the in-range checks and the tamper response. This
-/// is the cleartext spec the in-circuit proof (LF.5) is gated against.
+/// is the cleartext spec the in-circuit proof is gated against.
 /// </summary>
 [TestClass]
 internal sealed class P256EcdsaReferenceTests
 {
+    /// <summary>The byte width of one P-256 scalar or coordinate.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The byte width of a SEC1-compressed P-256 public key: a one-byte parity tag plus the x-coordinate.</summary>
     private const int CompressedSize = 33;
+
+    /// <summary>The curve parameter set selecting the P-256 instantiation throughout this class.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
-    //A fixed valid nonce in [1, n−1] (well below n); ECDSA security forbids
-    //nonce reuse across distinct messages with the same key in production, but
-    //a fixed nonce is fine for gating the arithmetic against the oracle.
+    /// <summary>A fixed valid nonce in [1, n−1] (well below n); ECDSA security forbids nonce reuse across distinct messages with the same key in production, but a fixed nonce is fine for gating the arithmetic against the oracle.</summary>
     private const string NonceHex = "1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00";
 
+    /// <summary>The fixed message these gates sign and verify.</summary>
     private static ReadOnlySpan<byte> Message => "The age threshold predicate over an mdoc credential."u8;
 
 
+    /// <summary>Verifies that a signature .NET produces over P-256 verifies in the reference, and that flipping one bit of r makes the reference reject it.</summary>
     [TestMethod]
     public void VerifiesADotNetProducedSignature()
     {
@@ -56,6 +61,7 @@ internal sealed class P256EcdsaReferenceTests
     }
 
 
+    /// <summary>Verifies that a deterministic signature the reference produces over P-256 verifies in .NET.</summary>
     [TestMethod]
     public void ReferenceSignatureVerifiesInDotNet()
     {
@@ -84,6 +90,7 @@ internal sealed class P256EcdsaReferenceTests
     }
 
 
+    /// <summary>Verifies that the reference signs a message and then verifies its own signature over the same key and digest.</summary>
     [TestMethod]
     public void SignAndVerifyRoundTrip()
     {
@@ -108,6 +115,7 @@ internal sealed class P256EcdsaReferenceTests
     }
 
 
+    /// <summary>Verifies that the reference rejects signature components outside [1, n-1]: r = 0, s = 0, and r = n (the curve order).</summary>
     [TestMethod]
     public void RejectsOutOfRangeComponents()
     {
@@ -131,6 +139,7 @@ internal sealed class P256EcdsaReferenceTests
     }
 
 
+    /// <summary>Exports a .NET ECDSA key's public point as a SEC1-compressed P-256 point: a parity tag byte followed by the big-endian x-coordinate.</summary>
     private static void ExportPublicKeyCompressed(ECDsa ecdsa, Span<byte> destination)
     {
         ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
@@ -145,6 +154,7 @@ internal sealed class P256EcdsaReferenceTests
     }
 
 
+    /// <summary>Copies a .NET big-endian coordinate byte array into a fixed-width destination, zero-padding the leading bytes; throws if the source is <see langword="null"/>.</summary>
     private static void LeftPad(byte[]? source, Span<byte> destination)
     {
         destination.Clear();

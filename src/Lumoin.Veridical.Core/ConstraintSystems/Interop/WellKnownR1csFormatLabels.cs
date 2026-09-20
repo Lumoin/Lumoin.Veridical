@@ -27,9 +27,8 @@ public readonly record struct WellKnownR1csFormatLabel(string Identifier)
         new("circom-r1cs-v1");
 
     /// <summary>
-    /// The iden3 Circom <c>.wtns</c> witness binary format version 2,
-    /// as emitted by <c>snarkjs</c> and the <c>circom</c>-generated
-    /// WebAssembly witness generator.
+    /// The Circom <c>.wtns</c> witness binary format version 2, emitted
+    /// by a compiled circuit's WebAssembly witness generator.
     /// </summary>
     public static WellKnownR1csFormatLabel CircomWitness { get; } =
         new("circom-wtns-v2");

@@ -30,6 +30,9 @@ internal delegate void FuzzTargetInvoke(ReadOnlySpan<byte> input);
 /// marks a target that is contractually total (a <c>TryRead</c>/predicate shape) and must
 /// never throw at all.
 /// </summary>
+/// <param name="Name">The target's short identifying label, used in test names and failure messages.</param>
+/// <param name="Invoke">The wrapper that feeds a byte span into the decoder's real entry point.</param>
+/// <param name="ExpectedRejections">The exception types that count as a graceful, documented rejection; empty for a target that must never throw.</param>
 internal sealed record FuzzTarget(string Name, FuzzTargetInvoke Invoke, Type[] ExpectedRejections);
 
 /// <summary>
@@ -40,19 +43,21 @@ internal sealed record FuzzTarget(string Name, FuzzTargetInvoke Invoke, Type[] E
 /// </summary>
 internal static class DecoderFuzzTargets
 {
-    //Spartan's outer sumcheck round polynomial degree; any degree >= 2 exercises the same
-    //FromCompressedBytes parse path, so the smallest realistic value keeps the fixed-length
-    //edge-case inputs small.
+    /// <summary>Spartan's outer sumcheck round polynomial degree; any degree at least 2 exercises the same <c>FromCompressedBytes</c> parse path, so the smallest realistic value keeps the fixed-length edge-case inputs small.</summary>
     private const int RoundPolynomialDegree = 3;
 
-    //Reference implementation's FieldID for GF(2^128), the field the small anchor circuit in
-    //LongfellowCircuitReaderTests is serialized over.
+    /// <summary>The reference implementation's field id for GF(2^128), the field the small anchor circuit in <c>LongfellowCircuitReaderTests</c> is serialized over.</summary>
     private const int LongfellowFieldId = 4;
+    /// <summary>The on-wire element width, in bytes, of a GF(2^128) element.</summary>
     private const int LongfellowElementBytes = 16;
 
+    /// <summary>The BLS12-381 G1 on-curve predicate under fuzz.</summary>
     private static G1IsOnCurveDelegate BlsG1OnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    /// <summary>The BLS12-381 G2 on-curve predicate under fuzz.</summary>
     private static G2IsOnCurveDelegate BlsG2OnCurve { get; } = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
+    /// <summary>The BN254 G1 on-curve predicate under fuzz.</summary>
     private static G1IsOnCurveDelegate Bn254G1OnCurve { get; } = Bn254BigIntegerG1Reference.GetIsOnCurve();
+    /// <summary>The BN254 G2 on-curve predicate under fuzz.</summary>
     private static G2IsOnCurveDelegate Bn254G2OnCurve { get; } = Bn254BigIntegerG2Reference.GetIsOnCurve();
 
 
@@ -131,6 +136,7 @@ internal static class DecoderFuzzTargets
     ];
 
 
+    /// <summary>Exercises the Circom R1CS decoder with arbitrary fuzz input.</summary>
     private static void InvokeCircomR1cs(ReadOnlySpan<byte> input)
     {
         PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(input.ToArray()));
@@ -139,10 +145,12 @@ internal static class DecoderFuzzTargets
             WellKnownR1csFormatLabel.CircomBinary,
             CurveParameterSet.Bls12Curve381,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 
 
+    /// <summary>Exercises the Circom witness decoder with arbitrary fuzz input.</summary>
     private static void InvokeCircomWitness(ReadOnlySpan<byte> input)
     {
         PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(input.ToArray()));
@@ -151,19 +159,22 @@ internal static class DecoderFuzzTargets
             WellKnownR1csFormatLabel.CircomWitness,
             CurveParameterSet.Bls12Curve381,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 
 
+    /// <summary>Exercises the built-in decoder with arbitrary fuzz input and an explicit staging pool.</summary>
     private static void InvokeZkInterfaceDecoder(ReadOnlySpan<byte> input)
     {
         ZkInterfaceCursorDecoder.Decoder(
             new ReadOnlySequence<byte>(input.ToArray()),
-            new NoOpZkInterfaceMessageSink(),
+            new NoOpZkInterfaceMessageSink(), BaseMemoryPool.Shared,
             CancellationToken.None);
     }
 
 
+    /// <summary>Exercises the ZkInterface R1CS decoder with arbitrary fuzz input.</summary>
     private static void InvokeZkInterfaceR1cs(ReadOnlySpan<byte> input)
     {
         PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(input.ToArray()));
@@ -172,10 +183,12 @@ internal static class DecoderFuzzTargets
             WellKnownR1csFormatLabel.ZkInterface,
             CurveParameterSet.Bls12Curve381,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 
 
+    /// <summary>Exercises the ZkInterface witness decoder with arbitrary fuzz input.</summary>
     private static void InvokeZkInterfaceWitness(ReadOnlySpan<byte> input)
     {
         PipeReader pipe = PipeReader.Create(new ReadOnlySequence<byte>(input.ToArray()));
@@ -184,13 +197,16 @@ internal static class DecoderFuzzTargets
             WellKnownR1csFormatLabel.ZkInterface,
             CurveParameterSet.Bls12Curve381,
             BaseMemoryPool.Shared,
+            WellKnownR1csIntakeLimits.Unbounded,
             CancellationToken.None);
     }
 
 
+    /// <summary>Exercises circuit parsing and releases successful output within an independent pool lifetime.</summary>
     private static void InvokeLongfellowCircuit(ReadOnlySpan<byte> input)
     {
-        LongfellowCircuitReader.TryRead(
+        using var circuitScope = new LongfellowCircuitTestScope();
+        circuitScope.TryRead(
             input,
             LongfellowFieldId,
             LongfellowElementBytes,
@@ -201,6 +217,7 @@ internal static class DecoderFuzzTargets
     }
 
 
+    /// <summary>Exercises the compressed sumcheck round-polynomial decoder with arbitrary fuzz input.</summary>
     private static void InvokeCompressedRoundPolynomial(ReadOnlySpan<byte> input)
     {
         using CompressedRoundPolynomial polynomial = CompressedRoundPolynomial.FromCompressedBytes(
@@ -211,6 +228,7 @@ internal static class DecoderFuzzTargets
     }
 
 
+    /// <summary>Exercises the raw R1CS witness decoder with arbitrary fuzz input.</summary>
     private static void InvokeRawR1csWitness(ReadOnlySpan<byte> input)
     {
         using RawR1csWitness witness = RawR1csWitness.FromCanonical(
@@ -220,6 +238,7 @@ internal static class DecoderFuzzTargets
     }
 
 
+    /// <summary>Exercises the BBS commitment-with-proof decoder with arbitrary fuzz input.</summary>
     private static void InvokeBbsCommitmentWithProof(ReadOnlySpan<byte> input)
     {
         using BbsCommitmentWithProof commitment = BbsCommitmentWithProof.FromCanonical(
@@ -229,6 +248,7 @@ internal static class DecoderFuzzTargets
     }
 
 
+    /// <summary>Exercises the BBS blind-proof decoder with arbitrary fuzz input.</summary>
     private static void InvokeBbsBlindProof(ReadOnlySpan<byte> input)
     {
         using BbsBlindProof proof = BbsBlindProof.FromCanonical(
@@ -238,9 +258,7 @@ internal static class DecoderFuzzTargets
     }
 
 
-    //All methods default to no-ops on IZkInterfaceMessageSink, so this sink implementation is
-    //intentionally empty: it drives the decoder's framing/union-classification logic without
-    //accumulating any decoded state.
+    /// <summary>All methods default to no-ops on <see cref="IZkInterfaceMessageSink"/>, so this sink implementation is intentionally empty: it drives the decoder's framing/union-classification logic without accumulating any decoded state.</summary>
     private sealed class NoOpZkInterfaceMessageSink: IZkInterfaceMessageSink
     {
     }

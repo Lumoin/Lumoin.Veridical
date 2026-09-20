@@ -16,6 +16,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class HyraxCommitmentExtensions
 {
+    /// <summary>Commit-side members added to every <see cref="HyraxCommitmentKey"/> instance for committing a multilinear extension.</summary>
     extension(HyraxCommitmentKey key)
     {
         /// <summary>
@@ -24,7 +25,7 @@ public static class HyraxCommitmentExtensions
         /// per-row blinding factors, kept by the prover for the future
         /// open call).
         /// </summary>
-        /// <param name="mle">The MLE to commit to. Must be over BLS12-381.</param>
+        /// <param name="mle">The MLE to commit to. Must be over the key's curve (BLS12-381 or BN254).</param>
         /// <param name="random">The scalar-random backend for sampling blinding factors.</param>
         /// <param name="msm">The G1 MSM backend.</param>
         /// <param name="pool">The pool to rent the buffers from.</param>

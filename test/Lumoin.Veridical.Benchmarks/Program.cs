@@ -5,30 +5,25 @@ using System.Globalization;
 
 namespace Lumoin.Veridical.Benchmarks;
 
+/// <summary>
+/// Entry point for the benchmark suite and its standalone diagnostic drivers.
+/// </summary>
 internal static class Program
 {
     /// <summary>
-    /// Runs benchmarks via BenchmarkDotNet's
-    /// <see cref="BenchmarkSwitcher"/>, which discovers every
-    /// public type with at least one <c>[Benchmark]</c> method in
-    /// the executing assembly. The <c>--blake3-hotloop &lt;iterations&gt;</c>
-    /// argument switches to a tight Blake3.Hash loop suitable for
-    /// attaching <c>dotnet-trace</c> to identify SIMD hot spots.
+    /// Runs the benchmark suite via <see cref="BenchmarkSwitcher"/>, which
+    /// discovers every public type with at least one <c>[Benchmark]</c>
+    /// method in the executing assembly. The <c>--blake3-hotloop
+    /// &lt;iterations&gt;</c> argument instead runs a tight
+    /// <see cref="Lumoin.Veridical.Hashing.Blake3.Hash"/> loop, long and
+    /// steady enough for an external CPU sampler to attribute time
+    /// within it.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Common invocations: <c>dotnet run -c Release</c> launches
-    /// an interactive selector; <c>dotnet run -c Release -- --filter "*"</c>
-    /// runs everything; <c>dotnet run -c Release -- --filter "*MsmBenchmark*"</c>
-    /// runs one benchmark class.
-    /// </para>
-    /// <para>
-    /// Profile capture: <c>dotnet-trace collect --profile cpu-sampling
-    /// --format speedscope -o blake3-profile.speedscope.json
-    /// -- dotnet run -c Release --no-build --project ... --
-    /// --blake3-hotloop 2000</c> launches the hot-loop driver and
-    /// attaches a CPU sampler from start.
-    /// </para>
+    /// <c>dotnet run -c Release</c> launches an interactive selector;
+    /// <c>dotnet run -c Release -- --filter "*"</c> runs everything;
+    /// <c>dotnet run -c Release -- --filter "*MsmBenchmark*"</c> runs
+    /// one benchmark class.
     /// </remarks>
     public static void Main(string[] args)
     {
@@ -65,12 +60,6 @@ internal static class Program
             return;
         }
 
-        if(args.Length >= 2 && args[0] == "--mdoc-reverse-dump")
-        {
-            Lumoin.Veridical.Benchmarks.Commitments.Longfellow.MdocReverseDumpDriver.Run(args[1]);
-            return;
-        }
-
         if(args.Length >= 1 && args[0] == "--isa-probe")
         {
             Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
@@ -104,8 +93,9 @@ internal static class Program
 
     /// <summary>
     /// Tight loop that hashes a 1 MiB buffer through
-    /// <see cref="Lumoin.Veridical.Hashing.Blake3.Hash"/> repeatedly.
-    /// Designed as a stable target for <c>dotnet-trace</c> CPU sampling.
+    /// <see cref="Lumoin.Veridical.Hashing.Blake3.Hash"/> repeatedly,
+    /// long and steady enough to serve as a stable target for external
+    /// CPU sampling.
     /// </summary>
     private static void RunBlake3HotLoop(int iterations)
     {

@@ -22,35 +22,53 @@ namespace Lumoin.Veridical.Tests.Longfellow;
 /// for the P-256 signature circuit.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowCircuitConstantRangeTests
+internal sealed class LongfellowCircuitConstantRangeTests: IDisposable
 {
-    //Relative path from the test binary output directory to the gzipped circuit
-    //definition, matching the convention in LongfellowMdocFacadeTests.
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
+    /// <summary>The relative path from the test binary output directory to the gzipped circuit definition, matching the convention in LongfellowMdocFacadeTests.</summary>
     private const string RawGzipRelativePath = "../../../TestMaterial/Longfellow/mdoc-circuit-raw.gz";
 
-    //The Longfellow circuit serialisation format (BytesPerSizeT = 3):
-    //  1 version byte
-    //  8 header fields × BytesPerSizeT bytes each
-    //= 1 + 8 × 3 = 25 bytes before the first constant entry.
-    //
-    //The eight header fields, in wire order:
-    //  fieldId, nv, nc, npub_in, subfieldBoundary, ninputs, nl, numconst
+    /// <summary>The number of bytes the Longfellow circuit wire format spends on its leading version byte.</summary>
     private const int LfFormatVersionBytes = 1;
+
+    /// <summary>The number of header fields the Longfellow circuit wire format carries, in wire order: fieldId, nv, nc, npub_in, subfieldBoundary, ninputs, nl, numconst.</summary>
     private const int LfHeaderFieldCount = 8;
-    private const int LfBytesPerSizeT = LongfellowCircuitReader.BytesPerSizeT; //= 3
 
-    //Byte offset where the constant table begins (immediately after the header).
+    /// <summary>The byte width of one Longfellow circuit header field on the wire (3 bytes).</summary>
+    private const int LfBytesPerSizeT = LongfellowCircuitReader.BytesPerSizeT;
+
+    /// <summary>The byte offset where the constant table begins on the wire: immediately after the header (1 + 8×3 = 25 bytes).</summary>
     private const int LfConstantTableOffset =
-        LfFormatVersionBytes + LfHeaderFieldCount * LfBytesPerSizeT; //= 25
+        LfFormatVersionBytes + LfHeaderFieldCount * LfBytesPerSizeT;
 
-    //The P-256 base field prime:
-    //p = ffffffff 00000001 00000000 00000000 00000000 ffffffff ffffffff ffffffff
-    //Leading "0" keeps the 0xff high byte from being parsed as negative.
+    /// <summary>
+    /// The P-256 base field prime <c>p = ffffffff 00000001 00000000 00000000 00000000 ffffffff
+    /// ffffffff ffffffff</c>, parsed with a leading zero digit so the 0xff high byte is not read
+    /// as a negative sign by <see cref="NumberStyles.HexNumber"/> parsing.
+    /// </summary>
     private static BigInteger Fp256Prime { get; } = BigInteger.Parse(
         "0ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
         NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 
 
+    /// <summary>Verifies that the unmutated real P-256 signature circuit parses successfully when the Fp256 range guard is supplied, since all of its constant-table entries already lie below the base field prime.</summary>
     [TestMethod]
     public void RealSignatureCircuitParsesSuccessfullyWithRangeGuard()
     {
@@ -59,7 +77,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
         //are below the P-256 base field prime by construction.
         byte[] rawBytes = LoadCircuitBytesOrSkip();
 
-        bool ok = LongfellowCircuitReader.TryRead(
+        bool ok = CircuitScope.TryRead(
             rawBytes,
             LongfellowMdocBundles.Point256FieldId,
             LongfellowMdocBundles.Point256ElementBytes,
@@ -72,6 +90,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     }
 
 
+    /// <summary>Verifies that overwriting the first constant-table entry with the P-256 base field prime p makes the reader reject the circuit when the Fp256 range guard is supplied, since p is not strictly below p.</summary>
     [TestMethod]
     public void ConstantAtBaseFieldPrimeIsRejectedByRangeGuard()
     {
@@ -82,7 +101,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
         byte[] mutated = LoadCircuitBytesOrSkip();
         WriteFirstConstantAsPrimeLittleEndian(mutated);
 
-        bool parsed = LongfellowCircuitReader.TryRead(
+        bool parsed = CircuitScope.TryRead(
             mutated,
             LongfellowMdocBundles.Point256FieldId,
             LongfellowMdocBundles.Point256ElementBytes,
@@ -96,6 +115,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     }
 
 
+    /// <summary>Verifies that the same constant-table mutation (first constant set to p) is accepted when no range guard is supplied, confirming the guard is opt-in at the reader layer rather than always enforced.</summary>
     [TestMethod]
     public void ConstantAtBaseFieldPrimePassesWithoutRangeGuard()
     {
@@ -108,7 +128,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
         WriteFirstConstantAsPrimeLittleEndian(mutated);
 
         //No range delegate — the default null argument.
-        bool parsed = LongfellowCircuitReader.TryRead(
+        bool parsed = CircuitScope.TryRead(
             mutated,
             LongfellowMdocBundles.Point256FieldId,
             LongfellowMdocBundles.Point256ElementBytes,
@@ -121,6 +141,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     }
 
 
+    /// <summary>Verifies that the mdoc facade's verify path wires the Fp256 range guard into circuit parsing: a signature circuit whose first constant equals the base field prime fails to parse and surfaces as an <see cref="ArgumentException"/> naming the signature circuit.</summary>
     [TestMethod]
     public void FacadeVerifyRejectsACircuitConstantAtTheBaseFieldPrime()
     {
@@ -157,6 +178,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     }
 
 
+    /// <summary>Overwrites the circuit's first constant-table entry, in place, with the P-256 base field prime p encoded little-endian on the wire.</summary>
     private static void WriteFirstConstantAsPrimeLittleEndian(byte[] circuit)
     {
         //p occupies the full 32-byte element width (its top byte is 0xff), so
@@ -174,6 +196,7 @@ internal sealed class LongfellowCircuitConstantRangeTests
     }
 
 
+    /// <summary>Loads and decompresses the real signature circuit fixture, marking the test inconclusive rather than failing when the fixture file is not present.</summary>
     private static byte[] LoadCircuitBytesOrSkip()
     {
         if(!File.Exists(RawGzipRelativePath))

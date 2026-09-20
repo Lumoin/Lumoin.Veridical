@@ -16,8 +16,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// element for element with the independently written BigInteger reference filler.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowEcdsaVerifyCircuitTests
+internal sealed class LongfellowEcdsaVerifyCircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve, witness and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The field element width in bytes used for every column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -27,8 +43,11 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
     /// <summary>The P-256 base field's modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The cached Curve owner for this test instance.</summary>
+    private LongfellowEllipticCurveParameters? curve;
+
     /// <summary>The curve constants shared by the circuit and the witness generator.</summary>
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
+    private LongfellowEllipticCurveParameters Curve => curve ??= CircuitScope.Track(LongfellowEllipticCurveParameters.CreateP256(CircuitScope.Pool));
 
     /// <summary>The order-field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate OrderMultiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
@@ -46,10 +65,10 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
     {
         foreach(LongfellowEcdsaTestVectors.SignatureTuple tuple in LongfellowEcdsaTestVectors.Accepting)
         {
-            RunVector(tuple, out bool computed, out LongfellowEvaluationLogicBackend backend);
+            RunVector(tuple, out bool computed, out bool assertionFailed);
 
             Assert.IsTrue(computed, "The accepting vector's witness walk must terminate at the identity.");
-            Assert.IsFalse(backend.AssertionFailed, "The accepting vector must satisfy every circuit assertion.");
+            Assert.IsFalse(assertionFailed, "The accepting vector must satisfy every circuit assertion.");
         }
     }
 
@@ -60,9 +79,9 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
     {
         foreach(LongfellowEcdsaTestVectors.SignatureTuple tuple in LongfellowEcdsaTestVectors.Rejecting)
         {
-            RunVector(tuple, out _, out LongfellowEvaluationLogicBackend backend);
+            RunVector(tuple, out _, out bool assertionFailed);
 
-            Assert.IsTrue(backend.AssertionFailed, "The rejecting vector must trip a circuit assertion.");
+            Assert.IsTrue(assertionFailed, "The rejecting vector must trip a circuit assertion.");
         }
     }
 
@@ -74,7 +93,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
         LongfellowLogicFieldOperations field = NewFp256Bundle();
         foreach(LongfellowEcdsaTestVectors.SignatureTuple tuple in LongfellowEcdsaTestVectors.Accepting)
         {
-            var generator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+            var generator = CircuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
             byte[] pkX = ParseScalar(tuple.PkX);
             byte[] pkY = ParseScalar(tuple.PkY);
             byte[] e = ParseScalar(tuple.E);
@@ -104,12 +123,12 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
     /// </summary>
     /// <param name="tuple">The signature vector.</param>
     /// <param name="computed">Receives the witness walk's verdict.</param>
-    /// <param name="backend">Receives the backend for latch inspection.</param>
-    private static void RunVector(LongfellowEcdsaTestVectors.SignatureTuple tuple, out bool computed, out LongfellowEvaluationLogicBackend backend)
+    /// <param name="assertionFailed">Receives the assertion latch before the helper disposes its backend.</param>
+    private void RunVector(LongfellowEcdsaTestVectors.SignatureTuple tuple, out bool computed, out bool assertionFailed)
     {
         LongfellowLogicFieldOperations field = NewFp256Bundle();
-        backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
 
         byte[] pkX = ParseScalar(tuple.PkX);
         byte[] pkY = ParseScalar(tuple.PkY);
@@ -117,7 +136,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
         byte[] r = ParseScalar(tuple.R);
         byte[] s = ParseScalar(tuple.S);
 
-        var generator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var generator = CircuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         computed = generator.ComputeWitness(pkX, pkY, e, r, s);
 
         byte[] column = new byte[generator.ElementCount * ScalarSize];
@@ -126,6 +145,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
         LongfellowEcdsaVerifyWitnessWires wires = InternColumn(backend, column);
         var circuit = new LongfellowEcdsaVerifyCircuit(logic, Curve);
         circuit.VerifySignature3(backend.Constant(pkX), backend.Constant(pkY), backend.Constant(e), wires);
+        assertionFailed = backend.AssertionFailed;
     }
 
 
@@ -141,6 +161,7 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
     private static LongfellowEcdsaVerifyWitnessWires InternColumn(LongfellowEvaluationLogicBackend backend, byte[] column)
     {
         int cursor = 0;
+        //Interns the column's next element as an evaluation constant and advances the cursor.
         int Next()
         {
             int wire = backend.Constant(column.AsSpan(cursor * ScalarSize, ScalarSize));
@@ -182,14 +203,14 @@ internal sealed class LongfellowEcdsaVerifyCircuitTests
 
     /// <summary>Builds the P-256 base field bundle over the BigInteger reference delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFp256Bundle()
+    private LongfellowLogicFieldOperations NewFp256Bundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp256(
+        return CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
             P256BaseFieldReference.GetAdd(),
             P256BaseFieldReference.GetSubtract(),
             P256BaseFieldReference.GetMultiply(),
             P256BaseFieldReference.GetInvert(),
-            Canonical(Prime - 1));
+            Canonical(Prime - 1), CircuitScope.Pool));
     }
 
 

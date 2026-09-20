@@ -7,7 +7,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <summary>
 /// The C# port of <c>VerifyWitness3::compute_witness</c> +
 /// <c>VerifyWitness3::fill_witness</c>
-/// (<c>tempdocs/longfellow-zk-reference/lib/circuits/ecdsa/verify_witness.h</c>)
+/// (<c>lib/circuits/ecdsa/verify_witness.h</c>)
 /// for the P-256/SHA-256 ECDSA verification circuit: given one public signature
 /// triple <c>(pkX, pkY, e, r, s)</c> it lays out the 1034-element dense witness
 /// column the circuit's nonce-recovery assertion reads, in the exact
@@ -36,13 +36,16 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </remarks>
 internal static class EcdsaSignatureWitness
 {
-    //EC::kBits for P-256: the scalar-multiply loop runs over the 256-bit window MSB-first (verify_witness.h:38, 147).
+    /// <summary>EC::kBits for P-256: the scalar-multiply loop runs over the 256-bit window MSB-first (verify_witness.h:38, 147).</summary>
     private const int Bits = 256;
 
-    //The fixed element count fill_witness emits: rx,ry,rx_inv,s_inv,pk_inv (5) + pre_[0..7] (8) +
-    //per i=0..255 bi_[i] (256) + per i=0..254 int_x/int_y/int_z (3·255 = 765). Total 5+8+256+765 = 1034.
+    /// <summary>
+    /// The fixed element count fill_witness emits: rx,ry,rx_inv,s_inv,pk_inv (5) + pre_[0..7] (8) +
+    /// per i=0..255 bi_[i] (256) + per i=0..254 int_x/int_y/int_z (3·255 = 765). Total 5+8+256+765 = 1034.
+    /// </summary>
     public const int ElementCount = 5 + 8 + Bits + (3 * (Bits - 1));
 
+    /// <summary>The P-256 base field's prime modulus.</summary>
     private static BigInteger Prime { get; } = EcdsaNonceRecovery.P;
 
 
@@ -176,17 +179,31 @@ internal static class EcdsaSignatureWitness
     }
 
 
-    //Manually compute the standard symmetric residue mod p (the result of of_scalar over Fp), keeping
-    //negative inputs in [0, p). The value of_scalar(2b)−of_scalar(7) is the integer (2b−7) reduced mod p.
+    /// <summary>
+    /// Computes the standard symmetric residue mod <c>p</c> (the result of <c>of_scalar</c> over Fp),
+    /// keeping negative inputs in <c>[0, p)</c>. The value <c>of_scalar(2b)−of_scalar(7)</c> is the
+    /// integer <c>(2b−7)</c> reduced mod <c>p</c>.
+    /// </summary>
+    /// <param name="value">The integer to reduce.</param>
+    /// <returns>The reduced, non-negative value.</returns>
     private static BigInteger ModP(BigInteger value) => ((value % Prime) + Prime) % Prime;
 
+    /// <summary>Computes the modular inverse of <paramref name="value"/> mod <c>p</c> via Fermat's little theorem.</summary>
+    /// <param name="value">The value to invert; reduced mod <c>p</c> first.</param>
+    /// <returns>The modular inverse.</returns>
     private static BigInteger ModInverseP(BigInteger value) => BigInteger.ModPow(ModP(value), Prime - 2, Prime);
 
 
-    //e.bit(j): the j-th bit (LSB index 0) of the 256-bit Nat. The reference walks j = kBits−i−1 (MSB-first).
+    /// <summary>Reads bit <paramref name="position"/> (LSB index 0) of the 256-bit Nat; the reference walks <c>position = kBits-i-1</c> (MSB-first).</summary>
+    /// <param name="value">The integer to read a bit of.</param>
+    /// <param name="position">The bit index, LSB-first.</param>
+    /// <returns>The bit value, 0 or 1.</returns>
     private static int Bit(BigInteger value, int position) => (int)((value >> position) & BigInteger.One);
 
 
+    /// <summary>Serializes a canonical base-field value as its 32-byte big-endian scalar bytes.</summary>
+    /// <param name="value">The value to serialize.</param>
+    /// <returns>The canonical big-endian bytes.</returns>
     private static byte[] Element(BigInteger value) => EcdsaNonceRecovery.Bytes(value);
 
 

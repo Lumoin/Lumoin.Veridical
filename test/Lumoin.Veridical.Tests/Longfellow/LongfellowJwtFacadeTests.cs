@@ -13,8 +13,8 @@ using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 namespace Lumoin.Veridical.Tests.Longfellow;
 
 /// <summary>
-/// The JWT-statement facade gates: the verifier public-input assembly pinned against the kernel
-/// harness's convention without compiling the circuit, the fast unprovable-token and malformed
+/// The JWT-statement facade gates: the verifier public-input assembly pinned against the kernel's
+/// own convention without compiling the circuit, the fast unprovable-token and malformed
 /// key-binding rejections, and the Slow end-to-end proofs — the reference token through the
 /// facade at the production Ligero shape with tamper rejections, and a freshly generated token
 /// that exercises the encode seam and proves the extractor beyond the single reference vector.
@@ -43,16 +43,17 @@ internal sealed class LongfellowJwtFacadeTests
 
     /// <summary>
     /// The agreement gate: the facade's verifier public-input assembly over the Erika vector
-    /// byte-equals an independent construction in the kernel harness's convention — the constant
+    /// byte-equals an independent construction following the kernel's own convention — the constant
     /// one, the issuer key, the reference's hardcoded <c>e2</c>, the attribute fill, and the
     /// little-endian element reversal — without compiling the circuit.
     /// </summary>
     [TestMethod]
-    public void TheVerifierPublicInputAssemblyMatchesTheHarnessConvention()
+    public void TheVerifierPublicInputAssemblyMatchesTheKernelConvention()
     {
         LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
         LongfellowJwtStatement statement = NewErikaStatement();
-        LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle();
+        using BaseMemoryPool fieldPool = new();
+        using LongfellowLogicFieldOperations field = LongfellowJwtBundles.NewFieldBundle(fieldPool);
 
         byte[] token = Encoding.ASCII.GetBytes(vector.Token);
         Assert.IsTrue(LongfellowJwsCompact.TrySplitPresentation(token, out _, out Range keyBindingRange), "The reference token must split.");
@@ -62,8 +63,8 @@ internal sealed class LongfellowJwtFacadeTests
         int elementCount = LongfellowJwtBundles.PublicInputElementCount(statement.Attributes.Count);
         int regionBytes = elementCount * ScalarSize;
 
-        //The independent expectation: the harness's public-region fill order over the Core types,
-        //then the harness's little-endian element reversal.
+        //The independent expectation: the kernel's public-region fill order over the Core types,
+        //then the kernel's little-endian element reversal.
         using IMemoryOwner<byte> canonicalOwner = BaseMemoryPool.Shared.Rent(regionBytes);
         Span<byte> canonical = canonicalOwner.Memory.Span[..regionBytes];
         field.Compiler.One.Span.CopyTo(canonical[..ScalarSize]);
@@ -91,7 +92,7 @@ internal sealed class LongfellowJwtFacadeTests
         Span<byte> actual = actualOwner.Memory.Span[..regionBytes];
         LongfellowJwtBundles.AssembleVerifierPublicInputs(field, statement, digest, actual, BaseMemoryPool.Shared);
 
-        Assert.AreSequenceEqual(expected.ToArray(), actual.ToArray(), "The facade's public-input assembly must equal the harness convention byte for byte.");
+        Assert.AreSequenceEqual(expected.ToArray(), actual.ToArray(), "The facade's public-input assembly must equal the kernel convention byte for byte.");
     }
 
 

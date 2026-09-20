@@ -19,8 +19,14 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 /// <see cref="WriteLittleEndian"/> implement that convention over the big-endian containers, so the
 /// emitted corner order and the id match the reference byte for byte.
 /// </remarks>
-internal sealed class LongfellowCompilerFieldOperations
+internal sealed class LongfellowCompilerFieldOperations: IDisposable
 {
+    /// <summary>The sensitive owner of the fixed field identities; all constant views borrow its lifetime.</summary>
+    private LongfellowCircuitStorage Storage { get; }
+
+    /// <summary>The originating pool, which must outlive this bundle and its consumers.</summary>
+    public BaseMemoryPool Pool { get; }
+
     /// <summary>The field addition over canonical big-endian containers.</summary>
     public ScalarAddDelegate Add { get; }
 
@@ -56,12 +62,11 @@ internal sealed class LongfellowCompilerFieldOperations
     /// <param name="add">The field addition.</param>
     /// <param name="multiply">The field multiplication.</param>
     /// <param name="curve">The curve parameter set for the delegates.</param>
-    /// <param name="zero">The additive identity, canonical big-endian, <see cref="Scalar.SizeBytes"/> bytes.</param>
-    /// <param name="one">The multiplicative identity, canonical big-endian, <see cref="Scalar.SizeBytes"/> bytes.</param>
     /// <param name="minusOne">The additive inverse of one, canonical big-endian, <see cref="Scalar.SizeBytes"/> bytes.</param>
     /// <param name="elementBytes">The on-wire element width in bytes.</param>
     /// <param name="isCharacteristicTwo">Whether the field has characteristic two.</param>
     /// <param name="bitCount">The field's bit count.</param>
+    /// <param name="pool">The pool supplying owned copies of the constants.</param>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="elementBytes"/> or <paramref name="bitCount"/> is out of range.</exception>
     /// <exception cref="ArgumentException">When a constant has the wrong length.</exception>
@@ -69,12 +74,11 @@ internal sealed class LongfellowCompilerFieldOperations
         ScalarAddDelegate add,
         ScalarMultiplyDelegate multiply,
         CurveParameterSet curve,
-        ReadOnlyMemory<byte> zero,
-        ReadOnlyMemory<byte> one,
         ReadOnlyMemory<byte> minusOne,
         int elementBytes,
         bool isCharacteristicTwo,
-        int bitCount)
+        int bitCount,
+        BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(add);
         ArgumentNullException.ThrowIfNull(multiply);
@@ -82,7 +86,7 @@ internal sealed class LongfellowCompilerFieldOperations
         ArgumentOutOfRangeException.ThrowIfGreaterThan(elementBytes, Scalar.SizeBytes);
         ArgumentOutOfRangeException.ThrowIfLessThan(bitCount, 1);
 
-        if(zero.Length != Scalar.SizeBytes || one.Length != Scalar.SizeBytes || minusOne.Length != Scalar.SizeBytes)
+        if(!isCharacteristicTwo && minusOne.Length != Scalar.SizeBytes)
         {
             throw new ArgumentException($"The field constants are canonical {Scalar.SizeBytes}-byte scalars.");
         }
@@ -90,12 +94,24 @@ internal sealed class LongfellowCompilerFieldOperations
         Add = add;
         Multiply = multiply;
         Curve = curve;
-        Zero = zero;
-        One = one;
-        MinusOne = minusOne;
         ElementBytes = elementBytes;
         IsCharacteristicTwo = isCharacteristicTwo;
         BitCount = bitCount;
+        Pool = pool;
+        Storage = new LongfellowCircuitStorage(pool);
+        try
+        {
+            Zero = Storage.Allocate(Scalar.SizeBytes);
+            Memory<byte> one = Storage.Allocate(Scalar.SizeBytes);
+            one.Span[Scalar.SizeBytes - 1] = 1;
+            One = one;
+            MinusOne = isCharacteristicTwo ? one : Storage.Copy(minusOne.Span);
+        }
+        catch
+        {
+            Storage.Dispose();
+            throw;
+        }
     }
 
 
@@ -107,31 +123,30 @@ internal sealed class LongfellowCompilerFieldOperations
     /// <param name="multiply">The field multiplication.</param>
     /// <param name="curve">The curve parameter set for the delegates.</param>
     /// <param name="elementBytes">The on-wire element width in bytes (16 for GF(2^128)).</param>
-    /// <returns>The bundle.</returns>
+    /// <param name="pool">The pool supplying retained constants.</param>
+    /// <returns>The disposable bundle; its constant views borrow its lifetime.</returns>
     public static LongfellowCompilerFieldOperations CreateCharacteristicTwo(
         ScalarAddDelegate add,
         ScalarMultiplyDelegate multiply,
         CurveParameterSet curve,
-        int elementBytes)
+        int elementBytes,
+        BaseMemoryPool pool)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(elementBytes, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(elementBytes, Scalar.SizeBytes);
 
-        var one = new byte[Scalar.SizeBytes];
-        one[Scalar.SizeBytes - 1] = 1;
-
+        //Each serialized byte contributes eight bits to the characteristic-two field identity.
         const int BitsPerByte = 8;
 
         return new LongfellowCompilerFieldOperations(
             add,
             multiply,
             curve,
-            new byte[Scalar.SizeBytes],
-            one,
-            one,
+            default,
             elementBytes,
             isCharacteristicTwo: true,
-            bitCount: elementBytes * BitsPerByte);
+            bitCount: elementBytes * BitsPerByte,
+            pool);
     }
 
 
@@ -145,28 +160,26 @@ internal sealed class LongfellowCompilerFieldOperations
     /// <param name="minusOne">The modulus less one, canonical big-endian, <see cref="Scalar.SizeBytes"/> bytes.</param>
     /// <param name="elementBytes">The on-wire element width in bytes (32 for Fp256).</param>
     /// <param name="bitCount">The field's bit count (256 for Fp256).</param>
-    /// <returns>The bundle.</returns>
+    /// <param name="pool">The pool supplying retained constants, including a copy of minus one.</param>
+    /// <returns>The disposable bundle; its constant views borrow its lifetime.</returns>
     public static LongfellowCompilerFieldOperations CreatePrime(
         ScalarAddDelegate add,
         ScalarMultiplyDelegate multiply,
         CurveParameterSet curve,
         ReadOnlyMemory<byte> minusOne,
         int elementBytes,
-        int bitCount)
+        int bitCount,
+        BaseMemoryPool pool)
     {
-        var one = new byte[Scalar.SizeBytes];
-        one[Scalar.SizeBytes - 1] = 1;
-
         return new LongfellowCompilerFieldOperations(
             add,
             multiply,
             curve,
-            new byte[Scalar.SizeBytes],
-            one,
             minusOne,
             elementBytes,
             isCharacteristicTwo: false,
-            bitCount);
+            bitCount,
+            pool);
     }
 
 
@@ -260,5 +273,11 @@ internal sealed class LongfellowCompilerFieldOperations
         {
             throw new InvalidOperationException($"A compiler field element occupies the low {ElementBytes} bytes of a canonical {Scalar.SizeBytes}-byte scalar.");
         }
+    }
+
+    /// <summary>Clears and releases the owned constants. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        Storage.Dispose();
     }
 }

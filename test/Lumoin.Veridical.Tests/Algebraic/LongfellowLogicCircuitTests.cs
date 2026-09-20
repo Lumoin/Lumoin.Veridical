@@ -26,8 +26,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// arithmetization is width-uniform, so a reduced exhaustive sweep pins the same recurrences.
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowLogicCircuitTests
+internal sealed class LongfellowLogicCircuitTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
     /// <summary>The field element width in bytes used for every witness column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -109,9 +127,9 @@ internal sealed class LongfellowLogicCircuitTests
         LongfellowSumcheckCircuit circuit = CompileMultiplierCircuit(MultiplierWidth);
         int productWidth = 2 * MultiplierWidth;
 
-        LongfellowLogicFieldOperations evaluationField = LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert);
-        var evaluationBackend = new LongfellowEvaluationLogicBackend(evaluationField);
-        var evaluationLogic = new LongfellowLogic(evaluationBackend, evaluationField);
+        LongfellowLogicFieldOperations evaluationField = CircuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert, CircuitScope.Pool));
+        using var evaluationBackend = new LongfellowEvaluationLogicBackend(evaluationField);
+        using var evaluationLogic = new LongfellowLogic(evaluationBackend, evaluationField);
 
         for(ulong x = 0; x < (1UL << MultiplierWidth); x++)
         {
@@ -146,7 +164,7 @@ internal sealed class LongfellowLogicCircuitTests
     /// </summary>
     /// <param name="gate">The adder gadget under test.</param>
     /// <param name="expected">The native arithmetic operation the gadget must match.</param>
-    private static void AssertAdderCircuitMatchesNativeArithmetic(AdderGate gate, Func<ulong, ulong, ulong> expected)
+    private void AssertAdderCircuitMatchesNativeArithmetic(AdderGate gate, Func<ulong, ulong, ulong> expected)
     {
         for(int width = 1; width <= MaxAdderWidth; width++)
         {
@@ -176,7 +194,7 @@ internal sealed class LongfellowLogicCircuitTests
     /// <param name="gate">The adder gadget to compile.</param>
     /// <param name="width">The operand width in bits.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileAdderCircuit(AdderGate gate, int width)
+    private LongfellowSumcheckCircuit CompileAdderCircuit(AdderGate gate, int width)
     {
         LongfellowLogic logic = NewCompileLogic(out LongfellowQuadCircuitBuilder builder);
 
@@ -187,7 +205,7 @@ internal sealed class LongfellowLogicCircuitTests
         LongfellowBitWire[] claimed = logic.InputVector(width + 1);
         logic.AssertEqual(LongfellowLogic.Append(sum, [carry]), claimed);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -197,7 +215,7 @@ internal sealed class LongfellowLogicCircuitTests
     /// </summary>
     /// <param name="width">The operand width in bits.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileMultiplierCircuit(int width)
+    private LongfellowSumcheckCircuit CompileMultiplierCircuit(int width)
     {
         LongfellowLogic logic = NewCompileLogic(out LongfellowQuadCircuitBuilder builder);
 
@@ -208,20 +226,31 @@ internal sealed class LongfellowLogicCircuitTests
         LongfellowBitWire[] claimed = logic.InputVector(2 * width);
         logic.AssertEqual(product, claimed);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
     /// <summary>Builds the GF(2^128) gadget layer and its backing compiler for one circuit compilation.</summary>
     /// <param name="builder">Receives the underlying quad-circuit builder.</param>
-    /// <returns>The gadget layer.</returns>
-    private static LongfellowLogic NewCompileLogic(out LongfellowQuadCircuitBuilder builder)
+    /// <returns>The gadget layer, owned until this test's scope is disposed.</returns>
+    private LongfellowLogic NewCompileLogic(out LongfellowQuadCircuitBuilder builder)
     {
-        LongfellowLogicFieldOperations field = LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert);
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        LongfellowLogicFieldOperations field = CircuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(Add, Subtract, Multiply, Invert, CircuitScope.Pool));
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
 
-        return new LongfellowLogic(backend, field);
+        LongfellowLogic? logic = new(backend, field);
+        try
+        {
+            LongfellowLogic result = CircuitScope.Track(logic);
+            logic = null;
+
+            return result;
+        }
+        finally
+        {
+            logic?.Dispose();
+        }
     }
 
 

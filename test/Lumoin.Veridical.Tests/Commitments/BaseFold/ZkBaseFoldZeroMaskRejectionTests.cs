@@ -24,29 +24,44 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class ZkBaseFoldZeroMaskRejectionTests
 {
+    /// <summary>The BLS12-381 scalar-field addition delegate this test's commitment scheme uses.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+    /// <summary>The BLS12-381 scalar-field subtraction delegate this test's commitment scheme uses.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+    /// <summary>The BLS12-381 scalar-field multiplication delegate this test's commitment scheme uses.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+    /// <summary>The BLS12-381 scalar-field inversion delegate this test's commitment scheme uses.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+    /// <summary>The BLS12-381 scalar-field canonical-reduction delegate this test uses to build deterministic witness evaluations.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+    /// <summary>The BLS12-381 scalar-field hash-to-scalar delegate this test's zero-knowledge providers use.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+    /// <summary>The healthy BLS12-381 scalar-field random-sampling delegate, used as the control entropy source contrasted with <see cref="ZeroScalarRandom"/>.</summary>
     private static ScalarRandomDelegate Random { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+    /// <summary>The Fiat–Shamir hash delegate this test's transcripts use, backed by the BLAKE3 reference.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+    /// <summary>The Fiat–Shamir squeeze delegate this test's transcripts use, backed by the BLAKE3 reference.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+    /// <summary>The Merkle two-to-one hash delegate this test's commitment scheme uses, backed by <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The byte width of one canonical scalar this test's witness evaluations use.</summary>
     private const int ScalarSize = 32;
+    /// <summary>The digest width, in bytes, this test's Merkle hashing uses.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+    /// <summary>The IOPP query count this test's providers are configured with.</summary>
     private const int TestQueryCount = 12;
 
-    //The minimal budget-meeting lift for a one-variable witness at
-    //TestQueryCount = 12 (GetMinimumExtraVariableCount).
+    /// <summary>The witness variable count this test commits, one variable.</summary>
     private const int RealVariableCount = 1;
+    /// <summary>The minimal budget-meeting lift for a one-variable witness at <see cref="TestQueryCount"/> = 12, as <see cref="ZkBaseFoldPolynomialCommitmentScheme.GetMinimumExtraVariableCount"/> would compute it.</summary>
     private const int ExtraVariableCount = 6;
 
+    /// <summary>The curve this test's scalars and commitment scheme operate over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that committing through the lift provider with an entropy delegate that always returns zero bytes throws an <see cref="InvalidOperationException"/> rather than silently producing a non-hiding commitment.</summary>
     [TestMethod]
     public void ZeroEntropyCommitThrowsForTheLiftProvider()
     {
@@ -56,7 +71,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            ZeroScalarRandom, HashToScalar, ExtraVariableCount);
+            ZeroScalarRandom, HashToScalar, ExtraVariableCount, pool);
 
         using MultilinearExtension witness = BuildDeterministicMle(RealVariableCount, salt: 11, pool);
 
@@ -66,6 +81,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
+    /// <summary>Verifies that, after a healthy commit, opening through a full zero-knowledge provider whose entropy delegate always returns zero bytes throws an <see cref="InvalidOperationException"/> at the CFS sumcheck mask draw.</summary>
     [TestMethod]
     public void ZeroEntropyOpenThrowsForTheFullZeroKnowledgeProvider()
     {
@@ -74,8 +90,8 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
         //open's first draw is the CFS sumcheck mask, so this exercises the
         //mask-generation check on the open (prove) path specifically.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider healthyProvider = NewFullZeroKnowledgeProvider(Random);
-        using PolynomialCommitmentProvider zeroEntropyProvider = NewFullZeroKnowledgeProvider(ZeroScalarRandom);
+        using PolynomialCommitmentProvider healthyProvider = NewFullZeroKnowledgeProvider(pool, Random);
+        using PolynomialCommitmentProvider zeroEntropyProvider = NewFullZeroKnowledgeProvider(pool, ZeroScalarRandom);
 
         using MultilinearExtension witness = BuildDeterministicMle(RealVariableCount, salt: 13, pool);
         Scalar[] point = BuildPoint(RealVariableCount, salt: 17, pool);
@@ -104,8 +120,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
-    //An entropy delegate with the production signature that always returns
-    //zero bytes — the modelled RNG wiring failure.
+    /// <summary>An entropy delegate with the production signature that always returns zero bytes, modelling an RNG wiring failure.</summary>
     private static Tag ZeroScalarRandom(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
     {
         destination.Clear();
@@ -114,14 +129,18 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
-    private static PolynomialCommitmentProvider NewFullZeroKnowledgeProvider(ScalarRandomDelegate scalarRandom)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="scalarRandom">The scalar entropy backend.</param>
+    private static PolynomialCommitmentProvider NewFullZeroKnowledgeProvider(BaseMemoryPool pool, ScalarRandomDelegate scalarRandom)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert,
-            scalarRandom, HashToScalar, ExtraVariableCount);
+            scalarRandom, HashToScalar, ExtraVariableCount, pool);
     }
 
 
+    /// <summary>Builds a multilinear extension over deterministic pseudo-random evaluations derived from a salt, for this test's providers to commit.</summary>
     private static MultilinearExtension BuildDeterministicMle(int variableCount, int salt, BaseMemoryPool pool)
     {
         int evaluationCount = 1 << variableCount;
@@ -140,6 +159,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random evaluation point, one pooled scalar coordinate per variable, for the open test to evaluate at.</summary>
     private static Scalar[] BuildPoint(int variableCount, int salt, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -158,6 +178,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
+    /// <summary>Disposes every pooled coordinate scalar a <see cref="BuildPoint"/> call rented.</summary>
     private static void DisposePoint(Scalar[] point)
     {
         foreach(Scalar coordinate in point)
@@ -167,6 +188,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
+    /// <summary>Creates a fresh Fiat–Shamir transcript for one open run, seeded with the BaseFold evaluation domain label.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -178,6 +200,7 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
+    /// <summary>Computes the BLAKE3 two-to-one Merkle compression of two digests.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -187,5 +210,6 @@ internal sealed class ZkBaseFoldZeroMaskRejectionTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.W27b.ZeroMaskRejection.Test"u8;
+    /// <summary>The domain-separation seed this test derives its commitment providers from.</summary>
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.ZeroMaskRejection.Test"u8;
 }

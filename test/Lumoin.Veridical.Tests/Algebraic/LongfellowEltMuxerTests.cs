@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
@@ -17,13 +18,29 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// <remarks>
 /// Both reference tests run over <c>Fp&lt;1&gt;("257")</c>, a tiny prime chosen only so the exhaustive
 /// <c>EltMuxer9</c> sweep (every plucker point up to <c>2·257</c>-ish) stays cheap; this port runs the
-/// same two tests over <see cref="Fp256Field"/> instead, since every other gate in this batch shares
-/// that field bundle and the muxer's construction and evaluation shape does not depend on the field's
+/// same two tests over <see cref="Fp256Field"/> instead, since every other Longfellow gate ported here
+/// shares that field bundle and the muxer's construction and evaluation shape does not depend on the field's
 /// size.
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowEltMuxerTests
+internal sealed class LongfellowEltMuxerTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The reference's <c>EltMuxer&lt;Logic, 8&gt;</c> array length and plucker point-set size.</summary>
     private const int TableEntryCount = 8;
 
@@ -54,21 +71,24 @@ internal sealed class LongfellowEltMuxerTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
+
     /// <summary>The P-256 base field bundle gated over by every test in this class.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, CircuitScope.Pool));
 
 
     /// <summary>Pins that muxing every plucker-point index over each of the four eight-entry tables selects that table's own entry.</summary>
     [TestMethod]
     public void TheMuxerSelectsEveryTableEntry()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
 
         AssertMuxerSelectsEveryEntry(backend, logic, ZTable, TableEntryCount);
         AssertMuxerSelectsEveryEntry(backend, logic, ETable, TableEntryCount);
@@ -81,15 +101,18 @@ internal sealed class LongfellowEltMuxerTests
     [TestMethod]
     public void TheNineEntryMuxerRangeChecksTheDigitDomain()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
 
         int[] wires = BuildTableWires(backend, Fp256Field, DigitRangeCheckTable);
         var muxer = new LongfellowEltMuxer(logic, wires, NineEntryMuxerPointSetSize);
 
         for(int i = 0; i < MuxIndexSweepExclusiveUpperBound; i++)
         {
-            int index = backend.Constant(LongfellowBitPlucker.PluckerPoint(Fp256Field, NineEntryMuxerPointSetSize, i).Span);
+            using IMemoryOwner<byte> owner = Fp256Field.Pool.Rent(Scalar.SizeBytes);
+            Span<byte> point = owner.Memory.Span[..Scalar.SizeBytes];
+            LongfellowBitPlucker.PluckerPoint(Fp256Field, NineEntryMuxerPointSetSize, i, point);
+            int index = backend.Constant(point);
             int selected = muxer.Mux(index);
 
             if(i < NineEntryMuxerElementCount)
@@ -109,14 +132,17 @@ internal sealed class LongfellowEltMuxerTests
     /// <param name="logic">The gadget layer the muxer builds on.</param>
     /// <param name="table">The table of zero/one entries to mux over.</param>
     /// <param name="pointSetSize">The plucker point-set size the table's own length doubles as.</param>
-    private static void AssertMuxerSelectsEveryEntry(LongfellowEvaluationLogicBackend backend, LongfellowLogic logic, byte[] table, int pointSetSize)
+    private void AssertMuxerSelectsEveryEntry(LongfellowEvaluationLogicBackend backend, LongfellowLogic logic, byte[] table, int pointSetSize)
     {
         int[] wires = BuildTableWires(backend, Fp256Field, table);
         var muxer = new LongfellowEltMuxer(logic, wires);
 
         for(int i = 0; i < pointSetSize; i++)
         {
-            int index = backend.Constant(LongfellowBitPlucker.PluckerPoint(Fp256Field, pointSetSize, i).Span);
+            using IMemoryOwner<byte> owner = Fp256Field.Pool.Rent(Scalar.SizeBytes);
+            Span<byte> point = owner.Memory.Span[..Scalar.SizeBytes];
+            LongfellowBitPlucker.PluckerPoint(Fp256Field, pointSetSize, i, point);
+            int index = backend.Constant(point);
             int selected = muxer.Mux(index);
 
             Assert.IsTrue(backend.ElementAt(selected).Span.SequenceEqual(backend.ElementAt(wires[i]).Span), $"Muxing table entry {i} must select the array entry it stores.");
@@ -134,7 +160,7 @@ internal sealed class LongfellowEltMuxerTests
         var wires = new int[table.Length];
         for(int i = 0; i < table.Length; i++)
         {
-            wires[i] = backend.Constant(field.OfScalar(table[i]).Span);
+            wires[i] = backend.ScalarConstant(table[i]);
         }
 
         return wires;

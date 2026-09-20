@@ -14,7 +14,7 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the HVZK-WHIR proof wire codec (4.2 phase C3): a serialize →
+/// Tests for the HVZK-WHIR proof wire codec: a serialize →
 /// deserialize round-trip that still verifies, the exact parameter-derived
 /// length, the mask-total offset seam, and the reader funnel's rejections — a
 /// truncated buffer, a non-canonical mask total, private out-of-domain reply
@@ -66,10 +66,14 @@ internal sealed class ZkWhirProofSerializationTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
+
     /// <summary>The deterministic mask-sampling seed, distinct per test class.</summary>
     private static byte[] MaskSeed { get; } = Encoding.UTF8.GetBytes("zk-whir-proof-serialization-tests");
 
 
+    /// <summary>Verifies that a proof serialized to bytes has the parameter-derived length, and that deserializing and verifying it against a fresh transcript succeeds.</summary>
     [TestMethod]
     public void SerializedProofRoundTripsAndVerifies()
     {
@@ -88,6 +92,7 @@ internal sealed class ZkWhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that deserializing a buffer one byte shorter than the serialized proof's exact length is refused.</summary>
     [TestMethod]
     public void TruncatedBytesAreRejected()
     {
@@ -105,6 +110,7 @@ internal sealed class ZkWhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that overwriting the mask total at any batch's offset with an all-ones non-canonical encoding is refused at deserialization, for every batch in the schedule.</summary>
     [TestMethod]
     public void NonCanonicalMaskTotalIsRejectedAtEveryBatchOffset()
     {
@@ -119,6 +125,7 @@ internal sealed class ZkWhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that overwriting a private reply element with an all-ones non-canonical encoding is refused at deserialization.</summary>
     [TestMethod]
     public void NonCanonicalPrivateReplyIsRejected()
     {
@@ -134,6 +141,7 @@ internal sealed class ZkWhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that overwriting the blinded source-message reveal element with an all-ones non-canonical encoding is refused at deserialization.</summary>
     [TestMethod]
     public void NonCanonicalBlindedRevealIsRejected()
     {
@@ -153,14 +161,15 @@ internal sealed class ZkWhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that flipping a low-order bit of the masked claim <c>μ_g</c> (which stays canonical, so deserialization accepts it) makes the base case's joint check fail at verification instead.</summary>
     [TestMethod]
     public void TamperedMaskedClaimParsesButFailsVerification()
     {
         //A low-order flip of the masked claim μ_g stays canonical, so the
         //reader funnel accepts it; the base case's joint check
-        //⟨f*, W⟩ + Σ⟨ξ*, u⟩ = μ_g + γ·target must then break. C2's object
-        //walls never tampered μ_g — this closes that surface at the byte
-        //level.
+        //⟨f*, W⟩ + Σ⟨ξ*, u⟩ = μ_g + γ·target must then break. The proof's
+        //construction API never lets a caller tamper μ_g directly, so this
+        //test closes that surface at the byte level instead.
         WhirZkParameters parameters = CreateFastParameters();
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         int claimOffset = MaskRootsSectionBytes(parameters)
@@ -183,6 +192,7 @@ internal sealed class ZkWhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that flipping one byte of the leading sumcheck-mask root (which carries no canonical form, so deserialization accepts it) makes the Fiat-Shamir replay or the Merkle authentication fail at verification instead.</summary>
     [TestMethod]
     public void TamperedRootByteParsesButFailsVerification()
     {
@@ -204,6 +214,7 @@ internal sealed class ZkWhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that computing the serialized length refuses both a non-positive digest size and a digest size above the maximum the codec admits.</summary>
     [TestMethod]
     public void DigestSizeCapsAreEnforced()
     {
@@ -322,9 +333,14 @@ internal sealed class ZkWhirProofSerializationTests
     /// </summary>
     private sealed class ProofRun: IDisposable
     {
-        private readonly IMemoryOwner<byte> statementOwner;
-        private readonly int messageBytes;
-        private readonly int pointBytes;
+        /// <summary>The rented buffer backing the coefficients, scale, point and target views.</summary>
+        private IMemoryOwner<byte> StatementOwner { get; }
+
+        /// <summary>The byte length of the coefficient message, the offset where the scale and point views begin.</summary>
+        private int MessageBytes { get; }
+
+        /// <summary>The byte length of the evaluation point, the width of the <see cref="ConstraintPoints"/> view.</summary>
+        private int PointBytes { get; }
 
         /// <summary>The proof under test.</summary>
         public ZkWhirIoppProof Proof { get; }
@@ -333,21 +349,21 @@ internal sealed class ZkWhirProofSerializationTests
         public MerkleRoot Commitment { get; }
 
         /// <summary>The single constraint's scale, one element.</summary>
-        public ReadOnlySpan<byte> ConstraintCoefficients => statementOwner.Memory.Span.Slice(messageBytes, ScalarSize);
+        public ReadOnlySpan<byte> ConstraintCoefficients => StatementOwner.Memory.Span.Slice(MessageBytes, ScalarSize);
 
         /// <summary>The single constraint's point coordinates.</summary>
-        public ReadOnlySpan<byte> ConstraintPoints => statementOwner.Memory.Span.Slice(messageBytes + ScalarSize, pointBytes);
+        public ReadOnlySpan<byte> ConstraintPoints => StatementOwner.Memory.Span.Slice(MessageBytes + ScalarSize, PointBytes);
 
         /// <summary>The honestly evaluated target <c>σ</c>, one element.</summary>
-        public ReadOnlySpan<byte> Target => statementOwner.Memory.Span.Slice(messageBytes + ScalarSize + pointBytes, ScalarSize);
+        public ReadOnlySpan<byte> Target => StatementOwner.Memory.Span.Slice(MessageBytes + ScalarSize + PointBytes, ScalarSize);
 
 
         /// <summary>Wraps the run's parts; the run takes ownership.</summary>
         private ProofRun(IMemoryOwner<byte> statementOwner, int messageBytes, int pointBytes, ZkWhirIoppProof proof, MerkleRoot commitment)
         {
-            this.statementOwner = statementOwner;
-            this.messageBytes = messageBytes;
-            this.pointBytes = pointBytes;
+            this.StatementOwner = statementOwner;
+            this.MessageBytes = messageBytes;
+            this.PointBytes = pointBytes;
             Proof = proof;
             Commitment = commitment;
         }
@@ -385,7 +401,7 @@ internal sealed class ZkWhirProofSerializationTests
                     point,
                     target,
                     proverTranscript,
-                    Merkle,
+                    TreeParameters,
                     Hash,
                     Squeeze,
                     Bls.Reduce,
@@ -412,7 +428,7 @@ internal sealed class ZkWhirProofSerializationTests
             //The pool zeroes rented buffers on return.
             Proof.Dispose();
             Commitment.Dispose();
-            statementOwner.Dispose();
+            StatementOwner.Dispose();
         }
     }
 

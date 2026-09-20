@@ -45,9 +45,11 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BaseFoldInterpolation
 {
+    /// <summary>The byte width of one canonical scalar; every evaluation and coefficient entry occupies this many bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
+    /// <summary>Interpolation members added to every <see cref="MultilinearExtension"/> instance.</summary>
     extension(MultilinearExtension mle)
     {
         /// <summary>

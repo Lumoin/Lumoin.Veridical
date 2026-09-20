@@ -33,6 +33,7 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BaseFoldIoppProver
 {
+    /// <summary>The byte width of one scalar in this prover's codewords and fold buffers, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -46,7 +47,7 @@ public static class BaseFoldIoppProver
     /// <param name="inputCodeword">The codeword to prove proximity for; <c>CodewordLength · 32</c> bytes.</param>
     /// <param name="queryCount">The number of query repetitions (see <see cref="WellKnownBaseFoldIoppParameters"/>).</param>
     /// <param name="transcript">The Fiat-Shamir transcript, already initialised with the protocol's public context.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
     /// <param name="reduce">The scalar-reduce backend for deriving fold challenges.</param>
@@ -65,7 +66,7 @@ public static class BaseFoldIoppProver
         ReadOnlySpan<byte> inputCodeword,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -77,7 +78,7 @@ public static class BaseFoldIoppProver
     {
         ArgumentNullException.ThrowIfNull(code);
         ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(squeeze);
         ArgumentNullException.ThrowIfNull(reduce);
@@ -111,7 +112,7 @@ public static class BaseFoldIoppProver
             //π_d = the input codeword.
             int topLength = LayerLength(baseUnit, d);
             codewords[d] = RentCopy(inputCodeword, pool, disposables);
-            trees[d] = BuildTree(codewords[d]!, topLength, merkleHash, pool, disposables);
+            trees[d] = BuildTree(codewords[d]!, topLength, merkleParameters, pool, disposables);
 
             //Commit phase: for ℓ = d downto 1, absorb root_ℓ, squeeze α_{ℓ-1},
             //fold π_ℓ → π_{ℓ-1}, and commit π_{ℓ-1} (unless it is the base π_0).
@@ -138,7 +139,7 @@ public static class BaseFoldIoppProver
 
                 if(level - 1 >= 1)
                 {
-                    trees[level - 1] = BuildTree(codewords[level - 1]!, lowerLength, merkleHash, pool, disposables);
+                    trees[level - 1] = BuildTree(codewords[level - 1]!, lowerLength, merkleParameters, pool, disposables);
                 }
             }
 
@@ -175,8 +176,7 @@ public static class BaseFoldIoppProver
     }
 
 
-    //Copies the fold-layer roots π_{d-1} … π_1 (commit order) into standalone
-    //proof-owned roots, so the working trees can be disposed.
+    /// <summary>Copies the fold-layer roots π_{d-1} … π_1 (commit order) into standalone proof-owned roots, so the working trees can be disposed.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Each copied root transfers ownership to the returned array, which the proof owns and disposes.")]
     private static MerkleRoot[] CopyFoldRoots(MerkleTree?[] trees, int d, BaseMemoryPool pool)
     {
@@ -192,12 +192,14 @@ public static class BaseFoldIoppProver
     }
 
 
+    /// <summary>Returns the scalar count of the fold layer at <paramref name="level"/>: the base unit doubled once per level.</summary>
     private static int LayerLength(int baseUnit, int level)
     {
         return baseUnit << level;
     }
 
 
+    /// <summary>Rents a buffer and copies <paramref name="source"/> into it, optionally registering the rented owner with <paramref name="track"/> for later disposal.</summary>
     private static IMemoryOwner<byte> RentCopy(ReadOnlySpan<byte> source, BaseMemoryPool pool, List<IDisposable>? track)
     {
         IMemoryOwner<byte> owner = pool.Rent(source.Length);
@@ -208,15 +210,19 @@ public static class BaseFoldIoppProver
     }
 
 
+    /// <summary>
+    /// Builds one fold-layer tree over the plain codeword through the scheme's
+    /// leaf commitment and registers it for the uniform disposal pass.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tree is tracked in the disposables list and released in the prover's finally block.")]
     private static MerkleTree BuildTree(
         IMemoryOwner<byte> codeword,
         int leafCount,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         BaseMemoryPool pool,
         List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, merkleHash, pool);
+        MerkleTree tree = BaseFoldCodewordTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, merkleParameters, pool);
         disposables.Add(tree);
 
         return tree;

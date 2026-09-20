@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Secdsa;
 
 /// <summary>
 /// Schnorr / Chaum–Pedersen non-interactive zero-knowledge proof of equality of discrete logarithms over NIST
-/// P-256 — Verheul's Algorithm 19 (prove) and Algorithm 20 (verify). The proof attests statement (9):
+/// P-256 — Verheul's Algorithm 20 (prove) and Algorithm 21 (verify). The proof attests statement (9):
 /// <c>∃ d ∈ [1, n−1] : D_i = d·G_i for every i</c>, i.e. a set of public keys <c>D_i</c> share one private key
 /// <c>d</c> across their (possibly distinct) generators <c>G_i</c>, in zero knowledge. SECDSA uses the two-pair
 /// case (<c>n = 1</c>) to prove the blinding relations in blind signing and transaction-transparency evidence.
@@ -60,24 +60,30 @@ public static class DlEqualityNizk
     /// <summary>The P-256 SEC1 compressed point length, the form every generator, public key, and commitment takes.</summary>
     public const int CompressedPointSizeBytes = WellKnownCurves.P256CompressedSizeBytes;
 
-    //A generous upper bound on the assembled Fiat-Shamir transcript so a runtime-sized stackalloc cannot be
-    //driven to overflow by a large pair count or challenge. SECDSA uses two pairs and a <=32-byte challenge
-    //(~198-230 bytes); this cap covers far more while staying a safe stack allocation.
+    /// <summary>
+    /// A generous upper bound on the assembled Fiat-Shamir transcript so a runtime-sized stackalloc cannot be
+    /// driven to overflow by a large pair count or challenge. SECDSA uses two pairs and a &lt;=32-byte challenge
+    /// (~198-230 bytes); this cap covers far more while staying a safe stack allocation.
+    /// </summary>
     private const int MaxTranscriptSizeBytes = 4096;
 
+    /// <summary>The P-256 curve identity every scalar and group delegate call in this class dispatches on.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
 
-    //Domain-separation label for the deterministic commitment-nonce pre-image. It (a) disjoins this NIZK's nonce
-    //domain from the ECDSA signing nonce so the two can never collide, and (b) together with the length prefixes
-    //makes the pre-image injective in the statement. It is prover-local and never transmitted, so it does NOT
-    //enter the Fiat-Shamir challenge r (which stays paper-conformant for interoperability).
+    /// <summary>
+    /// The domain-separation label for the deterministic commitment-nonce pre-image. It (a) disjoins this
+    /// NIZK's nonce domain from the ECDSA signing nonce so the two can never collide, and (b) together with the
+    /// length prefixes makes the pre-image injective in the statement. It is prover-local and never
+    /// transmitted, so it does NOT enter the Fiat-Shamir challenge r (which stays paper-conformant for
+    /// interoperability).
+    /// </summary>
     private static byte[] NonceDomainLabel { get; } = "SECDSA-DLEQ-NIZK-nonce-v1"u8.ToArray();
 
 
     /// <summary>
     /// Proves statement (9) — that every <c>(G_i, D_i)</c> pair shares the private key <paramref name="witness"/>
-    /// (<c>D_i = d·G_i</c>) — writing the proof <c>(r, s)</c> into the supplied spans (Verheul Algorithm 19).
+    /// (<c>D_i = d·G_i</c>) — writing the proof <c>(r, s)</c> into the supplied spans (Verheul Algorithm 20).
     /// </summary>
     /// <param name="witness">The shared private key <c>d</c>, 32-byte big-endian, in <c>[1, n−1]</c>.</param>
     /// <param name="generatorsConcat">The generators <c>G_0 ‖ … ‖ G_n</c>, each 33-byte SEC1 compressed.</param>
@@ -264,7 +270,7 @@ public static class DlEqualityNizk
 
     /// <summary>
     /// Verifies a DL-equality proof <c>(r, s)</c> for statement (9) over the given <c>(G_i, D_i)</c> pairs
-    /// (Verheul Algorithm 20). Adversarial inputs reject rather than throw.
+    /// (Verheul Algorithm 21). Adversarial inputs reject rather than throw.
     /// </summary>
     /// <param name="generatorsConcat">The generators <c>G_0 ‖ … ‖ G_n</c>, each 33-byte SEC1 compressed.</param>
     /// <param name="publicKeysConcat">The public keys <c>D_0 ‖ … ‖ D_n</c>, each 33-byte.</param>
@@ -387,6 +393,8 @@ public static class DlEqualityNizk
     }
 
 
+    /// <summary>Throws when the generator or public-key concatenations are empty, not a whole multiple of the compressed point size, or mismatched in length.</summary>
+    /// <returns>The pair count implied by the concatenation lengths.</returns>
     private static int RequirePairs(ReadOnlySpan<byte> generatorsConcat, ReadOnlySpan<byte> publicKeysConcat)
     {
         if(generatorsConcat.Length == 0 || generatorsConcat.Length % CompressedPointSizeBytes != 0)

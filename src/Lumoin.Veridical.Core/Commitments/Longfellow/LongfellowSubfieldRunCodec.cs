@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Memory;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow;
@@ -35,19 +36,32 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal sealed class LongfellowSubfieldRunCodec: IDisposable
 {
-    private readonly Func<ReadOnlySpan<byte>, bool> inSubfield;
-    private readonly EncodeSubfieldDelegate toBytesSubfield;
-    private readonly DecodeSubfieldDelegate ofBytesSubfield;
+    /// <summary>The field-specific <c>in_subfield</c> predicate this codec was built with.</summary>
+    private Func<ReadOnlySpan<byte>, bool> InSubfieldPredicate { get; }
+
+    /// <summary>The field-specific <c>to_bytes_subfield</c> encoder this codec was built with.</summary>
+    private EncodeSubfieldDelegate ToBytesSubfieldEncoder { get; }
+
+    /// <summary>The field-specific <c>of_bytes_subfield</c> decoder this codec was built with.</summary>
+    private DecodeSubfieldDelegate OfBytesSubfieldDecoder { get; }
+
+    /// <summary>The pooled basis-reduction state this codec owns, or <see langword="null"/> for a codec that owns none.</summary>
     private IDisposable? state;
 
 
-    //The two subfield framing operations, as span delegates so the GF basis solve and the Fp256 identity
-    //reversal share one shape without an interface.
+    /// <summary>Encodes a canonical scalar known to be in-subfield into its subfield wire bytes: the GF basis solve or the Fp256 identity reversal, sharing one shape without an interface.</summary>
     private delegate void EncodeSubfieldDelegate(ReadOnlySpan<byte> element, Span<byte> destination);
 
+    /// <summary>Decodes subfield wire bytes into a canonical scalar: the GF basis recombination or the Fp256 identity reversal, sharing one shape without an interface.</summary>
     private delegate bool DecodeSubfieldDelegate(ReadOnlySpan<byte> source, Span<byte> element);
 
 
+    /// <summary>Assembles a codec from its field-specific subfield operations.</summary>
+    /// <param name="subFieldBytes">The subfield element byte width.</param>
+    /// <param name="inSubfield">The <c>in_subfield</c> predicate.</param>
+    /// <param name="toBytesSubfield">The <c>to_bytes_subfield</c> encoder.</param>
+    /// <param name="ofBytesSubfield">The <c>of_bytes_subfield</c> decoder.</param>
+    /// <param name="state">The pooled state this codec takes ownership of, or <see langword="null"/> when it owns none.</param>
     private LongfellowSubfieldRunCodec(
         int subFieldBytes,
         Func<ReadOnlySpan<byte>, bool> inSubfield,
@@ -56,9 +70,9 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         IDisposable? state)
     {
         SubFieldBytes = subFieldBytes;
-        this.inSubfield = inSubfield;
-        this.toBytesSubfield = toBytesSubfield;
-        this.ofBytesSubfield = ofBytesSubfield;
+        this.InSubfieldPredicate = inSubfield;
+        this.ToBytesSubfieldEncoder = toBytesSubfield;
+        this.OfBytesSubfieldDecoder = ofBytesSubfield;
         this.state = state;
     }
 
@@ -152,7 +166,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
 
     /// <summary>The reference's <c>in_subfield(req[i])</c>: whether the run-length pass should treat the element as a subfield element.</summary>
     /// <param name="element">The canonical scalar to test.</param>
-    public bool InSubfield(ReadOnlySpan<byte> element) => inSubfield(element);
+    public bool InSubfield(ReadOnlySpan<byte> element) => InSubfieldPredicate(element);
 
 
     /// <summary>The sextic <c>in_subfield</c> (<c>fp24_6.h</c>): coordinates 1…5 all zero.</summary>
@@ -205,7 +219,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
     /// <summary>The reference's <c>to_bytes_subfield</c>: writes the element's <see cref="SubFieldBytes"/> subfield bytes.</summary>
     /// <param name="element">The canonical scalar (asserted in-subfield by the caller's run logic).</param>
     /// <param name="destination">Receives <see cref="SubFieldBytes"/> bytes.</param>
-    public void ToBytesSubfield(ReadOnlySpan<byte> element, Span<byte> destination) => toBytesSubfield(element, destination);
+    public void ToBytesSubfield(ReadOnlySpan<byte> element, Span<byte> destination) => ToBytesSubfieldEncoder(element, destination);
 
 
     /// <summary>
@@ -217,7 +231,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
     /// <param name="source">The <see cref="SubFieldBytes"/> subfield bytes.</param>
     /// <param name="element">Receives the canonical scalar, or all zeros on rejection.</param>
     /// <returns><see langword="true"/> when the bytes decode to a field element; otherwise <see langword="false"/>.</returns>
-    public bool OfBytesSubfield(ReadOnlySpan<byte> source, Span<byte> element) => ofBytesSubfield(source, element);
+    public bool OfBytesSubfield(ReadOnlySpan<byte> source, Span<byte> element) => OfBytesSubfieldDecoder(source, element);
 
 
     /// <summary>Releases the pooled basis reduction, if any.</summary>
@@ -247,55 +261,75 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
     /// </remarks>
     private sealed class SubfieldBasis: IDisposable
     {
-        //A field element's 128-bit polynomial lives in two 64-bit limbs: limb 0 holds bits 0..63, limb 1
-        //bits 64..127. The C# scalar carries them big-endian in canonical bytes 24..31 (limb 0) and
-        //16..23 (limb 1), with bytes 0..15 zero (the high field bytes).
+        /// <summary>The number of 64-bit limbs a GF(2^128) element's polynomial representation splits into: two, limb 0 holding bits 0..63 and limb 1 holding bits 64..127.</summary>
         private const int LimbCount = 2;
+
+        /// <summary>The canonical big-endian byte offset of limb 0 (bits 0..63): bytes 24..31, since the high field bytes 0..15 are zero.</summary>
         private const int LowLimbByteOffset = 24;
+
+        /// <summary>The canonical big-endian byte offset of limb 1 (bits 64..127): bytes 16..23.</summary>
         private const int HighLimbByteOffset = 16;
 
-        private readonly int subFieldBits;
+        /// <summary>The subfield element width in bits (<see cref="SubFieldBytes"/> times 8), the row and column count of the reduced basis.</summary>
+        private int SubFieldBits { get; }
+
+        /// <summary>The pooled buffer backing the basis rows, echelon rows, coordinate combinations and leading columns.</summary>
         private IMemoryOwner<byte>? scratchOwner;
 
+        /// <summary>The subfield element byte width this basis was reduced for.</summary>
         public int SubFieldBytes { get; }
 
 
+        /// <summary>Wraps an already-rented scratch buffer as an as-yet-unreduced basis; <see cref="Reduce"/> is the only caller.</summary>
+        /// <param name="subFieldBytes">The subfield element byte width.</param>
+        /// <param name="subFieldBits">The subfield element width in bits.</param>
+        /// <param name="scratchOwner">The rented scratch buffer backing every view.</param>
         private SubfieldBasis(int subFieldBytes, int subFieldBits, IMemoryOwner<byte> scratchOwner)
         {
             SubFieldBytes = subFieldBytes;
-            this.subFieldBits = subFieldBits;
+            this.SubFieldBits = subFieldBits;
             this.scratchOwner = scratchOwner;
         }
 
 
-        //The single pooled buffer carving out the four views: basis rows, echelon rows, the
-        //coordinate combinations, the leading columns — byte sizes in that order.
+        /// <summary>The byte size of the basis-rows view: <paramref name="subFieldBits"/> rows of two 64-bit limbs each.</summary>
         private static int BasisRowsBytes(int subFieldBits) => subFieldBits * LimbCount * sizeof(ulong);
 
+        /// <summary>The byte size of the coordinate-combination view: one 32-bit word per row.</summary>
         private static int CombinationBytes(int subFieldBits) => subFieldBits * sizeof(uint);
 
+        /// <summary>
+        /// The total byte size of the single pooled scratch buffer, carving out the four views in
+        /// order: basis rows, echelon rows (each <see cref="BasisRowsBytes"/>), the coordinate
+        /// combinations (<see cref="CombinationBytes"/>), and the leading columns (one 32-bit word
+        /// per row).
+        /// </summary>
         private static int ScratchBytes(int subFieldBits) =>
             (2 * BasisRowsBytes(subFieldBits)) + CombinationBytes(subFieldBits) + (subFieldBits * sizeof(int));
 
 
+        /// <summary>The current view over the rented scratch buffer, sized to this basis's <see cref="ScratchBytes"/>.</summary>
         private Span<byte> Scratch =>
-            (scratchOwner ?? throw new ObjectDisposedException(nameof(SubfieldBasis))).Memory.Span[..ScratchBytes(subFieldBits)];
+            (scratchOwner ?? throw new ObjectDisposedException(nameof(SubfieldBasis))).Memory.Span[..ScratchBytes(SubFieldBits)];
 
-        //β_j: the j-th subfield basis row (g^j), two limbs; used by of_bytes_subfield to recombine.
-        private Span<ulong> BasisRows => MemoryMarshal.Cast<byte, ulong>(Scratch[..BasisRowsBytes(subFieldBits)]);
+        /// <summary>The original subfield basis rows <c>β_j = g^j</c>, two limbs each; used by <see cref="OfBytesSubfield"/> to recombine.</summary>
+        private Span<ulong> BasisRows => MemoryMarshal.Cast<byte, ulong>(Scratch[..BasisRowsBytes(SubFieldBits)]);
 
-        //u_[i]: the i-th echelon row, two limbs.
-        private Span<ulong> EchelonRows => MemoryMarshal.Cast<byte, ulong>(Scratch.Slice(BasisRowsBytes(subFieldBits), BasisRowsBytes(subFieldBits)));
+        /// <summary>The reduced echelon rows <c>u_[i]</c>, two limbs each.</summary>
+        private Span<ulong> EchelonRows => MemoryMarshal.Cast<byte, ulong>(Scratch.Slice(BasisRowsBytes(SubFieldBits), BasisRowsBytes(SubFieldBits)));
 
-        //linv_[i]: the coordinate bits that combine to the i-th echelon row (at most 32 here, nreq fits).
-        private Span<uint> CoordinateCombination => MemoryMarshal.Cast<byte, uint>(Scratch.Slice(2 * BasisRowsBytes(subFieldBits), CombinationBytes(subFieldBits)));
+        /// <summary>The coordinate bits <c>linv_[i]</c> that combine to produce the i-th echelon row.</summary>
+        private Span<uint> CoordinateCombination => MemoryMarshal.Cast<byte, uint>(Scratch.Slice(2 * BasisRowsBytes(SubFieldBits), CombinationBytes(SubFieldBits)));
 
-        //ldnz_[i]: the leading-nonzero column of the i-th echelon row.
-        private Span<int> LeadingColumn => MemoryMarshal.Cast<byte, int>(Scratch[((2 * BasisRowsBytes(subFieldBits)) + CombinationBytes(subFieldBits))..]);
+        /// <summary>The leading-nonzero column <c>ldnz_[i]</c> of the i-th echelon row.</summary>
+        private Span<int> LeadingColumn => MemoryMarshal.Cast<byte, int>(Scratch[((2 * BasisRowsBytes(SubFieldBits)) + CombinationBytes(SubFieldBits))..]);
 
 
-        //The reference's beta_ref: reduce the basis {β_0, …, β_{m−1}} to row echelon, caching the
-        //echelon rows, the GF(2) coordinate combination that produced each, and the leading column.
+        /// <summary>
+        /// The reference's <c>beta_ref</c>: reduces the basis <c>{β_0, …, β_{m−1}}</c> to row echelon,
+        /// caching the echelon rows, the GF(2) coordinate combination that produced each, and the
+        /// leading column.
+        /// </summary>
         public static SubfieldBasis Reduce(Lch14AdditiveFft fft, int subFieldBytes, BaseMemoryPool pool)
         {
             int subFieldBits = subFieldBytes * 8;
@@ -368,8 +402,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
-        //The reference's in_subfield: the solve residual is zero exactly when the element is a GF(2)
-        //combination of the subfield basis.
+        /// <summary>The reference's <c>in_subfield</c>: the solve residual is zero exactly when the element is a GF(2) combination of the subfield basis.</summary>
         public bool InSubfield(ReadOnlySpan<byte> element)
         {
             (ulong residualLow, ulong residualHigh, _) = Solve(element);
@@ -378,7 +411,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
-        //The reference's to_bytes_subfield: the coordinate vector u as subFieldBytes little-endian bytes.
+        /// <summary>The reference's <c>to_bytes_subfield</c>: writes the coordinate vector <c>u</c> as <see cref="SubFieldBytes"/> little-endian bytes.</summary>
         public void ToBytesSubfield(ReadOnlySpan<byte> element, Span<byte> destination)
         {
             (ulong residualLow, ulong residualHigh, uint coordinates) = Solve(element);
@@ -396,7 +429,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
-        //The reference's of_bytes_subfield: read u little-endian and recombine of_scalar(u) = Σ_j u_j·β_j.
+        /// <summary>The reference's <c>of_bytes_subfield</c>: reads <c>u</c> little-endian and recombines <c>of_scalar(u) = Σ_j u_j·β_j</c>.</summary>
         public void OfBytesSubfield(ReadOnlySpan<byte> source, Span<byte> element)
         {
             uint coordinates = 0;
@@ -423,8 +456,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
-        //The reference's solve: reduce the queried element against the cached echelon rows, returning the
-        //residual (zero iff in subfield) and the recovered coordinate vector u.
+        /// <summary>The reference's <c>solve</c>: reduces the queried element against the cached echelon rows, returning the residual (zero iff the element is in the subfield) and the recovered coordinate vector <c>u</c>.</summary>
         private (ulong ResidualLow, ulong ResidualHigh, uint Coordinates) Solve(ReadOnlySpan<byte> element)
         {
             (ulong low, ulong high) = ToLimbs(element);
@@ -433,7 +465,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
             Span<ulong> echelonRows = EchelonRows;
             Span<uint> coordinateCombination = CoordinateCombination;
             Span<int> leadingColumn = LeadingColumn;
-            for(int rank = 0; rank < subFieldBits; rank++)
+            for(int rank = 0; rank < SubFieldBits; rank++)
             {
                 int column = leadingColumn[rank];
                 bool bit = column < 64 ? ((low >> column) & 1) != 0 : ((high >> (column - 64)) & 1) != 0;
@@ -449,18 +481,20 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
+        /// <summary>Releases the pooled scratch buffer, clearing it first.</summary>
         public void Dispose()
         {
             IMemoryOwner<byte>? local = scratchOwner;
             if(local is not null)
             {
                 scratchOwner = null;
-                local.Memory.Span[..ScratchBytes(subFieldBits)].Clear();
+                local.Memory.Span[..ScratchBytes(SubFieldBits)].Clear();
                 local.Dispose();
             }
         }
 
 
+        /// <summary>Splits a canonical big-endian scalar into its two GF(2^128) limbs.</summary>
         private static (ulong Low, ulong High) ToLimbs(ReadOnlySpan<byte> canonical)
         {
             ulong low = BinaryPrimitives.ReadUInt64BigEndian(canonical.Slice(LowLimbByteOffset, 8));
@@ -470,7 +504,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
-        //The inverse of ToLimbs: the two GF(2^128) limbs back into a 32-byte big-endian canonical scalar.
+        /// <summary>The inverse of <see cref="ToLimbs"/>: writes the two GF(2^128) limbs back into a 32-byte big-endian canonical scalar.</summary>
         private static void FromLimbs(ulong low, ulong high, Span<byte> canonical)
         {
             canonical.Clear();
@@ -479,6 +513,7 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
+        /// <summary>Reads bit <paramref name="column"/> (0..127) of the two-limb row at <paramref name="row"/>.</summary>
         private static bool LimbBit(ReadOnlySpan<ulong> rows, int row, int column)
         {
             ulong limb = column < 64 ? rows[(row * LimbCount) + 0] : rows[(row * LimbCount) + 1];
@@ -488,6 +523,8 @@ internal sealed class LongfellowSubfieldRunCodec: IDisposable
         }
 
 
+        /// <summary>Swaps echelon rows <paramref name="a"/> and <paramref name="b"/> (both limbs) along with their coordinate combinations; a no-op when the indices are equal.</summary>
+        [SuppressMessage("Performance", "CA1517", Justification = "The swap below writes through both indexers via tuple deconstruction; the analyzer does not recognize that as a write and misidentifies the parameters as read-only.")]
         private static void SwapRows(Span<ulong> rows, Span<uint> combination, int a, int b)
         {
             if(a == b)

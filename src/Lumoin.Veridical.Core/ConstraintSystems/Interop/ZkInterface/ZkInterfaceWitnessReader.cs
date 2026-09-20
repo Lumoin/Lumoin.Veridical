@@ -44,21 +44,24 @@ public static class ZkInterfaceWitnessReader
     public static R1csWitnessPipeReaderDelegate CreateReader(ZkInterfaceMessageDecoderDelegate decoder)
     {
         ArgumentNullException.ThrowIfNull(decoder);
-        return (pipe, format, curve, pool, cancellationToken) =>
-            ReadInternal(decoder, pipe, format, curve, pool, cancellationToken);
+        return (pipe, format, curve, pool, maximumIntakeBytes, cancellationToken) =>
+            ReadInternal(decoder, pipe, format, curve, pool, maximumIntakeBytes, cancellationToken);
     }
 
 
+    /// <summary>Decodes the complete stream with the caller's pool and assembles the owned R1CS result.</summary>
     private static RawR1csWitness ReadInternal(
         ZkInterfaceMessageDecoderDelegate decoder,
         PipeReader pipe,
         WellKnownR1csFormatLabel format,
         CurveParameterSet curve,
         BaseMemoryPool pool,
+        long maximumIntakeBytes,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(pipe);
         ArgumentNullException.ThrowIfNull(pool);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumIntakeBytes);
 
         if(format != WellKnownR1csFormatLabel.ZkInterface)
         {
@@ -69,7 +72,7 @@ public static class ZkInterfaceWitnessReader
 
         WellKnownCurves.ThrowIfCurveNotWired(curve);
 
-        ReadOnlySequence<byte> buffer = DrainPipe(pipe, cancellationToken);
+        ReadOnlySequence<byte> buffer = R1csPipeIntake.DrainPipe(pipe, maximumIntakeBytes, cancellationToken);
 
         try
         {
@@ -78,33 +81,13 @@ public static class ZkInterfaceWitnessReader
             //can legitimately declare, keeping the allocation bounded by input.
             int maxColumnCount = (int)Math.Min(buffer.Length, int.MaxValue);
             var builder = new ZkInterfaceWitnessBuilder(curve, pool, maxColumnCount);
-            decoder(buffer, builder, cancellationToken);
+            decoder(buffer, builder, pool, cancellationToken);
+
             return builder.Build();
         }
         finally
         {
             pipe.AdvanceTo(buffer.End);
-        }
-    }
-
-
-    private static ReadOnlySequence<byte> DrainPipe(PipeReader pipe, CancellationToken cancellationToken)
-    {
-        while(true)
-        {
-            ReadResult result = pipe.ReadAsync(cancellationToken).AsTask().GetAwaiter().GetResult();
-
-            if(result.IsCanceled)
-            {
-                throw new OperationCanceledException(cancellationToken);
-            }
-
-            if(result.IsCompleted)
-            {
-                return result.Buffer;
-            }
-
-            pipe.AdvanceTo(result.Buffer.Start, result.Buffer.End);
         }
     }
 }

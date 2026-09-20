@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 
@@ -21,26 +22,44 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </para>
 /// <para>
 /// Disposable and sensitive: it owns the commitment (the witness tableau and the per-leaf nonces) and the
-/// pad (the transcript-decrypting randomness), so <see cref="Dispose"/> clears and releases both.
+/// pad (the transcript-decrypting randomness), and the pooled root, all released by <see cref="Dispose"/>.
 /// </para>
 /// </remarks>
 internal sealed class LongfellowZkCommitment: IDisposable
 {
+    /// <summary>The byte width of the fixed-width commitment root.</summary>
     private const int DigestLength = 32;
 
-    private readonly byte[] root;
+    /// <summary>The owned, fixed-width commitment root.</summary>
+    private IMemoryOwner<byte>? root;
 
+    /// <summary>The owned standing Ligero commitment, surfaced by <see cref="Commitment"/> until disposed.</summary>
     private LongfellowLigeroCommitment? commitment;
+
+    /// <summary>The owned proof pad, surfaced by <see cref="Pad"/> until disposed.</summary>
     private LongfellowProofPad? pad;
 
 
-    internal LongfellowZkCommitment(LongfellowLigeroCommitment commitment, LongfellowProofPad pad, LigeroQuadraticConstraint[] quadraticConstraints, ReadOnlySpan<byte> root)
+    /// <summary>Copies the root into the supplied pool and takes ownership of the commitment and pad on success.</summary>
+    /// <remarks>A short root retains zero padding; a failed copy releases its rental.</remarks>
+    internal LongfellowZkCommitment(LongfellowLigeroCommitment commitment, LongfellowProofPad pad, LigeroQuadraticConstraint[] quadraticConstraints, ReadOnlySpan<byte> root, BaseMemoryPool pool)
     {
         this.commitment = commitment;
         this.pad = pad;
         QuadraticConstraints = quadraticConstraints;
-        this.root = new byte[DigestLength];
-        root.CopyTo(this.root);
+        IMemoryOwner<byte>? owner = pool.Rent(DigestLength);
+        try
+        {
+            Span<byte> bytes = owner.Memory.Span[..DigestLength];
+            bytes.Clear();
+            root.CopyTo(bytes);
+            this.root = owner;
+            owner = null;
+        }
+        finally
+        {
+            owner?.Dispose();
+        }
     }
 
 
@@ -56,12 +75,21 @@ internal sealed class LongfellowZkCommitment: IDisposable
     internal LigeroQuadraticConstraint[] QuadraticConstraints { get; }
 
     /// <summary>The 32-byte commitment root the driver absorbs (<c>recv_commitment</c>) before squeezing.</summary>
-    internal ReadOnlySpan<byte> RootSpan => root;
+    /// <exception cref="ObjectDisposedException">The holder has released its pooled root.</exception>
+    internal ReadOnlySpan<byte> RootSpan =>
+        (root ?? throw new ObjectDisposedException(nameof(LongfellowZkCommitment))).Memory.Span[..DigestLength];
 
 
     /// <inheritdoc/>
     public void Dispose()
     {
+        IMemoryOwner<byte>? localRoot = root;
+        if(localRoot is not null)
+        {
+            root = null;
+            localRoot.Dispose();
+        }
+
         LongfellowLigeroCommitment? localCommitment = commitment;
         if(localCommitment is not null)
         {

@@ -22,8 +22,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The technique is RG.5's: every proof's <c>t̂</c> consistency check and its
-/// inner-product check collapse to single-multiexponentiation identities
+/// The technique collapses every proof's <c>t̂</c> consistency check and its
+/// inner-product check to single-multiexponentiation identities
 /// (the IPA fold replaced by the closed-form s-vector
 /// <c>s_i = ∏_j w_j^{±1}</c> over the <c>log₂(n·m)</c> round challenges), and
 /// the identities combine under two fresh random weights per proof. What the
@@ -39,10 +39,10 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </remarks>
 public static class BatchAggregatedBulletproofRangeVerifier
 {
+    /// <summary>The width in bytes of one field element in its canonical scalar representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //Label for the per-proof batch weights, distinct from the single-value
-    //batch label so the two batch flavours never collide on a transcript.
+    /// <summary>The transcript label prefix for the per-proof batch weights, distinct from the single-value batch label so the two batch flavours never collide on a transcript.</summary>
     private const string BatchWeightLabelPrefix = "veridical.bulletproofs.range.aggbatch.weight";
 
 
@@ -163,6 +163,11 @@ public static class BatchAggregatedBulletproofRangeVerifier
     }
 
 
+    /// <summary>
+    /// Replays every proof's transcript to recover its challenges, folds each proof's <c>t̂</c> and
+    /// IPA identities (weighted by fresh per-proof batch weights) into one shared multiexponentiation
+    /// alongside the key's generators, and compares the result against the group identity.
+    /// </summary>
     private static bool VerifyCore(
         RangeProofKey key,
         int bitWidth,
@@ -428,9 +433,10 @@ public static class BatchAggregatedBulletproofRangeVerifier
     }
 
 
-    //δ(y, z) = (z − z²)·⟨1, y^{nm}⟩ − Σ_j z^{3+j}·⟨1, 2^n⟩ — the aggregated
-    //constant: the two-power sum runs over one value's width, weighted per
-    //value by z^{3+j}.
+    /// <summary>
+    /// Computes the aggregated constant <c>δ(y, z) = (z − z²)·⟨1, y^{nm}⟩ − Σ_j z^{3+j}·⟨1, 2^n⟩</c>:
+    /// the two-power sum runs over one value's width, weighted per value by <c>z^{3+j}</c>.
+    /// </summary>
     private static void ComputeAggregatedDelta(
         ReadOnlySpan<byte> y,
         ReadOnlySpan<byte> z,
@@ -469,6 +475,7 @@ public static class BatchAggregatedBulletproofRangeVerifier
     }
 
 
+    /// <summary>Adds <c>weight · value</c> into the scalar slot at <paramref name="index"/>, for a generator whose coefficient accumulates contributions from more than one term.</summary>
     private static void AccumulateScalar(
         Span<byte> scalars,
         int index,
@@ -485,6 +492,7 @@ public static class BatchAggregatedBulletproofRangeVerifier
     }
 
 
+    /// <summary>Writes <c>weight · value</c> into the scalar slot at <paramref name="index"/>, for a generator whose coefficient has exactly one contributing term.</summary>
     private static void SetScalar(
         Span<byte> scalars,
         int index,
@@ -497,6 +505,7 @@ public static class BatchAggregatedBulletproofRangeVerifier
     }
 
 
+    /// <summary>Encodes the group identity element (the value generator scaled by the field zero) into <paramref name="destination"/>, the accepted multiexponentiation result.</summary>
     private static void EncodeIdentity(RangeProofKey key, Span<byte> destination, G1MultiScalarMultiplyDelegate g1Msm, CurveParameterSet curve, BaseMemoryPool pool)
     {
         int g1Size = WellKnownCurves.GetG1CompressedSizeBytes(curve);

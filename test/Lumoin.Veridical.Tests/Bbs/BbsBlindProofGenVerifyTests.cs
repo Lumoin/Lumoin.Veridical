@@ -18,20 +18,30 @@ namespace Lumoin.Veridical.Tests.Bbs;
 /// Section 10), so these suites are the gate: roundtrips across the
 /// three-way DISCLOSE/HIDE/COMMIT map matrix for both ciphersuites,
 /// tampering of every framed component, cross-interface separation, and
-/// disclosed-set substitution. The D3/D4/D6/D11 interpretation-ledger
-/// choices these tests pin are re-KATed when the regenerated official
+/// disclosed-set substitution. The disclosure-index and generator-vector
+/// interpretation choices these tests pin are re-KATed when the regenerated official
 /// fixtures land.
 /// </summary>
 [TestClass]
 internal sealed class BbsBlindProofGenVerifyTests
 {
+    /// <summary>The fixed 64-byte key-generation seed shared by every test in this suite.</summary>
     private static byte[] KeyMaterial { get; } = MakeBytes(64, 0x51);
+
+    /// <summary>The fixed key-generation info octet string shared by every test in this suite.</summary>
     private static byte[] KeyInfo { get; } = "blind-proof-key-info"u8.ToArray();
+
+    /// <summary>The fixed signature header shared by every test in this suite.</summary>
     private static byte[] Header { get; } = "blind-proof-header"u8.ToArray();
+
+    /// <summary>The fixed presentation header shared by every test in this suite.</summary>
     private static byte[] PresentationHeaderBytes { get; } = "blind-proof-presentation"u8.ToArray();
+
+    /// <summary>A single-element disclosed-index array selecting index 0, used by the core-interface comparison tests.</summary>
     private static int[] FirstIndexOnly { get; } = [0];
 
 
+    /// <summary>The per-ciphersuite delegate bundle a wiring binds together: the base (non-blind) and blind ciphersuite identities, and the message-expansion, hash-to-scalar and G1 hash-to-curve backends the base ciphersuite's hash variant selects.</summary>
     private sealed record SuiteWiring(
         BbsCiphersuite Ciphersuite,
         BbsCiphersuite BlindCiphersuite,
@@ -40,6 +50,7 @@ internal sealed class BbsBlindProofGenVerifyTests
         G1HashToCurveDelegate G1HashToCurve);
 
 
+    /// <summary>Builds the delegate bundle for one blind ciphersuite, selecting the SHA-256 or SHAKE-256 backends according to <paramref name="blindCiphersuite"/>'s base hash suite.</summary>
     private static SuiteWiring CreateWiring(BbsCiphersuite blindCiphersuite)
     {
         BbsCiphersuite baseSuite = blindCiphersuite.BaseHashSuite;
@@ -54,7 +65,10 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>The cached wiring for the BLS12-381/SHA-256 blind ciphersuite.</summary>
     private static SuiteWiring Sha256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Sha256Blind);
+
+    /// <summary>The cached wiring for the BLS12-381/SHAKE-256 blind ciphersuite.</summary>
     private static SuiteWiring Shake256Wiring { get; } = CreateWiring(BbsCiphersuite.Bls12Curve381Shake256Blind);
 
 
@@ -67,13 +81,25 @@ internal sealed class BbsBlindProofGenVerifyTests
         Scalar? secretProverBlind,
         BbsBlindSignature signature): IDisposable
     {
+        /// <summary>The issuer key pair the signature was produced under.</summary>
         public BbsKeyPair KeyPair { get; } = keyPair;
+
+        /// <summary>The issuer-known messages the blind signature covers.</summary>
         public BbsMessage[] SignerMessages { get; } = signerMessages;
+
+        /// <summary>The prover-committed messages bound into the commitment, if one was made.</summary>
         public BbsMessage[] CommittedMessages { get; } = committedMessages;
+
+        /// <summary>The prover's commitment-with-proof, or <see langword="null"/> when this issuance used no commitment.</summary>
         public BbsCommitmentWithProof? Commitment { get; } = commitment;
+
+        /// <summary>The prover's blinding scalar for the commitment, or <see langword="null"/> when this issuance used no commitment.</summary>
         public Scalar? SecretProverBlind { get; } = secretProverBlind;
+
+        /// <summary>The resulting blind signature.</summary>
         public BbsBlindSignature Signature { get; } = signature;
 
+        /// <summary>Disposes the signature, blind, commitment and key pair, in that order.</summary>
         public void Dispose()
         {
             Signature.Dispose();
@@ -84,6 +110,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that BlindProofGen/BlindProofVerify round-trips successfully when every signer and committed message is disclosed, for both the SHA-256 and SHAKE-256 ciphersuites.</summary>
     [TestMethod]
     public void AllDiscloseRoundtripSucceedsForBothSuites()
     {
@@ -94,6 +121,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that the round trip succeeds when every signer and committed message is hidden, for both ciphersuites.</summary>
     [TestMethod]
     public void AllHideRoundtripSucceedsForBothSuites()
     {
@@ -104,6 +132,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that the round trip succeeds for a disclosure map mixing DISCLOSE and HIDE entries across both signer and committed messages, with no COMMIT entries (N = 0), for both ciphersuites.</summary>
     [TestMethod]
     public void MixedDiscloseHideRoundtripSucceedsForBothSuites()
     {
@@ -116,6 +145,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that the round trip succeeds, and the framed proof carries the expected number of committed disclosures, across disclosure maps with one, two and three COMMIT entries spanning both issuer-known and prover-committed messages.</summary>
     [TestMethod]
     public void CommittedDisclosureRoundtripsSucceedAcrossCommitCounts()
     {
@@ -143,6 +173,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that the round trip succeeds when every message is prover-committed (L = 0) and one committed message is disclosed.</summary>
     [TestMethod]
     public void RoundtripWithNoSignerMessagesSucceeds()
     {
@@ -154,6 +185,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that the round trip succeeds with no prover-committed messages (M = 0), both with a blind-only commitment and with the commitment-free default where secret_prover_blind is the specification's zero.</summary>
     [TestMethod]
     public void RoundtripWithNoCommittedMessagesSucceeds()
     {
@@ -167,6 +199,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that add_zkp_info produces exactly one commitment opening per COMMIT entry, that each opening's commitment matches the corresponding commitment point framed in the proof, and that the opening's randomness never appears in the proof's serialized bytes.</summary>
     [TestMethod]
     public void OpeningsMatchTheFramedCommitmentsAndAreNeverSerialized()
     {
@@ -199,6 +232,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that flipping a single bit anywhere in the framed proof — every count field, core-proof point and scalar, disclosed index, and committed-disclosure commitment, response scalar and index — causes verification to fail or the proof to be rejected at intake.</summary>
     [TestMethod]
     public void TamperingAnyFramedComponentFailsVerification()
     {
@@ -280,6 +314,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that a proof fails verification when presented with a substituted disclosed-message value, and when presented with the message from a different (undisclosed) position, even though the genuine disclosed set still verifies.</summary>
     [TestMethod]
     public void ProofGeneratedUnderOneDisclosureMapFailsAgainstADifferentDisclosedSet()
     {
@@ -303,6 +338,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that transplanting a structurally valid committed-disclosure commitment from a second, independently generated proof into a first proof's frame fails verification, because the swapped commitment does not match the first proof's shared challenge.</summary>
     [TestMethod]
     public void CommitmentSwappedBetweenTwoValidProofsFailsVerification()
     {
@@ -342,6 +378,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that a core-interface proof re-framed as a blind proof fails verification, because the blind api_id changes the generators, the domain and the challenge DST, and the appended committed-disclosure block changes the challenge input shape, even for the N = 0 case whose challenge block is an all-zero placeholder.</summary>
     [TestMethod]
     public void CoreInterfaceProofWrappedInTheBlindFrameFailsVerification()
     {
@@ -412,6 +449,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that the core-layout byte region carried inside a blind proof fails verification when reinterpreted directly as a core-interface proof.</summary>
     [TestMethod]
     public void BlindProofCoreRegionDoesNotVerifyUnderTheCoreInterface()
     {
@@ -450,6 +488,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that a different presentation header fails the challenge recomputation, even though the genuine header still verifies.</summary>
     [TestMethod]
     public void WrongPresentationHeaderFailsVerification()
     {
@@ -472,6 +511,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Pins that an issuer-message count one too high or one too low fails verification, because it shifts where the committed-generator family's leading point sits in the combined generator vector.</summary>
     [TestMethod]
     public void WrongIssuerMessageCountFailsVerification()
     {
@@ -488,7 +528,7 @@ internal sealed class BbsBlindProofGenVerifyTests
 
             //A shifted issuer count moves the Q_2 slot, changing the
             //generator split the domain and the pairing equation are built
-            //over (ledger entry D6's count arithmetic).
+            //over.
             Assert.IsFalse(VerifyProof(wiring, issuance.KeyPair.PublicKey, proof, issuance.SignerMessages.Length + 1, disclosedMessages),
                 "An issuer-message count one too high must fail.");
             Assert.IsFalse(VerifyProof(wiring, issuance.KeyPair.PublicKey, proof, issuance.SignerMessages.Length - 1, disclosedMessages),
@@ -497,6 +537,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Asserts that verifying the tampered bytes under the blind interface either is rejected at proof intake (a caught <see cref="ArgumentException"/>, an equally acceptable outcome) or fails verification.</summary>
     private static void AssertTamperedProofIsRejected(
         SuiteWiring wiring,
         Issuance issuance,
@@ -525,6 +566,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Issues a blind signature, generates a blind proof over the given signer and committed disclosure maps, and asserts that BlindProofVerify accepts it — optionally checking the framed committed-disclosure count and opening count against an expected value.</summary>
     private static void RunRoundtrip(
         SuiteWiring wiring,
         int signerMessageCount,
@@ -578,6 +620,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Generates a key pair, builds the signer and committed messages, optionally commits to the committed messages, and blind-signs the signer messages, returning everything the proof-generation step and the test's cleanup need.</summary>
     private static Issuance Issue(SuiteWiring wiring, int signerMessageCount, int committedMessageCount, bool useCommitment = true)
     {
         BbsKeyPair pair = MakeKeyPair(wiring);
@@ -623,6 +666,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Runs BlindProofGen over the issuance's signature for the given signer and committed disclosure maps.</summary>
     private static (BbsBlindProof Proof, BbsBlindProofCommitmentOpenings Openings) GenerateProof(
         SuiteWiring wiring,
         Issuance issuance,
@@ -654,6 +698,7 @@ internal sealed class BbsBlindProofGenVerifyTests
             TestSetup.Pool);
 
 
+    /// <summary>Runs BlindProofVerify against the given public key, issuer-message count and disclosed messages, using the presentation header supplied or, absent one, the suite's fixed header.</summary>
     private static bool VerifyProof(
         SuiteWiring wiring,
         BbsPublicKey publicKey,
@@ -683,6 +728,7 @@ internal sealed class BbsBlindProofGenVerifyTests
             TestSetup.Pool);
 
 
+    /// <summary>Generates a key pair from the fixed key material and info under the wiring's base ciphersuite.</summary>
     private static BbsKeyPair MakeKeyPair(SuiteWiring wiring) =>
         wiring.Ciphersuite.Generate(
             KeyMaterial,
@@ -692,10 +738,12 @@ internal sealed class BbsBlindProofGenVerifyTests
             TestSetup.Pool);
 
 
+    /// <summary>Builds a disclosure map of the given length whose every entry is the same disclosure kind.</summary>
     private static BbsMessageDisclosure[] AllOf(BbsMessageDisclosure disclosure, int count) =>
         [.. Enumerable.Repeat(disclosure, count)];
 
 
+    /// <summary>Builds a sequence of distinct UTF-8 messages numbered from zero under the given prefix.</summary>
     private static BbsMessage[] MakeMessages(string prefix, int count)
     {
         BbsMessage[] messages = new BbsMessage[count];
@@ -708,6 +756,7 @@ internal sealed class BbsBlindProofGenVerifyTests
     }
 
 
+    /// <summary>Builds a deterministic byte sequence of the given length, each byte one more than the last starting from <paramref name="start"/> and wrapping modulo 256.</summary>
     private static byte[] MakeBytes(int length, byte start)
     {
         byte[] result = new byte[length];

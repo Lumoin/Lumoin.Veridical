@@ -15,8 +15,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// every reference vector under the evaluation backend, and a corrupted witness lane is rejected.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowSha3CircuitTests
+internal sealed class LongfellowSha3CircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The lane grid's side length.</summary>
     private const int GridSize = 5;
 
@@ -58,9 +74,9 @@ internal sealed class LongfellowSha3CircuitTests
     [TestMethod]
     public void TheWitnessFreePermutationMatchesTheHostInEvaluation()
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
         var state = new LongfellowBitWire[GridSize][][];
@@ -98,15 +114,15 @@ internal sealed class LongfellowSha3CircuitTests
     [TestMethod]
     public void TheShakeAssertionAcceptsEveryReferenceVectorInEvaluation()
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
         for(int i = 0; i < LongfellowSha3TestVectors.Shake256Vectors.Count; i++)
         {
             LongfellowSha3TestVectors.ShakeVector vector = LongfellowSha3TestVectors.Shake256Vectors[i];
             byte[] seed = Convert.FromHexString(vector.Input);
             byte[] expected = Convert.FromHexString(vector.Output);
 
-            var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-            var logic = new LongfellowLogic(backend, field);
+            using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+            using var logic = new LongfellowLogic(backend, field);
             var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
             LongfellowBitWire[][] output = circuit.AssertShake256(
@@ -129,13 +145,13 @@ internal sealed class LongfellowSha3CircuitTests
     [TestMethod]
     public void ACorruptedWitnessLaneIsRejectedInEvaluation()
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
         LongfellowSha3TestVectors.ShakeVector vector = LongfellowSha3TestVectors.Shake256Vectors[1];
         byte[] seed = Convert.FromHexString(vector.Input);
         byte[] expected = Convert.FromHexString(vector.Output);
 
-        var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
         IReadOnlyList<LongfellowSha3BlockWitness> witnesses = LongfellowSha3Witness.ComputeWitnessShake256(seed, expected.Length);

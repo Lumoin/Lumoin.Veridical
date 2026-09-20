@@ -13,12 +13,11 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The P-256 base-field (<c>Fp256</c>) binding of the wire-format Ligero seam (conformance step C.12,
-/// the Fp256 sig-circuit RS wiring): <see cref="LongfellowFp256Encoding"/> together with the field-generic
+/// The P-256 base-field (<c>Fp256</c>) binding of the wire-format Ligero seam (the Fp256 sig-circuit RS
+/// wiring): <see cref="LongfellowFp256Encoding"/> together with the field-generic
 /// commitment and the <see cref="LongfellowSubfieldRunCodec"/> serializer seam over the prime field. These
-/// do NOT assert end-to-end conformance against reference bytes — the byte-exact Fp256 commitment root
-/// against a reference dump lands with the Docker dump harness in a later step. They gate the construction
-/// faithfulness instead:
+/// do NOT assert end-to-end conformance against reference bytes; that byte-exact check is a separate
+/// gate. They gate the construction faithfulness instead:
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -39,25 +38,38 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowFp256EncodingTests
 {
+    /// <summary>The byte width of one scalar in this test's canonical scratch buffers, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The byte width of a SHA-256 digest, the Merkle root and node size these gates use.</summary>
     private const int DigestSize = 32;
+
+    /// <summary>The element width, in bytes, of a P-256 base-field (Fp256) scalar on the wire.</summary>
     private const int Fp256ElementBytes = 32;
 
-    //mdoc_zk.cc:83-88: the two decimal constants the reference parses into the extension root of unity.
+    /// <summary>The decimal source for the pinned root of unity's real part (<c>kRootX</c>), as the reference parses it (mdoc_zk.cc:83-88).</summary>
     private const string RootXDecimal = "112649224146410281873500457609690258373018840430489408729223714171582664680802";
+
+    /// <summary>The decimal source for the pinned root of unity's imaginary part (<c>kRootY</c>), as the reference parses it (mdoc_zk.cc:83-88).</summary>
     private const string RootYDecimal = "84087994358540907695740461427818660560182168997182378749313018254450460212908";
 
+    /// <summary>The P-256 base-field order, used to reduce and range-check canonical scalars in this class's helpers.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The P-256 base-field addition delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarAddDelegate Add { get; } = P256BaseFieldReference.GetAdd();
 
+    /// <summary>The P-256 base-field subtraction delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = P256BaseFieldReference.GetSubtract();
 
+    /// <summary>The P-256 base-field multiplication delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = P256BaseFieldReference.GetMultiply();
 
+    /// <summary>The P-256 base-field inversion delegate from the BigInteger-backed reference implementation.</summary>
     private static ScalarInvertDelegate Invert { get; } = P256BaseFieldReference.GetInvert();
 
 
+    /// <summary>Verifies that the pinned extension root of unity's real and imaginary parts equal the reference's decimal source constants, that both lie below the P-256 modulus, and that the production root's multiplicative order is 2^31.</summary>
     [TestMethod]
     public void ThePinnedRootOfUnityMatchesTheDecimalSource()
     {
@@ -88,6 +100,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that the Fp256 field profile frames its on-wire element width at 32 bytes and its third evaluation point at the integer 2.</summary>
     [TestMethod]
     public void TheProfileIsTheFp256Profile()
     {
@@ -101,6 +114,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that the factory-built row encoder's interpolate output is byte-identical to calling <see cref="Fp256ReedSolomon"/> directly for the same shape on the same sample row, proving the factory wrapper binding is faithful.</summary>
     [TestMethod]
     public void TheFactoryEncoderAgreesWithDirectFp256ReedSolomon()
     {
@@ -112,7 +126,8 @@ internal sealed class LongfellowFp256EncodingTests
         byte[] sampleRow = BuildSampleRow(Dimension, BlockLength);
 
         byte[] viaFactory = (byte[])sampleRow.Clone();
-        Fp256RealFft factoryFft = NewFft();
+        using BaseMemoryPool factoryFftPool = new();
+        using Fp256RealFft factoryFft = NewFft(factoryFftPool);
         LongfellowRowEncoderFactory factory = LongfellowFp256Encoding.CreateEncoderFactory(
             factoryFft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
         using(LongfellowRowEncoder encoder = factory(Dimension, BlockLength))
@@ -121,7 +136,8 @@ internal sealed class LongfellowFp256EncodingTests
         }
 
         byte[] viaDirect = (byte[])sampleRow.Clone();
-        Fp256RealFft directFft = NewFft();
+        using BaseMemoryPool directFftPool = new();
+        using Fp256RealFft directFft = NewFft(directFftPool);
         using(Fp256ReedSolomon rs = new(Dimension, BlockLength, directFft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared))
         {
             rs.Interpolate(viaDirect);
@@ -131,6 +147,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that disposing a factory-built row encoder disposes its underlying <see cref="Fp256ReedSolomon"/> precompute, so a subsequent interpolate throws <see cref="ObjectDisposedException"/>.</summary>
     [TestMethod]
     public void TheFactoryEncoderDisposesItsState()
     {
@@ -140,7 +157,9 @@ internal sealed class LongfellowFp256EncodingTests
         const int Dimension = 5;
         const int BlockLength = 16;
 
-        Fp256RealFft fft = NewFft();
+        using BaseMemoryPool fftPool = new();
+
+        using Fp256RealFft fft = NewFft(fftPool);
         LongfellowRowEncoderFactory factory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
 
@@ -153,6 +172,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that committing the same Fp256 witness set with the same random stream produces the same non-zero commitment root each time.</summary>
     [TestMethod]
     public void TheCommitmentBuildsDeterministically()
     {
@@ -166,6 +186,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that flipping one witness bit before committing changes the resulting commitment root.</summary>
     [TestMethod]
     public void AFlippedWitnessChangesTheRoot()
     {
@@ -178,6 +199,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that the Fp256 subfield run codec always reports the full 32-byte field as the subfield: every element is in the subfield, to_bytes_subfield/of_bytes_subfield match to_bytes_field/of_bytes_field exactly, and an out-of-range 32-byte sequence is rejected.</summary>
     [TestMethod]
     public void TheSubfieldRunCodecForFp256IsAlwaysFullField()
     {
@@ -217,6 +239,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that the signature circuit's subfield byte size equals the full 32-byte Fp256 element, and that its subfield boundary of 0 leaves the first witness row full-field.</summary>
     [TestMethod]
     public void TheSignatureSubfieldParametersMatchTheReference()
     {
@@ -225,7 +248,7 @@ internal sealed class LongfellowFp256EncodingTests
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
         Assert.AreEqual(LongfellowFp256Encoding.SignatureSubFieldBytes, profile.ElementBytes, "The Fp256 subfield byte size is the full 32-byte element.");
 
-        //The dumped sig_subfield_boundary is 0 (mdoc-circuit-anchor-output.txt). With it zero, no witness
+        //The recorded sig_subfield_boundary is 0 (mdoc-circuit-anchor-output.txt). With it zero, no witness
         //row is subfield-only: for the first witness row the subfield_only test 1*w <= boundary is false
         //(the row width strictly exceeds the boundary), so the commit draws full-field padding throughout.
         int boundary = LongfellowFp256Encoding.SignatureSubfieldBoundary;
@@ -233,6 +256,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Verifies that a synthetic Fp256 Ligero proof round-trips byte-exactly through the run-length serializer's write and read, including every response, opened-column, nonce and Merkle-path field.</summary>
     [TestMethod]
     public void AnFp256ProofRoundTripsThroughTheRunLengthSerializer()
     {
@@ -240,7 +264,7 @@ internal sealed class LongfellowFp256EncodingTests
         //codec has no end-to-end gate elsewhere: for the prime field every element is in_subfield, so Write
         //emits a length-0 leading full-field run then one subfield run covering all nreq·nrow elements, and
         //Read must parse it back. A synthetic proof of Fp256 elements below p exercises that path without
-        //the full prover; byte-exact conformance against a reference dump lands with the Docker harness.
+        //the full prover.
         const int WitnessCount = 8;
         const int QuadraticConstraintCount = 1;
         const int InverseRate = 4;
@@ -264,11 +288,12 @@ internal sealed class LongfellowFp256EncodingTests
 
         AssertProofFieldsEqual(proof, parsed, parameters, OpenedColumnCount);
     }
-
-
-    //Commits a small Fp256 witness set (8 witnesses, one quadratic triple W[2] = W[0]·W[1]) with an
-    //optional one-bit witness flip, writing the root. The random source draws below p so of_bytes_field
-    //accepts every draw; subfield_boundary = 0, so no subfield draw is made.
+    /// <summary>
+    /// Commits a small Fp256 witness set (eight witnesses, one quadratic triple <c>W[2] = W[0]·W[1]</c>) to a
+    /// Ligero root, with an optional one-bit witness flip applied before recomputing the triple. The random
+    /// source draws below <c>p</c> so <c>of_bytes_field</c> accepts every draw; <c>subfield_boundary = 0</c>,
+    /// so no subfield draw is made.
+    /// </summary>
     private static void Commit(int witnessFlipIndex, Span<byte> root)
     {
         const int WitnessCount = 8;
@@ -284,7 +309,9 @@ internal sealed class LongfellowFp256EncodingTests
 
         LigeroQuadraticConstraint[] quadraticConstraints = [new LigeroQuadraticConstraint(0, 1, 2)];
 
-        Fp256RealFft fft = NewFft();
+        using BaseMemoryPool fftPool = new();
+
+        using Fp256RealFft fft = NewFft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalar, InRange, BaseMemoryPool.Shared);
@@ -299,9 +326,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
-    //W[i] = of_scalar(i + 1), then W[2] = W[0]·W[1] to satisfy the one quadratic constraint. An optional
-    //flip index XORs one low bit of a witness, after which W[2] is recomputed so the only difference is
-    //the perturbed input propagating into the codeword.
+    /// <summary>Fills the witness vector as W[i] = of_scalar(i + 1), then sets W[2] = W[0]·W[1] to satisfy the one quadratic constraint. An optional flip index XORs one low bit of a witness before W[2] is recomputed, so the only difference is the perturbed input propagating into the codeword.</summary>
     private static void BuildWitnesses(Span<byte> witnesses, int witnessFlipIndex)
     {
         int witnessCount = witnesses.Length / ScalarSize;
@@ -319,10 +344,12 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
-    //A synthetic proof whose response rows and opened columns hold Fp256 elements below p (so
-    //to_bytes_field / of_bytes_field round-trip without rejection); nonces and the Merkle path are raw
-    //bytes. The path length is nreq, the minimum the reader accepts. Used to drive the run-length
-    //serializer over the Fp256 codec without the full prover.
+    /// <summary>
+    /// Builds a synthetic proof whose response rows and opened columns hold Fp256 elements below p (so
+    /// to_bytes_field / of_bytes_field round-trip without rejection); nonces and the Merkle path are raw
+    /// bytes. The path length is nreq, the minimum the reader accepts. Used to drive the run-length
+    /// serializer over the Fp256 codec without the full prover.
+    /// </summary>
     private static LongfellowLigeroProof BuildSyntheticProof(LongfellowLigeroParameters parameters, int openedColumnCount)
     {
         const int NonceSize = 32;
@@ -370,8 +397,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
-    //Asserts the response rows, opened columns, nonces and Merkle path are identical between two proofs.
-    //The parsed proof's column indices are zeroed by Read (idx is not transmitted), so they are excluded.
+    /// <summary>Asserts that the response rows, opened columns, nonces and Merkle path are identical between two proofs. The parsed proof's column indices are zeroed by Read (idx is not transmitted), so they are excluded.</summary>
     private static void AssertProofFieldsEqual(LongfellowLigeroProof expected, LongfellowLigeroProof actual, LongfellowLigeroParameters parameters, int openedColumnCount)
     {
         Assert.IsTrue(actual.LowDegreeResponse.SequenceEqual(expected.LowDegreeResponse), "y_ldt must round-trip.");
@@ -395,8 +421,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
-    //A sample row: the first `dimension` slots hold of_scalar(i·i + 7), the rest are zero (the RS encoder
-    //fills them). Mirrors the Fp256 RS anchor's polynomial seeding shape.
+    /// <summary>Builds a sample row: the first <paramref name="dimension"/> slots hold of_scalar(i·i + 7), the rest are zero for the Reed-Solomon encoder to fill. Mirrors the Fp256 RS anchor's polynomial seeding shape.</summary>
     private static byte[] BuildSampleRow(int dimension, int blockLength)
     {
         byte[] row = new byte[blockLength * ScalarSize];
@@ -409,17 +434,18 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
-    private static Fp256RealFft NewFft()
+    /// <summary>Creates a caller-owned FFT whose root uses the supplied pool.</summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, OfScalar, CurveParameterSet.None, pool);
     }
 
 
-    //A deterministic source whose every draw is below p: the most significant little-endian byte is
-    //zeroed, so the 32-byte integer is < 2^248 < p and of_bytes_field accepts it.
+    /// <summary>Creates a deterministic byte source whose every draw is below p: the most significant little-endian byte is zeroed, so the 32-byte integer is below 2^248, which is below p, and of_bytes_field accepts it.</summary>
     private static LongfellowRandomByteSource NewBelowModulusSource()
     {
         ulong counter = 0;
@@ -440,15 +466,16 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
-    //of_scalar(u): the integer u reduced mod p as a canonical big-endian scalar.
+    /// <summary>Reduces an unsigned coordinate modulo the P-256 base-field order and returns it as a canonical big-endian scalar: the Fp256 profile's of_scalar.</summary>
     private static void OfScalar(uint coordinate, Span<byte> destination) =>
         Canonical(new BigInteger(coordinate) % Prime).CopyTo(destination);
 
 
-    //fits(an): the canonical big-endian integer is below the modulus.
+    /// <summary>Returns whether a canonical big-endian scalar is below the modulus: the Fp256 profile's fits predicate.</summary>
     private static bool InRange(ReadOnlySpan<byte> canonical) => ReadCanonicalBigEndian(canonical) < Prime;
 
 
+    /// <summary>Computes the SHA-256 digest of <paramref name="left"/> concatenated with <paramref name="right"/>, the two-to-one compression the Merkle layers use.</summary>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSize];
@@ -458,10 +485,12 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Computes a one-shot SHA-256 digest of <paramref name="input"/> into <paramref name="output"/>, ignoring the caller-supplied hash-function label.</summary>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction) =>
         SHA256.HashData(input, output);
 
 
+    /// <summary>Returns whether every byte of the value is zero.</summary>
     private static bool IsZero(ReadOnlySpan<byte> value)
     {
         foreach(byte b in value)
@@ -476,6 +505,7 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Returns a value as a canonical big-endian scalar of <see cref="ScalarSize"/> bytes.</summary>
     private static byte[] Canonical(BigInteger value)
     {
         byte[] canonical = new byte[ScalarSize];
@@ -491,10 +521,11 @@ internal sealed class LongfellowFp256EncodingTests
     }
 
 
+    /// <summary>Reads a canonical big-endian scalar as an unsigned <see cref="BigInteger"/>.</summary>
     private static BigInteger ReadCanonicalBigEndian(ReadOnlySpan<byte> bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 
 
-    //to_bytes_field for the test's own draws: the low 32 big-endian bytes reversed to little-endian.
+    /// <summary>Converts a value to this test's own little-endian draw encoding: the canonical big-endian bytes reversed, mirroring to_bytes_field.</summary>
     private static void WriteLittleEndian(BigInteger value, Span<byte> littleEndian)
     {
         byte[] canonical = Canonical(value);

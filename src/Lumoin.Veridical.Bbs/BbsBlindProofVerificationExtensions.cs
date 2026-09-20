@@ -21,13 +21,14 @@ namespace Lumoin.Veridical.Bbs;
 /// <remarks>
 /// The blind -03 framed proof wire format ships with no published test
 /// vectors (Section 10 of the draft); this surface is gated by
-/// self-consistency and tamper suites, and the D1/D4/D6/D11 ledger
-/// interpretations called out at their decision sites are re-KATed when
-/// the regenerated official fixtures land.
+/// self-consistency and tamper suites, and the interpretation choices
+/// called out at their decision sites are re-KATed when the regenerated
+/// official fixtures land.
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BbsBlindProofVerificationExtensions
 {
+    /// <summary>Extension members on <see cref="BbsBlindProof"/>.</summary>
     extension(BbsBlindProof proof)
     {
         /// <summary>
@@ -106,9 +107,9 @@ public static class BbsBlindProofVerificationExtensions
             ArgumentNullException.ThrowIfNull(pairing);
             ArgumentNullException.ThrowIfNull(pool);
 
-            //Ledger entry D1: verification must mirror generation, so the
-            //blind api_id is used despite the draft's Section 4.2.4
-            //Parameters block naming the core suffix.
+            //Verification mirrors generation: it uses the blind api_id, not the plain one the
+            //draft's Section 4.2.4 Parameters block names — an inherited copy-paste error also
+            //present in -02.
             BbsCiphersuite blindCiphersuite = BbsBlindAlgorithm.GetBlindInterface(publicKey.Ciphersuite);
             if(proof.Ciphersuite != blindCiphersuite)
             {
@@ -119,11 +120,10 @@ public static class BbsBlindProofVerificationExtensions
                 return false;
             }
 
-            //Ledger entry D6 (fixture-pending): the container already
-            //recovered U = (bbs_proof_len - 272) / 32 — WITH the division by
-            //octet_scalar_length the draft's Deserialization step 2 omits.
-            //U counts the secret_prover_blind slot, so the committed-message
-            //count subtracts one slot besides the issuer messages.
+            //The container already recovered U = (bbs_proof_len - 272) / 32, dividing by
+            //octet_scalar_length as required even though the draft's Deserialization step 2
+            //omits it. U counts the secret_prover_blind slot, so the committed-message count
+            //subtracts one slot besides the issuer messages.
             int undisclosedCount = proof.UndisclosedMessageCount;
             int disclosedCount = proof.DisclosedIndexCount;
             if(disclosedMessages.Length != disclosedCount)
@@ -139,8 +139,7 @@ public static class BbsBlindProofVerificationExtensions
 
             //Index intake: the container enforced strict ascent and int
             //range; range against the recovered vector size and the
-            //never-disclosable blind slot (position L, ledger entries
-            //D3/D4) gate here.
+            //never-disclosable blind slot at position L gate here.
             int[] disclosedIndices = new int[disclosedCount];
             for(int i = 0; i < disclosedCount; i++)
             {
@@ -279,9 +278,9 @@ public static class BbsBlindProofVerificationExtensions
                         return false;
                     }
 
-                    //Combined generator vector, exactly mirroring the prover
-                    //side (ledger entry D2: both families carry their leading
-                    //Q point, so the vector spans totalMessageCount + 1).
+                    //Combined generator vector, exactly mirroring the prover side: both the
+                    //issuer and committed generator families carry their own leading Q point,
+                    //so the vector spans totalMessageCount + 1.
                     G1Point[] combinedGenerators = new G1Point[totalMessageCount + 1];
                     combinedGenerators[0] = generators[0];
                     for(int i = 0; i < issuerMessageCount; i++)
@@ -322,12 +321,11 @@ public static class BbsBlindProofVerificationExtensions
                         pool);
 
                     //CoreProofVerify steps 3-5: C^_i = Y_0 * s^_i +
-                    //Y_1 * m^[rank(idx)] - C_i * cp. Ledger entry D11
-                    //(fixture-pending): the draft's hats[idx] indexes the m^
-                    //vector with the FULL-list index; the consistent reading
-                    //maps idx to its rank among the undisclosed indexes. A
-                    //committed index that is disclosed has no rank — the
-                    //proof is malformed and fails here.
+                    //Y_1 * m^[rank(idx)] - C_i * cp. The m^ vector is indexed by an undisclosed
+                    //message's rank among the undisclosed indexes, not by its position in the
+                    //full message list, since the vector has one entry per undisclosed message.
+                    //A committed index that is disclosed has no rank — the proof is malformed
+                    //and fails here.
                     using Scalar negChallenge = c!.Negate(scalarNegate, pool);
                     G1Point y0 = committedDisclosureBases[0];
                     G1Point y1 = committedDisclosureBases[1];
@@ -434,6 +432,10 @@ public static class BbsBlindProofVerificationExtensions
     }
 
 
+    /// <summary>Returns <see langword="true"/> when <paramref name="point"/> is on curve, not the identity, and in the prime-order subgroup — the screening every prover-supplied point must pass before it reaches a multi-scalar multiplication.</summary>
+    /// <param name="point">The prover-supplied point to screen.</param>
+    /// <param name="g1IsOnCurve">The curve-membership predicate.</param>
+    /// <param name="g1IsInPrimeOrderSubgroup">The prime-order-subgroup membership predicate.</param>
     private static bool IsValidPoint(G1Point point, G1IsOnCurveDelegate g1IsOnCurve, G1IsInPrimeOrderSubgroupDelegate g1IsInPrimeOrderSubgroup) =>
         point.IsOnCurve(g1IsOnCurve) && !point.IsIdentity && point.IsInPrimeOrderSubgroup(g1IsInPrimeOrderSubgroup);
 
@@ -458,6 +460,9 @@ public static class BbsBlindProofVerificationExtensions
     }
 
 
+    /// <summary>Disposes every non-null element of <paramref name="items"/>; safe to call with a <see langword="null"/> array.</summary>
+    /// <typeparam name="T">The disposable reference-type element.</typeparam>
+    /// <param name="items">The array whose elements are disposed, or <see langword="null"/>.</param>
     private static void DisposeAll<T>(T[]? items) where T: class, IDisposable
     {
         if(items is null)

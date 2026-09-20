@@ -15,6 +15,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class G2PointArithmeticExtensions
 {
+    /// <summary>Arithmetic and validation members added to every <see cref="G2Point"/> instance.</summary>
     extension(G2Point p)
     {
         /// <summary>
@@ -134,6 +135,14 @@ public static class G2PointArithmeticExtensions
     }
 
 
+    /// <summary>
+    /// Throws when two G2 operands are defined over different curves, the
+    /// precondition every binary G2 operation enforces before dispatching to its
+    /// backend delegate.
+    /// </summary>
+    /// <param name="left">The first operand's curve.</param>
+    /// <param name="right">The second operand's curve.</param>
+    /// <exception cref="ArgumentException">When <paramref name="left"/> and <paramref name="right"/> identify different curves.</exception>
     private static void ThrowIfCurveMismatch(CurveParameterSet left, CurveParameterSet right)
     {
         if(left.Code != right.Code)

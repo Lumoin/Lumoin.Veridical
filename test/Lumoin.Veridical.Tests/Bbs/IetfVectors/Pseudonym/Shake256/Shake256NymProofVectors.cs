@@ -12,8 +12,9 @@ namespace Lumoin.Veridical.Tests.Bbs.IetfVectors.Pseudonym.Shake256;
 /// <see cref="Vector007"/>'s <see cref="NymProofVector.Description"/>
 /// deliberately differ from the draft's printed sub-section titles,
 /// which are copy-paste duplicates of §12.2.5.1's title in all three
-/// cases; the disclosed-index data is authoritative (see
-/// W2.4-NYM-VECTORS.md's title/data mismatch note).
+/// cases; the disclosed-index data is authoritative, since the printed
+/// titles are a transcription artifact rather than distinct disclosure
+/// descriptions.
 /// </summary>
 internal static class Shake256NymProofVectors
 {

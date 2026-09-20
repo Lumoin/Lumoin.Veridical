@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The byte-identity gate for the de-recursed <see cref="LongfellowEq.RawEq2"/> (Perf Increment 2c): the
+/// The byte-identity gate for the de-recursed <see cref="LongfellowEq.RawEq2"/>: the
 /// reference materializes <c>eq[i] = EQ(G0, i) + alpha·EQ(G1, i)</c> with a top-down recursion
 /// (<c>fill_recursive</c>); the port replaces it with two iterative <see cref="LongfellowEq.FillEq"/> fills
 /// plus an <c>alpha</c>-weighted combine, routed through
@@ -33,23 +33,36 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowEqRawEq2BatchTests
 {
+    /// <summary>The byte width of one canonical GF(2^128) scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The byte width of one little-endian GF(2^128) field element within the deterministic scalar keystream.</summary>
     private const int ElementBytes = 16;
 
-    //The sizes cover: n == 1 (logn 0, leaf only), even/odd n (the trailing-element trim), the FillEq
-    //first-iteration overflow special-case (nl odd, triggered by 3/5/7/9/17/31/100/127/1000), and several
-    //binding levels (n up to 4096), with powers AND non-powers of two.
+    /// <summary>
+    /// The sizes cover: n == 1 (logn 0, leaf only), even/odd n (the trailing-element trim), the
+    /// FillEq first-iteration overflow special case (nl odd, triggered by 3/5/7/9/17/31/100/127/1000),
+    /// and several binding levels (n up to 4096), with powers AND non-powers of two.
+    /// </summary>
     private static int[] Sizes { get; } = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 17, 31, 32, 33, 63, 64, 65, 100, 127, 128, 511, 512, 513, 1000, 1024, 2047, 2048, 2049, 4095, 4096, 4097];
 
+    /// <summary>The raw GF(2^128) addition delegate the scalar and batched paths, and the reference recursion, compute over.</summary>
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The raw GF(2^128) subtraction delegate the scalar and batched paths, and the reference recursion, compute over.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The raw GF(2^128) multiplication delegate the scalar and batched paths, and the reference recursion, compute over.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The batched broadcast-multiply-accumulate delegate the batched path uses in place of per-term scalar multiplies.</summary>
     private static ScalarBroadcastMultiplyAccumulateDelegate BroadcastMultiplyAccumulate { get; } = Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate();
 
 
+    /// <summary>
+    /// Verifies, across a wide sweep of sizes, that both the new scalar path and the new batched GF
+    /// path reproduce the retained reference recursion byte for byte.
+    /// </summary>
     [TestMethod]
     public void BatchedAndScalarRawEq2AreByteIdenticalToTheRecursion()
     {
@@ -69,6 +82,10 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
+    /// <summary>
+    /// Verifies that all three <c>raw_eq2</c> paths agree byte for byte across degenerate inputs:
+    /// alpha zero, alpha one, alpha random, and the two evaluation points coinciding.
+    /// </summary>
     [TestMethod]
     public void RawEq2HandlesDegenerateAlphaAndCollapsedPointsByteIdentically()
     {
@@ -101,6 +118,11 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
+    /// <summary>
+    /// Verifies that when the broadcast delegate is supplied but the scratch buffer is too small for
+    /// the batched need (either one scalar short, or sized for the tmp row alone), <c>raw_eq2</c>
+    /// disengages the batch path and still reproduces the reference recursion byte for byte.
+    /// </summary>
     [TestMethod]
     public void AnUndersizedScratchFallsBackToTheScalarPathByteIdentically()
     {
@@ -133,6 +155,7 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
+    /// <summary>Verifies that <see cref="Sizes"/> retains every size that triggers FillEq's odd-nl first-iteration special case, so a future edit cannot silently drop that coverage.</summary>
     [TestMethod]
     public void TheSizeSweepCoversTheFirstIterationSpecialCase()
     {
@@ -145,8 +168,10 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
-    //Runs the three oracles (retained recursion, new scalar path, new batched GF path) and asserts all agree
-    //byte-for-byte.
+    /// <summary>
+    /// Runs the three oracles (retained recursion, new scalar path, new batched GF path) and asserts
+    /// all agree byte for byte.
+    /// </summary>
     private static void AssertAllPathsAgree(int logn, int n, ReadOnlySpan<byte> g0, ReadOnlySpan<byte> g1, ReadOnlySpan<byte> alpha, ReadOnlySpan<byte> one, string because)
     {
         byte[] recursion = new byte[n * ScalarSize];
@@ -167,15 +192,17 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
-    //The retained literal copy of the OLD raw_eq2 recursion (LongfellowEq.RawEq2 before Increment 2c): the
-    //independent byte-identity oracle. Seeds w0 = one, w1 = alpha, exactly as the reference's raw_eq2.
+    /// <summary>
+    /// The retained literal copy of the OLD, purely recursive <c>raw_eq2</c>: the independent
+    /// byte-identity oracle. Seeds w0 = one, w1 = alpha, exactly as the reference's raw_eq2.
+    /// </summary>
     private static void ReferenceRecursion(int logn, int n, ReadOnlySpan<byte> g0, ReadOnlySpan<byte> g1, ReadOnlySpan<byte> alpha, ReadOnlySpan<byte> one, Span<byte> eq)
     {
         FillRecursive(eq, logn, n, g0, g1, one, alpha);
     }
 
 
-    //fill_recursive(eq, l, n, G0, G1, w0, w1): eq[i] = w0*EQ[G0, i] + w1*EQ[G1, i].
+    /// <summary>Implements <c>fill_recursive(eq, l, n, G0, G1, w0, w1)</c>: eq[i] = w0*EQ[G0, i] + w1*EQ[G1, i].</summary>
     private static void FillRecursive(Span<byte> eq, int level, int n, ReadOnlySpan<byte> g0, ReadOnlySpan<byte> g1, ReadOnlySpan<byte> w0, ReadOnlySpan<byte> w1)
     {
         if(level > 0)
@@ -211,7 +238,7 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
-    //The GF(2^128) multiplicative one in the canonical 32-byte big-endian slot (value 1 in the low limb).
+    /// <summary>Writes the GF(2^128) multiplicative one in the canonical 32-byte big-endian slot (value 1 in the low limb).</summary>
     private static void WorkingOne(Span<byte> destination)
     {
         destination.Clear();
@@ -219,7 +246,7 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
-    //logn = the number of binding rounds for n entries = ceil(log2(n)); 0 for n == 1.
+    /// <summary>Computes logn, the number of binding rounds for n entries: ceil(log2(n)), 0 for n == 1.</summary>
     private static int BitLength(int n)
     {
         int bits = 0;
@@ -234,9 +261,11 @@ internal sealed class LongfellowEqRawEq2BatchTests
     }
 
 
-    //A deterministic SHA-256 keystream of count canonical GF(2^128) scalars: each scalar's low ElementBytes
-    //carry keystream bytes, the high bytes stay zero (the canonical slot). The seed advances per draw so the
-    //sizes do not share points.
+    /// <summary>
+    /// Deterministically fills a SHA-256 keystream of count canonical GF(2^128) scalars: each
+    /// scalar's low <see cref="ElementBytes"/> carry keystream bytes, the high bytes stay zero (the
+    /// canonical slot). The seed advances per draw so the sizes do not share points.
+    /// </summary>
     private static byte[] RandomScalars(int count, ref int seed)
     {
         byte[] scalars = new byte[Math.Max(count, 1) * ScalarSize];

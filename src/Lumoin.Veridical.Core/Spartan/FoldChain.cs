@@ -53,20 +53,31 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// </remarks>
 public sealed class FoldChain: IDisposable
 {
+    /// <summary>The current running folded instance, witness and error-commitment opening witness; replaced and disposed on every <see cref="Step"/>.</summary>
     private RelaxedR1csAccumulator accumulator;
-    private readonly PolynomialCommitmentProvider provider;
-    private readonly FiatShamirTranscript foldTranscript;
+
+    /// <summary>The commitment provider backing every commitment in the chain, held non-owningly; the caller disposes it.</summary>
+    private PolynomialCommitmentProvider Provider { get; }
+
+    /// <summary>The single fold transcript every <see cref="Step"/> squeezes its challenge from, held non-owningly; the caller disposes it.</summary>
+    private FiatShamirTranscript FoldTranscript { get; }
+
+    /// <summary>True once <see cref="Dispose"/> has run; guards every member against further use.</summary>
     private bool disposed;
 
 
+    /// <summary>Wraps an already-built accumulator, provider and fold transcript into a chain. Prefer <see cref="Start"/>.</summary>
+    /// <param name="accumulator">The initial accumulator, ordinarily the blinding instance <see cref="Start"/> builds.</param>
+    /// <param name="provider">The commitment provider backing the chain, retained non-owningly.</param>
+    /// <param name="foldTranscript">The fold transcript retained non-owningly.</param>
     private FoldChain(
         RelaxedR1csAccumulator accumulator,
         PolynomialCommitmentProvider provider,
         FiatShamirTranscript foldTranscript)
     {
         this.accumulator = accumulator;
-        this.provider = provider;
-        this.foldTranscript = foldTranscript;
+        this.Provider = provider;
+        this.FoldTranscript = foldTranscript;
     }
 
 
@@ -150,7 +161,7 @@ public sealed class FoldChain: IDisposable
         //structure — its Merkle-root commitments cannot be combined — so the
         //chain rejects it up front rather than fail deep inside the first fold.
         //BaseFold serves the direct (non-folded) Spartan prove/verify paths
-        //instead; see the folding and BaseFold design notes.
+        //instead.
         if(!provider.IsAdditivelyHomomorphic)
         {
             throw new ArgumentException(
@@ -215,7 +226,7 @@ public sealed class FoldChain: IDisposable
             RelaxedR1csFold.Fold(
                 accumulator.Instance, accumulator.Witness, accumulator.ErrorOpeningWitness,
                 incomingInstance, incomingWitness, incomingErrorOpeningWitness,
-                provider, foldTranscript,
+                Provider, FoldTranscript,
                 hash, squeeze, scalarReduce, scalarAdd, scalarSubtract, scalarMultiply, scalarRandom,
                 g1Add, g1ScalarMultiply, g1Msm, pool);
 
@@ -313,6 +324,7 @@ public sealed class FoldChain: IDisposable
     }
 
 
+    /// <summary>Builds the blinding accumulator: a random satisfied relaxed instance over <paramref name="template"/>'s coefficient matrices, with zeroed public inputs and the error vector set so the relaxed identity <c>(A·z) ∘ (B·z) = u · (C·z) + E</c> holds by construction.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The error commitment and opening witness from CommitMultilinearExtension transfer ownership to the instance and the accumulator respectively; every exception path disposes them explicitly. The cloned matrices transfer to RelaxedR1csInstance.Create.")]
     private static RelaxedR1csAccumulator BuildBlindingInstance(
         RawR1csInstance template,
@@ -461,6 +473,7 @@ public sealed class FoldChain: IDisposable
     }
 
 
+    /// <summary>Deep-copies a sparse matrix's triples into a fresh <see cref="R1csMatrix"/> the caller owns.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The cloned matrix transfers ownership to the caller (RelaxedR1csInstance.Create), whose Dispose chain releases it.")]
     private static R1csMatrix CloneMatrix(R1csMatrix source, BaseMemoryPool pool)
     {

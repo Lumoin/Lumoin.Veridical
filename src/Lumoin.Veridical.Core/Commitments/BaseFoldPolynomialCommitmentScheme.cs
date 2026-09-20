@@ -37,11 +37,10 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </remarks>
 public static class BaseFoldPolynomialCommitmentScheme
 {
+    /// <summary>The width in bytes of one field element in its canonical scalar representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The blind a BaseFold commitment carries: a single zero byte. BaseFold has
-    //no hiding randomness, but the surface's blind must be non-empty, so this
-    //is a placeholder the open operation never reads.
+    /// <summary>The blind a BaseFold commitment carries: a single zero byte. BaseFold has no hiding randomness, but the surface's blind must be non-empty, so this is a placeholder the open operation never reads.</summary>
     private const int PlaceholderBlindLengthBytes = 1;
 
 
@@ -63,11 +62,12 @@ public static class BaseFoldPolynomialCommitmentScheme
     /// <param name="multiply">Scalar multiplication backend.</param>
     /// <param name="invert">Scalar inversion backend.</param>
     /// <param name="hashToScalar">Hash-to-scalar backend the code derivation uses for its diagonal entries.</param>
+    /// <param name="pool">The pool supplying the retained seed; it must outlive the returned provider.</param>
     /// <param name="digestSizeBytes">The Merkle node digest size <paramref name="merkleHash"/> produces; defaults to <see cref="WellKnownMerkleHashParameters.DefaultDigestSizeBytes"/>.</param>
     /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
     /// <returns>A provider whose commit / open / verify route to the BaseFold evaluation protocol.</returns>
     /// <exception cref="ArgumentNullException">When any reference argument is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="queryCount"/> or <paramref name="digestSizeBytes"/> is non-positive, or <paramref name="digestSizeBytes"/> exceeds <see cref="WellKnownMerkleHashParameters.MaximumDigestSizeBytes"/>.</exception>
     public static PolynomialCommitmentProvider Create(
         ReadOnlySpan<byte> seed,
         CurveParameterSet curve,
@@ -81,6 +81,7 @@ public static class BaseFoldPolynomialCommitmentScheme
         ScalarMultiplyDelegate multiply,
         ScalarInvertDelegate invert,
         ScalarHashToScalarDelegate hashToScalar,
+        BaseMemoryPool pool,
         int digestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes,
         ScalarArithmeticBackend? batch = null)
     {
@@ -93,106 +94,69 @@ public static class BaseFoldPolynomialCommitmentScheme
         ArgumentNullException.ThrowIfNull(multiply);
         ArgumentNullException.ThrowIfNull(invert);
         ArgumentNullException.ThrowIfNull(hashToScalar);
+        ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
-        //Copy the seed: the closures outlive the caller's span.
-        byte[] seedCopy = seed.ToArray();
-
-        FoldableCode DeriveCode(int variableCount, BaseMemoryPool pool)
+        //The provider owns the seed because its delegates outlive the caller's span.
+        OwnedByteBuffer? seedOwner = seed.IsEmpty ? null : OwnedByteBuffer.Rent(seed.Length, pool);
+        try
         {
-            FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
-            return FoldableCode.Derive(parameters, seedCopy, hashToScalar, pool);
-        }
-
-        PolynomialCommitDelegate commit = (polynomial, pool) =>
-        {
-            using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
-            FoldableCodeParameters parameters = code.Parameters;
-
-            int messageElements = parameters.MessageLength;
-            int codewordElements = parameters.CodewordLength;
-
-            using IMemoryOwner<byte> coeffsOwner = pool.Rent(messageElements * ScalarSize);
-            Span<byte> coeffs = coeffsOwner.Memory.Span[..(messageElements * ScalarSize)];
-            polynomial.InterpolateToCoefficients(coeffs, subtract);
-
-            using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
-            Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
-            code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
-
-            using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, merkleHash, pool);
-
-            PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
-                tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
-            PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.CreateZero(
-                PlaceholderBlindLengthBytes, curve, CommitmentScheme.BaseFold, pool);
-
-            return (commitment, blind);
-        };
-
-        PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
-        {
-            using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
-
-            (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
-                code,
-                polynomial,
-                evaluationPoint,
-                queryCount,
-                transcript,
-                merkleHash,
-                hash,
-                squeeze,
-                reduce,
-                add,
-                subtract,
-                multiply,
-                invert,
-                pool,
-                batch);
-
-            using(proof)
+            OwnedByteBuffer? seedCopy = seedOwner;
+            if(seedCopy is not null)
             {
-                (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
-                using(bytesOwner)
-                {
-                    PolynomialOpening opening = PolynomialOpening.FromBytes(
-                        bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
-
-                    return (opening, claimedValue);
-                }
-            }
-        };
-
-        PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
-        {
-            using FoldableCode code = DeriveCode(evaluationPoint.Length, pool);
-
-            BaseFoldEvaluationProof? proof = null;
-            try
-            {
-                proof = BaseFoldEvaluationProofSerialization.FromBytes(
-                    opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
-            }
-            catch(ArgumentException)
-            {
-                //Malformed opening bytes are a rejection, not a fault.
-                return false;
+                seed.CopyTo(seedCopy.Bytes);
             }
 
-            using(proof)
-            using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+            MerkleCommitmentParameters merkleParameters = new(merkleHash, digestSizeBytes);
+
+            //Reconstructs the foldable code for the given variable count from the captured seed, curve and classical-security shape, so every commit, open and verify call in this provider agrees on the same code.
+            //The pool supplies the code's working buffers, and the caller disposes the returned code.
+            FoldableCode DeriveCode(int variableCount, BaseMemoryPool operationPool)
             {
-                return BaseFoldEvaluationVerifier.Verify(
+                FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
+
+                return FoldableCode.Derive(parameters, seedCopy is null ? ReadOnlySpan<byte>.Empty : seedCopy.Bytes, hashToScalar, operationPool);
+            }
+
+            PolynomialCommitDelegate commit = (polynomial, pool) =>
+            {
+                using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
+                FoldableCodeParameters parameters = code.Parameters;
+
+                int messageElements = parameters.MessageLength;
+                int codewordElements = parameters.CodewordLength;
+
+                using IMemoryOwner<byte> coeffsOwner = pool.Rent(messageElements * ScalarSize);
+                Span<byte> coeffs = coeffsOwner.Memory.Span[..(messageElements * ScalarSize)];
+                polynomial.InterpolateToCoefficients(coeffs, subtract);
+
+                using IMemoryOwner<byte> codewordOwner = pool.Rent(codewordElements * ScalarSize);
+                Span<byte> codeword = codewordOwner.Memory.Span[..(codewordElements * ScalarSize)];
+                code.Encode(coeffs, codeword, add, subtract, multiply, pool, batch);
+
+                using MerkleTree tree = BaseFoldCodewordTree.Build(codeword, codewordElements, merkleParameters, pool);
+
+                PolynomialCommitment commitment = PolynomialCommitment.FromBytes(
+                    tree.Root.AsReadOnlySpan(), curve, CommitmentScheme.BaseFold, pool);
+                PolynomialCommitmentBlind blind = PolynomialCommitmentBlind.CreateZero(
+                    PlaceholderBlindLengthBytes, curve, CommitmentScheme.BaseFold, pool);
+
+                return (commitment, blind);
+            };
+
+            PolynomialOpenDelegate open = (commitment, blind, polynomial, evaluationPoint, transcript, pool) =>
+            {
+                using FoldableCode code = DeriveCode(polynomial.VariableCount, pool);
+
+                (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.Prove(
                     code,
-                    commitmentRoot,
+                    polynomial,
                     evaluationPoint,
-                    claimedValue,
-                    proof,
                     queryCount,
                     transcript,
-                    merkleHash,
+                    merkleParameters,
                     hash,
                     squeeze,
                     reduce,
@@ -200,76 +164,76 @@ public static class BaseFoldPolynomialCommitmentScheme
                     subtract,
                     multiply,
                     invert,
-                    pool);
-            }
-        };
+                    pool,
+                    batch);
 
-        //The weighted-opening path (the statistical sumcheck mask's binding,
-        //SM.7b): the vector commit is the ordinary Merkle commit of the
-        //vector's MLE, and the weighted opening is the SM.1 multiplier-generic
-        //evaluation protocol.
-        PolynomialOpenWeightedSumDelegate openWeightedSum = (commitment, blind, vector, weights, transcript, pool) =>
-        {
-            using FoldableCode code = DeriveCode(vector.VariableCount, pool);
-
-            (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
-                code,
-                vector,
-                weights,
-                queryCount,
-                transcript,
-                merkleHash,
-                hash,
-                squeeze,
-                reduce,
-                add,
-                subtract,
-                multiply,
-                invert,
-                pool,
-                batch);
-
-            using(proof)
-            {
-                (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
-                using(bytesOwner)
+                using(proof)
                 {
-                    PolynomialOpening opening = PolynomialOpening.FromBytes(
-                        bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
+                    (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
+                    using(bytesOwner)
+                    {
+                        PolynomialOpening opening = PolynomialOpening.FromBytes(
+                            bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
 
-                    return (opening, claimedValue);
+                        return (opening, claimedValue);
+                    }
                 }
-            }
-        };
+            };
 
-        PolynomialVerifyWeightedSumDelegate verifyWeightedSum = (commitment, weights, claimedValue, opening, transcript, pool) =>
-        {
-            using FoldableCode code = DeriveCode(weights.VariableCount, pool);
+            PolynomialVerifyEvaluationDelegate verifyEvaluation = (commitment, evaluationPoint, claimedValue, opening, transcript, pool) =>
+            {
+                using FoldableCode code = DeriveCode(evaluationPoint.Length, pool);
 
-            BaseFoldEvaluationProof? proof = null;
-            try
-            {
-                proof = BaseFoldEvaluationProofSerialization.FromBytes(
-                    opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
-            }
-            catch(ArgumentException)
-            {
-                //Malformed opening bytes are a rejection, not a fault.
-                return false;
-            }
+                BaseFoldEvaluationProof? proof = null;
+                try
+                {
+                    proof = BaseFoldEvaluationProofSerialization.FromBytes(
+                        opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
+                }
+                catch(ArgumentException)
+                {
+                    //Malformed opening bytes are a rejection, not a fault.
+                    return false;
+                }
 
-            using(proof)
-            using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+                using(proof)
+                using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+                {
+                    return BaseFoldEvaluationVerifier.Verify(
+                        code,
+                        commitmentRoot,
+                        evaluationPoint,
+                        claimedValue,
+                        proof,
+                        queryCount,
+                        transcript,
+                        merkleHash,
+                        hash,
+                        squeeze,
+                        reduce,
+                        add,
+                        subtract,
+                        multiply,
+                        invert,
+                        pool);
+                }
+            };
+
+            //The weighted-opening path (the statistical sumcheck mask's binding):
+            //the vector commit is the ordinary Merkle commit of the vector's MLE,
+            //and the weighted opening is the multiplier-generic evaluation
+            //protocol.
+            PolynomialOpenWeightedSumDelegate openWeightedSum = (commitment, blind, vector, weights, transcript, pool) =>
             {
-                return BaseFoldEvaluationVerifier.VerifyWeightedSum(
+                using FoldableCode code = DeriveCode(vector.VariableCount, pool);
+
+                (BaseFoldEvaluationProof proof, Scalar claimedValue) = BaseFoldEvaluationProver.ProveWeightedSum(
                     code,
-                    commitmentRoot,
+                    vector,
                     weights,
-                    claimedValue,
-                    proof,
                     queryCount,
                     transcript,
-                    merkleHash,
+                    merkleParameters,
                     hash,
                     squeeze,
                     reduce,
@@ -277,24 +241,89 @@ public static class BaseFoldPolynomialCommitmentScheme
                     subtract,
                     multiply,
                     invert,
-                    pool);
-            }
-        };
+                    pool,
+                    batch);
 
-        return new PolynomialCommitmentProvider(
-            CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
-            ownedResource: null, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
-            //BaseFold's commitment is a Merkle root over the codeword — binding
-            //but not additively homomorphic, so it cannot back Nova-style folding;
-            //and not hiding (the root is a deterministic fingerprint of the witness,
-            //the opening reveals queried codeword positions). The salted/masked ZK
-            //variant (ZkBaseFoldPolynomialCommitmentScheme) is the hiding sibling.
-            isAdditivelyHomomorphic: false, isHiding: false,
-            //The vector commit is the ordinary commit; the unlifted Pedersen/IPA
-            //mask shape is reused because the sound-only path makes no hiding
-            //claim — the filler is inert structure shared with the hiding paths.
-            extraVariableCount: null, commitVector: commit, openWeightedSum, verifyWeightedSum,
-            resolveStatisticalMaskShape: static (d, degree) => WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree));
+                using(proof)
+                {
+                    (IMemoryOwner<byte> bytesOwner, int length) = BaseFoldEvaluationProofSerialization.ToBytes(proof, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
+                    using(bytesOwner)
+                    {
+                        PolynomialOpening opening = PolynomialOpening.FromBytes(
+                            bytesOwner.Memory.Span[..length], curve, CommitmentScheme.BaseFold, pool);
+
+                        return (opening, claimedValue);
+                    }
+                }
+            };
+
+            PolynomialVerifyWeightedSumDelegate verifyWeightedSum = (commitment, weights, claimedValue, opening, transcript, pool) =>
+            {
+                using FoldableCode code = DeriveCode(weights.VariableCount, pool);
+
+                BaseFoldEvaluationProof? proof = null;
+                try
+                {
+                    proof = BaseFoldEvaluationProofSerialization.FromBytes(
+                        opening.AsReadOnlySpan(), code.Parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Plain, pool);
+                }
+                catch(ArgumentException)
+                {
+                    //Malformed opening bytes are a rejection, not a fault.
+                    return false;
+                }
+
+                using(proof)
+                using(MerkleRoot commitmentRoot = MerkleRoot.FromBytes(commitment.AsReadOnlySpan(), pool))
+                {
+                    return BaseFoldEvaluationVerifier.VerifyWeightedSum(
+                        code,
+                        commitmentRoot,
+                        weights,
+                        claimedValue,
+                        proof,
+                        queryCount,
+                        transcript,
+                        merkleHash,
+                        hash,
+                        squeeze,
+                        reduce,
+                        add,
+                        subtract,
+                        multiply,
+                        invert,
+                        pool);
+                }
+            };
+
+            PolynomialCommitmentProvider provider = new(
+                CommitmentScheme.BaseFold, curve, commit, open, verifyEvaluation,
+                ownedResource: seedOwner, queryCount: queryCount, digestSizeBytes: digestSizeBytes,
+                //BaseFold's commitment is a Merkle root over the codeword — binding
+                //but not additively homomorphic, so it cannot back Nova-style folding;
+                //and not hiding (the root is a deterministic fingerprint of the witness,
+                //the opening reveals queried codeword positions). The salted/masked ZK
+                //variant (ZkBaseFoldPolynomialCommitmentScheme) is the hiding sibling.
+                isAdditivelyHomomorphic: false, isHiding: false,
+                //The vector commit is the ordinary commit; the unlifted Pedersen/IPA
+                //mask shape is reused because the sound-only path makes no hiding
+                //claim — the filler is inert structure shared with the hiding paths.
+                extraVariableCount: null, commitVector: commit, openWeightedSum, verifyWeightedSum,
+                resolveStatisticalMaskShape: static (d, degree) => WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree),
+                evaluationProofSizeBytes: variableCount => GetEvaluationProofSizeBytes(variableCount, curve, queryCount, digestSizeBytes),
+                //One Merkle root, one node wide: the scheme's leaf commitment brings
+                //the codeword to the configured node width, so the root is exactly
+                //digestSizeBytes wide — the same figure the opening's Merkle
+                //material is priced with.
+                commitmentSizeBytes: _ => digestSizeBytes);
+            seedOwner = null;
+
+            return provider;
+        }
+        finally
+        {
+            seedOwner?.Dispose();
+        }
     }
 
 
@@ -315,9 +344,16 @@ public static class BaseFoldPolynomialCommitmentScheme
     /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is non-positive or negative.</exception>
     public static int GetEvaluationProofSizeBytes(int variableCount, CurveParameterSet curve, int queryCount, int digestSizeBytes)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(variableCount);
+        //A zero-layer code has nothing to fold, so the prover refuses it and no
+        //such opening exists to be measured. The domain of a length seam has to
+        //match the domain of the thing it measures: a consumer splits wire bytes
+        //at these boundaries before any check runs, so a length returned for an
+        //unproducible opening is read as a section boundary rather than raised
+        //where the mistake was made.
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(variableCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(queryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
         FoldableCodeParameters parameters = WellKnownFoldableCodeParameters.CreateClassicalSecurity(variableCount, curve);
         return BaseFoldEvaluationProofSerialization.ComputeLength(parameters, queryCount, digestSizeBytes, BaseFoldOpeningMode.Plain);

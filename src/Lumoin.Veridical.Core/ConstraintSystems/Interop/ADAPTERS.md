@@ -35,14 +35,16 @@ public delegate RawR1csInstance R1csPipeReaderDelegate(
     PipeReader pipe,
     WellKnownR1csFormatLabel format,
     CurveParameterSet curve,
-    SensitiveMemoryPool<byte> pool,
+    BaseMemoryPool pool,
+    long maximumIntakeBytes,
     CancellationToken cancellationToken);
 
 public delegate RawR1csWitness R1csWitnessPipeReaderDelegate(
     PipeReader pipe,
     WellKnownR1csFormatLabel format,
     CurveParameterSet curve,
-    SensitiveMemoryPool<byte> pool,
+    BaseMemoryPool pool,
+    long maximumIntakeBytes,
     CancellationToken cancellationToken);
 ```
 
@@ -51,9 +53,10 @@ streams, and in-memory buffers uniformly. The
 `WellKnownR1csFormatLabel` parameter is the wire-format
 discriminator: a single delegate type can carry any concrete
 reader, and the reader implementation validates the label matches
-the format it parses. Writer-side delegates with parallel shape
-are declared in the same folder but no implementations are wired
-in this batch.
+the format it parses. Writer-side delegates with parallel shape are
+declared in the same folder to keep the adapter surface symmetric;
+no implementation backs them yet, so only the reader direction is
+wired for callers today.
 
 A reader does not auto-detect the wire format. The caller declares
 which format the pipe carries; the reader produces the deliverable
@@ -65,6 +68,20 @@ cleanly: `ZkInterfaceR1csReader.Reader` and
 `WellKnownR1csFormatLabel.ZkInterface` and slot into application
 wiring next to the Circom readers.
 
+`maximumIntakeBytes` is the caller's declared ceiling on the pipe's
+total length. All four readers drain their pipe through one shared
+loop (`R1csPipeIntake`), and that loop checks the ceiling against
+the buffer as it accumulates rather than only once the stream
+completes, so a stream past the ceiling is rejected before the rest
+of it is committed to memory. There is no default: a reader parsing
+untrusted input states a real budget at the call site, and
+`WellKnownR1csIntakeLimits.Unbounded` is available for a caller that
+wants no ceiling beyond the runtime's own addressable limit. A
+length exactly equal to the ceiling is accepted; only a length past
+it is rejected, with `R1csIntakeLimitExceededException` naming both
+the ceiling and the observed length so a host can tell "the input
+is too large" apart from "the input is malformed".
+
 ## § 3 The Circom binary format
 
 The iden3 binary specification for `.r1cs` files
@@ -72,8 +89,7 @@ The iden3 binary specification for `.r1cs` files
 is the authoritative source. The file shape:
 
 - A 4-byte ASCII magic `r1cs`.
-- A 4-byte little-endian version (only version 1 is accepted in
-  this batch).
+- A 4-byte little-endian version (only version 1 is accepted).
 - A 4-byte little-endian section count.
 - Variable-order sections, each prefixed by a 4-byte type code and
   an 8-byte little-endian payload size.
@@ -139,24 +155,24 @@ first-class when `RawR1csInstance` grows a deferred-public-input mode
 (provide `PublicInputCount` separately from the public-input bytes,
 or expose a method that copies an existing instance's matrices into
 a new instance with different public-input values). Both are
-follow-up work; the byte-faithful prove-and-verify gate this batch
-delivers does not depend on either.
+follow-up work that does not change the adapter contract; the
+byte-faithful prove-and-verify gate does not depend on either.
 
 ## § 7 The Circom witness (`.wtns`) format
 
 Circom's `.wtns` format carries the dense witness vector
 `z = (1, z[1], ..., z[nWitness - 1])` for a specific assignment of
 public inputs and private signals to a compiled circuit. The
-format has no separate specification document; the encoder source
-at `https://github.com/iden3/snarkjs/blob/master/src/wtns_utils.js`
-is the de-facto reference, and the iden3 witness-generator C++
-runtime emits the same bytes.
+format has no separate specification document; its layout is fixed
+by convention — independent real-world encoders agree on it
+byte-for-byte — rather than by a written spec. The iden3 `snarkjs`
+encoder (`https://github.com/iden3/snarkjs/blob/master/src/wtns_utils.js`)
+is the de-facto reference that convention encodes.
 
 File shape:
 
 - A 4-byte ASCII magic `wtns`.
-- A 4-byte little-endian version (only version 2 is accepted in
-  this batch).
+- A 4-byte little-endian version (only version 2 is accepted).
 - A 4-byte little-endian section count.
 - Variable-order sections, each prefixed by a 4-byte type code and
   an 8-byte little-endian payload size — the same framing as
@@ -170,7 +186,7 @@ Two section types are interpreted:
   invariant for BLS12-381.
 - Section type 2 (witness data) — `nWitness × field_size` bytes,
   one element per slot in little-endian byte order. Other section
-  types (PolyR / PolyB sections that some snarkjs versions emit)
+  types (PolyR / PolyB sections that some encoders emit)
   are read past per the same spec-conformance pattern as the
   `.r1cs` reader.
 
@@ -191,17 +207,15 @@ and `MaskedSpartanProver`; both proofs verify.
 The hand-constructed multiplier2 fixture proves the adapters work
 on a minimal canonical layout. The second test gate, in
 `CircomPoseidonFixtureTests`, exercises the adapters against
-`.r1cs` + `.wtns` pairs compiled — for both BLS12-381 and BN254 — by a
-pinned `circom` / `snarkjs` / `circomlib` from the owned source
-`circuits/poseidon2.circom`. The committed fixture bytes are the
-source of truth; their SHA-256 hashes are recorded alongside them in
-`test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/Circom/FIXTURES.md`.
+`.r1cs` + `.wtns` pairs for both BLS12-381 and BN254, from the
+owned source `circuits/poseidon2.circom`.
 
 Two properties of this fixture matter for the adapter contract:
 
-- **Section ordering**: snarkjs writes the constraints section
-  (type 2) before the header section (type 1) and the wire-to-label
-  map (type 3). The multiplier2 fixture writes header-first; the
+- **Section ordering**: real-world encoders do not always write the
+  header section first; the constraints section (type 2) can precede
+  the header section (type 1) and the wire-to-label map (type 3). The
+  multiplier2 fixture writes header-first; the
   Poseidon fixture writes constraints-first. The `CircomR1csReader`
   captures section payloads as `ReadOnlySequence<byte>` slices
   during the section-walk loop and processes them once both
@@ -282,12 +296,13 @@ implementation; `ZkInterfaceR1csReader.CreateReader(decoder)` and
 The contract is **synchronous and span-based by deliberate choice**.
 An `IAsyncEnumerable` pull contract cannot yield `ref struct`/spans, so
 it would force materialising every message into managed objects —
-putting field elements and witness values on the GC heap, against the
-library's `SensitiveMemoryPool` discipline — for a streaming benefit
-that is marginal anyway (FlatBuffers needs whole-buffer random access,
-so a message cannot be decoded before its bytes are all present). The
-push/sink shape keeps decoded scalars on the stack at the seam, and it
-makes the assembler-as-sink unit-testable by direct pushes.
+putting field elements and witness values on the GC heap instead of
+in `SensitiveMemoryPool` rentals like the rest of the library — for a
+streaming benefit that is marginal anyway (FlatBuffers needs
+whole-buffer random access, so a message cannot be decoded before
+its bytes are all present). The push/sink shape keeps decoded
+scalars on the stack at the seam, and it makes the assembler-as-sink
+unit-testable by direct pushes.
 
 ## § 11 ZkInterface field, variable, and public-input handling
 
@@ -332,14 +347,10 @@ the variable count, and the public values that complete `z[1..]`.
 The fixture gate (`ZkInterfaceFixtureTests`) parses owned
 `bls12_381/multiplier2.zkif` and `bn254/multiplier2.zkif` through both
 readers, checks `CheckSatisfiedBy` on each curve, and runs a Spartan
-prove-and-verify round trip on the BLS12-381 instance. Crucially the
-fixture bytes are produced by the **canonical `zkinterface`**
-implementation's own FlatBuffers serializer (pinned `=1.3.4`); the
-committed bytes are the source of truth, and their SHA-256 hashes are
+prove-and-verify round trip on the BLS12-381 instance. The committed
+bytes are the source of truth, and their SHA-256 hashes are
 recorded alongside them in
-`test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/ZkInterface/Fixtures/FIXTURES.md`,
-so the hand-written reader parsing them is a genuine interop check
-against the reference implementation rather than a round trip against
-our own assumptions. The fixtures mix full-width 32-byte instance and
+`test/Lumoin.Veridical.Tests/ConstraintSystems/Interop/ZkInterface/Fixtures/FIXTURES.md`.
+The fixtures mix full-width 32-byte instance and
 witness values with truncated single-byte coefficients, exercising
 both element encodings.

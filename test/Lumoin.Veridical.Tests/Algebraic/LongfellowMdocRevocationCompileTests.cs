@@ -21,12 +21,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Both pinned rows were regenerated from the pinned reference commit by running its own
-/// <c>mdoc.mdoc_revocation_list_test</c> and <c>mdoc.mdoc_revocation_span_test</c> gtests in the
-/// longfellow-ref Docker oracle (both dumps carry the reference's own copy-pasted label
-/// <c>mdoc revocation list</c>). Matching every counter pins the product-tree association, the
-/// comparator reduction, the two-block SHA-256 shape at the revocation packing width and the
-/// ECDSA advice structure.
+/// Both pinned rows are the reference implementation's own list and span circuit-shape counters
+/// (<c>mdoc.mdoc_revocation_list_test</c> and <c>mdoc.mdoc_revocation_span_test</c>). Matching every
+/// counter pins the product-tree association, the comparator reduction, the two-block SHA-256 shape
+/// at the revocation packing width and the ECDSA advice structure.
 /// </para>
 /// <para>
 /// The end-to-end gates prove the reference span tuple and a small deterministic list through the
@@ -35,8 +33,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowMdocRevocationCompileTests
+internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
     /// <summary>The field element width in bytes used for every witness column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -58,7 +74,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <summary>The list position the listed-identifier gate reuses as the identifier.</summary>
     private const int ListedIndex = 3;
 
-    /// <summary>The list circuit's reference depth upper bound (Docker oracle, <c>mdoc.mdoc_revocation_list_test</c>).</summary>
+    /// <summary>The list circuit's reference depth upper bound (<c>mdoc.mdoc_revocation_list_test</c>).</summary>
     private const int ListDepth = 19;
 
     /// <summary>The list circuit's reference wire count.</summary>
@@ -82,7 +98,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <summary>The list circuit's reference not-needed count.</summary>
     private const int ListNotNeededCount = 50005;
 
-    /// <summary>The span circuit's reference depth upper bound (Docker oracle, <c>mdoc.mdoc_revocation_span_test</c>).</summary>
+    /// <summary>The span circuit's reference depth upper bound (<c>mdoc.mdoc_revocation_span_test</c>).</summary>
     private const int SpanDepth = 12;
 
     /// <summary>The span circuit's reference wire count.</summary>
@@ -112,8 +128,11 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <summary>The Fiat-Shamir transcript seed for the list end-to-end gates.</summary>
     private static byte[] ListTranscriptSeed { get; } = Encoding.ASCII.GetBytes("mdoc-revocation-list-e2e");
 
+    /// <summary>The cached Curve owner for this test instance.</summary>
+    private LongfellowEllipticCurveParameters? curve;
+
     /// <summary>The curve constants shared by the circuit and the witness generator.</summary>
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
+    private LongfellowEllipticCurveParameters Curve => curve ??= CircuitScope.Track(LongfellowEllipticCurveParameters.CreateP256(CircuitScope.Pool));
 
     /// <summary>The production Montgomery base field addition delegate (the BigInteger reference delegates are too slow for these circuits' sizes).</summary>
     private static ScalarAddDelegate FastAdd { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
@@ -260,11 +279,11 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="listLength">The list element count.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileListCircuit(LongfellowLogicFieldOperations field, int listLength, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileListCircuit(LongfellowLogicFieldOperations field, int listLength, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowMdocRevocationListCircuit(logic);
 
         var list = new int[listLength];
@@ -279,7 +298,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
 
         circuit.AssertNotOnList(list, id, inverse);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -290,11 +309,11 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="field">The field bundle to compile over.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileSpanCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileSpanCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowMdocRevocationSpanCircuit(logic, Curve);
 
         int craPkX = logic.InputElement();
@@ -306,7 +325,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
 
         circuit.AssertNotOnList(craPkX, craPkY, id, witness);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -336,7 +355,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <returns>The witness column, one canonical scalar per declared input wire.</returns>
     private static byte[] BuildListWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, ReadOnlyMemory<byte>[] list, byte[] id)
     {
-        byte[] inverse = LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list);
+        using IMemoryOwner<byte> inverseOwner = field.Pool.Rent(ScalarSize);        Span<byte> inverse = inverseOwner.Memory.Span[..ScalarSize];        LongfellowMdocRevocationListWitness.ComputeProductInverse(field, id, list, inverse);
 
         byte[] column = new byte[circuit.InputCount * ScalarSize];
         field.Compiler.One.Span.CopyTo(column.AsSpan(0, ScalarSize));
@@ -366,12 +385,12 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="circuit">The compiled circuit declaring the input count.</param>
     /// <param name="idBitsStartWire">Receives the identifier-bit region's first wire, for the unprovability probe.</param>
     /// <returns>The witness column, one canonical scalar per declared input wire.</returns>
-    private static byte[] BuildSpanWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, out int idBitsStartWire)
+    private byte[] BuildSpanWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, out int idBitsStartWire)
     {
         LongfellowMdocRevocationTestVectors.SpanVector vector = LongfellowMdocRevocationTestVectors.ReferenceSpan;
         byte[] id = ParseScalar(vector.Id);
 
-        var generator = new LongfellowMdocRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var generator = CircuitScope.CreateRevocationSpanWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         Assert.IsTrue(
             generator.ComputeWitness(
                 ParseScalar(vector.PkX),
@@ -398,7 +417,7 @@ internal sealed class LongfellowMdocRevocationCompileTests
         //The identifier-bit region sits after the three signature scalars, the advice bundle and
         //the preimage bytes; the layout mirrors the declaration order.
         int witnessStart = cursor;
-        var probeGenerator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var probeGenerator = CircuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         idBitsStartWire = witnessStart + 3 + probeGenerator.ElementCount + (LongfellowMdocRevocationConstants.SpanBlockCount * BytesPerBlock * LongfellowLogic.BitWidth8);
 
         generator.FillWitness(column.AsSpan(witnessStart * ScalarSize, generator.ElementCount * ScalarSize));
@@ -416,7 +435,8 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <returns>The pooled proof envelope; the caller disposes it.</returns>
     private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn, byte[] transcriptSeed)
     {
-        Fp256RealFft fft = NewFastFft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFastFft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -456,7 +476,8 @@ internal sealed class LongfellowMdocRevocationCompileTests
     /// <param name="expectedAccept">Whether the proof is expected to be accepted.</param>
     private static void AssertRevocationVerifies(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, ReadOnlySpan<byte> proof, byte[] publicInputs, byte[] transcriptSeed, bool expectedAccept)
     {
-        Fp256RealFft fft = NewFastFft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFastFft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -504,20 +525,21 @@ internal sealed class LongfellowMdocRevocationCompileTests
 
     /// <summary>Builds the P-256 base field bundle over the production Montgomery backend delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFastFp256Bundle()
+    private LongfellowLogicFieldOperations NewFastFp256Bundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp256(FastAdd, FastSubtract, FastMultiply, FastInvert, Canonical(Prime - 1));
+        return CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(FastAdd, FastSubtract, FastMultiply, FastInvert, Canonical(Prime - 1), CircuitScope.Pool));
     }
 
 
     /// <summary>Builds the real FFT over the P-256 base field with the production Montgomery delegates.</summary>
     /// <returns>The FFT.</returns>
-    private static Fp256RealFft NewFastFft()
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFastFft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, pool);
     }
 
 

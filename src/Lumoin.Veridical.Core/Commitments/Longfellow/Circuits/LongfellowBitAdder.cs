@@ -1,3 +1,4 @@
+using System.Buffers;
 using System;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
@@ -29,7 +30,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// <c>p[i] = alpha^(2^N)·p[i − 1]</c> (the reference's characteristic-two <c>assert_eqmod</c> arm).
 /// </para>
 /// </remarks>
-internal sealed class LongfellowBitAdder
+internal sealed class LongfellowBitAdder: IDisposable
 {
     /// <summary>
     /// The widest bit vector the odd-prime arithmetization carries: the candidate-carry constants in
@@ -39,11 +40,19 @@ internal sealed class LongfellowBitAdder
     /// </summary>
     private const int MaxAdditiveWeightWidth = 63;
 
-    private readonly LongfellowLogic logic;
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowLogicFieldOperations field;
-    private readonly ReadOnlyMemory<byte>[]? alphaPowersOfTwo;
-    private readonly ReadOnlyMemory<byte> alphaToPowerOfTwoWidth;
+    /// <summary>The gadget layer this adder builds on.</summary>
+    private LongfellowLogic Logic { get; }
+    /// <summary>The logic backend's low-level wire operations, borrowed from <see cref="Logic"/>.</summary>
+    private LongfellowLogicBackend Backend { get; }
+    /// <summary>The field operations bundle, borrowed from <see cref="Logic"/>.</summary>
+    private LongfellowLogicFieldOperations Field { get; }
+    /// <summary>The characteristic-two power table <c>alpha^(2^i)</c> for <c>i &lt; Width</c>, or <see langword="null"/> over an odd-prime field.</summary>
+    private ReadOnlyMemory<byte>[]? AlphaPowersOfTwo { get; }
+    /// <summary>The characteristic-two power <c>alpha^(2^Width)</c>, used to build the <c>assert_eqmod</c> candidate powers.</summary>
+    private ReadOnlyMemory<byte> AlphaToPowerOfTwoWidth { get; }
+
+    /// <summary>Owns the cached characteristic-two powers until disposal.</summary>
+    private LongfellowCircuitStorage? Storage { get; }
 
     /// <summary>The bit width <c>N</c> this adder encodes (the reference's template parameter).</summary>
     public int Width { get; }
@@ -53,7 +62,8 @@ internal sealed class LongfellowBitAdder
     /// Constructs the adder over a width. When the field has characteristic two this eagerly builds
     /// the power table <c>alpha^(2^i)</c> for <c>i &lt; Width</c> by iterated squaring (the reference's
     /// constructor loop), plus <c>alpha^(2^Width)</c>; the odd-prime arithmetization precomputes
-    /// nothing, matching the reference's empty odd-prime constructor.
+    /// nothing, matching the reference's empty odd-prime constructor. The logic and its field
+    /// must outlive this adder; cached powers are owned until disposal.
     /// </summary>
     /// <param name="logic">The gadget layer this adder builds on.</param>
     /// <param name="width">The bit width <c>N</c>.</param>
@@ -64,28 +74,47 @@ internal sealed class LongfellowBitAdder
         ArgumentNullException.ThrowIfNull(logic);
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
 
-        this.logic = logic;
-        backend = logic.Backend;
-        field = logic.Field;
+        this.Logic = logic;
+        Backend = logic.Backend;
+        Field = logic.Field;
         Width = width;
 
-        if(field.Compiler.IsCharacteristicTwo)
+        if(Field.Compiler.IsCharacteristicTwo)
         {
             var powers = new ReadOnlyMemory<byte>[width];
-            byte[] alpha = field.X.ToArray();
-            for(int i = 0; i < width; i++)
+            LongfellowCircuitStorage? ownedStorage = new(Field.Pool);
+            try
             {
-                powers[i] = alpha;
-                alpha = MultiplyFieldConstant(alpha, alpha);
-            }
+                Memory<byte> alpha = ownedStorage.Copy(Field.X.Span);
+                for(int i = 0; i < width; i++)
+                {
+                    powers[i] = alpha;
+                    Memory<byte> squared = ownedStorage.Allocate(Scalar.SizeBytes);
+                    MultiplyFieldConstant(alpha.Span, alpha.Span, squared.Span);
+                    alpha = squared;
+                }
 
-            alphaPowersOfTwo = powers;
-            alphaToPowerOfTwoWidth = alpha;
+                AlphaPowersOfTwo = powers;
+                AlphaToPowerOfTwoWidth = alpha;
+                Storage = ownedStorage;
+                ownedStorage = null;
+            }
+            finally
+            {
+                ownedStorage?.Dispose();
+            }
 
             return;
         }
 
         ArgumentOutOfRangeException.ThrowIfGreaterThan(width, MaxAdditiveWeightWidth);
+    }
+
+
+    /// <summary>Releases cached powers. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        Storage?.Dispose();
     }
 
 
@@ -101,7 +130,7 @@ internal sealed class LongfellowBitAdder
     {
         ThrowIfWrongWidth(bits);
 
-        return field.Compiler.IsCharacteristicTwo ? AsFieldElementCharacteristicTwo(bits) : AsFieldElementAdditive(bits);
+        return Field.Compiler.IsCharacteristicTwo ? AsFieldElementCharacteristicTwo(bits) : AsFieldElementAdditive(bits);
     }
 
 
@@ -112,7 +141,7 @@ internal sealed class LongfellowBitAdder
     /// <param name="a">The first encoded operand.</param>
     /// <param name="b">The second encoded operand.</param>
     /// <returns>The wire holding the combination.</returns>
-    public int Add(int a, int b) => field.Compiler.IsCharacteristicTwo ? backend.Mul(a, b) : backend.Add(a, b);
+    public int Add(int a, int b) => Field.Compiler.IsCharacteristicTwo ? Backend.Mul(a, b) : Backend.Add(a, b);
 
 
     /// <summary>
@@ -138,9 +167,9 @@ internal sealed class LongfellowBitAdder
     {
         ArgumentNullException.ThrowIfNull(vectors);
 
-        return field.Compiler.IsCharacteristicTwo
-            ? logic.Multiply(0, vectors.Length, i => AsFieldElement(vectors[i]))
-            : logic.Add(0, vectors.Length, i => AsFieldElement(vectors[i]));
+        return Field.Compiler.IsCharacteristicTwo
+            ? Logic.Multiply(0, vectors.Length, i => AsFieldElement(vectors[i]))
+            : Logic.Add(0, vectors.Length, i => AsFieldElement(vectors[i]));
     }
 
 
@@ -161,7 +190,7 @@ internal sealed class LongfellowBitAdder
         ThrowIfWrongWidth(bits);
         ArgumentOutOfRangeException.ThrowIfNegative(candidateCarryCount);
 
-        if(field.Compiler.IsCharacteristicTwo)
+        if(Field.Compiler.IsCharacteristicTwo)
         {
             AssertEqualModuloCharacteristicTwo(bits, claimedSum, candidateCarryCount);
 
@@ -180,10 +209,13 @@ internal sealed class LongfellowBitAdder
     /// <returns>The wire holding the weighted sum.</returns>
     private int AsFieldElementAdditive(LongfellowBitWire[] bits)
     {
-        int r = backend.Constant(field.Compiler.Zero.Span);
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> coefficient = owner.Memory.Span[..Scalar.SizeBytes];
+        int r = Backend.Constant(Field.Compiler.Zero.Span);
         for(int i = 0; i < Width; i++)
         {
-            r = backend.Axpy(r, field.OfScalar(1UL << i).Span, logic.Eval(bits[i]));
+            Field.OfScalar(1UL << i, coefficient);
+            r = Backend.Axpy(r, coefficient, Logic.Eval(bits[i]));
         }
 
         return r;
@@ -198,7 +230,7 @@ internal sealed class LongfellowBitAdder
     /// <returns>The wire holding the encoded product.</returns>
     private int AsFieldElementCharacteristicTwo(LongfellowBitWire[] bits)
     {
-        return logic.Multiply(0, Width, i => logic.Mux(bits[i], backend.Constant(alphaPowersOfTwo![i].Span), backend.Constant(field.Compiler.One.Span)));
+        return Logic.Multiply(0, Width, i => Logic.Mux(bits[i], Backend.Constant(AlphaPowersOfTwo![i].Span), Backend.Constant(Field.Compiler.One.Span)));
     }
 
 
@@ -211,16 +243,16 @@ internal sealed class LongfellowBitAdder
     /// <param name="candidateCarryCount">The number of candidates to check.</param>
     private void AssertEqualModuloAdditive(LongfellowBitWire[] bits, int claimedSum, int candidateCarryCount)
     {
-        int difference = backend.Sub(claimedSum, AsFieldElement(bits));
-        int product = logic.Multiply(0, candidateCarryCount, i => backend.Sub(difference, backend.Constant(field.OfScalar((1UL << Width) * (ulong)i).Span)));
+        int difference = Backend.Sub(claimedSum, AsFieldElement(bits));
+        int product = Logic.Multiply(0, candidateCarryCount, i => Backend.Sub(difference, Backend.ScalarConstant((1UL << Width) * (ulong)i)));
 
-        _ = logic.AssertZero(product);
+        _ = Logic.AssertZero(product);
     }
 
 
     /// <summary>
     /// The characteristic-two <c>assert_eqmod</c> arm: builds the powers <c>p[i] = alpha^(i·2^N)</c>
-    /// iteratively, then asserts <c>claimedSum − p[i]·A</c> is zero for some candidate <c>i</c>, via
+    /// in call-owned storage, then asserts <c>claimedSum − p[i]·A</c> is zero for some candidate <c>i</c>, via
     /// the product over every candidate.
     /// </summary>
     /// <param name="bits">The addend bit vector.</param>
@@ -229,32 +261,34 @@ internal sealed class LongfellowBitAdder
     private void AssertEqualModuloCharacteristicTwo(LongfellowBitWire[] bits, int claimedSum, int candidateCarryCount)
     {
         var powers = new ReadOnlyMemory<byte>[candidateCarryCount];
+        using IMemoryOwner<byte>? owner = candidateCarryCount == 0 ? null : Field.Pool.Rent(checked(candidateCarryCount * Scalar.SizeBytes));
+        Memory<byte> buffer = owner is null ? Memory<byte>.Empty : owner.Memory[..checked(candidateCarryCount * Scalar.SizeBytes)];
         if(candidateCarryCount > 0)
         {
-            powers[0] = field.Compiler.One;
+            powers[0] = Field.Compiler.One;
             for(int i = 1; i < candidateCarryCount; i++)
             {
-                powers[i] = MultiplyFieldConstant(alphaToPowerOfTwoWidth.Span, powers[i - 1].Span);
+                Memory<byte> power = buffer.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes);
+                MultiplyFieldConstant(AlphaToPowerOfTwoWidth.Span, powers[i - 1].Span, power.Span);
+                powers[i] = power;
             }
         }
 
         int encoded = AsFieldElement(bits);
-        int product = logic.Multiply(0, candidateCarryCount, i => backend.Sub(claimedSum, backend.Mul(backend.Constant(powers[i].Span), encoded)));
+        int product = Logic.Multiply(0, candidateCarryCount, i => Backend.Sub(claimedSum, Backend.Mul(Backend.Constant(powers[i].Span), encoded)));
 
-        _ = logic.AssertZero(product);
+        _ = Logic.AssertZero(product);
     }
 
 
     /// <summary>Multiplies two field constants out of circuit, used to precompute the characteristic-two power tables.</summary>
     /// <param name="left">The first factor, canonical big-endian.</param>
     /// <param name="right">The second factor, canonical big-endian.</param>
-    /// <returns>The product, canonical big-endian.</returns>
-    private byte[] MultiplyFieldConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    /// <param name="product">Receives the canonical product, separate from the inputs.</param>
+    private void MultiplyFieldConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> product)
     {
-        var product = new byte[Scalar.SizeBytes];
-        field.Compiler.Multiply(left, right, product, field.Compiler.Curve);
-
-        return product;
+        product.Clear();
+        Field.Compiler.Multiply(left, right, product, Field.Compiler.Curve);
     }
 
 

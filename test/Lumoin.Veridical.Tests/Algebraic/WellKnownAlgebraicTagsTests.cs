@@ -17,14 +17,17 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class WellKnownAlgebraicTagsTests
 {
+    /// <summary>
+    /// Verifies that P-256's cached scalar and G1-point tags let every tagged broad-carrier boundary
+    /// factory resolve for P-256: the G1 generator, a random scalar, and a canonical-bytes round trip.
+    /// </summary>
     [TestMethod]
     public void P256ScalarAndG1TagsAreCachedSoBroadCarriersConstruct()
     {
         using BaseMemoryPool pool = new();
 
-        //Regression: P-256 was wired as a first-class arithmetic curve, but its cached scalar and
-        //G1-point tags were initially absent, so every tagged P-256 carrier mint threw. Each of the
-        //three boundary factories below routes through the cache and must now resolve for P-256.
+        //P-256's scalar and G1-point tags are cached so every tagged carrier mint resolves for it;
+        //each of the three boundary factories below routes through the cache and must succeed for P-256.
         using G1Point generator = G1Point.Generator(CurveParameterSet.P256, pool);
         Assert.AreEqual(CurveParameterSet.P256, generator.Curve);
 
@@ -36,6 +39,7 @@ internal sealed class WellKnownAlgebraicTagsTests
     }
 
 
+    /// <summary>Verifies that P-256, not being pairing-friendly, has no cached G2-point or extension-field-element tag and throws for both lookups.</summary>
     [TestMethod]
     public void P256HasNoG2OrExtensionFieldTags()
     {

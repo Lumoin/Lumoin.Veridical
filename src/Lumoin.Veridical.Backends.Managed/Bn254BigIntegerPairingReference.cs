@@ -12,7 +12,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <summary>
 /// Reference implementation of the BN254 (alt_bn128) optimal-ate pairing
 /// <c>e : G1 × G2 → GT ⊂ Fp12*</c> using <see cref="BigInteger"/> arithmetic
-/// over the U.4 field tower. Ground truth for the pairing, the Fp12 Frobenius,
+/// over the Fp12 field tower. Ground truth for the pairing, the Fp12 Frobenius,
 /// and the cyclotomic-square delegate. Parallel in role to
 /// <see cref="Bls12Curve381BigIntegerPairingReference"/>; the differences are
 /// the ones BN254 forces (see <c>PAIRING.md</c>).
@@ -28,7 +28,7 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <para>
 /// <b>D-twist:</b> BN254 G2 is the D-twist (<c>b' = 3/(9+u)</c>). G2 points are
 /// untwisted into <c>E(Fp12)</c> via <c>ψ(x', y') = (w²·x', w³·y')</c> (derived
-/// in U.5 and validated against py_ecc) and the Miller loop runs the textbook
+/// and validated against py_ecc) and the Miller loop runs the textbook
 /// chord-and-tangent line evaluation entirely in Fp12. This deliberately
 /// avoids the sparse-line slot placement that the BLS12-381 reference uses:
 /// the slot map is the single most error-prone part of a twisted pairing, and
@@ -51,11 +51,16 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// </remarks>
 internal static class Bn254BigIntegerPairingReference
 {
+    /// <summary>The BN254 base-field prime.</summary>
     private static BigInteger Prime { get; } = Bn254BigIntegerG1Reference.BaseFieldPrime;
+    /// <summary>The BN254 scalar-field order.</summary>
     private static BigInteger Order { get; } = Bn254BigIntegerG1Reference.ScalarFieldOrder;
 
+    /// <summary>The byte width of one Fp component in the compressed point encodings.</summary>
     private const int FpComponentSize = WellKnownCurves.Bn254BaseFieldSizeBytes;
+    /// <summary>The byte length of a compressed BN254 G1 point.</summary>
     private const int G1CompressedSize = WellKnownCurves.Bn254G1CompressedSizeBytes;
+    /// <summary>The byte length of a compressed BN254 G2 point.</summary>
     private const int G2CompressedSize = WellKnownCurves.Bn254G2CompressedSizeBytes;
 
     /// <summary>The BN parameter <c>u = 4965661367192848881</c>; the optimal-ate loop count is <c>6u + 2</c>.</summary>
@@ -67,19 +72,26 @@ internal static class Bn254BigIntegerPairingReference
     /// <summary>The D-twist coefficient <c>b' = 3/(9 + u)</c>.</summary>
     private static Fp2 TwistCurveB { get; } = Bn254Fp2BigInt.Mul(new Fp2(new BigInteger(3), BigInteger.Zero), Bn254Fp2BigInt.Invert(Bn254Fp2BigInt.NonResidue));
 
-    //Frobenius γ-constants, computed from ξ at static init.
+    /// <summary>The Frobenius γ-constant <c>ξ^((p−1)/3)</c> used in the Fp6 Frobenius, computed from ξ at static init rather than transcribed.</summary>
     private static Fp2 FrobeniusGamma61 { get; } = Fp2Pow(Bn254Fp2BigInt.NonResidue, (Prime - 1) / 3);
+    /// <summary>The Frobenius γ-constant <c>ξ^(2(p−1)/3)</c> used in the Fp6 Frobenius, computed from ξ at static init rather than transcribed.</summary>
     private static Fp2 FrobeniusGamma62 { get; } = Fp2Pow(Bn254Fp2BigInt.NonResidue, 2 * (Prime - 1) / 3);
+    /// <summary>The Frobenius γ-constant <c>ξ^((p−1)/6)</c> used in the Fp12 Frobenius, computed from ξ at static init rather than transcribed.</summary>
     private static Fp2 FrobeniusGamma121 { get; } = Fp2Pow(Bn254Fp2BigInt.NonResidue, (Prime - 1) / 6);
 
+    /// <summary>The precomputed hard-part exponent <c>(p⁴ − p² + 1)/r</c> the final exponentiation raises to by square-and-multiply.</summary>
     private static BigInteger HardPartExponent { get; } = ComputeHardPartExponent();
 
-    //w, w², w³ in Fp12 for the D-twist untwist map.
+    /// <summary>The element <c>w</c> in Fp12 (the sextic-twist generator, embedded as <c>(0, 1)</c> in the Fp6 tower), from which <see cref="W2"/> and <see cref="W3"/> are derived for the D-twist untwist map.</summary>
     private static Fp12 W { get; } = new(Fp6.Zero, Fp6.One);
+    /// <summary>The element <c>w²</c> in Fp12, used to untwist a D-twist G2 point's x-coordinate into the full Fp12 embedding <c>ψ(x′, y′) = (w²·x′, w³·y′)</c>.</summary>
     private static Fp12 W2 { get; } = Bn254BigIntegerFp12Reference.Fp12Multiply(W, W);
+    /// <summary>The element <c>w³</c> in Fp12, used to untwist a D-twist G2 point's y-coordinate into the full Fp12 embedding <c>ψ(x′, y′) = (w²·x′, w³·y′)</c>.</summary>
     private static Fp12 W3 { get; } = Bn254BigIntegerFp12Reference.Fp12Multiply(W2, W);
 
 
+    /// <summary>Computes the hard-part exponent <c>(p⁴ − p² + 1)/r</c> from the field prime and the scalar-field order.</summary>
+    /// <returns>The hard-part exponent.</returns>
     private static BigInteger ComputeHardPartExponent()
     {
         BigInteger pSquared = Prime * Prime;
@@ -98,6 +110,7 @@ internal static class Bn254BigIntegerPairingReference
     public static PairingDelegate GetPairing() => Pairing;
 
 
+    /// <summary>Reads an Fp12 element, applies the Frobenius endomorphism, and writes the result, counting the operation for telemetry.</summary>
     private static void Frobenius(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12Frobenius, curve);
@@ -107,6 +120,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Reads an Fp12 element, squares it via generic Fp12 multiplication, and writes the result, counting the operation for telemetry.</summary>
     private static void CyclotomicSquare(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Fp12CyclotomicSquare, curve);
@@ -116,6 +130,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Computes the optimal-ate pairing of a G1 point and a G2 point, writing the identity when either input is the point at infinity.</summary>
     private static void Pairing(ReadOnlySpan<byte> p, ReadOnlySpan<byte> q, Span<byte> result, CurveParameterSet curve)
     {
         CryptographicOperationCounters.Increment(CryptographicOperationKind.Pairing, curve);
@@ -134,7 +149,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
-    //Fp12 Frobenius (γ-constant tower form), and Fp6/Fp2 sub-steps.
+    /// <summary>Applies the Fp12 Frobenius endomorphism in γ-constant tower form: an Fp6 Frobenius on each coefficient, with the odd coefficient's Fp6 further scaled by the tower's γ-constant.</summary>
     private static Fp12 Fp12Frobenius(Fp12 v)
     {
         Fp6 c0 = Fp6Frobenius(v.C0);
@@ -145,6 +160,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Applies the Fp6 Frobenius endomorphism: componentwise Fp2 conjugation, with the two nonzero-degree components scaled by their γ-constants.</summary>
     private static Fp6 Fp6Frobenius(Fp6 v)
     {
         Fp2 c0 = Fp2Conjugate(v.C0);
@@ -154,13 +170,20 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Returns the Fp2 conjugate <c>(a.C0, −a.C1)</c>, the Frobenius endomorphism over Fp2.</summary>
     private static Fp2 Fp2Conjugate(Fp2 a) => new(a.C0, Mod(-a.C1));
 
 
-    //Optimal-ate Miller loop in full Fp12.
+    /// <summary>A point on the BN254 twist curve, embedded into full Fp12 via the D-twist untwist map, as consumed by the Miller loop's chord-and-tangent line evaluation.</summary>
     private readonly record struct Fp12Point(Fp12 X, Fp12 Y);
 
 
+    /// <summary>Runs the optimal-ate Miller loop over <see cref="AteLoopCount"/>, accumulating the line evaluations of each doubling step and of an addition step on every set loop bit, then applying the two BN-specific closing Frobenius steps.</summary>
+    /// <param name="px">The G1 point's affine x-coordinate.</param>
+    /// <param name="py">The G1 point's affine y-coordinate.</param>
+    /// <param name="qx">The G2 point's affine x-coordinate.</param>
+    /// <param name="qy">The G2 point's affine y-coordinate.</param>
+    /// <returns>The Miller-loop value in Fp12, before final exponentiation.</returns>
     private static Fp12 MillerLoop(BigInteger px, BigInteger py, Fp2 qx, Fp2 qy)
     {
         Fp12Point pPoint = new(EmbedFp(px), EmbedFp(py));
@@ -200,6 +223,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Doubles a Miller-loop point using the tangent-line formula <c>λ = 3X² / 2Y</c> (curve coefficient <c>a = 0</c>), returning the line's slope and the doubled point.</summary>
     private static (Fp12 Lambda, Fp12Point Result) DoublePoint(Fp12Point t)
     {
         //λ = 3X² / 2Y; curve coefficient a = 0.
@@ -214,6 +238,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Adds two distinct Miller-loop points using the chord-line formula, returning the line's slope and the sum.</summary>
     private static (Fp12 Lambda, Fp12Point Result) ChordPoint(Fp12Point t, Fp12Point other)
     {
         Fp12 dx = Fp12Subtract(other.X, t.X);
@@ -233,10 +258,11 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Applies the Fp12 Frobenius endomorphism to both coordinates of a Miller-loop point, used to derive the BN optimal-ate loop's closing Frobenius twists.</summary>
     private static Fp12Point FrobeniusPoint(Fp12Point p) => new(Fp12Frobenius(p.X), Fp12Frobenius(p.Y));
 
 
-    //Final exponentiation.
+    /// <summary>Raises an Fp12 element to <c>(p¹² − 1)/r</c>: the easy part (conjugate·invert, then Frobenius²·self) followed by the hard part, exponentiation by the precomputed <see cref="HardPartExponent"/>.</summary>
     private static Fp12 FinalExponentiation(Fp12 f)
     {
         //Easy part: f^(p^6 - 1) = conj(f) · inv(f), then f^(p^2 + 1) = Frob²·self.
@@ -250,6 +276,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Raises an Fp12 element to a non-negative integer exponent by square-and-multiply.</summary>
     private static Fp12 Fp12Pow(Fp12 baseValue, BigInteger exponent)
     {
         Fp12 result = Fp12.One;
@@ -272,6 +299,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Raises an Fp2 element to a non-negative integer exponent by square-and-multiply.</summary>
     private static Fp2 Fp2Pow(Fp2 baseValue, BigInteger exponent)
     {
         Fp2 result = Bn254Fp2BigInt.One;
@@ -294,11 +322,15 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
-    //Fp12 helpers built on the tower references.
+    /// <summary>Multiplies two Fp12 elements via the Fp12 tower reference.</summary>
     private static Fp12 Fp12Multiply(Fp12 a, Fp12 b) => Bn254BigIntegerFp12Reference.Fp12Multiply(a, b);
+    /// <summary>Squares an Fp12 element via the Fp12 tower reference.</summary>
     private static Fp12 Fp12Square(Fp12 a) => Bn254BigIntegerFp12Reference.Fp12Multiply(a, a);
+    /// <summary>Adds two Fp12 elements componentwise via the Fp6 tower reference.</summary>
     private static Fp12 Fp12Add(Fp12 a, Fp12 b) => new(Bn254BigIntegerFp6Reference.Fp6Add(a.C0, b.C0), Bn254BigIntegerFp6Reference.Fp6Add(a.C1, b.C1));
+    /// <summary>Subtracts two Fp12 elements componentwise via the Fp6 tower reference.</summary>
     private static Fp12 Fp12Subtract(Fp12 a, Fp12 b) => new(Bn254BigIntegerFp6Reference.Fp6Sub(a.C0, b.C0), Bn254BigIntegerFp6Reference.Fp6Sub(a.C1, b.C1));
+    /// <summary>Negates an Fp12 element componentwise via the Fp6 tower reference.</summary>
     private static Fp12 Fp12Negate(Fp12 a) => new(Bn254BigIntegerFp6Reference.Fp6Neg(a.C0), Bn254BigIntegerFp6Reference.Fp6Neg(a.C1));
 
 
@@ -309,7 +341,7 @@ internal static class Bn254BigIntegerPairingReference
     private static Fp12 EmbedFp2(Fp2 z) => new(new Fp6(z, Bn254Fp2BigInt.Zero, Bn254Fp2BigInt.Zero), Fp6.Zero);
 
 
-    //G1 / G2 decode (gnark big-endian compressed, mirroring U.3/U.5).
+    /// <summary>Decodes a compressed BN254 G1 point using gnark's big-endian compressed encoding.</summary>
     private static (BigInteger X, BigInteger Y, bool IsInfinity) DecodeG1(ReadOnlySpan<byte> bytes)
     {
         if(bytes.Length != G1CompressedSize)
@@ -362,6 +394,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Decodes a compressed BN254 G2 point using gnark's big-endian compressed encoding.</summary>
     private static (Fp2 X, Fp2 Y, bool IsInfinity) DecodeG2(ReadOnlySpan<byte> bytes)
     {
         if(bytes.Length != G2CompressedSize)
@@ -415,6 +448,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Computes the candidate square root <c>a^((p+1)/4) mod p</c>, valid only when <paramref name="a"/> is a quadratic residue; callers verify the candidate by squaring it back.</summary>
     private static BigInteger ModSqrtFp(BigInteger a) => BigInteger.ModPow(a, (Prime + 1) >> 2, Prime);
 
 
@@ -513,6 +547,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Determines the BN254 G2 "larger" y-sign convention: the imaginary component decides when it is nonzero, otherwise the real component does.</summary>
     private static bool Fp2IsLarger(Fp2 y)
     {
         if(y.C1.IsZero)
@@ -524,6 +559,7 @@ internal static class Bn254BigIntegerPairingReference
     }
 
 
+    /// <summary>Reduces a <see cref="BigInteger"/> into the canonical non-negative residue modulo <see cref="Prime"/>.</summary>
     private static BigInteger Mod(BigInteger value)
     {
         BigInteger result = value % Prime;

@@ -1,5 +1,6 @@
+using Lumoin.Veritas.Cbor;
 using System;
-using System.Formats.Cbor;
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
@@ -26,6 +27,20 @@ internal sealed record MdocDisclosure(
     byte[] SignatureR,
     byte[] SignatureS)
 {
+    /// <summary>The <c>IssuerSignedItem</c> key whose value is the disclosed element's value.</summary>
+    private const string ElementValueKey = "elementValue";
+
+    /// <summary>The <c>IssuerSignedItem</c> key naming the disclosed element.</summary>
+    private const string ElementIdentifierKey = "elementIdentifier";
+
+    /// <summary>The width of each of <c>r</c> and <c>s</c> in an ES256 signature: the P-256 scalar size.</summary>
+    private const int SignatureComponentSize = 32;
+
+
+    /// <summary>
+    /// Extracts the disclosure of <paramref name="elementIdentifier"/> in <paramref name="namespaceId"/> from
+    /// the first document of <paramref name="deviceResponse"/>.
+    /// </summary>
     public static MdocDisclosure Extract(ReadOnlyMemory<byte> deviceResponse, string namespaceId, string elementIdentifier)
     {
         CoseSign1 issuerAuth = CoseSign1.Extract(deviceResponse);
@@ -56,13 +71,15 @@ internal sealed record MdocDisclosure(
             attributeOffset,
             parameters.Q.X!,
             parameters.Q.Y!,
-            issuerAuth.Signature[..32],
-            issuerAuth.Signature[32..]);
+            issuerAuth.Signature[..SignatureComponentSize],
+            issuerAuth.Signature[SignatureComponentSize..]);
     }
 
 
-    //The tagged (#6.24) IssuerSignedItemBytes in nameSpaces[namespaceId] that discloses
-    //elementIdentifier — the exact bytes whose SHA-256 the MSO holds.
+    /// <summary>
+    /// The tagged (#6.24) <c>IssuerSignedItemBytes</c> in <c>nameSpaces[namespaceId]</c> that discloses
+    /// <paramref name="elementIdentifier"/> — the exact bytes whose SHA-256 the MSO holds.
+    /// </summary>
     private static byte[] FindIssuerSignedItem(ReadOnlyMemory<byte> deviceResponse, string namespaceId, string elementIdentifier)
     {
         byte[] documents = CborNavigation.RequireMapValue(deviceResponse, "documents");
@@ -83,35 +100,40 @@ internal sealed record MdocDisclosure(
     }
 
 
-    //The elementIdentifier inside a tagged (#6.24) IssuerSignedItemBytes.
+    /// <summary>The <c>elementIdentifier</c> inside a tagged (#6.24) <c>IssuerSignedItemBytes</c>.</summary>
     private static string ItemElementIdentifier(byte[] taggedItem)
     {
-        var reader = new CborReader(taggedItem);
+        var reader = new CborReader(taggedItem, CborNavigation.Options);
         reader.ReadTag();
         byte[] inner = reader.ReadByteString();
-        byte[]? identifier = CborNavigation.MapValue(inner, "elementIdentifier");
+        byte[]? identifier = CborNavigation.MapValue(inner, ElementIdentifierKey);
 
-        return identifier is null ? string.Empty : new CborReader(identifier).ReadTextString();
+        return identifier is null ? string.Empty : new CborReader(identifier, CborNavigation.Options).ReadTextString();
     }
 
 
-    //The contiguous disclosure pattern in the tagged item: the elementIdentifier text string
-    //immediately followed by the elementValue entry (its key and value), as the IssuerSignedItem
-    //encodes them adjacently. Proving this substring is in the hashed-and-signed item proves the
-    //named element carries the disclosed value.
+    /// <summary>
+    /// The contiguous disclosure pattern in the tagged item: the <c>elementIdentifier</c> text string immediately
+    /// followed by the <c>elementValue</c> entry (its key and value), as the <c>IssuerSignedItem</c> encodes them
+    /// adjacently. Proving this substring is in the hashed-and-signed item proves the named element carries the
+    /// disclosed value.
+    /// </summary>
     private static (byte[] Attribute, int Offset) LocateDisclosure(byte[] taggedItem, string elementIdentifier)
     {
-        var reader = new CborReader(taggedItem);
+        var reader = new CborReader(taggedItem, CborNavigation.Options);
         reader.ReadTag();
         byte[] inner = reader.ReadByteString();
-        byte[] elementValue = CborNavigation.RequireMapValue(inner, "elementValue");
+        byte[] elementValue = CborNavigation.RequireMapValue(inner, ElementValueKey);
 
-        var identifierWriter = new CborWriter();
-        identifierWriter.WriteTextString(elementIdentifier);
-        var keyWriter = new CborWriter();
-        keyWriter.WriteTextString("elementValue");
+        using var patternWriter = new SlabBufferWriter(BaseMemoryPool.Shared);
+        var writer = new CborWriter(patternWriter, CborNavigation.Options);
+        writer.WriteTextString(elementIdentifier);
+        writer.WriteTextString(ElementValueKey);
+        patternWriter.Write(elementValue);
+        int length = patternWriter.BytesWritten;
+        using IMemoryOwner<byte> encoded = patternWriter.Detach();
 
-        byte[] pattern = [.. identifierWriter.Encode(), .. keyWriter.Encode(), .. elementValue];
+        byte[] pattern = encoded.Memory.Span[..length].ToArray();
         int offset = taggedItem.AsSpan().IndexOf(pattern);
         if(offset < 0)
         {

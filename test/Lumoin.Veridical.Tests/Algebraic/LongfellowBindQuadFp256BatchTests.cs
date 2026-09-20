@@ -10,7 +10,7 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The byte-identity gate for the Fp256 batched <c>bind_quad</c> path (Perf Increment, Stage 3): the
+/// The byte-identity gate for the Fp256 batched <c>bind_quad</c> path: the
 /// constraint builder's per-term four-way chained Montgomery product
 /// <c>(v == 0 ? beta : v)·eqg[g]·eqh0[h0]·eqh1[h1]</c>, summed over a layer's terms, routed through the
 /// lane-parallel AVX2 batch multiply (<see cref="P256BaseFieldMontgomeryBatchBackendAvx2.GetBatchMultiplyMontgomery"/>)
@@ -42,43 +42,67 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowBindQuadFp256BatchTests
 {
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //Mirrors LongfellowZkConstraintBuilder.MaxBindings: BindQuad slices handChallenges into two hands at this
-    //offset and reads up to this many g/hand scalars, so the input buffers must be sized to it.
+    /// <summary>Mirrors <see cref="LongfellowZkConstraintBuilder.BindQuad"/>'s <c>MaxBindings</c>: <c>BindQuad</c> slices <c>handChallenges</c> into two hands at this offset and reads up to this many g/hand scalars, so the input buffers must be sized to it.</summary>
     private const int MaxBindings = 40;
 
-    //Per-purpose keystream labels so the g-points, hand challenges, alpha, beta, coefficients, indices and the
-    //zero decisions draw from independent SHA-256 streams within one shape's seed.
+    /// <summary>The keystream label for the layer's <c>g0</c> gate-index scalars.</summary>
     private const int GateZeroLabel = 0;
+
+    /// <summary>The keystream label for the layer's <c>g1</c> gate-index scalars.</summary>
     private const int GateOneLabel = 1;
+
+    /// <summary>The keystream label for the hand-challenge scalars.</summary>
     private const int HandLabel = 2;
+
+    /// <summary>The keystream label for the alpha blending scalar.</summary>
     private const int AlphaLabel = 3;
+
+    /// <summary>The keystream label for the beta blending scalar.</summary>
     private const int BetaLabel = 4;
+
+    /// <summary>The keystream label for a term's coefficient scalar.</summary>
     private const int CoefficientLabel = 5;
+
+    /// <summary>The keystream label for a term's gate index.</summary>
     private const int GateIndexLabel = 6;
+
+    /// <summary>The keystream label for a term's left-hand index.</summary>
     private const int LeftIndexLabel = 7;
+
+    /// <summary>The keystream label for a term's right-hand index.</summary>
     private const int RightIndexLabel = 8;
+
+    /// <summary>The keystream label for a term's zero/non-zero coefficient decision.</summary>
     private const int ZeroDecisionLabel = 9;
 
-    //The zero-decision granularity: zeroFraction is taken in thousandths so 0.10 selects ~10% of terms.
+    /// <summary>The zero-decision granularity: <c>zeroFraction</c> is taken in thousandths, so 0.10 selects about 10% of terms.</summary>
     private const int ZeroResolution = 1000;
 
+    /// <summary>The curve parameter set passed to every delegate call in this test.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
+    /// <summary>The Fp256 Montgomery-domain addition delegate.</summary>
     private static ScalarAddDelegate Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
 
+    /// <summary>The Fp256 Montgomery-domain subtraction delegate.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
 
+    /// <summary>The Fp256 Montgomery-domain multiplication delegate.</summary>
     private static ScalarMultiplyDelegate MultiplyMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
 
+    /// <summary>The P-256 base-field scalar reduction delegate.</summary>
     private static ScalarReduceDelegate Reduce { get; } = P256BaseFieldReference.GetReduce();
 
 
+    /// <summary>Skips this test class's methods when the host CPU lacks AVX2, since the batch path under test requires it.</summary>
     [TestInitialize]
     public void RequireAvx2() => InstructionSetRequirements.RequireAvx2();
 
 
+    /// <summary>Verifies that the AVX2 batched <c>bind_quad</c> path produces byte-identical results to the scalar three-multiply-per-term chain, across a range of shapes and zero-coefficient fractions.</summary>
     [TestMethod]
     public void Fp256BatchBindQuadIsByteIdenticalToTheScalarBindQuad()
     {
@@ -107,6 +131,14 @@ internal sealed class LongfellowBindQuadFp256BatchTests
     }
 
 
+    /// <summary>Builds a synthetic layer of deterministic terms and asserts that <see cref="LongfellowZkConstraintBuilder.BindQuad"/> produces the same result with and without the batched multiply delegate.</summary>
+    /// <param name="batch">The batched Fp256 Montgomery multiply delegate under test.</param>
+    /// <param name="logv">The layer's gate-index bit width.</param>
+    /// <param name="logw">The layer's hand-index bit width.</param>
+    /// <param name="termCount">The number of quad terms in the synthetic layer.</param>
+    /// <param name="zeroFraction">The fraction of terms (in [0, 1]) whose coefficient is forced to zero.</param>
+    /// <param name="seed">The deterministic keystream seed.</param>
+    /// <param name="because">A human-readable label for the assertion failure message.</param>
     private static void AssertByteIdentical(ScalarBatchMultiplyDelegate batch, int logv, int logw, int termCount, double zeroFraction, int seed, string because)
     {
         int nv = 1 << logv;
@@ -170,7 +202,11 @@ internal sealed class LongfellowBindQuadFp256BatchTests
     }
 
 
-    //A row of count canonical Montgomery residues derived from the (seed, label) keystream, one per index.
+    /// <summary>Builds a row of <paramref name="count"/> canonical Montgomery residues derived from the <paramref name="seed"/>/<paramref name="label"/> keystream, one per index.</summary>
+    /// <param name="seed">The deterministic keystream seed.</param>
+    /// <param name="label">The keystream label distinguishing this row from other draws.</param>
+    /// <param name="count">The number of scalars to derive.</param>
+    /// <returns>The concatenated canonical Montgomery-domain scalars.</returns>
     private static byte[] MontgomeryScalars(int seed, int label, int count)
     {
         byte[] array = new byte[count * ScalarSize];
@@ -183,8 +219,11 @@ internal sealed class LongfellowBindQuadFp256BatchTests
     }
 
 
-    //A genuine Montgomery residue for the (seed, label, index) coordinate: SHA-256 of the three ints, reduced
-    //mod p and lifted into the Montgomery domain.
+    /// <summary>Derives a genuine Montgomery residue for the <paramref name="seed"/>/<paramref name="label"/>/<paramref name="index"/> coordinate: SHA-256 of the three integers, reduced mod <c>p</c> and lifted into the Montgomery domain.</summary>
+    /// <param name="seed">The deterministic keystream seed.</param>
+    /// <param name="label">The keystream label.</param>
+    /// <param name="index">The draw index within the label's stream.</param>
+    /// <param name="destination">Receives the canonical Montgomery-domain scalar.</param>
     private static void DeriveMontgomery(int seed, int label, int index, Span<byte> destination)
     {
         Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
@@ -196,8 +235,12 @@ internal sealed class LongfellowBindQuadFp256BatchTests
     }
 
 
-    //A uniform-enough integer in [0, exclusiveMax) for the (seed, label, index) coordinate (the modulo bias is
-    //immaterial to a byte-identity comparison, which holds for any in-range indices).
+    /// <summary>Derives a uniform-enough integer in <c>[0, exclusiveMax)</c> for the <paramref name="seed"/>/<paramref name="label"/>/<paramref name="index"/> coordinate; the modulo bias is immaterial to a byte-identity comparison, which holds for any in-range indices.</summary>
+    /// <param name="seed">The deterministic keystream seed.</param>
+    /// <param name="label">The keystream label.</param>
+    /// <param name="index">The draw index within the label's stream.</param>
+    /// <param name="exclusiveMax">The exclusive upper bound.</param>
+    /// <returns>The derived integer.</returns>
     private static int DeriveInt(int seed, int label, int index, int exclusiveMax)
     {
         Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
@@ -207,7 +250,11 @@ internal sealed class LongfellowBindQuadFp256BatchTests
     }
 
 
-    //SHA-256 of the little-endian (seed, label, index) triple — the deterministic keystream block.
+    /// <summary>Computes SHA-256 of the little-endian <paramref name="seed"/>/<paramref name="label"/>/<paramref name="index"/> triple: the deterministic keystream block every draw in this file derives from.</summary>
+    /// <param name="seed">The deterministic keystream seed.</param>
+    /// <param name="label">The keystream label.</param>
+    /// <param name="index">The draw index within the label's stream.</param>
+    /// <param name="destination">Receives the 32-byte digest.</param>
     private static void DeriveHash(int seed, int label, int index, Span<byte> destination)
     {
         Span<byte> input = stackalloc byte[sizeof(int) * 3];

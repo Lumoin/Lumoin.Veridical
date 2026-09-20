@@ -17,7 +17,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// generator points and therefore disjoint commitment spaces.
 /// </para>
 /// <para>
-/// The canonical seed for the batch-E reference is
+/// The canonical seed for this library's Hyrax v1 derivation is
 /// <see cref="CanonicalSeedV1"/>. Tests that compare against known
 /// answers fix this seed; tests that exercise seed-driven domain
 /// separation construct distinct strings explicitly.
@@ -29,7 +29,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </remarks>
 public static class WellKnownHyraxDomainLabels
 {
-    /// <summary>The canonical seed value for the batch-E v1 Hyrax derivation. Protocols and tests pin this exact string.</summary>
+    /// <summary>The canonical seed value for this library's Hyrax v1 derivation. Protocols and tests pin this exact string.</summary>
     public const string CanonicalSeedV1 = "veridical.hyrax.v1";
 
     /// <summary>Suffix appended to the seed for vector-generator derivation. The full hash-to-curve input is <c>seed || GeneratorSuffix || i_BE</c> where <c>i_BE</c> is the 4-byte big-endian generator index.</summary>

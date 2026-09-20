@@ -22,16 +22,18 @@ namespace Lumoin.Veridical.Bbs;
 /// The blind -03 framed proof wire format ships with no published test
 /// vectors (Section 10 of the draft: fixtures are being regenerated for
 /// committed disclosure). This surface is gated by self-consistency and
-/// tamper suites; the interpretation choices it encodes (the D3/D4/D6/D11
-/// ledger entries called out at their decision sites below) are re-KATed
-/// when the regenerated official fixtures land.
+/// tamper suites; the interpretation choices it encodes (called out at
+/// their decision sites below) are re-KATed when the regenerated official
+/// fixtures land.
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BbsBlindProofGenerationExtensions
 {
+    /// <summary>The provider-instrumentation operation tag for BlindProofGen, stamped onto every produced proof's <see cref="Tag"/>.</summary>
     private static ProviderOperation BlindProofGenOperation { get; } = new("BbsBlindGenerateProof");
 
 
+    /// <summary>Blind selective-disclosure proof generation members added to every <see cref="BbsBlindSignature"/> instance.</summary>
     extension(BbsBlindSignature signature)
     {
         /// <summary>
@@ -71,8 +73,8 @@ public static class BbsBlindProofGenerationExtensions
         /// The scalar vector the proof covers is
         /// <c>(signer messages, secret_prover_blind, committed messages)</c>
         /// against <c>(Q_1, H_1..H_L, Q_2, J_1..J_M)</c> — the blind slot
-        /// sits at position <c>L</c> between the two message families
-        /// (ledger entry D3). Neither disclosure vector can address that
+        /// sits at position <c>L</c> between the two message families.
+        /// Neither disclosure vector can address that
         /// slot, so disclosing or committing <c>secret_prover_blind</c> is
         /// structurally impossible.
         /// </remarks>
@@ -121,10 +123,10 @@ public static class BbsBlindProofGenerationExtensions
             ArgumentNullException.ThrowIfNull(g1IsInPrimeOrderSubgroup);
             ArgumentNullException.ThrowIfNull(pool);
 
-            //Ledger entry D1: the blind api_id is used throughout — the
-            //draft's Section 4.2.4 "H2G_HM2S_" Parameters block is an
-            //inherited copy-paste error, since a proof only verifies under
-            //the api_id it was generated with.
+            //The blind api_id is used throughout — the draft's Section
+            //4.2.4 "H2G_HM2S_" Parameters block names the plain one, an
+            //inherited copy-paste error also present in -02 — since a
+            //proof only verifies under the api_id it was generated with.
             BbsCiphersuite blindCiphersuite = BbsBlindAlgorithm.GetBlindInterface(publicKey.Ciphersuite);
             if(signature.Ciphersuite != blindCiphersuite)
             {
@@ -149,17 +151,17 @@ public static class BbsBlindProofGenerationExtensions
             string apiId = blindCiphersuite.Identifier;
 
             //Full combined scalar vector: (signer messages, secret_prover_blind,
-            //committed messages) — total L + 1 + M (ledger entry D3).
+            //committed messages) — total L + 1 + M.
             int totalMessageCount = signerMessageCount + 1 + committedMessageCount;
 
-            //Ledger entry D4 (fixture-pending): with the blind slot at
-            //position L, every committed-message position shifts by L + 1
-            //in the combined index space (j → j + L + 1, the -02
-            //prepare_parameters remap the nym -03 draft also spells out).
-            //Both the disclosed and the committed-disclosure index vectors
-            //are assembled in that shifted space; concatenation preserves
-            //ascending order because every shifted index exceeds every
-            //signer-message index.
+            //With the blind slot at position L, every committed-message
+            //position shifts by L + 1 in the combined index space
+            //(j → j + L + 1, the -02 prepare_parameters remap the nym -03
+            //draft also spells out). Both the disclosed and the
+            //committed-disclosure index vectors are assembled in that
+            //shifted space; concatenation preserves ascending order
+            //because every shifted index exceeds every signer-message
+            //index.
             (int[] combinedDisclosed, int[] commitIndexes) = BuildIndexVectors(
                 messageDisclosures.Span,
                 committedMessageDisclosures.Span,
@@ -275,13 +277,13 @@ public static class BbsBlindProofGenerationExtensions
                 }
 
                 //CoreProofGen steps 6-9: C_i = Y_0 * s_i + Y_1 * msg_scalar[idx]
-                //and C~_i = Y_0 * s~_i + Y_1 * m~[rank(idx)]. Ledger entry D11
-                //(fixture-pending): the draft's init_random_scalars[idx + 5]
-                //indexes the m~ vector with the FULL-list index, but that vector
-                //holds one entry per UNDISCLOSED message — the consistent
-                //reading maps idx to its rank among the undisclosed indexes,
-                //which is always well-defined because committed messages are by
-                //construction undisclosed.
+                //and C~_i = Y_0 * s~_i + Y_1 * m~[rank(idx)]. The draft's
+                //init_random_scalars[idx + 5] indexes the m~ vector with the
+                //FULL-list index, but that vector holds one entry per
+                //UNDISCLOSED message — the consistent reading maps idx to its
+                //rank among the undisclosed indexes, which is always
+                //well-defined because committed messages are by construction
+                //undisclosed.
                 G1Point y0 = committedDisclosureBases[0];
                 G1Point y1 = committedDisclosureBases[1];
                 G1Point[] pedersenPoints = [y0, y1];
@@ -441,6 +443,7 @@ public static class BbsBlindProofGenerationExtensions
     }
 
 
+    /// <summary>Throws when any entry of <paramref name="disclosures"/> is not a defined <see cref="BbsMessageDisclosure"/> member.</summary>
     private static void ValidateDisclosureValues(ReadOnlySpan<BbsMessageDisclosure> disclosures, string parameterName)
     {
         for(int i = 0; i < disclosures.Length; i++)

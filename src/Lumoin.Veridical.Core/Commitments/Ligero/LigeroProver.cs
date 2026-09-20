@@ -31,6 +31,9 @@ namespace Lumoin.Veridical.Core.Commitments.Ligero;
 /// </remarks>
 public static class LigeroProver
 {
+    /// <summary>
+    /// The canonical scalar encoding width in bytes.
+    /// </summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
@@ -58,7 +61,7 @@ public static class LigeroProver
     /// <param name="hashAlgorithm">The canonical hash-function name.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent working buffers from.</param>
-    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path; <see langword="null"/> (the default) keeps today's barycentric encode throughout the tableau build and the dot-response computation.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path; <see langword="null"/> (the default) keeps the default barycentric encode throughout the tableau build and the dot-response computation.</param>
     /// <returns>The proof; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a backend, the parameters or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span length does not match the layout.</exception>
@@ -133,7 +136,7 @@ public static class LigeroProver
     /// <param name="merkleHash">The two-to-one Merkle compression.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent working buffers from.</param>
-    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path while the tableau builds; <see langword="null"/> (the default) keeps today's barycentric encode.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path while the tableau builds; <see langword="null"/> (the default) keeps the default barycentric encode.</param>
     /// <returns>The standing commitment; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tableau, tree and witness copy transfer ownership to the returned LigeroCommitment, which releases them through its own Dispose; on a fault they are released before rethrow.")]
     public static LigeroCommitment Commit(
@@ -207,7 +210,7 @@ public static class LigeroProver
     /// <param name="squeeze">The transcript XOF backend.</param>
     /// <param name="curve">The field the delegates operate over.</param>
     /// <param name="pool">Pool to rent working buffers from.</param>
-    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path for the dot-response's block-to-dblock extension; <see langword="null"/> (the default) keeps today's barycentric encode.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path for the dot-response's block-to-dblock extension; <see langword="null"/> (the default) keeps the default barycentric encode.</param>
     /// <returns>The proof; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The response and opened-column buffers and the root transfer ownership to the returned LigeroProof, which releases them through its own Dispose; the tableau and tree belong to the commitment.")]
     public static LigeroProof Prove(
@@ -307,7 +310,25 @@ public static class LigeroProver
     }
 
 
-    //Squeezes the four challenge vectors under their pinned labels, in schedule order.
+    /// <summary>
+    /// Squeezes the four challenge vectors — low-degree, linear, quadratic-constraint
+    /// and quadratic-row — from <paramref name="transcript"/> under their pinned
+    /// labels, in the schedule order the verifier reproduces.
+    /// </summary>
+    /// <param name="transcript">The Fiat-Shamir transcript to draw challenges from.</param>
+    /// <param name="uLowDegree">Receives the <paramref name="nwqrow"/> low-degree-test challenge scalars.</param>
+    /// <param name="alphaLinear">Receives the <paramref name="linearConstraintCount"/> linear-test challenge scalars.</param>
+    /// <param name="alphaQuadratic">Receives the <c>3 · nq</c> quadratic-constraint challenge scalars.</param>
+    /// <param name="uQuadratic">Receives the <paramref name="nqtriples"/> quadratic-row challenge scalars.</param>
+    /// <param name="nwqrow">The number of witness-quadratic rows.</param>
+    /// <param name="linearConstraintCount">The number of linear constraints <c>nl</c>.</param>
+    /// <param name="nq">The number of quadratic constraints.</param>
+    /// <param name="nqtriples">The number of quadratic operand triples.</param>
+    /// <param name="squeeze">The transcript XOF backend.</param>
+    /// <param name="hash">The fixed-output transcript hash backend.</param>
+    /// <param name="reduce">Scalar-reduce backend for the challenge squeeze.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="pool">Pool to rent working buffers from.</param>
     private static void SqueezeChallenges(
         FiatShamirTranscript transcript,
         Span<byte> uLowDegree,
@@ -331,9 +352,27 @@ public static class LigeroProver
     }
 
 
-    //Computes y_ldt, y_dot and y_quad into the packed response buffer
-    //(y_ldt | y_dot | y_quad_0 | y_quad_2). Asserts the witness block of y_quad
-    //is zero (it must be, since the operands satisfy W[z] = W[x]·W[y]).
+    /// <summary>
+    /// Computes the low-degree, dot-product and quadratic responses into the packed
+    /// response buffer, laid out as <c>y_ldt | y_dot | y_quad_0 | y_quad_2</c>. The
+    /// witness block of <c>y_quad</c> must be zero because the quadratic operand rows
+    /// satisfy <c>W[z] = W[x]·W[y]</c>; this method asserts that and throws if a
+    /// quadratic operand row is inconsistent.
+    /// </summary>
+    /// <param name="parameters">The tableau layout.</param>
+    /// <param name="tableau">The encoded witness-and-constraint tableau.</param>
+    /// <param name="matrix">The linear/quadratic constraint matrix rows, one per witness-quadratic row.</param>
+    /// <param name="uLowDegree">The low-degree-test challenge scalars.</param>
+    /// <param name="uQuadratic">The quadratic-row challenge scalars.</param>
+    /// <param name="responses">The packed response buffer to fill.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="subtract">Scalar-subtract backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="invert">Scalar-invert backend.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <param name="rowExtenderFactory">Optional per-shape row-extension source consulted in place of the barycentric path for the dot-response's block-to-dblock extension; <see langword="null"/> (the default) keeps the default barycentric encode.</param>
+    /// <exception cref="InvalidOperationException">When a witness-block entry of <c>y_quad</c> is non-zero.</exception>
     private static void ComputeResponses(
         LigeroParameters parameters,
         LigeroTableau tableau,
@@ -444,9 +483,19 @@ public static class LigeroProver
     }
 
 
-    //Gathers the opened columns and their Merkle paths into a proof. The column
-    //at draw position j is the tableau column DoubleBlock + indices[j]; its
-    //Merkle leaf index is indices[j].
+    /// <summary>
+    /// Gathers the challenged columns and their Merkle authentication paths into a
+    /// proof. The column at draw position <c>j</c> is the tableau column
+    /// <c>DoubleBlock + indices[j]</c>, and its Merkle leaf index is
+    /// <c>indices[j]</c>.
+    /// </summary>
+    /// <param name="parameters">The tableau layout.</param>
+    /// <param name="tableau">The encoded witness-and-constraint tableau to read columns from.</param>
+    /// <param name="tree">The Merkle tree committing the tableau's columns.</param>
+    /// <param name="indices">The distinct opened-column indices drawn from the transcript.</param>
+    /// <param name="responsesOwner">The already-computed packed response buffer; ownership transfers to the returned proof.</param>
+    /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <returns>The proof carrying the root, the responses and the opened columns with their Merkle paths; the caller owns its disposal.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The opened-column buffer and the root transfer ownership to the returned LigeroProof; on a mid-loop fault the partially built paths and buffers are released before rethrow.")]
     private static LigeroProof OpenColumns(
         LigeroParameters parameters,
@@ -490,9 +539,24 @@ public static class LigeroProver
     }
 
 
-    //Asserts each linear constraint c holds: Σ over its terms of
-    //coefficient · W[witnessIndex] equals the target b[c]. Internal so a
-    //commit-then-challenge caller can fail fast before paying for the encode.
+    /// <summary>
+    /// Asserts that each linear constraint <c>c</c> holds: the sum over its terms of
+    /// <c>coefficient · W[witnessIndex]</c> equals the target <c>b[c]</c>. Exposed
+    /// internally so a commit-then-challenge caller can fail fast on an unsatisfiable
+    /// statement before paying for the tableau encode.
+    /// </summary>
+    /// <param name="parameters">The tableau layout.</param>
+    /// <param name="witnesses">The witness vector; exactly <c>WitnessCount · 32</c> canonical bytes.</param>
+    /// <param name="linearConstraintCount">The number of linear constraints <c>nl</c>.</param>
+    /// <param name="linearConstraints">The linear terms.</param>
+    /// <param name="linearTargets">The linear targets <c>b</c>; <c>nl</c> canonical scalars.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="subtract">Scalar-subtract backend.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="pool">Pool to rent working buffers from.</param>
+    /// <exception cref="ArgumentOutOfRangeException">When a linear term's constraint or witness index is out of range.</exception>
+    /// <exception cref="InvalidOperationException">When a linear constraint's witness terms do not sum to its target.</exception>
     internal static void AssertLinearConstraintsSatisfied(
         LigeroParameters parameters,
         ReadOnlySpan<byte> witnesses,
@@ -544,7 +608,20 @@ public static class LigeroProver
     }
 
 
-    //acc[k] += coefficient · vector[k] for k in [0, length).
+    /// <summary>
+    /// Scales <paramref name="vector"/> by <paramref name="coefficient"/> and adds the
+    /// result into <paramref name="accumulator"/> element-wise: computes
+    /// <c>accumulator[k] += coefficient · vector[k]</c> for <c>k</c> in
+    /// <c>[0, length)</c>.
+    /// </summary>
+    /// <param name="accumulator">The scalar accumulator updated in place.</param>
+    /// <param name="coefficient">The scalar multiplied into every element of <paramref name="vector"/>.</param>
+    /// <param name="vector">The scalar vector being scaled and accumulated.</param>
+    /// <param name="length">The number of scalar elements to process.</param>
+    /// <param name="scratch">Scratch buffer for one scalar's worth of working space.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     private static void AddAssignScaled(
         Span<byte> accumulator,
         ReadOnlySpan<byte> coefficient,
@@ -566,7 +643,19 @@ public static class LigeroProver
     }
 
 
-    //acc[k] += a[k] · b[k] for k in [0, length).
+    /// <summary>
+    /// Multiplies two scalar vectors element-wise and adds the result into
+    /// <paramref name="accumulator"/>: computes <c>accumulator[k] += a[k] · b[k]</c>
+    /// for <c>k</c> in <c>[0, length)</c>.
+    /// </summary>
+    /// <param name="accumulator">The scalar accumulator updated in place.</param>
+    /// <param name="a">The first scalar vector operand.</param>
+    /// <param name="b">The second scalar vector operand.</param>
+    /// <param name="length">The number of scalar elements to process.</param>
+    /// <param name="scratch">Scratch buffer for one scalar's worth of working space.</param>
+    /// <param name="add">Scalar-add backend.</param>
+    /// <param name="multiply">Scalar-multiply backend.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     private static void AddAssignPointwise(
         Span<byte> accumulator,
         ReadOnlySpan<byte> a,
@@ -588,10 +677,19 @@ public static class LigeroProver
     }
 
 
-    //Consults the factory for the given shape, but only in the domain the row
-    //extenders are specified against — LigeroNodeDomain.ConsecutiveIntegers. A
-    //null factory, a BinaryField-domain shape, or a decline (the factory returns
-    //null) all fall back to the barycentric path unchanged.
+    /// <summary>
+    /// Consults <paramref name="factory"/> for a row extender over the given shape,
+    /// but only in the domain row extenders are specified against,
+    /// <see cref="LigeroNodeDomain.ConsecutiveIntegers"/>. A <see langword="null"/>
+    /// factory, a <see cref="LigeroNodeDomain.BinaryField"/>-domain shape, or a
+    /// decline (the factory itself returns <see langword="null"/>) all fall back to
+    /// the default barycentric path unchanged.
+    /// </summary>
+    /// <param name="factory">The optional row-extension source to consult; <see langword="null"/> always falls back to the barycentric path.</param>
+    /// <param name="nodeDomain">The domain the tableau's row-extension shape is defined against.</param>
+    /// <param name="messageLength">The message length the extender maps from.</param>
+    /// <param name="codewordLength">The codeword length the extender maps to.</param>
+    /// <returns>The row extender to use, or <see langword="null"/> to fall back to the barycentric path.</returns>
     private static LigeroRowExtender? ResolveRowExtender(LigeroRowExtenderFactory? factory, LigeroNodeDomain nodeDomain, int messageLength, int codewordLength)
     {
         if(factory is null || nodeDomain != LigeroNodeDomain.ConsecutiveIntegers)
@@ -603,11 +701,30 @@ public static class LigeroProver
     }
 
 
+    /// <summary>
+    /// Returns the mutable slice of <paramref name="buffer"/> holding the scalar at
+    /// <paramref name="index"/>, each scalar occupying <see cref="ScalarSize"/> bytes.
+    /// </summary>
+    /// <param name="buffer">The packed scalar buffer to slice.</param>
+    /// <param name="index">The zero-based scalar index within <paramref name="buffer"/>.</param>
+    /// <returns>The <see cref="ScalarSize"/>-byte slice for the scalar at <paramref name="index"/>.</returns>
     private static Span<byte> ScalarAt(Span<byte> buffer, int index) => buffer.Slice(index * ScalarSize, ScalarSize);
 
+    /// <summary>
+    /// Returns the read-only slice of <paramref name="buffer"/> holding the scalar at
+    /// <paramref name="index"/>, each scalar occupying <see cref="ScalarSize"/> bytes.
+    /// </summary>
+    /// <param name="buffer">The packed scalar buffer to slice.</param>
+    /// <param name="index">The zero-based scalar index within <paramref name="buffer"/>.</param>
+    /// <returns>The <see cref="ScalarSize"/>-byte slice for the scalar at <paramref name="index"/>.</returns>
     private static ReadOnlySpan<byte> ScalarAt(ReadOnlySpan<byte> buffer, int index) => buffer.Slice(index * ScalarSize, ScalarSize);
 
 
-    //A canonical scalar is the field's zero exactly when every byte is zero.
+    /// <summary>
+    /// Determines whether a canonical scalar encodes the field's zero element, which
+    /// holds exactly when every byte of its encoding is zero.
+    /// </summary>
+    /// <param name="scalar">The canonical scalar encoding to test.</param>
+    /// <returns><see langword="true"/> when every byte of <paramref name="scalar"/> is zero; otherwise <see langword="false"/>.</returns>
     private static bool IsZeroScalar(ReadOnlySpan<byte> scalar) => scalar.IndexOfAnyExcept((byte)0) < 0;
 }

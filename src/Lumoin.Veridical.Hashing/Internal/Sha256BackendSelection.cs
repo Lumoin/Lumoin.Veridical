@@ -9,7 +9,7 @@ namespace Lumoin.Veridical.Hashing.Internal;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This phase ships only the portable scalar backend. The hardware-SHA
+/// Only the portable scalar backend is wired in here. The hardware-SHA
 /// tiers (the SHA-NI intrinsics on x86, the SHA2 instructions on AArch64)
 /// implement the same <see cref="Sha256CompressionDelegate"/> and slot in
 /// above the portable fallback here when added; the seam is present so that
@@ -20,6 +20,7 @@ namespace Lumoin.Veridical.Hashing.Internal;
 /// </remarks>
 internal static class Sha256BackendSelection
 {
+    /// <summary>The best-available SHA-256 backend, selected once and cached for the process lifetime.</summary>
     private static Sha256Backend Cached { get; } = ComputeBest();
 
 
@@ -27,5 +28,6 @@ internal static class Sha256BackendSelection
     public static Sha256Backend SelectBest() => Cached;
 
 
+    /// <summary>Returns the portable scalar backend, the only SHA-256 backend this selection chooses from.</summary>
     private static Sha256Backend ComputeBest() => Sha256PortableBackend.GetBackend();
 }

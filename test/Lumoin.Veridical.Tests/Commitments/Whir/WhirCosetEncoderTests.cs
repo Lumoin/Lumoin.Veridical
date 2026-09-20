@@ -9,7 +9,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR smooth-coset encoder (4.2 phase A): natural-order
+/// Tests for the WHIR smooth-coset encoder: natural-order
 /// encoding must equal naive Horner evaluation at every domain point on both
 /// wired curves — pinning the transform's bit-reversal bookkeeping to the
 /// mathematical definition — and the coset-contiguous leaf layout must be the
@@ -44,6 +44,7 @@ internal sealed class WhirCosetEncoderTests
     private const int CoefficientSalt = 11;
 
 
+    /// <summary>Verifies that natural-order encoding equals naive Horner evaluation at every domain point, on both wired curves.</summary>
     [TestMethod]
     [DataRow("Bls12Curve381")]
     [DataRow("Bn254")]
@@ -80,6 +81,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that the coset-leaf layout is the exact stride gather of the natural-order encoding.</summary>
     [TestMethod]
     public void CosetLeavesAreTheStrideGatherOfNaturalOrder()
     {
@@ -117,6 +119,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that the zero-knowledge encode with no randomness reproduces the plain encode byte for byte, on both the natural-order and coset-leaf surfaces.</summary>
     [TestMethod]
     public void ZeroKnowledgeEncodeWithEmptyRandomnessMatchesThePlainPaths()
     {
@@ -149,6 +152,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that the zero-knowledge encode equals the plain encode of the coefficient vector extended with the randomness block, on both the natural-order and coset-leaf surfaces.</summary>
     [TestMethod]
     public void ZeroKnowledgeEncodeIsThePlainEncodeOfTheExtendedCoefficientVector()
     {
@@ -202,6 +206,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that a randomness length not a multiple of the folding limb count is rejected.</summary>
     [TestMethod]
     public void ZeroKnowledgeRandomnessNotAMultipleOfTheLimbCountIsRejected()
     {
@@ -211,6 +216,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that randomness sized to fill the whole domain, leaving no room for the message, is rejected.</summary>
     [TestMethod]
     public void ZeroKnowledgeOverfilledDomainIsRejected()
     {
@@ -220,6 +226,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that a non-power-of-two coefficient count is rejected on the zero-knowledge coset-leaf surface.</summary>
     [TestMethod]
     public void ZeroKnowledgeNonPowerOfTwoMessageIsRejectedOnTheCosetSurface()
     {
@@ -229,6 +236,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that a destination span not sized to the domain length is rejected.</summary>
     [TestMethod]
     public void MismatchedDestinationLengthIsRejected()
     {
@@ -236,6 +244,7 @@ internal sealed class WhirCosetEncoderTests
     }
 
 
+    /// <summary>Verifies that a non-power-of-two coefficient count is rejected on the plain encode surface.</summary>
     [TestMethod]
     public void NonPowerOfTwoCoefficientCountIsRejected()
     {

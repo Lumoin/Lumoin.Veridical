@@ -23,9 +23,11 @@ namespace Lumoin.Veridical.Bbs;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BbsNymCommitmentGenerationExtensions
 {
+    /// <summary>The provider-instrumentation operation tag identifying <c>CommitWithNym</c> in telemetry and provenance stamps.</summary>
     private static ProviderOperation CommitWithNymOperation { get; } = new("BbsNymCommit");
 
 
+    /// <summary>Per-verifier-pseudonym commitment generation members added to <see cref="BbsCommitmentWithProof"/>.</summary>
     extension(BbsCommitmentWithProof)
     {
         /// <summary>

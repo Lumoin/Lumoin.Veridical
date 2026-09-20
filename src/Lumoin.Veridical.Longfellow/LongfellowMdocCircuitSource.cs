@@ -4,9 +4,9 @@ namespace Lumoin.Veridical.Longfellow;
 
 /// <summary>
 /// The circuit-definition seam: the raw concatenated dual-field circuit bytes — the P-256 signature circuit
-/// followed by the GF(2^128) hash circuit — the facade parses to recover the two circuits. The caller
-/// provides the bytes; in phase 0 that is the reference circuit definition decompressed from the producer's
-/// artifact.
+/// followed by the GF(2^128) hash circuit — the facade parses to recover the two circuits. The bytes are
+/// caller-supplied so the source can be swapped without touching the facade; the caller supplies the
+/// reference circuit definition decompressed from the google/longfellow-zk producer's artifact.
 /// </summary>
 /// <remarks>
 /// The facade re-parses the circuits and rebuilds the field bundles per call. Caching the parsed circuits and
@@ -15,6 +15,7 @@ namespace Lumoin.Veridical.Longfellow;
 /// </remarks>
 public sealed class LongfellowMdocCircuitSource
 {
+    /// <summary>Wraps already-validated, non-empty circuit-definition bytes; only <see cref="FromRawBytes"/> constructs a source.</summary>
     private LongfellowMdocCircuitSource(ReadOnlyMemory<byte> rawCircuitBytes)
     {
         RawCircuitBytes = rawCircuitBytes;

@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// The composition order mirrors the reference's <c>recv_commitment</c> then <c>verify</c>:
 /// </para>
 /// <list type="number">
-///   <item><description><b>Parse.</b> Split the envelope into the 32-byte commitment root (<c>read_com</c>), the sumcheck segment (<c>read_sc_proof</c>, C.7), and the Ligero proof (<c>read_com_proof</c>, C.6).</description></item>
+///   <item><description><b>Parse.</b> Split the envelope into the 32-byte commitment root (<c>read_com</c>), the sumcheck segment (<c>read_sc_proof</c>, the sumcheck segment), and the Ligero proof (<c>read_com_proof</c>, the Ligero proof).</description></item>
 ///   <item><description><b>Absorb the root.</b> <c>recv_commitment</c> writes the commitment root into the transcript (the Ligero layer's <c>receive_commitment</c>) before any challenge is squeezed.</description></item>
 ///   <item><description><b>Fiat–Shamir setup.</b> <c>initialize_sumcheck_fiat_shamir</c> absorbs the circuit id, the public inputs, a zero element, and <c>nterms()</c> zero bytes.</description></item>
 ///   <item><description><b>Build constraints.</b> <c>verifier_constraints</c> replays the layer walk over the sumcheck proof, building the sparse <c>A</c>, the targets <c>b</c>, and the constraint count <c>cn</c>, ending with the input-binding constraint.</description></item>
@@ -41,9 +41,10 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal static class LongfellowZkVerifier
 {
+    /// <summary>The commitment root and hash digest width in bytes.</summary>
     private const int DigestLength = 32;
 
-    //The reference's ZkProver hash_of_A: {0xde, 0xad, 0xbe, 0xef} then zero-filled to 32 bytes.
+    /// <summary>The reference's <c>ZkProver hash_of_A</c>: <c>{0xde, 0xad, 0xbe, 0xef}</c> then zero-filled to 32 bytes.</summary>
     private static byte[] TheoremStatementHash { get; } = BuildTheoremStatementHash();
 
 
@@ -52,6 +53,7 @@ internal static class LongfellowZkVerifier
     /// first pad index by both the constraint build and the <c>setup_lqc</c> claim-pad layout.
     /// </summary>
     /// <param name="circuit">The circuit shape.</param>
+    /// <returns>The witness count <c>n_witness</c>.</returns>
     public static int WitnessCount(LongfellowSumcheckCircuit circuit)
     {
         ArgumentNullException.ThrowIfNull(circuit);
@@ -66,6 +68,7 @@ internal static class LongfellowZkVerifier
     /// the Ligero witness count <c>nw</c>.
     /// </summary>
     /// <param name="circuit">The circuit shape.</param>
+    /// <returns>The proof-pad size <c>pad_size(c)</c>.</returns>
     public static int PadSize(LongfellowSumcheckCircuit circuit)
     {
         ArgumentNullException.ThrowIfNull(circuit);
@@ -90,6 +93,7 @@ internal static class LongfellowZkVerifier
     /// <param name="openedColumnCount">The opened-column count (<c>nreq</c>).</param>
     /// <param name="fieldBytes">The full-field element byte size (16 for GF(2^128)).</param>
     /// <param name="subFieldBytes">The subfield element byte size (2 for GF(2^16)).</param>
+    /// <returns>The derived Ligero parameters.</returns>
     public static LongfellowLigeroParameters DeriveParameters(
         LongfellowSumcheckCircuit circuit,
         int inverseRate,
@@ -118,6 +122,7 @@ internal static class LongfellowZkVerifier
     /// <param name="fieldBytes">The full-field element byte size (16 for GF(2^128)).</param>
     /// <param name="subFieldBytes">The subfield element byte size (2 for GF(2^16)).</param>
     /// <param name="blockEncoded">The pinned <c>block_enc</c> from the <c>ZkSpecStruct</c>.</param>
+    /// <returns>The derived Ligero parameters.</returns>
     public static LongfellowLigeroParameters DeriveParameters(
         LongfellowSumcheckCircuit circuit,
         int inverseRate,
@@ -186,7 +191,7 @@ internal static class LongfellowZkVerifier
     /// Verifies a parsed <c>ZkProof</c> against the public inputs, picking up AFTER the commitment root has
     /// been absorbed (<see cref="RecvCommitment"/>) — the post-<c>recv_commitment</c> body of the reference's
     /// <c>ZkVerifier::verify</c> (<c>zk_verifier.h:74-97</c>): the Fiat–Shamir setup, the
-    /// <c>verifier_constraints</c> layer walk, and the Ligero verify. Field-generic per D2: the caller passes
+    /// <c>verifier_constraints</c> layer walk, and the Ligero verify. Field-generic: the caller passes
     /// the row-encoder factory and the field profile, so one method serves both the GF(2^128) hash circuit
     /// and the Fp256 signature circuit on the same transcript.
     /// </summary>
@@ -422,9 +427,17 @@ internal static class LongfellowZkVerifier
     }
 
 
-    //ZkCommon::initialize_sumcheck_fiat_shamir: id [byte string], each public input [field element],
-    //F.zero() [field element], nterms() zero bytes [byte string]. The input column is NOT absorbed
-    //here (the ZK verifier never sees the witness; that absorb is the non-ZK verifier's write_input).
+    /// <summary>
+    /// The reference's <c>ZkCommon::initialize_sumcheck_fiat_shamir</c>: absorbs the circuit id (a byte
+    /// string), each public input (a field element), <c>F.zero()</c> (a field element), then
+    /// <c>nterms()</c> zero bytes (a byte string). The input column is not absorbed here, since the ZK
+    /// verifier never sees the witness; that absorb belongs to the non-ZK verifier's <c>write_input</c>.
+    /// </summary>
+    /// <param name="circuit">The circuit whose id and term count are absorbed.</param>
+    /// <param name="publicInputs">The public inputs to absorb, one field element per <see cref="LongfellowSumcheckCircuit.PublicInputCount"/> entry.</param>
+    /// <param name="profile">The field profile giving the element width.</param>
+    /// <param name="transcript">The transcript to absorb into.</param>
+    /// <param name="pool">The pool the zero-byte scratch buffer is rented from.</param>
     private static void InitializeFiatShamir(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> publicInputs, LongfellowFieldProfile profile, LongfellowTranscript transcript, BaseMemoryPool pool)
     {
         transcript.AbsorbByteString(circuit.Id.Span);
@@ -446,6 +459,8 @@ internal static class LongfellowZkVerifier
     }
 
 
+    /// <summary>Builds the fixed 32-byte theorem-statement hash <see cref="TheoremStatementHash"/> is initialized from.</summary>
+    /// <returns>The 32-byte hash <c>{0xde, 0xad, 0xbe, 0xef, 0…}</c>.</returns>
     private static byte[] BuildTheoremStatementHash()
     {
         byte[] hash = new byte[DigestLength];

@@ -14,26 +14,24 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The wire-format-conformant Ligero PROVE flow (conformance step C.4), gated as a faithful port of
-/// google/longfellow-zk's <c>lib/ligero/ligero_prover.h</c> <c>prove()</c> over the C.2 commit and the
-/// C.3 transcript, anchored to a complete reference-computed proof reproduced field by field.
+/// The wire-format-conformant Ligero PROVE flow, gated as a faithful port of
+/// google/longfellow-zk's <c>lib/ligero/ligero_prover.h</c> <c>prove()</c> over the commitment step and the
+/// transcript step, anchored to a complete reference-computed proof reproduced field by field.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The oracle dump (prove-anchor-output.txt in TestMaterial/Longfellow) is computed by the reference
-/// implementation running in its own build environment via development tooling outside this repository.
-/// It runs the real <c>LigeroProver::commit()+prove()</c> and the real <c>LigeroProof</c> with the
-/// deterministic counter random engine and a fixed transcript seed, and dumps every proof field: the
-/// commitment root, the challenge arrays exactly as squeezed (<c>u_ldt</c>, <c>alphal</c>,
-/// <c>alphaq</c>, <c>u_quad</c>), the response rows (<c>y_ldt</c>, <c>y_dot</c>, <c>y_quad_0</c>,
-/// <c>y_quad_2</c>), the opened columns (<c>req</c>, one row per tableau row), the opened-column indices
-/// (<c>idx</c>), each opened column's per-leaf nonce, and the compressed Merkle multi-proof path. The
-/// dump's <c>verify=1</c> confirms <c>LigeroVerifier::verify()</c> accepts the proof, so the gate
-/// reproduces a verifying proof.
+/// The anchor file (prove-anchor-output.txt in TestMaterial/Longfellow) records a run of the real
+/// <c>LigeroProver::commit()+prove()</c> and the real <c>LigeroProof</c> with the deterministic
+/// counter random engine and a fixed transcript seed: the commitment root, the challenge arrays
+/// exactly as squeezed (<c>u_ldt</c>, <c>alphal</c>, <c>alphaq</c>, <c>u_quad</c>), the response rows
+/// (<c>y_ldt</c>, <c>y_dot</c>, <c>y_quad_0</c>, <c>y_quad_2</c>), the opened columns (<c>req</c>, one
+/// row per tableau row), the opened-column indices (<c>idx</c>), each opened column's per-leaf nonce,
+/// and the compressed Merkle multi-proof path. Its <c>verify=1</c> confirms
+/// <c>LigeroVerifier::verify()</c> accepts the proof, so the gate reproduces a verifying proof.
 /// </para>
 /// <para>
-/// The C# gates reproduce every field byte for byte through the real C.2 commit and C.3 transcript
-/// ports, over both subfields the reference instantiates (production GF(2^16) and test-parity
+/// The C# gates reproduce every field byte for byte through the real commitment-step and
+/// transcript-step ports, over both subfields the reference instantiates (production GF(2^16) and test-parity
 /// GF(2^32)). The adversarial duals: a one-bit-flipped witness changes the responses and the opened
 /// columns; a one-byte-different transcript seed changes the challenges, responses and opened indices;
 /// and a tampered response, re-absorbed, changes the drawn opened-column indices (the commit-then-
@@ -44,38 +42,62 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowLigeroProveTests
 {
-    private const string DumpRelativePath = "TestMaterial/Longfellow/prove-anchor-output.txt";
+    /// <summary>The relative path to this gate's reference-computed prove-flow anchor values.</summary>
+    private const string AnchorRelativePath = "TestMaterial/Longfellow/prove-anchor-output.txt";
 
+    /// <summary>The width in bytes of one field element in its canonical scalar representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The SHA-256 digest width in bytes: the commitment root and the theorem-statement hash.</summary>
     private const int DigestSize = 32;
+
+    /// <summary>The on-wire GF(2^128) element width in bytes.</summary>
     private const int ElementBytes = 16;
 
-    //GF(2^128) byte sizes: the full field element is 16 bytes; the production GF(2^16) subfield is 2
-    //bytes, the test-parity GF(2^32) subfield is 4 bytes.
+    /// <summary>The full GF(2^128) field element width in bytes.</summary>
     private const int FieldBytes = 16;
+
+    /// <summary>The production GF(2^16) subfield's element width in bytes.</summary>
     private const int Production16SubFieldBytes = 2;
+
+    /// <summary>The test-parity GF(2^32) subfield's element width in bytes.</summary>
     private const int TestParity32SubFieldBytes = 4;
 
-    //The fixed prove tuple the harness drives.
+    /// <summary>The fixed prove tuple's witness count the harness drives.</summary>
     private const int WitnessCount = 8;
+
+    /// <summary>The fixed prove tuple's quadratic-constraint count the harness drives: one, <c>W[0]·W[1]=W[2]</c>.</summary>
     private const int QuadraticConstraintCount = 1;
+
+    /// <summary>The fixed prove tuple's Ligero code inverse rate the harness drives.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The fixed prove tuple's opened-column count the harness drives.</summary>
     private const int OpenedColumnCount = 2;
+
+    /// <summary>The transcript wire-format version this gate's transcript is seeded with.</summary>
     private const int TranscriptVersion = 6;
 
+    /// <summary>The fixed transcript seed ("c4") the honest prove flow uses, so the transcript's driven values are deterministic across runs.</summary>
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("c4");
 
+    /// <summary>The GF(2^128) field addition delegate every gate in this file drives the commit and prove flows through.</summary>
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) field subtraction delegate every gate in this file drives the commit and prove flows through.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) field multiplication delegate every gate in this file drives the commit and prove flows through.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) field inversion delegate the FFT construction requires.</summary>
     private static ScalarInvertDelegate Invert { get; } = Gf2k128Backend.GetInvert();
 
+    /// <summary>The reference-computed values loaded from <see cref="AnchorRelativePath"/>, keyed by field name.</summary>
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors();
 
 
+    /// <summary>Verifies that a proof produced over the production GF(2^16) subfield matches the reference field by field.</summary>
     [TestMethod]
     public void TheProofMatchesTheReferenceForTheProductionSubfield()
     {
@@ -83,6 +105,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Verifies that a proof produced over the test-parity GF(2^32) subfield matches the reference field by field.</summary>
     [TestMethod]
     public void TheProofMatchesTheReferenceForTheTestParitySubfield()
     {
@@ -90,6 +113,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Verifies that flipping one bit of a witness element changes both the low-degree response and the opened columns relative to the honest proof.</summary>
     [TestMethod]
     public void AFlippedWitnessChangesTheResponsesAndOpenedColumns()
     {
@@ -110,6 +134,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Verifies that proving with a different transcript seed changes both the low-degree response and the drawn opened-column indices relative to the honest proof.</summary>
     [TestMethod]
     public void ADifferentSeedChangesTheChallengesAndOpenedIndices()
     {
@@ -133,6 +158,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Verifies that flipping one byte of the absorbed dot response, replayed through the transcript, changes the drawn opened-column indices for at least one byte position — the commit-then-challenge binding.</summary>
     [TestMethod]
     public void ATamperedResponseChangesTheDrawnOpenedIndices()
     {
@@ -181,15 +207,14 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //Builds the proof through the real C.2 commit + C.3 transcript + C.4 prove, then asserts every
-    //field equals the reference dump for the given subfield prefix.
+    /// <summary>Builds the proof through the real commitment step, transcript step and prove step, then asserts every field equals the reference for the given subfield prefix.</summary>
     private static void AssertProofMatchesReference(Lch14Subfield subfield, int subFieldBytes, string prefix)
     {
         using Lch14AdditiveFft fft = NewFft(subfield);
         using LongfellowLigeroProof proof = ProduceProof(fft, subFieldBytes, witnessFlipIndex: -1, TranscriptSeed);
         var parameters = NewParameters(subFieldBytes);
 
-        //The commitment root (identical to the C.2 anchor).
+        //The commitment root (identical to the commitment step's anchor).
         Span<byte> root = stackalloc byte[DigestSize];
         using(LongfellowLigeroCommitment commitment = ProduceCommitment(fft, subFieldBytes, witnessFlipIndex: -1))
         {
@@ -231,9 +256,12 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //Replays the transcript exactly as Prove drives it through the response absorbs, returning the idx
-    //subset drawn from the given (possibly tampered) responses. The challenges before the responses are
-    //identical regardless of the responses, so only the absorbed responses can move idx.
+    /// <summary>
+    /// Replays the transcript exactly as <c>Prove</c> drives it through the response absorbs,
+    /// returning the <c>idx</c> subset drawn from the given (possibly tampered) responses. The
+    /// challenges before the responses are identical regardless of the responses, so only the
+    /// absorbed responses can move <c>idx</c>.
+    /// </summary>
     private static int[] ReplayOpenedIndices(LongfellowLigeroParameters parameters, ReadOnlySpan<byte> yLdt, ReadOnlySpan<byte> yDot, ReadOnlySpan<byte> yQuad0, ReadOnlySpan<byte> yQuad2)
     {
         Span<byte> root = stackalloc byte[DigestSize];
@@ -267,6 +295,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Squeezes and discards <paramref name="count"/> field elements from the transcript, replaying a challenge draw whose value is not otherwise needed.</summary>
     private static void SqueezeAndDiscard(LongfellowTranscript transcript, int count)
     {
         Span<byte> element = stackalloc byte[ElementBytes];
@@ -277,6 +306,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Converts <paramref name="count"/> canonical scalars to on-wire little-endian elements and absorbs them as one array into the transcript.</summary>
     private static void AbsorbResponseRow(LongfellowTranscript transcript, ReadOnlySpan<byte> canonical, int count)
     {
         Span<byte> littleEndian = stackalloc byte[count == 0 ? 1 : count * ElementBytes];
@@ -289,8 +319,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //Commits the fixed witness set over the given subfield, absorbs the root, and proves, returning the
-    //proof. The witness flip and the seed are parameters for the adversarial gates.
+    /// <summary>Commits the fixed witness set over the given subfield, absorbs the root, and proves, returning the proof. <paramref name="witnessFlipIndex"/> and <paramref name="seed"/> are parameters for the adversarial gates.</summary>
     private static LongfellowLigeroProof ProduceProof(Lch14AdditiveFft fft, int subFieldBytes, int witnessFlipIndex, ReadOnlySpan<byte> seed)
     {
         var parameters = NewParameters(subFieldBytes);
@@ -328,7 +357,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //Commits only (for the root cross-check and the transcript replay).
+    /// <summary>Commits the fixed witness set only, for the root cross-check and the transcript replay.</summary>
     private static LongfellowLigeroCommitment ProduceCommitment(Lch14AdditiveFft fft, int subFieldBytes, int witnessFlipIndex)
     {
         var parameters = NewParameters(subFieldBytes);
@@ -352,12 +381,16 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Builds the fixed prove tuple's Ligero parameters at the given subfield width.</summary>
     private static LongfellowLigeroParameters NewParameters(int subFieldBytes) =>
         new(WitnessCount, QuadraticConstraintCount, InverseRate, OpenedColumnCount, FieldBytes, subFieldBytes);
 
 
-    //W[i] = of_scalar(i + 1) (NodeElement(i+1)), then W[2] = W[0]·W[1] to satisfy the one quadratic
-    //constraint. An optional flip XORs one low bit of a witness, then W[2] is recomputed.
+    /// <summary>
+    /// Builds <c>W[i] = of_scalar(i + 1)</c> (<c>NodeElement(i+1)</c>), then <c>W[2] = W[0]·W[1]</c> to
+    /// satisfy the one quadratic constraint. An optional flip at <paramref name="witnessFlipIndex"/>
+    /// XORs one low bit of a witness before <c>W[2]</c> is recomputed.
+    /// </summary>
     private static void BuildWitnesses(Lch14AdditiveFft fft, Span<byte> witnesses, int witnessFlipIndex)
     {
         for(int i = 0; i < WitnessCount; i++)
@@ -374,9 +407,12 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //The harness's linear constraints: nl = nw constraints, one term each. Constraint c selects
-    //witness c with coefficient of_scalar(c+1) = NodeElement(c+1). The targets b are b[c] = k·W[c],
-    //which the prover never sees (only the verifier checks them); the prover only needs the terms.
+    /// <summary>
+    /// Builds the harness's linear constraints: <c>nl = nw</c> constraints, one term each. Constraint
+    /// <c>c</c> selects witness <c>c</c> with coefficient <c>of_scalar(c+1) = NodeElement(c+1)</c>. The
+    /// targets <c>b</c> are <c>b[c] = k·W[c]</c>, which the prover never sees (only the verifier checks
+    /// them); the prover only needs the terms.
+    /// </summary>
     private static LigeroLinearConstraint[] BuildLinearConstraints(Lch14AdditiveFft fft)
     {
         var constraints = new LigeroLinearConstraint[WitnessCount];
@@ -391,7 +427,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //The fixed 32-byte theorem statement the harness absorbs: 0x10, 0x11, ..., 0x2f.
+    /// <summary>Builds the fixed 32-byte theorem statement the harness absorbs: <c>0x10, 0x11, ..., 0x2f</c>.</summary>
     private static byte[] TheoremStatementHash()
     {
         byte[] hash = new byte[DigestSize];
@@ -404,8 +440,11 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //A fresh deterministic counter source: the k-th byte produced is (k & 0xFF), identical to the C++
-    //oracle's CounterRandomEngine. Each call returns a new source so a test restarts the stream at 0.
+    /// <summary>
+    /// Creates a fresh deterministic counter source: the <c>k</c>-th byte produced is <c>(k &amp;
+    /// 0xFF)</c>, identical to the reference's <c>CounterRandomEngine</c>. Each call returns a new
+    /// source so a test restarts the stream at zero.
+    /// </summary>
     private static LongfellowRandomByteSource NewCounterSource()
     {
         ulong counter = 0;
@@ -421,16 +460,17 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Creates a transcript seeded with <paramref name="seed"/>, wired to this file's AES-256-ECB and SHA-256 delegates.</summary>
     private static LongfellowTranscript NewTranscript(ReadOnlySpan<byte> seed) =>
         new(seed, TranscriptVersion, 16, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
+    /// <summary>Creates the additive FFT over <paramref name="subfield"/>, driven by this file's GF(2^128) field delegates.</summary>
     private static Lch14AdditiveFft NewFft(Lch14Subfield subfield) =>
         new(subfield, Add, Subtract, Multiply, Invert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //to_bytes_field: the low 16 big-endian bytes of a canonical scalar reverse into 16 little-endian
-    //element bytes.
+    /// <summary>The reference's <c>to_bytes_field</c>: the low 16 big-endian bytes of a canonical scalar reverse into 16 little-endian element bytes.</summary>
     private static void ToBytesField(ReadOnlySpan<byte> canonical, Span<byte> littleEndian)
     {
         for(int i = 0; i < ElementBytes; i++)
@@ -440,7 +480,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //The reference's node combine: SHA256(left || right).
+    /// <summary>The reference's node combine: <c>SHA256(left ‖ right)</c>.</summary>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSize];
@@ -450,14 +490,14 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //The one-shot leaf/snapshot hash: SHA256 over the whole input span.
+    /// <summary>The one-shot leaf/snapshot hash: SHA-256 over the whole input span; <paramref name="hashFunction"/> is unused since this file only ever selects SHA-256.</summary>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction)
     {
         SHA256.HashData(input, output);
     }
 
 
-    //AES-256-ECB over a single 16-byte block with no padding: the transcript PRF's block transform.
+    /// <summary>AES-256-ECB over a single 16-byte block with no padding: the transcript PRF's block transform.</summary>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = Aes.Create();
@@ -466,8 +506,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //Asserts a comma-separated run of `count` 16-byte little-endian elements equals the canonical
-    //scalars, comparing the reference's to_bytes_field framing against the canonical scalar's low bytes.
+    /// <summary>Asserts a comma-separated run of <paramref name="count"/> 16-byte little-endian elements equals the canonical scalars, comparing the reference's <c>to_bytes_field</c> framing against the canonical scalar's low bytes.</summary>
     private static void AssertElementsEqual(string label, ReadOnlySpan<byte> canonicalElements, int count, string message)
     {
         string[] hexElements = Anchors[label].Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -483,6 +522,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Asserts that <paramref name="actual"/> equals the reference anchor's hex-decoded bytes keyed by <paramref name="label"/>.</summary>
     private static void AssertHexEquals(string label, ReadOnlySpan<byte> actual, string message)
     {
         byte[] expected = Convert.FromHexString(Anchors[label]);
@@ -490,6 +530,7 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
+    /// <summary>Parses a comma-separated run of decimal integers.</summary>
     private static int[] ParseIntList(string commaList)
     {
         string[] tokens = commaList.Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -503,11 +544,10 @@ internal sealed class LongfellowLigeroProveTests
     }
 
 
-    //Parses the oracle dump into a label -> value map. Each line is "label=value" or a space-separated
-    //run of such tokens (the _param line); values never contain spaces.
+    /// <summary>Parses the anchor file into a label-to-value map. Each line is <c>label=value</c> or a space-separated run of such tokens (the <c>_param</c> line); values never contain spaces.</summary>
     private static Dictionary<string, string> LoadAnchors()
     {
-        string path = $"../../../{DumpRelativePath}";
+        string path = $"../../../{AnchorRelativePath}";
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach(string line in File.ReadAllLines(path))
         {

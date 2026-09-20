@@ -7,8 +7,8 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the zero-knowledge parameter extension (4.2 phases C1 and C3):
-/// the per-oracle randomness budgets must equal the query counts of the
+/// Tests for the zero-knowledge parameter extension: the per-oracle
+/// randomness budgets must equal the query counts of the
 /// rounds that consume each oracle, the mask spot-check count must carry the
 /// schedule's security target plus the mask-oracle union bits, the mask code
 /// shapes must follow the smallest-power-of-two domain rule, and every floor
@@ -83,6 +83,7 @@ internal sealed class WhirZkParametersTests
     private static ScalarArithmeticBackend Bls { get; } = TestScalarBackends.Bls12Curve381;
 
 
+    /// <summary>Verifies that each committed oracle's randomness budget equals the query count of the round that opens it, and that its per-limb element count scales by the folding parameter.</summary>
     [TestMethod]
     public void RandomnessBudgetsEqualTheConsumingRoundsQueryCounts()
     {
@@ -105,6 +106,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that the mask spot-check count prices the schedule's security target plus the union bound over <c>2M + 2</c> mask oracles.</summary>
     [TestMethod]
     public void MaskQueryCountCarriesTheUnionBoundOverAllMaskOracles()
     {
@@ -124,6 +126,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that the sumcheck and code-switch mask shapes use the mask message length, randomness length, and domain size the smallest-power-of-two rule at the mask rate prescribes.</summary>
     [TestMethod]
     public void MaskCodeShapesFollowTheSmallestPowerOfTwoDomainRule()
     {
@@ -150,6 +153,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that a mask message length below the lemma's minimum is rejected.</summary>
     [TestMethod]
     public void MaskMessageLengthUnderTheLemmaFloorIsRejected()
     {
@@ -160,6 +164,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that a rate-one (non-expanding) mask code is rejected.</summary>
     [TestMethod]
     public void RateOneMaskCodeIsRejected()
     {
@@ -169,6 +174,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that a shape the plain schedule admits (its query count fits the query domain) is nonetheless rejected by the hiding extension when the randomness budget exceeds the oracle's spare codeword rows.</summary>
     [TestMethod]
     public void RandomnessBudgetExceedingTheCodewordSlackIsRejected()
     {
@@ -185,6 +191,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that a mask rate pushing the mask domain past the field's two-adicity is rejected.</summary>
     [TestMethod]
     public void MaskDomainPastTheTwoAdicityIsRejected()
     {
@@ -194,6 +201,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that the zero-knowledge ledger reprices exactly the sumcheck fold rows with the masked identity term, carries every other row over unchanged, and appends one mask spot-check row per mask group.</summary>
     [TestMethod]
     public void ZkLedgerRepricesFoldRowsAndCarriesTheRestUnchanged()
     {
@@ -249,6 +257,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that every zero-knowledge ledger row meets the schedule's security target and that the union bound sits below the worst row's error.</summary>
     [TestMethod]
     public void ZkLedgerReachesTheScheduleTargetAndUnionSitsBelowWorstRow()
     {
@@ -266,6 +275,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that the privacy error prices one field-floor-bit admissibility event per code-switch round, so an extra round costs one union bit.</summary>
     [TestMethod]
     public void PrivacyErrorBitsPriceThePrivateOutOfDomainDrawUnion()
     {
@@ -288,6 +298,7 @@ internal sealed class WhirZkParametersTests
     }
 
 
+    /// <summary>Verifies that a shape collapsing to the base case (no code-switch rounds) draws no private out-of-domain points, so it simulates exactly (infinite privacy error bits) and adds exactly one mask group's ledger row.</summary>
     [TestMethod]
     public void BaseCaseOnlyShapeDrawsNoPrivatePointsAndPricesPerfectPrivacy()
     {

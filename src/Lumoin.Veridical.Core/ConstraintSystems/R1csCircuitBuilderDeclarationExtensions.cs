@@ -16,6 +16,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class R1csCircuitBuilderDeclarationExtensions
 {
+    /// <summary>Declaration and constraint members added to every <see cref="R1csCircuitBuilder"/> instance.</summary>
     extension(R1csCircuitBuilder builder)
     {
         /// <summary>
@@ -107,6 +108,16 @@ public static class R1csCircuitBuilderDeclarationExtensions
     }
 
 
+    /// <summary>
+    /// Allocates the next variable index for <paramref name="name"/>, records the name-to-index mapping in
+    /// <paramref name="builder"/>'s state, and appends the declaration operation and metadata into the
+    /// accumulating circuit. Shared by <c>DeclarePublicInput</c>, <c>DeclareWitnessVariable</c>, and
+    /// <c>DeclareIntermediateVariable</c>, which differ only in <paramref name="kind"/>.
+    /// </summary>
+    /// <param name="builder">The builder whose next variable index is consumed and whose state gains the name mapping.</param>
+    /// <param name="name">The new variable's unique name.</param>
+    /// <param name="kind">The kind of variable being declared, which selects the declaration operation recorded into the circuit.</param>
+    /// <returns>The newly declared variable's index.</returns>
     private static R1csVariableIndex Declare(R1csCircuitBuilder builder, string name, R1csVariableKind kind)
     {
         var index = new R1csVariableIndex(builder.NextVariableIndex);
@@ -128,6 +139,16 @@ public static class R1csCircuitBuilderDeclarationExtensions
     }
 
 
+    /// <summary>
+    /// Returns a new circuit with <paramref name="op"/> appended to its operation log and <paramref name="metadata"/>
+    /// appended to its variable table, incrementing the public-input or witness-variable count according to
+    /// <paramref name="kind"/>.
+    /// </summary>
+    /// <param name="circuit">The circuit to extend.</param>
+    /// <param name="op">The declaration operation to append.</param>
+    /// <param name="metadata">The declared variable's metadata to append.</param>
+    /// <param name="kind">The kind of variable declared, selecting which count is incremented.</param>
+    /// <returns>A new circuit with the declaration appended.</returns>
     private static R1csCircuit AppendDeclaration(R1csCircuit circuit, IR1csOp op, R1csVariableMetadata metadata, R1csVariableKind kind)
     {
         int publicInputCount = circuit.PublicInputCount + (kind == R1csVariableKind.PublicInput ? 1 : 0);
@@ -142,6 +163,10 @@ public static class R1csCircuitBuilderDeclarationExtensions
     }
 
 
+    /// <summary>Returns a new circuit with <paramref name="op"/> appended to its operation log; the variable table and counts are unchanged, since a constraint declares no new variable.</summary>
+    /// <param name="circuit">The circuit to extend.</param>
+    /// <param name="op">The constraint operation to append.</param>
+    /// <returns>A new circuit with the constraint appended.</returns>
     private static R1csCircuit AppendConstraint(R1csCircuit circuit, AddConstraintOp op)
     {
         return new R1csCircuit(
@@ -153,6 +178,10 @@ public static class R1csCircuitBuilderDeclarationExtensions
     }
 
 
+    /// <summary>Throws when <paramref name="name"/> cannot be used for a new variable: empty, or already declared in <paramref name="builder"/>'s state.</summary>
+    /// <param name="builder">The builder whose named-variable table is checked.</param>
+    /// <param name="name">The candidate name for a new variable.</param>
+    /// <exception cref="ArgumentException">When <paramref name="name"/> is null or empty, or already names a declared variable.</exception>
     private static void ValidateNewName(R1csCircuitBuilder builder, string name)
     {
         if(string.IsNullOrEmpty(name))
@@ -167,6 +196,11 @@ public static class R1csCircuitBuilderDeclarationExtensions
     }
 
 
+    /// <summary>Throws when <paramref name="combination"/> references a variable index that has not yet been declared in <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder whose declared-variable count bounds the valid indices.</param>
+    /// <param name="combination">The linear combination whose term indices are checked.</param>
+    /// <param name="paramName">The parameter name to attribute a thrown exception to.</param>
+    /// <exception cref="ArgumentException">When a term references a variable index outside <c>[0, builder.NextVariableIndex)</c>.</exception>
     private static void ValidateReferences(R1csCircuitBuilder builder, R1csLinearCombination combination, string paramName)
     {
         int variableCount = builder.NextVariableIndex;

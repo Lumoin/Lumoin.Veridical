@@ -38,17 +38,40 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowQuadCircuitCompilerFp256Tests
+internal sealed class LongfellowQuadCircuitCompilerFp256Tests: IDisposable
 {
-    private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
 
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
+    /// <summary>The relative path to the GF(2^128) anchor statement's reference-computed values, whose shape this Fp256 compilation is checked against.</summary>
+    private const string ZkAnchorRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+
+    /// <summary>The P-256 base field's bit width.</summary>
     private const int Fp256BitCount = 256;
 
+    /// <summary>The fixed transcript seed the Fp256 end-to-end gates use, so the transcript's driven values are deterministic across runs.</summary>
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("fp256-kernel-e2e");
 
-    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
+    /// <summary>The reference-computed values loaded from <see cref="ZkAnchorRelativePath"/>, keyed by field name.</summary>
+    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkAnchorRelativePath);
 
 
+    /// <summary>Verifies that the Fp256-compiled circuit's shape matches the GF(2^128) anchor's field-independent wiring, and that the output layer's copy corner keeps coefficient one while its product corner carries the genuine <c>p − 1</c>.</summary>
     [TestMethod]
     public void TheCompiledFp256CircuitSharesTheWiringWithAGenuineNegationCoefficient()
     {
@@ -76,6 +99,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Verifies that the Fp256 compilation's structural circuit id does not collide with the GF(2^128) anchor's id, since the field is part of the id's inputs.</summary>
     [TestMethod]
     public void TheStructuralIdSeparatesTheFields()
     {
@@ -86,6 +110,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Verifies that a proof produced over the Fp256-compiled circuit with a satisfying witness is accepted by our verifier.</summary>
     [TestMethod]
     public void OurVerifierAcceptsAProofOverTheCompiledFp256Circuit()
     {
@@ -100,6 +125,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Verifies that a proof over the Fp256-compiled circuit is rejected both when a byte inside the sumcheck segment is flipped and when a public-input byte is flipped.</summary>
     [TestMethod]
     public void ATamperedProofOverTheCompiledFp256CircuitRejects()
     {
@@ -125,6 +151,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Verifies that flipping one bit of the witness wire <c>w</c>, breaking <c>w == x·(x+y)·(x+z)</c>, makes the Fp256-compiled circuit's statement unprovable.</summary>
     [TestMethod]
     public void AnUnsatisfyingWitnessIsUnprovableOverTheCompiledFp256Circuit()
     {
@@ -141,18 +168,19 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Verifies that over the P-256 field, two distinct coefficients summing to zero modulo <c>p</c> (<c>5</c> and <c>p − 5</c>) cancel in a merged linear node, so the sum behaves as the zero node under a later addition.</summary>
     [TestMethod]
     public void MergeCancellationOfDistinctValuesYieldsTheZeroNode()
     {
-        LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreatePrime(
+        LongfellowCompilerFieldOperations field = CircuitScope.Track(LongfellowCompilerFieldOperations.CreatePrime(
             Fp256Add,
             Fp256Multiply,
             CurveParameterSet.None,
             Canonical(Prime - 1),
             Fp256ElementBytes,
-            Fp256BitCount);
+            Fp256BitCount, CircuitScope.Pool));
 
-        var builder = new LongfellowQuadCircuitBuilder(field);
+        var builder = CircuitScope.CreateBuilder(field);
 
         int x = builder.InputWire();
 
@@ -167,19 +195,22 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
-    //Builds w == (x+y)·(x+z)·x through the kernel over the P-256 base field: x public; y, z, w
-    //private. Sub is genuine over a prime field, so the compiled output asserts w − x·(x+y)(x+z) = 0.
-    private static LongfellowQuadCircuitBuilder BuildFp256Statement(out LongfellowSumcheckCircuit circuit)
+    /// <summary>
+    /// Builds <c>w == (x+y)·(x+z)·x</c> through the kernel over the P-256 base field — x public, y, z, w
+    /// private — with circuit owners released at test cleanup. Sub is genuine over a prime field, so the
+    /// compiled output asserts <c>w − x·(x+y)(x+z) = 0</c>.
+    /// </summary>
+    private LongfellowQuadCircuitBuilder BuildFp256Statement(out LongfellowSumcheckCircuit circuit)
     {
-        LongfellowCompilerFieldOperations field = LongfellowCompilerFieldOperations.CreatePrime(
+        LongfellowCompilerFieldOperations field = CircuitScope.Track(LongfellowCompilerFieldOperations.CreatePrime(
             Fp256Add,
             Fp256Multiply,
             CurveParameterSet.None,
             Canonical(Prime - 1),
             Fp256ElementBytes,
-            Fp256BitCount);
+            Fp256BitCount, CircuitScope.Pool));
 
-        var builder = new LongfellowQuadCircuitBuilder(field);
+        var builder = CircuitScope.CreateBuilder(field);
 
         int x = builder.InputWire();
         builder.PrivateInput();
@@ -192,14 +223,13 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
         int u = builder.Mul(t, x);
         _ = builder.AssertZero(builder.Sub(w, u));
 
-        circuit = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        circuit = CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         return builder;
     }
 
 
-    //Builds the satisfying Fp256 column [one, x, y, z, w] with w = x·(x+y)·(x+z) mod p — the natural
-    //witness, because the kernel's genuine subtraction put the negation into the circuit coefficient.
+    /// <summary>Builds the satisfying Fp256 column <c>[one, x, y, z, w]</c> with <c>w = x·(x+y)·(x+z) mod p</c> — the natural witness, because the kernel's genuine subtraction put the negation into the circuit coefficient.</summary>
     private static byte[] BuildSatisfyingColumn(uint x, uint y, uint z)
     {
         byte[] column = new byte[5 * ScalarSize];
@@ -225,6 +255,7 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Builds the canonical big-endian encoding of the field element one.</summary>
     private static byte[] CanonicalOne()
     {
         byte[] one = new byte[ScalarSize];
@@ -234,9 +265,11 @@ internal sealed class LongfellowQuadCircuitCompilerFp256Tests
     }
 
 
+    /// <summary>Parses the reference-computed anchor value keyed by <paramref name="key"/> as an integer.</summary>
     private static int Anchor(string key) => int.Parse(Anchors[key], CultureInfo.InvariantCulture);
 
 
+    /// <summary>Loads a fixture's <c>key=value</c> tokens from every non-empty line into a case-sensitive lookup, skipping any token without an <c>=</c>.</summary>
     private static Dictionary<string, string> LoadAnchors(string relativePath)
     {
         string path = $"../../../{relativePath}";

@@ -67,56 +67,89 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal sealed class LongfellowTranscript: IDisposable
 {
-    //The reference's tag bytes for the typed writes: byte-array, field element, array-of-field-element.
+    /// <summary>The reference's tag byte for a typed byte-array write.</summary>
     private const byte TagByteString = 0;
+
+    /// <summary>The reference's tag byte for a typed single-field-element write.</summary>
     private const byte TagFieldElement = 1;
+
+    /// <summary>The reference's tag byte for a typed field-element-array write.</summary>
     private const byte TagArray = 2;
 
-    //The reference's kPRFKeySize == kSHA256DigestSize: the snapshot key and the SHA-256 digest are 32
-    //bytes. kPRFInputSize == kPRFOutputSize == 16: one AES block in, one AES block out.
+    /// <summary>The reference's <c>kPRFKeySize == kSHA256DigestSize</c>: the snapshot key and the SHA-256 digest are 32 bytes.</summary>
     private const int PrfKeySize = 32;
+
+    /// <summary>The reference's <c>kPRFInputSize</c>: one AES block's input width.</summary>
     private const int PrfInputSize = 16;
+
+    /// <summary>The reference's <c>kPRFOutputSize</c>: one AES block's output width.</summary>
     private const int PrfOutputSize = 16;
 
-    //The reference's u64 length encoding: every typed length is 8 little-endian bytes.
+    /// <summary>The reference's u64 length encoding: every typed length is 8 little-endian bytes.</summary>
     private const int LengthBytes = 8;
 
-    //The reference's FSPRF::kMaxBlocks: 2^40 blocks suffice for the application (the 2^64 limit is far
-    //out of reach). The transcript panics past it rather than wrapping the counter.
+    /// <summary>
+    /// The reference's <c>FSPRF::kMaxBlocks</c>: 2^40 blocks suffice for the application (the 2^64
+    /// limit is far out of reach). The transcript panics past it rather than wrapping the counter.
+    /// </summary>
     private const ulong MaxBlocks = 0x10000000000UL;
 
-    private readonly LongfellowTranscriptBlockCipher blockCipher;
-    private readonly BaseMemoryPool pool;
-    private readonly int version;
+    /// <summary>The AES-256-ECB single-block transform the PRF squeezes through.</summary>
+    private LongfellowTranscriptBlockCipher BlockCipher { get; }
 
-    //The forkable incremental SHA-256 state. WriteUntyped feeds it exactly the bytes it would have appended
-    //to a retained buffer, in the same order, so a fork-finalize in SnapshotKey yields SHA-256 of the full
-    //absorbed stream in O(1) per squeeze — the reference's sha_ running state. This is the only snapshot
-    //path; the transcript never retains the absorbed bytes.
-    private readonly ILongfellowIncrementalHash incrementalHash;
+    /// <summary>The pool the PRF buffers and the clone/index-subset scratch rent from.</summary>
+    private BaseMemoryPool Pool { get; }
 
-    //The on-wire element width this stack instance frames absorbs and squeezes at (Field::kBytes): 16 for
-    //GF(2^128), 32 for the P-256 base field. Carried so the single transcript port serves both fields.
-    private readonly int fieldElementBytes;
+    /// <summary>The transcript version, carried for fidelity but not branched on in this snapshot.</summary>
+    private int TranscriptVersion { get; }
 
-    //The number of bytes absorbed so far (tag/length/payload of every write). A plain counter — the bytes
-    //themselves are not retained; the incremental SHA state carries them. The snapshot is SHA-256 of this
-    //many bytes' worth of input.
+    /// <summary>
+    /// The forkable incremental SHA-256 state. WriteUntyped feeds it exactly the bytes it would have
+    /// appended to a retained buffer, in the same order, so a fork-finalize in SnapshotKey yields
+    /// SHA-256 of the full absorbed stream in O(1) per squeeze — the reference's <c>sha_</c> running
+    /// state. This is the only snapshot path; the transcript never retains the absorbed bytes.
+    /// </summary>
+    private ILongfellowIncrementalHash IncrementalHash { get; }
+
+    /// <summary>
+    /// The on-wire element width this stack instance frames absorbs and squeezes at
+    /// (<c>Field::kBytes</c>): 16 for GF(2^128), 32 for the P-256 base field. Carried so the single
+    /// transcript port serves both fields.
+    /// </summary>
+    private int FieldElementBytes { get; }
+
+    /// <summary>
+    /// The number of bytes absorbed so far (tag/length/payload of every write). A plain counter —
+    /// the bytes themselves are not retained; the incremental SHA state carries them. The snapshot
+    /// is SHA-256 of this many bytes' worth of input.
+    /// </summary>
     private int absorbedLength;
 
-    //The PRF block state. saved holds the current 16-byte AES output; readPointer indexes into it;
-    //blockCounter is the next block index. prfActive is false until the first squeeze after the last
-    //write — a write invalidates it (the reference resets the unique_ptr), forcing a re-key.
-    private readonly IMemoryOwner<byte> saved;
-    private readonly IMemoryOwner<byte> prfKey;
+    /// <summary>The current 16-byte AES output block the PRF reads bytes from.</summary>
+    private IMemoryOwner<byte> Saved { get; }
+
+    /// <summary>The current PRF key, snapshotted from the absorbed stream on the first squeeze after a write.</summary>
+    private IMemoryOwner<byte> PrfKey { get; }
+
+    /// <summary>The index into <see cref="Saved"/> the next squeezed byte reads from.</summary>
     private int readPointer;
+
+    /// <summary>The next AES block index the PRF will refill from.</summary>
     private ulong blockCounter;
+
+    /// <summary>
+    /// Whether the PRF has been keyed since the last absorption. False until the first squeeze after
+    /// the last write — a write invalidates it (the reference resets the unique_ptr), forcing a
+    /// re-key.
+    /// </summary>
     private bool prfActive;
+
+    /// <summary>Whether this transcript's buffers have been released.</summary>
     private bool disposed;
 
 
     /// <summary>The transcript version (the deployed mdoc flow uses 6); carried for fidelity, not branched on in this snapshot.</summary>
-    public int Version => version;
+    public int Version => TranscriptVersion;
 
     /// <summary>The number of bytes absorbed so far (the length of the byte stream the PRF snapshots over); a pure read used by the width-threading gates.</summary>
     public int AbsorbedLength => absorbedLength;
@@ -151,14 +184,14 @@ internal sealed class LongfellowTranscript: IDisposable
         ArgumentNullException.ThrowIfNull(incrementalHashFactory);
         ArgumentOutOfRangeException.ThrowIfLessThan(fieldElementBytes, 1);
 
-        this.blockCipher = blockCipher;
-        this.pool = pool;
-        this.version = version;
-        this.fieldElementBytes = fieldElementBytes;
-        incrementalHash = incrementalHashFactory();
+        this.BlockCipher = blockCipher;
+        this.Pool = pool;
+        this.TranscriptVersion = version;
+        this.FieldElementBytes = fieldElementBytes;
+        IncrementalHash = incrementalHashFactory();
 
-        saved = pool.Rent(PrfOutputSize);
-        prfKey = pool.Rent(PrfKeySize);
+        Saved = pool.Rent(PrfOutputSize);
+        PrfKey = pool.Rent(PrfKeySize);
         readPointer = PrfOutputSize;
         blockCounter = 0;
         prfActive = false;
@@ -169,9 +202,12 @@ internal sealed class LongfellowTranscript: IDisposable
     }
 
 
-    //The clone constructor: same delegate/version/width/pool but no seed absorb; the caller carries the
-    //absorbed length over directly. The forked incremental state is passed in (the reference's
-    //Transcript(sha_, version_) — a CopyState of the source's running SHA state).
+    /// <summary>
+    /// The clone constructor: same delegate/version/width/pool but no seed absorb; the caller
+    /// carries the absorbed length over directly. The forked incremental state is passed in (the
+    /// reference's <c>Transcript(sha_, version_)</c> — a CopyState of the source's running SHA
+    /// state).
+    /// </summary>
     private LongfellowTranscript(
         int version,
         int fieldElementBytes,
@@ -179,14 +215,14 @@ internal sealed class LongfellowTranscript: IDisposable
         BaseMemoryPool pool,
         ILongfellowIncrementalHash forkedIncrementalHash)
     {
-        this.blockCipher = blockCipher;
-        this.pool = pool;
-        this.version = version;
-        this.fieldElementBytes = fieldElementBytes;
-        incrementalHash = forkedIncrementalHash;
+        this.BlockCipher = blockCipher;
+        this.Pool = pool;
+        this.TranscriptVersion = version;
+        this.FieldElementBytes = fieldElementBytes;
+        IncrementalHash = forkedIncrementalHash;
 
-        saved = pool.Rent(PrfOutputSize);
-        prfKey = pool.Rent(PrfKeySize);
+        Saved = pool.Rent(PrfOutputSize);
+        PrfKey = pool.Rent(PrfKeySize);
         readPointer = PrfOutputSize;
         blockCounter = 0;
         prfActive = false;
@@ -217,13 +253,13 @@ internal sealed class LongfellowTranscript: IDisposable
     /// <param name="elementBytes">The element's little-endian bytes (<c>to_bytes_field</c>); the baked element width.</param>
     /// <exception cref="ObjectDisposedException">When the transcript has been disposed.</exception>
     /// <exception cref="ArgumentException">When <paramref name="elementBytes"/> is not the baked element width.</exception>
-    public void AbsorbFieldElement(ReadOnlySpan<byte> elementBytes) => AbsorbFieldElement(elementBytes, fieldElementBytes);
+    public void AbsorbFieldElement(ReadOnlySpan<byte> elementBytes) => AbsorbFieldElement(elementBytes, FieldElementBytes);
 
 
     /// <summary>
-    /// Absorbs a single field element framed at <paramref name="elementWidth"/> little-endian bytes (per D3
-    /// the cross-field driver frames the GF and Fp256 absorbs on one transcript at their own widths). The
-    /// reference's <c>write(Elt, F)</c>.
+    /// Absorbs a single field element framed at <paramref name="elementWidth"/> little-endian bytes
+    /// (the cross-field driver frames the GF and Fp256 absorbs on one transcript at their own widths).
+    /// The reference's <c>write(Elt, F)</c>.
     /// </summary>
     /// <param name="elementBytes">The element's little-endian bytes (<c>to_bytes_field</c>); exactly <paramref name="elementWidth"/> bytes.</param>
     /// <param name="elementWidth">The on-wire element width to frame at (16 for GF(2^128), 32 for the P-256 base field).</param>
@@ -252,12 +288,12 @@ internal sealed class LongfellowTranscript: IDisposable
     /// <exception cref="ObjectDisposedException">When the transcript has been disposed.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="elementCount"/> is negative.</exception>
     /// <exception cref="ArgumentException">When <paramref name="elementsBytes"/> is not <paramref name="elementCount"/> · the baked element width.</exception>
-    public void AbsorbFieldElementArray(ReadOnlySpan<byte> elementsBytes, int elementCount) => AbsorbFieldElementArray(elementsBytes, elementCount, fieldElementBytes);
+    public void AbsorbFieldElementArray(ReadOnlySpan<byte> elementsBytes, int elementCount) => AbsorbFieldElementArray(elementsBytes, elementCount, FieldElementBytes);
 
 
     /// <summary>
-    /// Absorbs an array of field elements framed at <paramref name="elementWidth"/> little-endian bytes each
-    /// (per D3). The reference's <c>write(Elt[], ince, n, F)</c> with unit stride.
+    /// Absorbs an array of field elements framed at <paramref name="elementWidth"/> little-endian bytes
+    /// each. The reference's <c>write(Elt[], ince, n, F)</c> with unit stride.
     /// </summary>
     /// <param name="elementsBytes">The concatenated element bytes; exactly <paramref name="elementCount"/> · <paramref name="elementWidth"/> bytes.</param>
     /// <param name="elementCount">The number of elements.</param>
@@ -284,8 +320,8 @@ internal sealed class LongfellowTranscript: IDisposable
     /// <summary>
     /// Absorbs a 32-byte commitment root exactly as google/longfellow-zk's
     /// <c>LigeroTranscript::write_commitment</c> does: the raw root bytes through the typed byte-array
-    /// write. This is the cross-layer entry point — the C.2 commitment root absorbs here before any
-    /// challenge is squeezed.
+    /// write. This is the cross-layer entry point — the Ligero commitment root absorbs here before
+    /// any challenge is squeezed.
     /// </summary>
     /// <param name="root">The 32-byte commitment root.</param>
     /// <exception cref="ObjectDisposedException">When the transcript has been disposed.</exception>
@@ -320,7 +356,7 @@ internal sealed class LongfellowTranscript: IDisposable
         //Fork the running state and finalize the fork (the reference's SHA256 tmp; tmp.CopyState(sha_);
         //tmp.DigestData(key)). O(1) per squeeze — one partial-block finalize, not a full re-hash. The
         //fork leaves the running state undisturbed so absorption can continue.
-        ILongfellowIncrementalHash fork = incrementalHash.Fork();
+        ILongfellowIncrementalHash fork = IncrementalHash.Fork();
         fork.FinalizeInto(key);
     }
 
@@ -341,7 +377,7 @@ internal sealed class LongfellowTranscript: IDisposable
 
         //Fork the running SHA state by value (the reference's CopyState) so the clone carries the same
         //absorbed state and produces the identical challenge stream.
-        var clone = new LongfellowTranscript(version, fieldElementBytes, blockCipher, pool, incrementalHash.Fork());
+        var clone = new LongfellowTranscript(TranscriptVersion, FieldElementBytes, BlockCipher, Pool, IncrementalHash.Fork());
         clone.absorbedLength = absorbedLength;
 
         return clone;
@@ -362,13 +398,13 @@ internal sealed class LongfellowTranscript: IDisposable
         if(!prfActive)
         {
             //The reference lazily builds the FSPRF from the current snapshot on the first byte draw.
-            SnapshotKey(prfKey.Memory.Span[..PrfKeySize]);
+            SnapshotKey(PrfKey.Memory.Span[..PrfKeySize]);
             blockCounter = 0;
             readPointer = PrfOutputSize;
             prfActive = true;
         }
 
-        Span<byte> savedSpan = saved.Memory.Span[..PrfOutputSize];
+        Span<byte> savedSpan = Saved.Memory.Span[..PrfOutputSize];
         for(int i = 0; i < destination.Length; i++)
         {
             if(readPointer == PrfOutputSize)
@@ -391,12 +427,12 @@ internal sealed class LongfellowTranscript: IDisposable
     /// <param name="elementBytes">Receives the little-endian element bytes; the baked element width.</param>
     /// <exception cref="ObjectDisposedException">When the transcript has been disposed.</exception>
     /// <exception cref="ArgumentException">When <paramref name="elementBytes"/> is not the baked element width.</exception>
-    public void SqueezeFieldElementBytes(Span<byte> elementBytes) => SqueezeFieldElementBytes(elementBytes, fieldElementBytes);
+    public void SqueezeFieldElementBytes(Span<byte> elementBytes) => SqueezeFieldElementBytes(elementBytes, FieldElementBytes);
 
 
     /// <summary>
     /// Squeezes one field element's little-endian bytes (<c>of_bytes_field</c>) framed at <paramref name="elementWidth"/>
-    /// bytes (per D3 the cross-field driver draws the 16-byte <c>generate_mac_key</c> a_v explicitly, never against
+    /// bytes (the cross-field driver draws the 16-byte <c>generate_mac_key</c> a_v explicitly, never against
     /// the baked width). This is the RAW <c>of_bytes_field</c> draw the reference's <c>generate_mac_key</c> uses
     /// (<c>t.bytes(buf, kBytes)</c>, <c>mdoc_zk.cc:280</c>): exactly one block of <paramref name="elementWidth"/>
     /// bytes, never the <c>sample</c> reject loop.
@@ -452,14 +488,14 @@ internal sealed class LongfellowTranscript: IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfNegative(elementCount);
 
-        if(elementsBytes.Length != elementCount * fieldElementBytes)
+        if(elementsBytes.Length != elementCount * FieldElementBytes)
         {
-            throw new ArgumentException($"{elementCount} field elements are {elementCount * fieldElementBytes} bytes; received {elementsBytes.Length}.", nameof(elementsBytes));
+            throw new ArgumentException($"{elementCount} field elements are {elementCount * FieldElementBytes} bytes; received {elementsBytes.Length}.", nameof(elementsBytes));
         }
 
         for(int i = 0; i < elementCount; i++)
         {
-            SqueezeBytes(elementsBytes.Slice(i * fieldElementBytes, fieldElementBytes));
+            SqueezeBytes(elementsBytes.Slice(i * FieldElementBytes, FieldElementBytes));
         }
     }
 
@@ -533,7 +569,7 @@ internal sealed class LongfellowTranscript: IDisposable
 
         //The textbook O(n)-space selection: A = identity, then for i in [0, count) swap A[i] with
         //A[i + nat(n - i)] and emit A[i]. Each int is 4 bytes; the universe array is pool-rented.
-        using IMemoryOwner<byte> universeOwner = pool.Rent(bound * sizeof(int));
+        using IMemoryOwner<byte> universeOwner = Pool.Rent(bound * sizeof(int));
         Span<int> universe = MemoryMarshal.Cast<byte, int>(universeOwner.Memory.Span)[..bound];
         for(int i = 0; i < bound; i++)
         {
@@ -562,10 +598,10 @@ internal sealed class LongfellowTranscript: IDisposable
         disposed = true;
         try
         {
-            saved.Memory.Span[..PrfOutputSize].Clear();
-            saved.Dispose();
-            prfKey.Memory.Span[..PrfKeySize].Clear();
-            prfKey.Dispose();
+            Saved.Memory.Span[..PrfOutputSize].Clear();
+            Saved.Dispose();
+            PrfKey.Memory.Span[..PrfKeySize].Clear();
+            PrfKey.Dispose();
         }
         catch
         {
@@ -574,8 +610,11 @@ internal sealed class LongfellowTranscript: IDisposable
     }
 
 
-    //Refills saved with the next PRF block: AES-256-ECB(key, littleEndian64(blockCounter++)). The
-    //reference's FSPRF::refill. Panics past kMaxBlocks rather than wrapping the counter.
+    /// <summary>
+    /// Refills <see cref="Saved"/> with the next PRF block: AES-256-ECB(key, littleEndian64(blockCounter++)).
+    /// The reference's <c>FSPRF::refill</c>. Panics past <see cref="MaxBlocks"/> rather than wrapping
+    /// the counter.
+    /// </summary>
     private void RefillBlock()
     {
         if(blockCounter >= MaxBlocks)
@@ -588,12 +627,12 @@ internal sealed class LongfellowTranscript: IDisposable
         WriteUInt64LittleEndian(input, blockCounter);
         blockCounter++;
 
-        blockCipher(prfKey.Memory.Span[..PrfKeySize], input, saved.Memory.Span[..PrfOutputSize]);
+        BlockCipher(PrfKey.Memory.Span[..PrfKeySize], input, Saved.Memory.Span[..PrfOutputSize]);
         readPointer = 0;
     }
 
 
-    //Writes a 1-byte tag through the untyped path (the reference tags via write_untyped of one byte).
+    /// <summary>Writes a 1-byte tag through the untyped path (the reference tags via <c>write_untyped</c> of one byte).</summary>
     private void WriteTag(byte tag)
     {
         Span<byte> one = stackalloc byte[1];
@@ -602,7 +641,7 @@ internal sealed class LongfellowTranscript: IDisposable
     }
 
 
-    //Writes an 8-byte little-endian length through the untyped path (the reference's length(x)).
+    /// <summary>Writes an 8-byte little-endian length through the untyped path (the reference's <c>length(x)</c>).</summary>
     private void WriteLength(long length)
     {
         Span<byte> encoded = stackalloc byte[LengthBytes];
@@ -611,9 +650,12 @@ internal sealed class LongfellowTranscript: IDisposable
     }
 
 
-    //Feeds raw bytes to the running incremental hash and invalidates the PRF (the reference's write_untyped
-    //-> sha_.Update, then resets the FSPRF on every write). The next squeeze re-keys from the longer
-    //snapshot. The bytes are not retained; absorbedLength counts them for the width-threading gates.
+    /// <summary>
+    /// Feeds raw bytes to the running incremental hash and invalidates the PRF (the reference's
+    /// <c>write_untyped -> sha_.Update</c>, then resets the FSPRF on every write). The next squeeze
+    /// re-keys from the longer snapshot. The bytes are not retained; <see cref="absorbedLength"/>
+    /// counts them for the width-threading gates.
+    /// </summary>
     private void WriteUntyped(ReadOnlySpan<byte> data)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -621,15 +663,18 @@ internal sealed class LongfellowTranscript: IDisposable
         //Feed the incremental hasher exactly the bytes that frame this write, in the same order, so its
         //fork-finalize equals SHA-256 of the full absorbed stream (the reference's write_untyped ->
         //sha_.Update). This is the sole snapshot input — nothing is retained.
-        incrementalHash.Update(data);
+        IncrementalHash.Update(data);
         absorbedLength += data.Length;
 
         prfActive = false;
     }
 
 
-    //The reference's mask(n): the smallest m such that (n & m) == n — i.e. all-ones up to n's top set
-    //bit. Used by the natural-rejection sampler to discard the high bits before the bound test.
+    /// <summary>
+    /// The reference's <c>mask(n)</c>: the smallest m such that (n &amp; m) == n, i.e. all-ones up to
+    /// n's top set bit. Used by the natural-rejection sampler to discard the high bits before the
+    /// bound test.
+    /// </summary>
     private static ulong SmallestCoveringMask(ulong n)
     {
         ulong mask = 0;
@@ -643,6 +688,7 @@ internal sealed class LongfellowTranscript: IDisposable
     }
 
 
+    /// <summary>Writes a 64-bit value as 8 little-endian bytes.</summary>
     private static void WriteUInt64LittleEndian(Span<byte> destination, ulong value)
     {
         for(int i = 0; i < LengthBytes; i++)

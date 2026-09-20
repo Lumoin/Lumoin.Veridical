@@ -1,4 +1,5 @@
 using System;
+using Lumoin.Veridical.Core.Algebraic;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 
@@ -17,7 +18,11 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// </remarks>
 internal sealed class LongfellowBitPluckerEncoder
 {
-    private readonly LongfellowLogicFieldOperations field;
+    /// <summary>The field-operation bundle every point evaluation and packed encoding runs over.</summary>
+    private LongfellowLogicFieldOperations Field { get; }
+
+    /// <summary>The field's caller pool, available for packed-output staging.</summary>
+    internal BaseMemoryPool Pool => this.Field.Pool;
 
     /// <summary>The bit width <c>LOGN</c> this encoder packs (matching a paired <see cref="LongfellowBitPlucker"/>'s <see cref="LongfellowBitPlucker.LogPointCount"/>).</summary>
     public int LogPointCount { get; }
@@ -52,7 +57,7 @@ internal sealed class LongfellowBitPluckerEncoder
         const int MaxLogPointCount = 8;
         ArgumentOutOfRangeException.ThrowIfGreaterThan(logPointCount, MaxLogPointCount);
 
-        this.field = field;
+        this.Field = field;
         LogPointCount = logPointCount;
         PointCount = 1 << logPointCount;
 
@@ -71,8 +76,8 @@ internal sealed class LongfellowBitPluckerEncoder
     /// interpolates its polynomials over, for a given packed value.
     /// </summary>
     /// <param name="index">The packed value, ordinarily <c>0 &lt;= index &lt; PointCount</c>.</param>
-    /// <returns>The field element, canonical big-endian.</returns>
-    public ReadOnlyMemory<byte> Encode(int index) => LongfellowBitPlucker.PluckerPoint(field, PointCount, index);
+    /// <param name="destination">Receives the canonical scalar-sized field element.</param>
+    public void Encode(int index, Span<byte> destination) => LongfellowBitPlucker.PluckerPoint(Field, PointCount, index, destination);
 
 
     /// <summary>
@@ -80,18 +85,15 @@ internal sealed class LongfellowBitPluckerEncoder
     /// groups, least significant first, and encodes each group as a point.
     /// </summary>
     /// <param name="value">The 32-bit quantity to pack.</param>
-    /// <returns>The packed field elements, <see cref="PackedV32ElementCount"/> of them.</returns>
-    public ReadOnlyMemory<byte>[] MakePackedV32(uint value)
+    /// <param name="destination">Receives <see cref="PackedV32ElementCount"/> contiguous scalar-sized field elements.</param>
+    public void MakePackedV32(uint value, Span<byte> destination)
     {
-        var result = new ReadOnlyMemory<byte>[PackedV32ElementCount];
         uint remaining = value;
         for(int i = 0; i < PackedV32ElementCount; i++)
         {
-            result[i] = Encode((int)(remaining & (uint)(PointCount - 1)));
+            Encode((int)(remaining & (uint)(PointCount - 1)), destination.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes));
             remaining >>= LogPointCount;
         }
-
-        return result;
     }
 
 
@@ -104,10 +106,10 @@ internal sealed class LongfellowBitPluckerEncoder
     /// <param name="bits">The bit source, one byte per bit — the low bit of each byte is read.</param>
     /// <param name="bitCount">The number of leading bits of <paramref name="bits"/> to consider.</param>
     /// <param name="elementCount">The number of packed elements to produce.</param>
-    /// <returns>The packed field elements, <paramref name="elementCount"/> of them.</returns>
+    /// <param name="destination">Receives <paramref name="elementCount"/> contiguous scalar-sized elements; empty output is valid.</param>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="bitCount"/> or <paramref name="elementCount"/> is negative.</exception>
     /// <exception cref="ArgumentException">When <paramref name="bits"/> is shorter than <paramref name="bitCount"/>.</exception>
-    public ReadOnlyMemory<byte>[] Pack(ReadOnlySpan<byte> bits, int bitCount, int elementCount)
+    public void Pack(ReadOnlySpan<byte> bits, int bitCount, int elementCount, Span<byte> destination)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bitCount);
         ArgumentOutOfRangeException.ThrowIfNegative(elementCount);
@@ -117,7 +119,6 @@ internal sealed class LongfellowBitPluckerEncoder
             throw new ArgumentException("The bit source needs at least bitCount bytes.", nameof(bits));
         }
 
-        var result = new ReadOnlyMemory<byte>[elementCount];
         for(int i = 0; i < elementCount; i++)
         {
             int value = 0;
@@ -129,10 +130,8 @@ internal sealed class LongfellowBitPluckerEncoder
                 }
             }
 
-            result[i] = Encode(value);
+            Encode(value, destination.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes));
         }
-
-        return result;
     }
 
 

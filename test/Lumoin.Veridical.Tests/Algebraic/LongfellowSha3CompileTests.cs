@@ -20,11 +20,10 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every pinned figure was regenerated from the pinned reference commit by running its own gtests
-/// (<c>SHA3_Circuit.*</c>) in the longfellow-ref Docker oracle. The GF(2^128) SHAKE row carries
-/// the characteristic-two shape — linear XOR collapses the wires and depth while the quad-term
-/// count balloons — and the sextic-extension rows carry the odd-prime shape, so the pair pins
-/// both assertion-split branches of the gadget.
+/// Every pinned figure matches the reference's own gtests (<c>SHA3_Circuit.*</c>). The GF(2^128)
+/// SHAKE row carries the characteristic-two shape — linear XOR collapses the wires and depth while
+/// the quad-term count balloons — and the sextic-extension rows carry the odd-prime shape, so the
+/// pair pins both assertion-split branches of the gadget.
 /// </para>
 /// <para>
 /// The sextic-extension rows are compile-pinned here and vector-checked in evaluation
@@ -36,8 +35,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowSha3CompileTests
+internal sealed class LongfellowSha3CompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
     /// <summary>The field element width in bytes used for every witness column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -65,7 +82,7 @@ internal sealed class LongfellowSha3CompileTests
     /// <summary>The reference's ZK round-trip output length.</summary>
     private const int ZkOutputLength = 33;
 
-    /// <summary>The witness-free Keccak circuit's reference depth upper bound (Docker oracle, <c>SHA3_Circuit</c>, Fp24_6).</summary>
+    /// <summary>The witness-free Keccak circuit's reference depth upper bound (<c>SHA3_Circuit</c>, Fp24_6).</summary>
     private const int KeccakDepth = 145;
 
     /// <summary>The witness-free Keccak circuit's reference wire count.</summary>
@@ -172,7 +189,7 @@ internal sealed class LongfellowSha3CompileTests
     [TestMethod]
     public void TheKeccakCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileKeccakCircuit(NewFp24SexticBundle(), witnessed: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileKeccakCircuit(NewFp24SexticBundle(CircuitScope), witnessed: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(KeccakDepth, builder.DepthUpperBound, "The Keccak circuit's depth must match the reference compiler's.");
         Assert.AreEqual(KeccakWireCount, builder.WireCount, "The Keccak circuit's wire count must match the reference compiler's.");
@@ -189,7 +206,7 @@ internal sealed class LongfellowSha3CompileTests
     [TestMethod]
     public void TheWitnessedKeccakCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileKeccakCircuit(NewFp24SexticBundle(), witnessed: true, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileKeccakCircuit(NewFp24SexticBundle(CircuitScope), witnessed: true, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(WitnessedKeccakDepth, builder.DepthUpperBound, "The witnessed Keccak circuit's depth must match the reference compiler's.");
         Assert.AreEqual(WitnessedKeccakWireCount, builder.WireCount, "The witnessed Keccak circuit's wire count must match the reference compiler's.");
@@ -206,7 +223,7 @@ internal sealed class LongfellowSha3CompileTests
     [TestMethod]
     public void TheShakeCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileShakeCircuit(NewFp24SexticBundle(), SexticSubfieldBits, PinnedSeedLength, PinnedOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileShakeCircuit(NewFp24SexticBundle(CircuitScope), SexticSubfieldBits, PinnedSeedLength, PinnedOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(ShakeDepth, builder.DepthUpperBound, "The SHAKE circuit's depth must match the reference compiler's.");
         Assert.AreEqual(ShakeWireCount, builder.WireCount, "The SHAKE circuit's wire count must match the reference compiler's.");
@@ -223,7 +240,7 @@ internal sealed class LongfellowSha3CompileTests
     [TestMethod]
     public void TheGfShakeCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        _ = CompileShakeCircuit(NewGfBundle(), GfSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
+        _ = CompileShakeCircuit(NewGfBundle(CircuitScope), GfSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: false, out LongfellowQuadCircuitBuilder builder);
 
         Assert.AreEqual(GfShakeDepth, builder.DepthUpperBound, "The GF SHAKE circuit's depth must match the reference compiler's.");
         Assert.AreEqual(GfShakeWireCount, builder.WireCount, "The GF SHAKE circuit's wire count must match the reference compiler's.");
@@ -240,7 +257,7 @@ internal sealed class LongfellowSha3CompileTests
     [TestMethod]
     public void TheGfShakeStatementProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewGfBundle();
+        LongfellowLogicFieldOperations field = NewGfBundle(CircuitScope);
         LongfellowSumcheckCircuit circuit = CompileShakeCircuit(field, GfSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: true, out _);
 
         int columnBytes = circuit.InputCount * ScalarSize;
@@ -281,7 +298,7 @@ internal sealed class LongfellowSha3CompileTests
     [TestMethod]
     public void TheSexticShakeStatementProvesAndVerifiesEndToEnd()
     {
-        LongfellowLogicFieldOperations field = NewFp24SexticBundle();
+        LongfellowLogicFieldOperations field = NewFp24SexticBundle(CircuitScope);
         LongfellowSumcheckCircuit circuit = CompileShakeCircuit(field, SexticSubfieldBits, ZkSeedLength, ZkOutputLength, privateWitness: true, out _);
 
         int columnBytes = circuit.InputCount * ScalarSize;
@@ -332,11 +349,11 @@ internal sealed class LongfellowSha3CompileTests
     /// <param name="witnessed">Whether the witnessed permutation is compiled.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileKeccakCircuit(LongfellowLogicFieldOperations field, bool witnessed, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileKeccakCircuit(LongfellowLogicFieldOperations field, bool witnessed, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, SexticSubfieldBits);
 
         var state = new LongfellowBitWire[GridSize][][];
@@ -368,7 +385,7 @@ internal sealed class LongfellowSha3CompileTests
             }
         }
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -384,7 +401,7 @@ internal sealed class LongfellowSha3CompileTests
     /// <param name="privateWitness">Whether the block witness is declared private (the end-to-end gates) or public (the reference's all-public telemetry shape).</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileShakeCircuit(
+    private LongfellowSumcheckCircuit CompileShakeCircuit(
         LongfellowLogicFieldOperations field,
         int subfieldBits,
         int seedLength,
@@ -392,9 +409,9 @@ internal sealed class LongfellowSha3CompileTests
         bool privateWitness,
         out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowSha3Circuit(logic, subfieldBits);
 
         var seed = new LongfellowBitWire[seedLength][];
@@ -426,7 +443,7 @@ internal sealed class LongfellowSha3CompileTests
             logic.AssertEqual(want[i], output[i]);
         }
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 

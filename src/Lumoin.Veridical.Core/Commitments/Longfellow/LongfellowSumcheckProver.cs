@@ -36,7 +36,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// by <see cref="EndLayer"/>.
 /// </para>
 /// <para>
-/// The transcript schedule matches the C.7 verifier replay exactly: <c>begin_circuit</c> squeezes
+/// The transcript schedule matches the sumcheck-segment verifier replay exactly: <c>begin_circuit</c> squeezes
 /// <c>Q</c>/<c>G</c>, then per layer <c>begin_layer</c> squeezes <c>alpha</c>/<c>beta</c>, each round
 /// absorbs the two transmitted points <c>(p(0), p(2))</c> and squeezes the hand challenge, and the two
 /// padded <c>wc</c> claims are absorbed. The non-ZK prover would absorb the input column first
@@ -55,13 +55,16 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal static class LongfellowSumcheckProver
 {
+    /// <summary>The in-memory canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The reference's Challenge::kMaxBindings: Q and G are squeezed as kMaxBindings-element arrays.
+    /// <summary>The reference's <c>Challenge::kMaxBindings</c>: <c>Q</c> and <c>G</c> are squeezed as <c>kMaxBindings</c>-element arrays.</summary>
     private const int MaxBindings = 40;
 
-    //A round polynomial has three evaluation points {0, 1, g}; the wire transmits points 0 and 2.
+    /// <summary>The number of evaluation points a round polynomial carries (<c>{0, 1, g}</c>); the wire transmits only points 0 and 2.</summary>
     private const int RoundPolynomialPoints = LongfellowSumcheckProof.RoundPolynomialPoints;
+
+    /// <summary>The number of hands (left, right) a per-round binding alternates across.</summary>
     private const int HandCount = LongfellowSumcheckProof.HandCount;
 
 
@@ -252,6 +255,26 @@ internal static class LongfellowSumcheckProver
     }
 
 
+    /// <summary>Walks every circuit layer from the output down to the input, squeezing each layer's <c>alpha</c>/<c>beta</c> and proving it (<see cref="ProveLayer"/>), then advancing the output binding <c>g</c> to the layer's hand challenges for the next layer.</summary>
+    /// <param name="circuit">The circuit shape.</param>
+    /// <param name="tables">The per-layer input wire tables from <see cref="EvaluateCircuit"/>.</param>
+    /// <param name="pad">The statistical mask's proof pad.</param>
+    /// <param name="proof">The sumcheck proof being written.</param>
+    /// <param name="transcript">The shared Fiat-Shamir transcript.</param>
+    /// <param name="g0">The output binding's first challenge set; updated in place across layers.</param>
+    /// <param name="g1">The output binding's second challenge set; updated in place across layers.</param>
+    /// <param name="evalPoints">The three round-polynomial evaluation points <c>{0, 1, g}</c>.</param>
+    /// <param name="one">The field's multiplicative identity.</param>
+    /// <param name="profile">The field profile giving the wire element width and conversions.</param>
+    /// <param name="elementBytes">The on-wire element width in bytes.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="invert">Field inversion.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="pool">The pool the working buffers rent from.</param>
+    /// <param name="gatherMultiplyAccumulate">The optional fused gather-multiply-accumulate primitive.</param>
+    /// <param name="broadcastMultiplyAccumulate">The optional fused broadcast-multiply-accumulate primitive.</param>
     private static void WalkLayers(
         LongfellowSumcheckCircuit circuit,
         LongfellowWireTables tables,
@@ -319,9 +342,38 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //Engage in the single-layer sumcheck on EQ[c]·QUAD[r,l]·W[r,c]·W[l,c] with logc == 0 (no copy
-    //rounds): bind r and l in alternating hands. Stores the padded round polynomials and the padded wire
-    //claims W[R], W[L] into the proof, and sets WC to the new (unpadded) claims for the next layer.
+    /// <summary>
+    /// Engages in the single-layer sumcheck on <c>EQ[c]·QUAD[r,l]·W[r,c]·W[l,c]</c> with <c>logc == 0</c>
+    /// (no copy rounds): binds <c>r</c> and <c>l</c> in alternating hands. Stores the padded round
+    /// polynomials and the padded wire claims <c>W[R]</c>, <c>W[L]</c> into the proof, and sets
+    /// <paramref name="wc"/> to the new (unpadded) claims for the next layer.
+    /// </summary>
+    /// <param name="layer">The layer shape.</param>
+    /// <param name="layerIndex">The layer's index, for the proof and pad lookups.</param>
+    /// <param name="wireTable">The layer's input wire table.</param>
+    /// <param name="pad">The statistical mask's proof pad.</param>
+    /// <param name="proof">The sumcheck proof being written.</param>
+    /// <param name="transcript">The shared Fiat-Shamir transcript.</param>
+    /// <param name="outputLogCount">The output binding's round count.</param>
+    /// <param name="g0">The output binding's first challenge set.</param>
+    /// <param name="g1">The output binding's second challenge set.</param>
+    /// <param name="alpha">This layer's squeezed <c>alpha</c> challenge.</param>
+    /// <param name="beta">This layer's squeezed <c>beta</c> challenge.</param>
+    /// <param name="handRounds">The number of hand-binding rounds this layer runs.</param>
+    /// <param name="handChallenges">Receives the per-hand, per-round challenges for the next layer's output binding.</param>
+    /// <param name="evalPoints">The three round-polynomial evaluation points <c>{0, 1, g}</c>.</param>
+    /// <param name="one">The field's multiplicative identity.</param>
+    /// <param name="profile">The field profile giving the wire element width and conversions.</param>
+    /// <param name="elementBytes">The on-wire element width in bytes.</param>
+    /// <param name="wc">On entry, the previous layer's two claims; on return, this layer's two claims.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="invert">Field inversion.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="pool">The pool the working buffers rent from.</param>
+    /// <param name="gatherMultiplyAccumulate">The optional fused gather-multiply-accumulate primitive.</param>
+    /// <param name="broadcastMultiplyAccumulate">The optional fused broadcast-multiply-accumulate primitive.</param>
     private static void ProveLayer(
         LongfellowSumcheckLayer layer,
         int layerIndex,
@@ -435,9 +487,19 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //Evaluate the layer's quadratic form V[g] = Σ_term v·W[h0]·W[h1] over the single copy. An assert-zero
-    //term (v == 0) is a check the output-zero verification enforces; the reference's eval_quad does not
-    //accumulate it into V, so it is skipped here too.
+    /// <summary>
+    /// Evaluates the layer's quadratic form <c>V[g] = Σ_term v·W[h0]·W[h1]</c> over the single copy. An
+    /// assert-zero term (<c>v == 0</c>) is a check the output-zero verification enforces; the reference's
+    /// <c>eval_quad</c> does not accumulate it into <c>V</c>, so it is skipped here too.
+    /// </summary>
+    /// <param name="layer">The layer whose quad terms are evaluated.</param>
+    /// <param name="input">The layer's input wire table.</param>
+    /// <param name="output">Accumulates the evaluated output wires.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="product">Scratch space for one term's product.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <exception cref="InvalidOperationException">When an assert-zero gate's wired product is nonzero.</exception>
     private static void EvaluateQuad(
         LongfellowSumcheckLayer layer,
         ReadOnlySpan<byte> input,
@@ -475,9 +537,22 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //evaluations(): p(t) = Σ_l QW[l]·W[l] as a degree-2 polynomial, evaluated at {0, 1, t}. With
-    //logc == 0, eq0 = 1. Compute the monomial coefficients a0 (constant) and a2 (quadratic), reconstruct
-    //a1 from the running sum (sum = p(0) + p(1) = 2·a0 + a1 + a2), then evaluate via Horner at the points.
+    /// <summary>
+    /// The reference's <c>evaluations()</c>: computes <c>p(t) = Σ_l QW[l]·W[l]</c> as a degree-2 polynomial,
+    /// evaluated at <c>{0, 1, t}</c>. With <c>logc == 0</c>, <c>eq0 = 1</c>. Computes the monomial
+    /// coefficients <c>a0</c> (constant) and <c>a2</c> (quadratic), reconstructs <c>a1</c> from the running
+    /// sum (<c>sum = p(0) + p(1) = 2·a0 + a1 + a2</c>), then evaluates via Horner at the points.
+    /// </summary>
+    /// <param name="n">The number of entries in <paramref name="qw"/> and <paramref name="w"/>.</param>
+    /// <param name="qw">The bound quad's weighted-sum table <c>QW</c>.</param>
+    /// <param name="w">The hand's wire values.</param>
+    /// <param name="sum">The running claim sum <c>p(0) + p(1)</c>.</param>
+    /// <param name="evalPoints">The three round-polynomial evaluation points <c>{0, 1, g}</c>.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="evals">Receives the polynomial's three evaluations, one per evaluation point.</param>
     private static void RoundPolynomial(
         int n,
         ReadOnlySpan<byte> qw,
@@ -548,7 +623,15 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //Horner evaluation of a0 + a1·x + a2·x² (the reference's Poly::eval_monomial over 3 coefficients).
+    /// <summary>Horner evaluation of <c>a0 + a1·x + a2·x²</c> (the reference's <c>Poly::eval_monomial</c> over 3 coefficients).</summary>
+    /// <param name="a0">The constant coefficient.</param>
+    /// <param name="a1">The linear coefficient.</param>
+    /// <param name="a2">The quadratic coefficient.</param>
+    /// <param name="x">The point to evaluate at.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="result">Receives the evaluated value.</param>
     private static void EvaluateMonomial(
         ReadOnlySpan<byte> a0,
         ReadOnlySpan<byte> a1,
@@ -570,11 +653,26 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //round_h: subtract the pad's poly pad from the round polynomial's transmitted points (on a copy),
-    //store the padded points into the proof, absorb (p(0), p(2)) [skip p(1)] and squeeze the hand
-    //challenge from the padded poly. The reference (prover_layers.h round_h) subtracts the pad on a
-    //by-value copy (Xhat = X - dX), so the working polynomial stays UNPADDED — the sumcheck sum folds the
-    //unpadded poly (point 1's pad is the field zero, but only points 0 and 2 are transmitted anyway).
+    /// <summary>
+    /// The reference's <c>round_h</c>: subtracts the pad's poly pad from the round polynomial's
+    /// transmitted points (on a copy), stores the padded points into the proof, absorbs
+    /// <c>(p(0), p(2))</c> (skipping <c>p(1)</c>), and squeezes the hand challenge from the padded
+    /// polynomial. The reference (<c>prover_layers.h round_h</c>) subtracts the pad on a by-value copy
+    /// (<c>Xhat = X - dX</c>), so the working polynomial stays unpadded — the sumcheck sum folds the
+    /// unpadded polynomial (point 1's pad is the field zero, but only points 0 and 2 are transmitted anyway).
+    /// </summary>
+    /// <param name="layer">The layer index, for the pad and proof lookups.</param>
+    /// <param name="hand">The hand index (0 or 1).</param>
+    /// <param name="round">The hand-binding round index.</param>
+    /// <param name="poly">The round polynomial's three unpadded evaluations.</param>
+    /// <param name="pad">The statistical mask's proof pad.</param>
+    /// <param name="proof">The sumcheck proof being written.</param>
+    /// <param name="transcript">The shared Fiat-Shamir transcript.</param>
+    /// <param name="profile">The field profile giving the wire element width and conversions.</param>
+    /// <param name="elementBytes">The on-wire element width in bytes.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="challenge">Receives the squeezed hand challenge.</param>
     private static void RoundHand(
         int layer,
         int hand,
@@ -615,9 +713,20 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //end_layer: subtract the pad's wc pad from the two wire claims, store the padded claims, absorb them.
-    //The reference (prover_layers.h end_layer) subtracts the pad (tt = wc - pad->wc), so the transcript
-    //carries Xhat = X - dX.
+    /// <summary>
+    /// The reference's <c>end_layer</c>: subtracts the pad's <c>wc</c> pad from the two wire claims, stores
+    /// the padded claims, and absorbs them. The reference (<c>prover_layers.h end_layer</c>) subtracts the
+    /// pad (<c>tt = wc - pad-&gt;wc</c>), so the transcript carries <c>Xhat = X - dX</c>.
+    /// </summary>
+    /// <param name="layer">The layer index, for the pad and proof lookups.</param>
+    /// <param name="wc">The layer's two unpadded wire claims.</param>
+    /// <param name="pad">The statistical mask's proof pad.</param>
+    /// <param name="proof">The sumcheck proof being written.</param>
+    /// <param name="transcript">The shared Fiat-Shamir transcript.</param>
+    /// <param name="profile">The field profile giving the wire element width and conversions.</param>
+    /// <param name="elementBytes">The on-wire element width in bytes.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     private static void EndLayer(
         int layer,
         ReadOnlySpan<byte> wc,
@@ -649,8 +758,21 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //sum = eval_lagrange(poly, challenge): the running claim folds to the round polynomial evaluated at
-    //the challenge, computed via the Lagrange weights at the three nodes {0, 1, g}.
+    /// <summary>
+    /// The reference's <c>sum = eval_lagrange(poly, challenge)</c>: folds the running claim to the round
+    /// polynomial evaluated at the challenge, computed via the Lagrange weights at the three nodes
+    /// <c>{0, 1, g}</c>.
+    /// </summary>
+    /// <param name="poly">The round polynomial's three evaluations.</param>
+    /// <param name="challenge">The squeezed hand challenge to evaluate at.</param>
+    /// <param name="evalPoints">The three round-polynomial evaluation points <c>{0, 1, g}</c>.</param>
+    /// <param name="one">The field's multiplicative identity.</param>
+    /// <param name="sum">On entry, unused; on return, the folded claim.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="invert">Field inversion.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     private static void SumcheckInterpolate(
         ReadOnlySpan<byte> poly,
         ReadOnlySpan<byte> challenge,
@@ -680,8 +802,18 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //Bind a hand half: W'[i] = affine_interpolation(challenge, W[2i], W[2i+1]) = W[2i] + challenge·(W[2i+1]
-    //- W[2i]); a trailing odd element folds as affine_interpolation_nz_z = W[2i]·(1 - challenge).
+    /// <summary>
+    /// Binds a hand half: <c>W'[i] = affine_interpolation(challenge, W[2i], W[2i+1]) = W[2i] +
+    /// challenge·(W[2i+1] - W[2i])</c>; a trailing odd element folds as
+    /// <c>affine_interpolation_nz_z = W[2i]·(1 - challenge)</c>.
+    /// </summary>
+    /// <param name="w">The hand's wire values on entry; overwritten with the folded, half-length values.</param>
+    /// <param name="n">The number of entries in <paramref name="w"/> before folding.</param>
+    /// <param name="challenge">The hand challenge to fold at.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
     private static void BindHand(
         Span<byte> w,
         int n,
@@ -716,8 +848,19 @@ internal static class LongfellowSumcheckProver
     }
 
 
-    //dot_wpoly.coef(x): the Lagrange weights of a degree-3 (N = 3) polynomial at point x over the nodes
-    //{0, 1, t}. weight[k] = Π_{j != k} (x - X[j]) / (X[k] - X[j]).
+    /// <summary>
+    /// The reference's <c>dot_wpoly.coef(x)</c>: the Lagrange weights of a degree-3 (<c>N = 3</c>)
+    /// polynomial at point <paramref name="x"/> over the nodes <c>{0, 1, t}</c>:
+    /// <c>weight[k] = Π_{j != k} (x - X[j]) / (X[k] - X[j])</c>.
+    /// </summary>
+    /// <param name="x">The point to compute the weights at.</param>
+    /// <param name="evalPoints">The three round-polynomial evaluation points <c>{0, 1, g}</c>.</param>
+    /// <param name="one">The field's multiplicative identity.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="multiply">Field multiplication.</param>
+    /// <param name="invert">Field inversion.</param>
+    /// <param name="curve">The field the delegates operate over.</param>
+    /// <param name="weights">Receives the three Lagrange weights.</param>
     private static void LagrangeWeights(
         ReadOnlySpan<byte> x,
         ReadOnlySpan<byte> evalPoints,
@@ -761,6 +904,9 @@ internal static class LongfellowSumcheckProver
     }
 
 
+    /// <summary>Throws unless the circuit has exactly one copy and zero copy rounds, the wire-format constraint this prover requires.</summary>
+    /// <param name="circuit">The circuit to check.</param>
+    /// <exception cref="ArgumentException">When the circuit has more than one copy or a nonzero copy-round count.</exception>
     private static void RequireSingleCopy(LongfellowSumcheckCircuit circuit)
     {
         if(circuit.CopyRounds != 0 || circuit.CopyCount != 1)
@@ -770,6 +916,11 @@ internal static class LongfellowSumcheckProver
     }
 
 
+    /// <summary>Throws unless a layer carries at least one quad term, since the sumcheck prover needs them to evaluate the circuit.</summary>
+    /// <param name="circuit">The owning circuit, reported in the exception.</param>
+    /// <param name="layer">The layer to check.</param>
+    /// <param name="layerIndex">The layer's index, reported in the exception message.</param>
+    /// <exception cref="ArgumentException">When <paramref name="layer"/> carries no quad terms.</exception>
     private static void RequireQuadTerms(LongfellowSumcheckCircuit circuit, LongfellowSumcheckLayer layer, int layerIndex)
     {
         if(layer.QuadTerms.Length == 0)
@@ -779,6 +930,11 @@ internal static class LongfellowSumcheckProver
     }
 
 
+    /// <summary>Adds <paramref name="addend"/> into <paramref name="destination"/> in place, through a scratch buffer (the delegate contract does not guarantee in-place safety).</summary>
+    /// <param name="destination">The accumulator, overwritten with the sum.</param>
+    /// <param name="addend">The value to add.</param>
+    /// <param name="add">Field addition.</param>
+    /// <param name="curve">The field the delegate operates over.</param>
     private static void AddInPlace(Span<byte> destination, ReadOnlySpan<byte> addend, ScalarAddDelegate add, CurveParameterSet curve)
     {
         Span<byte> scratch = stackalloc byte[ScalarSize];
@@ -787,6 +943,11 @@ internal static class LongfellowSumcheckProver
     }
 
 
+    /// <summary>Subtracts <paramref name="subtrahend"/> from <paramref name="destination"/> in place, through a scratch buffer (the delegate contract does not guarantee in-place safety).</summary>
+    /// <param name="destination">The accumulator, overwritten with the difference.</param>
+    /// <param name="subtrahend">The value to subtract.</param>
+    /// <param name="subtract">Field subtraction.</param>
+    /// <param name="curve">The field the delegate operates over.</param>
     private static void SubInPlace(Span<byte> destination, ReadOnlySpan<byte> subtrahend, ScalarSubtractDelegate subtract, CurveParameterSet curve)
     {
         Span<byte> scratch = stackalloc byte[ScalarSize];
@@ -795,5 +956,8 @@ internal static class LongfellowSumcheckProver
     }
 
 
+    /// <summary>Reports whether every byte of a canonical scalar is zero.</summary>
+    /// <param name="scalar">The scalar bytes to test.</param>
+    /// <returns><see langword="true"/> when no byte in <paramref name="scalar"/> is nonzero.</returns>
     private static bool IsZeroScalar(ReadOnlySpan<byte> scalar) => scalar.IndexOfAnyExcept((byte)0) < 0;
 }

@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.Bbs.IetfVectors.Pseudonym;
 /// under test.
 /// </summary>
 /// <param name="Id">A stable identifier for the vector — short, kebab-case, ciphersuite-prefixed.</param>
-/// <param name="Description">Human-readable, DATA-accurate description of the vector's actual disclosure pattern. For §12.x.5.4/.5/.7 this deliberately differs from the draft's printed sub-section title, which is a copy-paste duplicate of §12.x.5.1's title in all three cases; the disclosed-index sets below are authoritative (see W2.4-NYM-VECTORS.md's title/data mismatch note).</param>
+/// <param name="Description">Human-readable, DATA-accurate description of the vector's actual disclosure pattern. For §12.x.5.4/.5/.7 this deliberately differs from the draft's printed sub-section title, which is a copy-paste duplicate of §12.x.5.1's title in all three cases; the disclosed-index sets below are authoritative, since the printed titles are a transcription artifact rather than a distinct disclosure pattern.</param>
 /// <param name="DraftSection">The <see cref="PseudonymDraftRevision.Identifier"/> Appendix section the vector comes from (e.g. "12.1.5.1").</param>
 /// <param name="SignerPublicKey">Hex of the signer's 96-byte public key.</param>
 /// <param name="Signature">Hex of the 80-byte blind-with-nym signature the proof is constructed against; equals the suite's §12.x.4.4 signature vector byte-for-byte (the chaining the proof tests assert before reusing that vector's message lists).</param>

@@ -1,19 +1,4 @@
-Wire-format-conformant Ligero PROVE ground truth from google/longfellow-zk (C.4 oracle).
-Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
-
-Produced by prove_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
-reference implementation in its own build environment via development tooling outside this repository:
-
-  docker run --rm \
-    -v "<repo>/tempdocs/longfellow-zk-reference:/src" \
-    -v "<repo>/test/Lumoin.Veridical.Tests/TestMaterial/Longfellow:/anchor" \
-    longfellow-ref bash -c \
-    "g++ -O2 -std=c++17 -mpclmul -I /src/lib /anchor/prove_anchor.cc -lcrypto -o /tmp/a && /tmp/a"
-
-The harness runs the REAL LigeroProver::commit()+prove() and the REAL LigeroProof, then cross-checks
-with LigeroVerifier::verify(); _verify=1 why=ok confirms the dumped fields are a verifying proof.
-
-Determinism: the harness injects a CounterRandomEngine whose k-th byte ever produced is (k & 0xFF),
+Determinism: a CounterRandomEngine whose k-th byte ever produced is (k & 0xFF),
 identical to the commit anchor. The transcript is the Fiat-Shamir PRF, seeded with the fixed string
 "c4". The linear constraints are nl = nw constraints, one term each: constraint c selects witness c
 with coefficient of_scalar(c+1), and b[c] = coefficient * W[c] so the system is satisfiable. The
@@ -38,7 +23,7 @@ Fields per prefix (q16 = production GF(2^16), q32 = test-parity GF(2^32)):
   *_b          : the linear-constraint targets b[c] = coefficient * W[c], the public inputs the
                  verifier's dot value-check compares (want_dot = sum_c b[c]*alphal[c]) against the
                  prover's response (proof_dot = sum_k y_dot[r+k]).
-  *_root       : the commitment Merkle root (identical to the C.2 commit anchor's c16/c32 root).
+  *_root       : the commitment Merkle root (identical to the Ligero commitment step's anchor c16/c32 root).
   *_uldt/_alphal/_alphaq/_uquad : the challenge arrays exactly as squeezed, comma-separated, each
                  element 16 little-endian to_bytes_field bytes.
   *_yldt/_ydot/_yquad0/_yquad2  : the response rows, same element framing.
@@ -46,9 +31,9 @@ Fields per prefix (q16 = production GF(2^16), q32 = test-parity GF(2^32)):
   *_reqI       : row I's nreq opened elements (the gathered column values at idx).
   *_nonceI     : the per-leaf nonce of opened column I (32 bytes).
   *_pathlen    : the number of digests in the compressed Merkle multi-proof.
-  *_pathI      : the I-th multi-proof digest, in generate_compressed_proof selection order
+  *_pathI      : the I-th multi-proof digest, in the compressed-proof selection order
                  (i = n-1 down to 1: for each tree node, the child NOT on a path to an opened leaf).
-  *_verify     : 1 if LigeroVerifier::verify() accepts the proof.
+  *_verify     : 1 when the recorded verification accepts the proof.
 
 q16_param nw=8 nq=1 rateinv=4 nreq=2 block_enc=32 block=5 dblock=9 block_ext=23 r=2 w=3 nwrow=3 nqtriples=1 nwqrow=6 nrow=9
 q16_hashllterm=101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f

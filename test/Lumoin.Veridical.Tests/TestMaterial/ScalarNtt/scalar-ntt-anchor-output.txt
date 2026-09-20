@@ -1,11 +1,3 @@
-Scalar-field NTT Reed-Solomon ground truth, computed independently of the library.
-
-Produced by scalar_ntt_anchor.py in tempdocs/scalar-ntt-anchors (development tooling outside
-this repository's tracked tree): pure Python 3 integer arithmetic (pow/Horner), no third-party
-libraries. Regenerate with:
-
-  py tempdocs\scalar-ntt-anchors\scalar_ntt_anchor.py > test\Lumoin.Veridical.Tests\TestMaterial\ScalarNtt\scalar-ntt-anchor-output.txt
-
 Field orders r are the BLS12-381 and BN254 (alt_bn128) scalar-field orders. The domain
 generators g are prime quadratic nonresidues matching the conventional multiplicative
 generators of published parameter tables for these fields: 7 for BLS12-381 (5 is a smaller

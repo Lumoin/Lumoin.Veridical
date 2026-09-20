@@ -1,30 +1,23 @@
-Circuit-artifact import ground truth from google/longfellow-zk (conformance step C.10).
-Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
-
-Produced by mdoc_circuit_anchor.cc, run inside the longfellow-ref Docker image. The dump is computed by the
-reference implementation in its own build environment via development tooling outside this repository.
-
-The harness calls generate_circuit(&kZkSpecs[0], ...) for the latest one-attribute ZkSpec (system
-"longfellow-libzk-v1", version 7). The compressed (zstd) blob is the artifact the ZkSpec pins; its SHA-256
-hex-encoded is the ZkSpec circuit_hash (zk_spec.cc: "SHA256 hash of the output of generate_circuit()").
+This anchor covers the latest one-attribute ZkSpec, version 7 (zkspec_system below names the exact
+spec). The compressed (zstd) blob is the artifact the spec pins; its SHA-256 hex-encoded is the spec's
+circuit hash, defined as the SHA-256 of the circuit-generation output.
 
   - computed_circuit_hash: SHA-256 of the zstd blob this build produces (mdoc-circuit-compressed.zst).
-  - zkspec_pinned_circuit_hash: the hash kZkSpecs[0] pins, computed over the canonical 2026-01-09 blob.
-    These differ because zstd compression is not byte-reproducible across libzstd builds; the RAW circuit
+  - zkspec_pinned_circuit_hash: the pinned hash, computed over the canonical 2026-01-09 blob.
+    These differ because zstd compression is not byte-reproducible across encoder versions; the RAW circuit
     bytes are the stable identity (raw_rawsha, the SHA-256 of the decompressed bytes the parser reads).
 
 The companion binary fixtures (gzip is read by System.IO.Compression.GZipStream; the C# side has no zstd):
   - mdoc-circuit-compressed.zst   : the zstd blob verbatim (the SHA-256 circuit-identity input).
   - mdoc-circuit-raw.gz           : the decompressed raw serialized bytes, gzip-recompressed (the parser input).
   - mdoc-circuit-hash-witness.gz  : the GF(2^128) hash-circuit witness column (ninputs * 16 little-endian
-    to_bytes_field bytes) the reference's fill_witness + post-commit update_macs produce for mdoc_tests[0]
-    with the age_over_18 attribute, gzip-recompressed.
+    to_bytes_field bytes) for an mdoc disclosing the age_over_18 attribute, gzip-recompressed.
 
 The serialized stream holds two circuits: the P-256 signature circuit (field id 1) followed by the
 GF(2^128) hash circuit (field id 4). sig_* and hash_* keys give each circuit's shape (nv, logv, nc, logc,
 nl, ninputs, npub_in, subfield_boundary, id) and per-layer nw/logw/nterms. hash_L<layer>_t<term>_{g,h0,h1,v}
-sample the hash circuit's Quad terms. small_serialized is a provable-scale GF(2^128) circuit serialized
-through the reference CircuitWriter for the functional gate.
+sample the hash circuit's quadratic-gate terms. small_serialized is a provable-scale GF(2^128) circuit in
+the same serialized form, sized for the functional gate.
 
 zkspec_system=longfellow-libzk-v1
 zkspec_num_attributes=1
@@ -244,4 +237,4 @@ hash_witness_rawlen=1361888
 hash_witness_gzlen=53482
 hash_witness_rawsha=76a462b834223366cb7645a849aa2c4c5b36eb1e41e3df4e829170d719586dbc
 hash_npub_in=952
-hash_witness_dumped=1
+hash_witness_recorded=1

@@ -36,6 +36,7 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class R1csCircuitBuilderSupplyChainPredicates
 {
+    /// <summary>Named supply-chain predicate members added to every <see cref="R1csCircuitBuilder"/> instance.</summary>
     extension(R1csCircuitBuilder builder)
     {
         /// <summary>
@@ -137,10 +138,16 @@ public static class R1csCircuitBuilderSupplyChainPredicates
     }
 
 
-    //Resolves a bound to the linear combination the ordering check compares against:
-    //a constant term for a baked bound (known in-domain at compile time), or the
-    //public-input variable range-checked into the domain (so a public bound carries
-    //the same in-domain guarantee a constant does).
+    /// <summary>
+    /// Resolves a bound to the linear combination the ordering check compares
+    /// against: a constant term for a baked bound, known in-domain at compile time,
+    /// or the public-input variable range-checked into the domain so a public bound
+    /// carries the same in-domain guarantee a constant does.
+    /// </summary>
+    /// <param name="builder">The circuit builder the range check is emitted on.</param>
+    /// <param name="bound">The bound to resolve, either a constant or a public-input variable.</param>
+    /// <param name="name">The claim name the derived range-check auxiliaries are namespaced under.</param>
+    /// <returns>The linear combination the ordering check compares the measured value against.</returns>
     private static R1csLinearCombination ResolveBound(R1csCircuitBuilder builder, FixedPointBound bound, string name)
     {
         if(bound.PublicInputVariable is R1csVariableIndex variable)
@@ -155,12 +162,22 @@ public static class R1csCircuitBuilderSupplyChainPredicates
     }
 
 
-    //The reserved suffixes a claim's derived witness names begin with, relative to
-    //the claim name: {name}_domain..., {name}_bound..., {name}_bit_.... A claim name
-    //that extends another by one of these would produce a colliding derived name.
+    /// <summary>
+    /// The reserved suffixes a claim's derived witness names begin with, relative to
+    /// the claim name: <c>{name}_domain...</c>, <c>{name}_bound...</c>,
+    /// <c>{name}_bit_...</c>. A claim name that extends another by one of these
+    /// would produce a colliding derived name.
+    /// </summary>
     private static string[] ReservedAuxiliarySuffixes { get; } = ["_domain", "_bound", "_bit_"];
 
 
+    /// <summary>
+    /// Throws when two claims in <paramref name="claims"/> share a name, or when one
+    /// claim's name extends another's by a reserved auxiliary suffix, either of which
+    /// would make their derived witness variables collide.
+    /// </summary>
+    /// <param name="claims">The claims whose names are checked for distinctness.</param>
+    /// <exception cref="ArgumentException">When two claims share a name, or one claim's name extends another's by a reserved auxiliary suffix.</exception>
     private static void ThrowIfNamesNotDistinct(ReadOnlySpan<SupplyChainClaim> claims)
     {
         var seen = new HashSet<string>(claims.Length, StringComparer.Ordinal);
@@ -188,6 +205,14 @@ public static class R1csCircuitBuilderSupplyChainPredicates
     }
 
 
+    /// <summary>
+    /// Determines whether <paramref name="candidate"/> extends <paramref name="prefix"/>
+    /// by one of the <see cref="ReservedAuxiliarySuffixes"/>, which is exactly the
+    /// condition under which their derived auxiliary witness names would collide.
+    /// </summary>
+    /// <param name="candidate">The name being tested for extending <paramref name="prefix"/>.</param>
+    /// <param name="prefix">The other claim's name.</param>
+    /// <returns><see langword="true"/> when <paramref name="candidate"/> equals <paramref name="prefix"/> followed by a reserved suffix; otherwise <see langword="false"/>.</returns>
     private static bool ExtendsByReservedSuffix(string candidate, string prefix)
     {
         foreach(string suffix in ReservedAuxiliarySuffixes)

@@ -28,14 +28,14 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// from each sumcheck's final running claim, then checks ONE weighted
 /// opening of the mask's committed coefficient vector against
 /// <c>v = g(r) + σ_F</c> under the public weights it builds from the
-/// mask basis and its own challenges (design v3 of
-/// the statistical-mask design notes). This keeps the proof wire
+/// mask basis and its own challenges. This keeps the proof wire
 /// format compact and the verifier's side derivable from public data.
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class MaskedSpartanVerifierExtensions
 {
+    /// <summary>Verification members added to every <see cref="MaskedSpartanVerifier"/> instance.</summary>
     extension(MaskedSpartanVerifier verifier)
     {
         /// <summary>
@@ -478,6 +478,7 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>Verifies a masked Spartan proof while keeping each derived basis alive through its weight-vector use.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Intermediate disposables flow through using declarations.")]
     private static bool VerifyCore(
         SpartanSumcheckProofPart sumcheckPart,
@@ -568,6 +569,7 @@ public static class MaskedSpartanVerifierExtensions
             using Scalar zOuter = Scalar.FromCanonical(zOuterBytes, curve, pool);
             using Scalar outerInitialClaim = MultiplyScalars(rhoOuter, zOuter, scalarMultiply, pool);
 
+            //Reads the outer sumcheck round at the given index from the proof.
             ReadOnlySpan<byte> ProofOuterAccessor(int i) => sumcheckPart.GetOuterRoundCompressedBytes(i);
 
             using SumcheckVerifierResult outer = SumcheckVerifierCore.Run(
@@ -624,6 +626,7 @@ public static class MaskedSpartanVerifierExtensions
             scalarAdd(jointBytes, rhoInnerZInner, innerInitialBytes, curve);
             using Scalar innerInitialClaim = Scalar.FromCanonical(innerInitialBytes, curve, pool);
 
+            //Reads the inner sumcheck round at the given index from the proof.
             ReadOnlySpan<byte> ProofInnerAccessor(int i) => sumcheckPart.GetInnerRoundCompressedBytes(i);
 
             using SumcheckVerifierResult inner = SumcheckVerifierCore.Run(
@@ -687,8 +690,8 @@ public static class MaskedSpartanVerifierExtensions
 
                 //The weighted-opening claim is v = g_outer(r_x) + σ_F: the chain
                 //derives the mask's terminal value and the precommitted filler
-                //sum shifts it onto the all-ones-weighted filler block (design
-                //v3). The weights live at the kernel's REVERSED point (the
+                //sum shifts it onto the all-ones-weighted filler block. The
+                //weights live at the kernel's REVERSED point (the
                 //variable-order convention of MaskedSpartanAlgorithm).
                 using IMemoryOwner<byte> derivedOuterClaimOwner = pool.Rent(scalarSize);
                 Span<byte> derivedOuterClaim = derivedOuterClaimOwner.Memory.Span[..scalarSize];
@@ -697,8 +700,8 @@ public static class MaskedSpartanVerifierExtensions
                 using Scalar outerWeightedClaim = Scalar.FromCanonical(derivedOuterClaim, curve, pool);
 
                 StatisticalMaskParameters outerShape = pcs.ResolveStatisticalMaskShape!(rowVariableCount, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
-                MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    rowVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
+                using MonomialBasis outerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    rowVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.OuterMaskPerVariableDegree);
                 Scalar[] outerKernelPoint = MaskedSpartanAlgorithm.BuildReversedPoint(rxArray);
                 using MultilinearExtension outerWeights = MaskedSpartanAlgorithm.BuildMaskWeights(
                     outerBasis, outerShape, outerKernelPoint, scalarMultiply, curve, pool);
@@ -754,8 +757,8 @@ public static class MaskedSpartanVerifierExtensions
                 using Scalar innerWeightedClaim = Scalar.FromCanonical(derivedInnerClaim, curve, pool);
 
                 StatisticalMaskParameters innerShape = pcs.ResolveStatisticalMaskShape!(columnVariableCount, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
-                MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
-                    columnVariableCount, padPairCount: 0, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
+                using MonomialBasis innerBasis = MonomialBasis.SumOfUnivariatesWithPad(
+                    columnVariableCount, padPairCount: 0, pool, WellKnownMaskedSpartanParameters.InnerMaskPerVariableDegree);
                 Scalar[] innerKernelPoint = MaskedSpartanAlgorithm.BuildReversedPoint(ryArray);
                 using MultilinearExtension innerWeights = MaskedSpartanAlgorithm.BuildMaskWeights(
                     innerBasis, innerShape, innerKernelPoint, scalarMultiply, curve, pool);
@@ -781,18 +784,37 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>
+    /// A trivial disposal wrapper around a <see cref="MatrixMleEvaluation"/> view, so every matrix
+    /// evaluation in <see cref="VerifyCore"/> can be declared with a <c>using</c> even though the view
+    /// itself owns nothing.
+    /// </summary>
     private readonly struct MatrixMleEvaluationOwner: IDisposable
     {
+        /// <summary>The wrapped matrix evaluation view.</summary>
         public MatrixMleEvaluation View { get; }
+
+        /// <summary>Wraps an existing view.</summary>
+        /// <param name="view">The view to wrap.</param>
         private MatrixMleEvaluationOwner(MatrixMleEvaluation view) { View = view; }
+
+        /// <summary>Creates a view over <paramref name="matrix"/>, wrapped for disposal.</summary>
+        /// <param name="matrix">The R1CS matrix to evaluate.</param>
+        /// <returns>The wrapped view.</returns>
         public static MatrixMleEvaluationOwner From(R1csMatrix matrix) => new(new MatrixMleEvaluation(matrix));
+
+        /// <summary>Does nothing; the wrapped view owns no resources.</summary>
         public void Dispose() { }
     }
 
 
-    //The statistical-mask binding needs the provider's weighted-opening path; a
-    //missing wiring is a configuration fault to surface loudly, not an
-    //adversarial input to reject quietly.
+    /// <summary>
+    /// Throws when the provider lacks the weighted-opening path the statistical-mask binding needs; a
+    /// missing wiring is a configuration fault to surface loudly, not an adversarial input to reject
+    /// quietly.
+    /// </summary>
+    /// <param name="pcs">The provider to check.</param>
+    /// <exception cref="InvalidOperationException">When <paramref name="pcs"/> lacks <c>VerifyWeightedSum</c> or <c>ResolveStatisticalMaskShape</c>.</exception>
     private static void ThrowIfWeightedOpeningPathMissing(PolynomialCommitmentProvider pcs)
     {
         if(pcs.VerifyWeightedSum is null || pcs.ResolveStatisticalMaskShape is null)
@@ -803,6 +825,16 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>Squeezes <paramref name="count"/> independent challenge scalars under the same label.</summary>
+    /// <param name="transcript">The transcript to squeeze from.</param>
+    /// <param name="count">The number of challenges to squeeze.</param>
+    /// <param name="label">The Fiat-Shamir operation label.</param>
+    /// <param name="squeeze">The Fiat-Shamir squeeze delegate.</param>
+    /// <param name="hash">The Fiat-Shamir hash delegate.</param>
+    /// <param name="reduce">The scalar reduction delegate.</param>
+    /// <param name="curve">The curve the challenges belong to.</param>
+    /// <param name="pool">The pool the returned scalars rent from.</param>
+    /// <returns>The squeezed challenge scalars, in squeeze order.</returns>
     private static Scalar[] SqueezeChallenges(
         FiatShamirTranscript transcript,
         int count,
@@ -825,6 +857,10 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>Copies a read-only scalar list into a freshly pool-rented array of independently owned scalars.</summary>
+    /// <param name="source">The scalars to copy.</param>
+    /// <param name="pool">The pool each copied scalar rents from.</param>
+    /// <returns>The copied scalars, owned by the caller.</returns>
     private static Scalar[] ToScalarArray(IReadOnlyList<Scalar> source, BaseMemoryPool pool)
     {
         Scalar[] result = new Scalar[source.Count];
@@ -837,6 +873,8 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>Disposes every non-null scalar in <paramref name="scalars"/>.</summary>
+    /// <param name="scalars">The scalars to dispose.</param>
     private static void DisposeAll(Scalar[] scalars)
     {
         for(int i = 0; i < scalars.Length; i++)
@@ -846,6 +884,12 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>Multiplies two scalars into a freshly pool-rented result.</summary>
+    /// <param name="a">The first operand.</param>
+    /// <param name="b">The second operand.</param>
+    /// <param name="scalarMultiply">The scalar multiplication delegate.</param>
+    /// <param name="pool">The pool the result rents from.</param>
+    /// <returns>The product, owned by the caller.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned scalar transfers ownership to the caller.")]
     private static Scalar MultiplyScalars(
         Scalar a,
@@ -860,6 +904,15 @@ public static class MaskedSpartanVerifierExtensions
     }
 
 
+    /// <summary>Evaluates the multilinear equality polynomial <c>eq(tau, rx) = Π_i (tau_i·rx_i + (1-tau_i)·(1-rx_i))</c>.</summary>
+    /// <param name="tau">The first point.</param>
+    /// <param name="rx">The second point; must be the same length as <paramref name="tau"/>.</param>
+    /// <param name="scalarAdd">The scalar addition delegate.</param>
+    /// <param name="scalarSubtract">The scalar subtraction delegate.</param>
+    /// <param name="scalarMultiply">The scalar multiplication delegate.</param>
+    /// <param name="curve">The curve the scalars belong to.</param>
+    /// <param name="pool">The pool the result rents from.</param>
+    /// <returns>The evaluated equality polynomial value.</returns>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned scalar transfers ownership to the caller.")]
     private static Scalar EvaluateEq(
         ReadOnlySpan<Scalar> tau,

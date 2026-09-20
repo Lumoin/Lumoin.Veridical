@@ -41,6 +41,17 @@ public sealed class HyraxCommitment: SensitiveMemory
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>
+    /// Wraps an already-populated, pool-rented buffer of row commitments as a
+    /// Hyrax commitment, recording the matrix decomposition's dimensions and
+    /// curve alongside the inherited byte ownership.
+    /// </summary>
+    /// <param name="owner">The pool-rented buffer holding the concatenated canonical compressed row commitments.</param>
+    /// <param name="rowCount">The number of matrix rows.</param>
+    /// <param name="columnCount">The number of matrix columns.</param>
+    /// <param name="variableCount">The number of variables of the committed multilinear extension.</param>
+    /// <param name="curve">The curve identifying the group the commitments live in.</param>
+    /// <param name="tag">The provenance tag to attach to the underlying buffer.</param>
     internal HyraxCommitment(
         IMemoryOwner<byte> owner,
         int rowCount,
@@ -91,12 +102,12 @@ public sealed class HyraxCommitment: SensitiveMemory
     /// <param name="rowCount">The number of rows; equals the row count of the underlying Hyrax matrix decomposition.</param>
     /// <param name="columnCount">The number of columns; equals the column count of the decomposition.</param>
     /// <param name="variableCount">The variable count of the original committed MLE; <c>RowCount · ColumnCount = 2^variableCount</c>.</param>
-    /// <param name="curve">The curve. Currently only <see cref="CurveParameterSet.Bls12Curve381"/> is supported.</param>
+    /// <param name="curve">The curve; must be <see cref="CurveParameterSet.Bls12Curve381"/> or <see cref="CurveParameterSet.Bn254"/>.</param>
     /// <param name="pool">The pool to rent the backing buffer from.</param>
     /// <returns>A commitment wrapping a fresh copy of the supplied bytes.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When dimensions are non-positive.</exception>
-    /// <exception cref="ArgumentException">When the byte length does not match the supplied dimensions or the curve is not BLS12-381.</exception>
+    /// <exception cref="ArgumentException">When the byte length does not match the supplied dimensions or the curve is neither BLS12-381 nor BN254.</exception>
     public static HyraxCommitment FromBytes(
         ReadOnlySpan<byte> commitmentBytes,
         int rowCount,

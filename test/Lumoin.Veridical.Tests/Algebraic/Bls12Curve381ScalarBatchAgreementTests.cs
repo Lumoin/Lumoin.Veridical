@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
 /// Property-based cross-implementation tests for the batched scalar-field
-/// delegates introduced in this batch. Sweeps random batches through the
+/// delegates. Sweeps random batches through the
 /// SIMD backend (real 4-wide lane-interleaved arithmetic for full
 /// quartets, single-element fallback for the tail) and the BigInteger
 /// reference (loop over the single-element delegate), asserting bit
@@ -34,30 +34,39 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381ScalarBatchAgreementTests
 {
+    /// <summary>The BigInteger reference's scalar reduction delegate, used to canonicalize raw sampled bytes into scalars.</summary>
     private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bls12Curve381BigIntegerScalarReference.GetReduce();
 
+    /// <summary>The BigInteger reference's batched scalar-add delegate.</summary>
     private static ScalarBatchAddDelegate BigIntegerBatchAdd { get; } =
         Bls12Curve381BigIntegerScalarReference.GetBatchAdd();
 
+    /// <summary>The BigInteger reference's batched scalar-subtract delegate.</summary>
     private static ScalarBatchSubtractDelegate BigIntegerBatchSubtract { get; } =
         Bls12Curve381BigIntegerScalarReference.GetBatchSubtract();
 
+    /// <summary>The BigInteger reference's batched scalar-multiply delegate.</summary>
     private static ScalarBatchMultiplyDelegate BigIntegerBatchMultiply { get; } =
         Bls12Curve381BigIntegerScalarReference.GetBatchMultiply();
 
+    /// <summary>Generates one scalar's worth of uniformly random raw bytes, before reduction to canonical form.</summary>
     private static Gen<byte[]> RawScalarBytesGen { get; } =
         Gen.Byte.Array[Scalar.SizeBytes];
 
+    /// <summary>The batch sizes swept by every agreement test: 1 and 5 exercise the tail alone or mixed with a quartet, 4 and 8 exercise only full quartets, 17 mixes four quartets with a tail element.</summary>
     private static int[] BatchSizesToSweep { get; } = [1, 3, 4, 5, 8, 17];
 
 
+    /// <summary>The number of random samples CsCheck draws per batch-length sweep.</summary>
     private const long IterationCount = 100;
 
 
+    /// <summary>The MSTest context for this test class; set by the test host.</summary>
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>Verifies that the SIMD batched scalar-add delegate agrees with the BigInteger reference's batched add, across every swept batch size.</summary>
     [TestMethod]
     public void SimdBatchAddAgreesWithBigIntegerBatchAddAcrossBatchSizes()
     {
@@ -80,6 +89,7 @@ internal sealed class Bls12Curve381ScalarBatchAgreementTests
     }
 
 
+    /// <summary>Verifies that the SIMD batched scalar-subtract delegate agrees with the BigInteger reference's batched subtract, across every swept batch size.</summary>
     [TestMethod]
     public void SimdBatchSubtractAgreesWithBigIntegerBatchSubtractAcrossBatchSizes()
     {
@@ -102,6 +112,7 @@ internal sealed class Bls12Curve381ScalarBatchAgreementTests
     }
 
 
+    /// <summary>Verifies that the SIMD batched scalar-multiply delegate agrees with the BigInteger reference's batched multiply, across every swept batch size.</summary>
     [TestMethod]
     public void SimdBatchMultiplyAgreesWithBigIntegerBatchMultiplyAcrossBatchSizes()
     {
@@ -124,6 +135,7 @@ internal sealed class Bls12Curve381ScalarBatchAgreementTests
     }
 
 
+    /// <summary>Verifies that the SIMD batched scalar-add delegate's output matches the same backend's single-element add applied row by row, isolating the batched path's own lane and tail handling from any reference disagreement.</summary>
     [TestMethod]
     public void SimdBatchAddAgreesWithSingleAddPerElement()
     {
@@ -181,6 +193,13 @@ internal sealed class Bls12Curve381ScalarBatchAgreementTests
     }
 
 
+    /// <summary>Packs both operand batches into canonical scalars, runs the reference and candidate batched-add delegates, and reports whether their outputs agree byte for byte.</summary>
+    /// <param name="aBatch">The left operands, raw bytes before reduction.</param>
+    /// <param name="bBatch">The right operands, raw bytes before reduction.</param>
+    /// <param name="batchSize">The number of scalar pairs in the batch.</param>
+    /// <param name="referenceDelegate">The BigInteger reference's batched add.</param>
+    /// <param name="candidateDelegate">The batched add under test.</param>
+    /// <returns><see langword="true"/> when the two outputs agree byte for byte.</returns>
     private static bool AssertBatchedAgreement(
         byte[][] aBatch,
         byte[][] bBatch,
@@ -211,6 +230,13 @@ internal sealed class Bls12Curve381ScalarBatchAgreementTests
     }
 
 
+    /// <summary>Packs both operand batches into canonical scalars, runs the reference and candidate batched-subtract delegates, and reports whether their outputs agree byte for byte.</summary>
+    /// <param name="aBatch">The left operands, raw bytes before reduction.</param>
+    /// <param name="bBatch">The right operands, raw bytes before reduction.</param>
+    /// <param name="batchSize">The number of scalar pairs in the batch.</param>
+    /// <param name="referenceDelegate">The BigInteger reference's batched subtract.</param>
+    /// <param name="candidateDelegate">The batched subtract under test.</param>
+    /// <returns><see langword="true"/> when the two outputs agree byte for byte.</returns>
     private static bool AssertBatchedAgreement(
         byte[][] aBatch,
         byte[][] bBatch,
@@ -241,6 +267,13 @@ internal sealed class Bls12Curve381ScalarBatchAgreementTests
     }
 
 
+    /// <summary>Packs both operand batches into canonical scalars, runs the reference and candidate batched-multiply delegates, and reports whether their outputs agree byte for byte.</summary>
+    /// <param name="aBatch">The left operands, raw bytes before reduction.</param>
+    /// <param name="bBatch">The right operands, raw bytes before reduction.</param>
+    /// <param name="batchSize">The number of scalar pairs in the batch.</param>
+    /// <param name="referenceDelegate">The BigInteger reference's batched multiply.</param>
+    /// <param name="candidateDelegate">The batched multiply under test.</param>
+    /// <returns><see langword="true"/> when the two outputs agree byte for byte.</returns>
     private static bool AssertBatchedAgreement(
         byte[][] aBatch,
         byte[][] bBatch,
@@ -271,6 +304,10 @@ internal sealed class Bls12Curve381ScalarBatchAgreementTests
     }
 
 
+    /// <summary>Reduces each raw sample modulo the scalar-field order via the BigInteger reference's <see cref="ReduceDelegate"/>, packing the canonical results contiguously.</summary>
+    /// <param name="rawBatch">The raw, pre-reduction scalar samples.</param>
+    /// <param name="destination">Receives the packed canonical scalars.</param>
+    /// <param name="stride">The canonical scalar width in bytes.</param>
     private static void PackReducedScalars(byte[][] rawBatch, Span<byte> destination, int stride)
     {
         //Reduce each raw 32-byte sample modulo r so the batched delegate inputs

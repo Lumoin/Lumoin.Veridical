@@ -8,14 +8,16 @@ using System.Diagnostics.CodeAnalysis;
 namespace Lumoin.Veridical.Core.ConstraintSystems;
 
 /// <summary>
-/// Typed transcript absorbs for R1CS instances over BLS12-381.
+/// Typed transcript absorbs for R1CS instances over BLS12-381 or BN254.
 /// </summary>
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FiatShamirTranscriptR1csAbsorbExtensions
 {
+    /// <summary>The byte size of the packed dimensions record: six 4-byte big-endian integers — row count, column count, public-input count, and the three matrices' nonzero counts.</summary>
     private const int DimensionsBufferSize = 6 * sizeof(int);
 
 
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for absorbing R1CS instances.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>

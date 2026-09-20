@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using Lumoin.Veridical.Core.Algebraic;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
@@ -132,11 +133,20 @@ internal sealed class LongfellowMdocRevocationSpanCircuit
     /// <summary>One SHA-256 block's byte width.</summary>
     private const int BytesPerBlock = 64;
 
-    private readonly LongfellowLogic logic;
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowLogicFieldOperations field;
-    private readonly LongfellowEllipticCurveParameters curve;
-    private readonly LongfellowFlatSha256Circuit sha;
+    /// <summary>The gadget layer every sub-circuit in this statement builds on.</summary>
+    private LongfellowLogic Logic { get; }
+
+    /// <summary>The scalar backend <see cref="Logic"/> is wired to, used directly for the digest recomposition's field arithmetic.</summary>
+    private LongfellowLogicBackend Backend { get; }
+
+    /// <summary>The field operations <see cref="Logic"/> is wired to, supplying the pool and the compiler constants the digest recomposition uses.</summary>
+    private LongfellowLogicFieldOperations Field { get; }
+
+    /// <summary>The elliptic-curve constants the span signature is verified against.</summary>
+    private LongfellowEllipticCurveParameters Curve { get; }
+
+    /// <summary>The SHA-256 gadget, built at the revocation packing width, that hashes the span preimage.</summary>
+    private LongfellowFlatSha256Circuit Sha { get; }
 
 
     /// <summary>
@@ -151,11 +161,11 @@ internal sealed class LongfellowMdocRevocationSpanCircuit
         ArgumentNullException.ThrowIfNull(logic);
         ArgumentNullException.ThrowIfNull(curve);
 
-        this.logic = logic;
-        this.curve = curve;
-        backend = logic.Backend;
-        field = logic.Field;
-        sha = new LongfellowFlatSha256Circuit(logic, new LongfellowBitPlucker(logic, LongfellowMdocRevocationConstants.ShaRevocationPluckerBits));
+        this.Logic = logic;
+        this.Curve = curve;
+        Backend = logic.Backend;
+        Field = logic.Field;
+        Sha = new LongfellowFlatSha256Circuit(logic, new LongfellowBitPlucker(logic, LongfellowMdocRevocationConstants.ShaRevocationPluckerBits));
     }
 
 
@@ -167,25 +177,25 @@ internal sealed class LongfellowMdocRevocationSpanCircuit
     /// <returns>The declared bundle.</returns>
     public LongfellowMdocRevocationSpanWitnessWires InputWitness()
     {
-        int r = logic.InputElement();
-        int s = logic.InputElement();
-        int e = logic.InputElement();
-        LongfellowEcdsaVerifyWitnessWires revocationSignature = LongfellowEcdsaVerifyWitnessWires.Input(logic, curve.ScalarBitCount);
+        int r = Logic.InputElement();
+        int s = Logic.InputElement();
+        int e = Logic.InputElement();
+        LongfellowEcdsaVerifyWitnessWires revocationSignature = LongfellowEcdsaVerifyWitnessWires.Input(Logic, Curve.ScalarBitCount);
 
         var preimage = new LongfellowBitWire[LongfellowMdocRevocationConstants.SpanBlockCount * BytesPerBlock][];
         for(int i = 0; i < preimage.Length; i++)
         {
-            preimage[i] = logic.InputVector(LongfellowLogic.BitWidth8);
+            preimage[i] = Logic.InputVector(LongfellowLogic.BitWidth8);
         }
 
-        LongfellowBitWire[] idBits = logic.InputVector(LongfellowLogic.BitWidth256);
-        LongfellowBitWire[] eBits = logic.InputVector(LongfellowLogic.BitWidth256);
+        LongfellowBitWire[] idBits = Logic.InputVector(LongfellowLogic.BitWidth256);
+        LongfellowBitWire[] eBits = Logic.InputVector(LongfellowLogic.BitWidth256);
 
         var shaWitness = new LongfellowFlatSha256PackedBlockWitness[LongfellowMdocRevocationConstants.SpanBlockCount];
         for(int j = 0; j < shaWitness.Length; j++)
         {
             shaWitness[j] = new LongfellowFlatSha256PackedBlockWitness();
-            shaWitness[j].Input(sha);
+            shaWitness[j].Input(Sha);
         }
 
         return new LongfellowMdocRevocationSpanWitnessWires(r, s, e, revocationSignature, preimage, idBits, eBits, shaWitness);
@@ -206,30 +216,36 @@ internal sealed class LongfellowMdocRevocationSpanCircuit
     {
         ArgumentNullException.ThrowIfNull(witness);
 
-        var ecdsa = new LongfellowEcdsaVerifyCircuit(logic, curve);
+        var ecdsa = new LongfellowEcdsaVerifyCircuit(Logic, Curve);
         ecdsa.VerifySignature3(craPkX, craPkY, witness.E, witness.RevocationSignature);
 
-        logic.AssertIsBit(witness.EBits);
-        logic.AssertIsBit(witness.IdBits);
+        Logic.AssertIsBit(witness.EBits);
+        Logic.AssertIsBit(witness.IdBits);
 
         //The span always pads to exactly two occupied blocks, so the block count is a constant.
-        LongfellowBitWire[] blockCount = logic.BitVector(LongfellowLogic.BitWidth8, LongfellowMdocRevocationConstants.SpanBlockCount);
-        sha.AssertMessageHash(LongfellowMdocRevocationConstants.SpanBlockCount, blockCount, witness.Preimage, witness.EBits, witness.Sha);
+        LongfellowBitWire[] blockCount = Logic.BitVector(LongfellowLogic.BitWidth8, LongfellowMdocRevocationConstants.SpanBlockCount);
+        Sha.AssertMessageHash(LongfellowMdocRevocationConstants.SpanBlockCount, blockCount, witness.Preimage, witness.EBits, witness.Sha);
 
         //Recompose the digest bits into a field element and tie it to the signature's digest; this
         //is also what guarantees e is nonzero advice-independently.
-        ReadOnlyMemory<byte> powerOfTwo = field.Compiler.One;
-        int est = backend.Constant(field.Compiler.Zero.Span);
+        //Separate current and doubled scalars preserve delegates whose outputs cannot alias inputs.
+        const int DoublingScalarCount = 2;
+        using IMemoryOwner<byte> owner = Field.Pool.Rent(DoublingScalarCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(DoublingScalarCount * Scalar.SizeBytes)];
+        Span<byte> powerOfTwo = buffer[..Scalar.SizeBytes];
+        Span<byte> doubled = buffer[Scalar.SizeBytes..];
+        Field.Compiler.One.Span.CopyTo(powerOfTwo);
+        int est = Backend.Constant(Field.Compiler.Zero.Span);
         for(int i = 0; i < LongfellowLogic.BitWidth256; i++)
         {
-            est = backend.Axpy(est, powerOfTwo.Span, logic.Eval(witness.EBits[i]));
+            est = Backend.Axpy(est, powerOfTwo, Logic.Eval(witness.EBits[i]));
 
-            var doubled = new byte[Scalar.SizeBytes];
-            field.Compiler.Add(powerOfTwo.Span, powerOfTwo.Span, doubled, field.Compiler.Curve);
-            powerOfTwo = doubled;
+            doubled.Clear();
+            Field.Compiler.Add(powerOfTwo, powerOfTwo, doubled, Field.Compiler.Curve);
+            doubled.CopyTo(powerOfTwo);
         }
 
-        _ = logic.AssertEqual(est, witness.E);
+        _ = Logic.AssertEqual(est, witness.E);
 
         //The bounds sit inside the signed span at fixed little-endian offsets, so their bits are
         //read straight out of the preimage bytes the digest check already constrains.
@@ -241,7 +257,7 @@ internal sealed class LongfellowMdocRevocationSpanCircuit
             upperBound[i] = witness.Preimage[LongfellowMdocRevocationConstants.UpperBoundByteOffset + (i / LongfellowLogic.BitWidth8)][i % LongfellowLogic.BitWidth8];
         }
 
-        _ = logic.AssertOne(logic.LessThan(lowerBound, witness.IdBits));
-        _ = logic.AssertOne(logic.LessThan(witness.IdBits, upperBound));
+        _ = Logic.AssertOne(Logic.LessThan(lowerBound, witness.IdBits));
+        _ = Logic.AssertOne(Logic.LessThan(witness.IdBits, upperBound));
     }
 }

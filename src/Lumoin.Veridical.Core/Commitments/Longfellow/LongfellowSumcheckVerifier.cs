@@ -25,7 +25,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// replay and out of scope here.
 /// </para>
 /// <para>
-/// The transcript flow, byte-precise (the plain sumcheck Prover/Verifier path the C.7 oracle exercises):
+/// The transcript flow, byte-precise (the plain sumcheck Prover/Verifier path the sumcheck-segment oracle exercises):
 /// </para>
 /// <list type="number">
 ///   <item><description><c>initialize_sumcheck_fiat_shamir</c>: absorb the 32-byte circuit <c>id</c> [byte string], each of <c>npub_in</c> public inputs [field element], <c>F.zero()</c> [field element], then <c>nterms()</c> zero bytes [byte string].</description></item>
@@ -43,16 +43,16 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal static class LongfellowSumcheckVerifier
 {
+    /// <summary>The byte width of a canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The reference's Challenge::kMaxBindings: Q and G are squeezed as kMaxBindings-element arrays. Only
-    //the first logc / logv entries are used, but the squeeze advances the PRF over all kMaxBindings.
+    /// <summary>The reference's <c>Challenge::kMaxBindings</c>: <c>Q</c> and <c>G</c> are squeezed as <c>kMaxBindings</c>-element arrays. Only the first <c>logc</c> / <c>logv</c> entries are used, but the squeeze advances the PRF over all <c>kMaxBindings</c>.</summary>
     private const int MaxBindings = 40;
 
 
     /// <summary>
     /// An observer the replay calls with every reconstructed value, so a conformance gate can pin each
-    /// against the reference's dumped stream. All methods are optional; the default observer ignores them.
+    /// against the reference's stream. All methods are optional; the default observer ignores them.
     /// </summary>
     public interface IReplayObserver
     {
@@ -181,7 +181,7 @@ internal static class LongfellowSumcheckVerifier
     }
 
 
-    //ZkCommon::initialize_sumcheck_fiat_shamir + TranscriptSumcheck::write_input.
+    /// <summary>Implements <c>ZkCommon::initialize_sumcheck_fiat_shamir</c> followed by <c>TranscriptSumcheck::write_input</c>.</summary>
     private static void InitializeFiatShamir(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> inputElements, int elementBytes, LongfellowTranscript transcript, BaseMemoryPool pool)
     {
         //id [byte string]
@@ -204,6 +204,7 @@ internal static class LongfellowSumcheckVerifier
     }
 
 
+    /// <summary>Replays every layer's <c>begin_layer</c>/round/fold sequence and the trailing <c>wc[0]</c>, <c>wc[1]</c> absorb, updating the running claim and notifying <paramref name="observer"/> at each step.</summary>
     private static void WalkLayers(
         LongfellowSumcheckCircuit circuit,
         LongfellowSumcheckProof proof,
@@ -264,11 +265,11 @@ internal static class LongfellowSumcheckVerifier
                     //This reconstruction is what pins p(1); the soundness of the reconstructed value is
                     //checked downstream — by the input binding in the non-ZK verifier, or by the Ligero
                     //opening in the ZK verifier. A tampered transmitted point therefore diverges the
-                    //challenge stream, which the conformance gate catches against the reference's dumped
+                    //challenge stream, which the conformance gate catches against the reference's
                     //challenges.
                     subtract(claim, p0, p1, curve);
 
-                    //sum01 = p(0) + p(1) (= claim by the reconstruction), the reference's dumped value.
+                    //sum01 = p(0) + p(1) (= claim by the reconstruction), the reference's value.
                     add(p0, p1, product, curve);
 
                     //round(): absorb the two transmitted points (p(0), p(2)) [skip p(1)], squeeze challenge.
@@ -301,8 +302,7 @@ internal static class LongfellowSumcheckVerifier
     }
 
 
-    //Poly<3>::eval_lagrange: convert the Lagrange values to Newton forward differences in place
-    //(newton_of_lagrange), then evaluate at x (eval_newton). Evaluation points X = {0, 1, t}.
+    /// <summary>Implements <c>Poly&lt;3&gt;::eval_lagrange</c>: converts the Lagrange values to Newton forward differences in place (<c>newton_of_lagrange</c>), then evaluates at <paramref name="x"/> (<c>eval_newton</c>). Evaluation points are <c>X = {0, 1, t}</c>.</summary>
     private static void EvalLagrange(
         Span<byte> poly,
         ReadOnlySpan<byte> x,
@@ -357,8 +357,7 @@ internal static class LongfellowSumcheckVerifier
     }
 
 
-    //Absorbs n zero bytes as a single byte-string write (the reference's write0 batches in 32-byte
-    //chunks; the absorbed bytes are identical to one byte-string of n zeros).
+    /// <summary>Absorbs <paramref name="count"/> zero bytes as a single byte-string write (the reference's <c>write0</c> batches in 32-byte chunks; the absorbed bytes are identical to one byte-string of <paramref name="count"/> zeros).</summary>
     private static void AbsorbZeroBytes(LongfellowTranscript transcript, int count, BaseMemoryPool pool)
     {
         using IMemoryOwner<byte> zerosOwner = pool.Rent(Math.Max(count, 1));

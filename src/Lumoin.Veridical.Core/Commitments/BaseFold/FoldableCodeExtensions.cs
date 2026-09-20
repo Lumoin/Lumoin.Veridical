@@ -19,9 +19,11 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FoldableCodeExtensions
 {
+    /// <summary>The byte width of one canonical scalar; every message and codeword element occupies this many bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
 
+    /// <summary>Encoding and folding members added to every <see cref="FoldableCode"/> instance.</summary>
     extension(FoldableCode code)
     {
         /// <summary>
@@ -168,16 +170,33 @@ public static class FoldableCodeExtensions
     }
 
 
-    //Pairs per batched block, matching the sumcheck convention: bounds the
-    //pooled column scratch while keeping each BatchMultiply call long enough
-    //to amortise its lane setup.
+    /// <summary>
+    /// Pairs per batched block, matching the sumcheck convention: bounds the
+    /// pooled column scratch while keeping each <c>BatchMultiply</c> call long enough
+    /// to amortise its lane setup.
+    /// </summary>
     private const int BatchBlockPairCount = 1024;
 
 
-    //The batched fold: sums and differences form contiguous columns (the input
-    //halves and the inverse diagonal already are contiguous), l = sums·2⁻¹ and
-    //the r-term reassociates as (diffs∘t⁻¹)·(α·2⁻¹) — three batched products
-    //per block instead of four per position, the same field values either way.
+    /// <summary>
+    /// The batched fold: sums and differences form contiguous columns (the input
+    /// halves and the inverse diagonal already are contiguous), <c>l = sums·2⁻¹</c> and
+    /// the r-term reassociates as <c>(diffs∘t⁻¹)·(α·2⁻¹)</c> — three batched products
+    /// per block instead of four per position, the same field values either way.
+    /// </summary>
+    /// <param name="firstHalf">The first-half codeword entries (<c>w1</c>) for every position folded in this call.</param>
+    /// <param name="secondHalf">The second-half codeword entries (<c>w2</c>) for every position folded in this call.</param>
+    /// <param name="diagonalInverse">The precomputed diagonal inverse (<c>t⁻¹</c>) for every position.</param>
+    /// <param name="challenge">The fold challenge α; one scalar.</param>
+    /// <param name="half">The field constant <c>2⁻¹</c>.</param>
+    /// <param name="halfCount">The number of positions to fold.</param>
+    /// <param name="folded">The destination for the folded values.</param>
+    /// <param name="scalarAdd">Scalar-add backend.</param>
+    /// <param name="scalarSubtract">Scalar-subtract backend.</param>
+    /// <param name="scalarMultiply">Scalar-multiply backend, used to broadcast <c>α·2⁻¹</c> once per block.</param>
+    /// <param name="batch">The batch-arithmetic backend supplying the block's <c>BatchAdd</c>, <c>BatchSubtract</c>, and <c>BatchMultiply</c> calls.</param>
+    /// <param name="curve">The curve whose scalar field the fold operates over.</param>
+    /// <param name="pool">The pool to rent column scratch from, sized to <see cref="BatchBlockPairCount"/> positions per block.</param>
     private static void FoldBatched(
         ReadOnlySpan<byte> firstHalf,
         ReadOnlySpan<byte> secondHalf,
@@ -295,9 +314,21 @@ public static class FoldableCodeExtensions
     }
 
 
-    //The per-position fold shared by Fold (every position) and FoldPosition (one
-    //position): l = (w1+w2)·half, r = (w1-w2)·half·t^{-1}, output = l + α·r.
-    //The diagonal inverse comes precomputed from the code's fold tables.
+    /// <summary>
+    /// Performs the per-position fold shared by <c>Fold</c> (every position) and <c>FoldPosition</c> (one
+    /// position): <c>l = (w1+w2)·half</c>, <c>r = (w1-w2)·half·t⁻¹</c>, <c>output = l + α·r</c>.
+    /// The diagonal inverse comes precomputed from the code's fold tables.
+    /// </summary>
+    /// <param name="w1">The first fold-pair entry.</param>
+    /// <param name="w2">The second fold-pair entry.</param>
+    /// <param name="tInverse">The precomputed diagonal inverse for this position.</param>
+    /// <param name="challenge">The fold challenge α.</param>
+    /// <param name="half">The field constant <c>2⁻¹</c>.</param>
+    /// <param name="curve">The curve whose scalar field the fold operates over.</param>
+    /// <param name="scalarAdd">Scalar-add backend.</param>
+    /// <param name="scalarSubtract">Scalar-subtract backend.</param>
+    /// <param name="scalarMultiply">Scalar-multiply backend.</param>
+    /// <param name="output">The destination for the folded scalar.</param>
     private static void FoldOnePosition(
         ReadOnlySpan<byte> w1,
         ReadOnlySpan<byte> w2,
@@ -328,6 +359,23 @@ public static class FoldableCodeExtensions
     }
 
 
+    /// <summary>
+    /// Recursively encodes <paramref name="message"/> into <paramref name="output"/> at recursion
+    /// depth <paramref name="level"/>: the base case (<paramref name="level"/> equal to zero) repeats
+    /// the single message element across every codeword position, and otherwise the message is split
+    /// into halves, each half is encoded at <paramref name="level"/> minus one, and the two encodings
+    /// are combined with the layer's diagonal as <c>l + t∘r</c> (first half) and <c>l − t∘r</c> (second half).
+    /// </summary>
+    /// <param name="code">The code whose layer diagonal and fold tables this recursion reads.</param>
+    /// <param name="message">The message elements to encode at this recursion depth.</param>
+    /// <param name="level">The recursion depth; zero is the base case.</param>
+    /// <param name="output">The destination codeword for this recursion depth.</param>
+    /// <param name="scalarAdd">Scalar-add backend.</param>
+    /// <param name="scalarSubtract">Scalar-subtract backend.</param>
+    /// <param name="scalarMultiply">Scalar-multiply backend.</param>
+    /// <param name="curve">The curve whose scalar field the encoding operates over.</param>
+    /// <param name="pool">The pool to rent the two recursive halves' scratch from.</param>
+    /// <param name="batch">Optional batch-multiply backend for the layer's <c>t∘r</c> products; <see langword="null"/> runs the per-element path.</param>
     [SuppressMessage("Reliability", "CA2000", Justification = "Recursion scratch buffers are released by their using declarations before the call returns.")]
     private static void EncodeLayer(
         FoldableCode code,

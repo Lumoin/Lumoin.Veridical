@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the test pattern this batch introduces: a sweep over random
+/// This is the test pattern used throughout this test suite: a sweep over random
 /// inputs that compares the output of two backends against each other.
 /// The point of the pattern is not to verify a single backend in
 /// isolation — that is what the algebraic-invariant tests and the
@@ -31,7 +31,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// <para>
 /// Scalar arithmetic is cheap enough for sweeps to be practical here.
-/// The cost in this batch's BigInteger G1 reference made sweep-style
+/// The cost of the BigInteger G1 reference makes sweep-style
 /// testing of point arithmetic impractical, which is why the G1 test
 /// surface uses invariant-style fixed-input tests instead. Once a
 /// production-grade G1 backend lands, an analogous agreement test will
@@ -46,15 +46,19 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381ScalarBackendAgreementTests
 {
+    /// <summary>The BigInteger reference scalar-reduction delegate, used to lift raw sampled bytes into canonical scalars.</summary>
     private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bls12Curve381BigIntegerScalarReference.GetReduce();
 
+    /// <summary>The BigInteger reference addition delegate, the oracle every SIMD addition result is compared against.</summary>
     private static ScalarAddDelegate BigIntegerAdd { get; } =
         Bls12Curve381BigIntegerScalarReference.GetAdd();
 
+    /// <summary>The BigInteger reference subtraction delegate, the oracle every SIMD subtraction result is compared against.</summary>
     private static ScalarSubtractDelegate BigIntegerSubtract { get; } =
         Bls12Curve381BigIntegerScalarReference.GetSubtract();
 
+    /// <summary>A generator of raw, unreduced scalar-width byte arrays, reduced into canonical scalars before use.</summary>
     private static Gen<byte[]> RawScalarBytesGen { get; } =
         Gen.Byte.Array[Scalar.SizeBytes];
 
@@ -68,9 +72,11 @@ internal sealed class Bls12Curve381ScalarBackendAgreementTests
     private const long IterationCount = 200;
 
 
+    /// <summary>The MSTest context, used to surface the host CPU capability flags through the test output.</summary>
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>Verifies that the SIMD dispatch facade's <c>IsSupported</c> is the logical OR of its per-ISA backends' support flags.</summary>
     [TestMethod]
     public void DispatchFacadeReportsSupportedWhenAtLeastOneIsaBackendIsAvailable()
     {
@@ -89,6 +95,7 @@ internal sealed class Bls12Curve381ScalarBackendAgreementTests
     }
 
 
+    /// <summary>Verifies that each per-ISA backend's <c>IsSupported</c> matches the corresponding platform intrinsic's own support flag.</summary>
     [TestMethod]
     public void DispatchFacadeMatchesHostCpuCapabilityFlags()
     {
@@ -104,6 +111,7 @@ internal sealed class Bls12Curve381ScalarBackendAgreementTests
     }
 
 
+    /// <summary>Property-based: the SIMD backend's addition produces bit-identical canonical bytes to the BigInteger reference's addition across random scalar pairs.</summary>
     [TestMethod]
     public void SimdAddAgreesWithBigIntegerAddAcrossRandomInputs()
     {
@@ -130,6 +138,7 @@ internal sealed class Bls12Curve381ScalarBackendAgreementTests
     }
 
 
+    /// <summary>Property-based: the SIMD backend's subtraction produces bit-identical canonical bytes to the BigInteger reference's subtraction across random scalar pairs.</summary>
     [TestMethod]
     public void SimdSubtractAgreesWithBigIntegerSubtractAcrossRandomInputs()
     {
@@ -156,6 +165,7 @@ internal sealed class Bls12Curve381ScalarBackendAgreementTests
     }
 
 
+    /// <summary>Property-based: the SIMD backend's own addition is commutative (<c>a+b == b+a</c>) across random scalar pairs, isolating whether a cross-backend disagreement lies in the produced bytes or in the SIMD addition itself.</summary>
     [TestMethod]
     public void SimdAddCommutativeAgreesWithItself()
     {

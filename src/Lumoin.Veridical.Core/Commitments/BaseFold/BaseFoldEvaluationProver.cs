@@ -43,15 +43,13 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class BaseFoldEvaluationProver
 {
+    /// <summary>The width in bytes of one field element in its canonical scalar representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The degree of every sumcheck round polynomial: f·eq_z is a product of two
-    //multilinears, so each round polynomial is quadratic in the bound variable.
+    /// <summary>The degree of every sumcheck round polynomial: <c>f·eq_z</c> is a product of two multilinears, so each round polynomial is quadratic in the bound variable.</summary>
     private const int RoundPolynomialDegree = 2;
 
-    //Pairs per batched block, matching the sumcheck convention: bounds the
-    //pooled column scratch while keeping each BatchMultiply call long enough
-    //to amortise its lane setup.
+    /// <summary>The number of pairs per batched block, matching the sumcheck convention: bounds the pooled column scratch while keeping each <c>BatchMultiply</c> call long enough to amortise its lane setup.</summary>
     private const int BatchBlockPairCount = 1024;
 
 
@@ -67,7 +65,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The live Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
     /// <param name="reduce">The scalar-reduce backend for deriving challenges.</param>
@@ -87,7 +85,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -98,7 +96,7 @@ public static class BaseFoldEvaluationProver
         BaseMemoryPool pool,
         ScalarArithmeticBackend? batch = null)
     {
-        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, batch: batch);
     }
 
 
@@ -118,7 +116,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The Fiat-Shamir hash.</param>
     /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
     /// <param name="reduce">Backend scalar reduction.</param>
@@ -126,7 +124,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="subtract">Backend scalar subtraction.</param>
     /// <param name="multiply">Backend scalar multiplication.</param>
     /// <param name="invert">Backend scalar inversion.</param>
-    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one digest-wide salt per codeword position, in position order.</param>
+    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one scalar-wide salt per codeword position, in position order.</param>
     /// <param name="saltRandom">The entropy-sourced sampler for the lower fold layers' salts.</param>
     /// <param name="pool">The pool to rent working and proof buffers from.</param>
     /// <param name="batch">The optional batched scalar-arithmetic backend.</param>
@@ -138,7 +136,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -153,7 +151,7 @@ public static class BaseFoldEvaluationProver
     {
         ArgumentNullException.ThrowIfNull(saltRandom);
 
-        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, batch: batch);
     }
 
 
@@ -161,8 +159,9 @@ public static class BaseFoldEvaluationProver
     /// Proves the evaluation as <see cref="ProveHiding"/> does, but additionally
     /// masks the interleaved sumcheck's round polynomials so the opening is a
     /// statistically zero-knowledge argument in the ROM (the Libra
-    /// sum-of-univariates mask, IACR ePrint 2019/317 §4.1, with the v3 binding of
-    /// the statistical-mask design notes). A fresh mask <c>s</c> with
+    /// sum-of-univariates mask, IACR ePrint 2019/317 §4.1, with its coefficient
+    /// vector bound to the commitment via a nested weighted opening rather than
+    /// sent in the clear). A fresh mask <c>s</c> with
     /// <c>2d + 1</c> random coefficients is sampled; its coefficient vector,
     /// extended by laundering filler, is committed salted-and-lifted under
     /// <paramref name="maskCommitmentCode"/>; <c>com(C*)</c>, <c>σ = Σ_b s(b)</c>,
@@ -178,7 +177,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="evaluationPoint">The point <c>z</c>; one scalar per variable, the i-th binding variable <c>X_{i+1}</c> (the MLE storage convention).</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The Fiat-Shamir hash.</param>
     /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
     /// <param name="reduce">Backend scalar reduction.</param>
@@ -186,7 +185,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="subtract">Backend scalar subtraction.</param>
     /// <param name="multiply">Backend scalar multiplication.</param>
     /// <param name="invert">Backend scalar inversion.</param>
-    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one digest-wide salt per codeword position, in position order.</param>
+    /// <param name="topLayerSalts">The <c>π_d</c> leaf salts that fixed the commitment, one scalar-wide salt per codeword position, in position order.</param>
     /// <param name="saltRandom">The entropy-sourced sampler for the lower fold layers' salts.</param>
     /// <param name="maskRandom">The entropy-sourced sampler for the mask coefficients, the filler, and the commitment's lift block.</param>
     /// <param name="maskCommitmentCode">The foldable code the mask's coefficient commitment lives under: derived from the same seed as <paramref name="code"/> at the lifted layer count of <see cref="WellKnownStatisticalMaskParameters.CreateClassicalSecurity"/> for this protocol's shape.</param>
@@ -200,7 +199,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -219,7 +218,7 @@ public static class BaseFoldEvaluationProver
         ArgumentNullException.ThrowIfNull(maskRandom);
         ArgumentNullException.ThrowIfNull(maskCommitmentCode);
 
-        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom, pool, multiplier: null, maskCommitmentCode, batch);
+        return ProveCore(code, polynomial, evaluationPoint, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom, pool, multiplier: null, maskCommitmentCode, batch);
     }
 
 
@@ -230,9 +229,9 @@ public static class BaseFoldEvaluationProver
     /// <c>eq_z</c> multiplier generalised to an arbitrary multiplier table. An
     /// evaluation opening is the special case <c>W = eq_z</c> (byte-identical
     /// transcript and proof); a general <c>W</c> proves any public linear
-    /// functional of <c>f</c>'s hypercube evaluations, which is how the
-    /// statistical-mask construction binds its mask coefficients
-    /// (the statistical-mask design notes, levels 2 and 3).
+    /// functional of <c>f</c>'s hypercube evaluations, which is how
+    /// <see cref="ProveZeroKnowledge"/> binds its mask's coefficient vector to
+    /// a public weight vector instead of a single evaluation point.
     /// </summary>
     /// <remarks>
     /// The multiplier must be public and known to the verifier — the protocol
@@ -246,7 +245,7 @@ public static class BaseFoldEvaluationProver
     /// <param name="multiplier">The public multiplier multilinear <c>W</c>; its variable count must equal the code's layer count.</param>
     /// <param name="queryCount">The number of IOPP query repetitions.</param>
     /// <param name="transcript">The Fiat-Shamir transcript.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The Fiat-Shamir hash.</param>
     /// <param name="squeeze">The Fiat-Shamir squeeze.</param>
     /// <param name="reduce">Backend scalar reduction.</param>
@@ -264,7 +263,7 @@ public static class BaseFoldEvaluationProver
         MultilinearExtension multiplier,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -277,7 +276,7 @@ public static class BaseFoldEvaluationProver
     {
         ArgumentNullException.ThrowIfNull(multiplier);
 
-        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, multiplier, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts: default, saltRandom: null, maskRandom: null, pool, multiplier, batch: batch);
     }
 
 
@@ -295,7 +294,7 @@ public static class BaseFoldEvaluationProver
         MultilinearExtension multiplier,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -311,10 +310,11 @@ public static class BaseFoldEvaluationProver
         ArgumentNullException.ThrowIfNull(multiplier);
         ArgumentNullException.ThrowIfNull(saltRandom);
 
-        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, multiplier, batch: batch);
+        return ProveCore(code, polynomial, evaluationPoint: default, queryCount, transcript, merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert, topLayerSalts, saltRandom, maskRandom: null, pool, multiplier, batch: batch);
     }
 
 
+    /// <summary>Produces a BaseFold evaluation proof while retaining its mask basis until all mask consumers are disposed.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Working codewords, trees, salt buffers, and the f/eq tables are disposed in the finally block; the round polynomials, fold roots, final oracle, and query steps the proof keeps are owned by the returned proof.")]
     private static (BaseFoldEvaluationProof Proof, Scalar ClaimedValue) ProveCore(
         FoldableCode code,
@@ -322,7 +322,7 @@ public static class BaseFoldEvaluationProver
         ReadOnlySpan<Scalar> evaluationPoint,
         int queryCount,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -341,7 +341,7 @@ public static class BaseFoldEvaluationProver
         ArgumentNullException.ThrowIfNull(code);
         ArgumentNullException.ThrowIfNull(polynomial);
         ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(squeeze);
         ArgumentNullException.ThrowIfNull(reduce);
@@ -392,13 +392,13 @@ public static class BaseFoldEvaluationProver
         var disposables = new List<IDisposable>();
 
         //Per-layer leaf salts for the hiding (ZK) commitment: saltsByLayer[ℓ]
-        //holds one digest-wide salt per π_ℓ position (π_0 is cleartext, so it is
+        //holds one scalar-wide salt per π_ℓ position (π_0 is cleartext, so it is
         //unused). The top layer reuses the salts that fixed the commitment at
         //commit time; the lower fold layers are salted with fresh randomness.
         bool hiding = saltRandom is not null;
         var saltsByLayer = hiding ? new IMemoryOwner<byte>?[d + 1] : null;
 
-        //Statistical-ZK sumcheck mask (design doc §2 v3): a sum-of-univariates
+        //Statistical-ZK sumcheck mask: a sum-of-univariates
         //mask blended closed-form into the rounds; its coefficient vector plus
         //laundering filler is committed salted-and-lifted under
         //maskCommitmentCode, and the terminal evaluation is bound by a nested
@@ -415,6 +415,7 @@ public static class BaseFoldEvaluationProver
 
         var roundPolynomials = new CompressedRoundPolynomial[d];
         bool success = false;
+        MonomialBasis? maskBasis = null;
 
         try
         {
@@ -440,11 +441,11 @@ public static class BaseFoldEvaluationProver
                 }
 
                 saltsByLayer![d] = CopySalts(topLayerSalts, pool, disposables);
-                trees[d] = BuildSaltedTree(codewords[d]!, saltsByLayer[d]!.Memory.Span[..(topLength * ScalarSize)], topLength, merkleHash, pool, disposables);
+                trees[d] = BuildSaltedTree(codewords[d]!, saltsByLayer[d]!.Memory.Span[..(topLength * ScalarSize)], topLength, merkleParameters, pool, disposables);
             }
             else
             {
-                trees[d] = BuildTree(codewords[d]!, topLength, merkleHash, pool, disposables);
+                trees[d] = BuildTree(codewords[d]!, topLength, merkleParameters, pool, disposables);
             }
 
             //Dense evaluation tables f and the multiplier over the hypercube: the
@@ -473,13 +474,12 @@ public static class BaseFoldEvaluationProver
             //for an evaluation opening, v = Σ_b f(b)·W(b) for a weighted one.
             Scalar claimedValue = ComputeWeightedSum(fTable, eqTable, evaluationCount, add, multiply, curve, pool);
 
-            //Statistical-ZK mask setup (design doc §2 v3): sample the
+            //Statistical-ZK mask setup: sample the
             //sum-of-univariates mask, build C* = (coefficients ‖ random filler),
             //compute σ and σ_F, and commit C* salted-and-lifted under the
             //mask-commitment code. The lifted table and salts stay alive for the
             //terminal weighted opening after the witness protocol completes.
             MonomialBasisMask? mask = null;
-            MonomialBasis? maskBasis = null;
             Scalar? sigma = null;
             Scalar? fillerSum = null;
             Scalar? rho = null;
@@ -498,7 +498,7 @@ public static class BaseFoldEvaluationProver
                         nameof(maskCommitmentCode));
                 }
 
-                maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0);
+                maskBasis = MonomialBasis.SumOfUnivariatesWithPad(d, padPairCount: 0, pool);
                 mask = MonomialBasisMask.Sample(maskBasis, maskRandom!, curve, pool);
                 disposables.Add(mask);
 
@@ -549,7 +549,7 @@ public static class BaseFoldEvaluationProver
 
                 IMemoryOwner<byte> maskSaltsOwner = GenerateLayerSalts(maskCodewordLength, saltRandom!, curve, pool, disposables);
                 maskTopSalts = maskSaltsOwner.Memory.Span[..(maskCodewordLength * ScalarSize)];
-                maskTree = BuildSaltedTree(maskCodewordOwner, maskTopSalts, maskCodewordLength, merkleHash, pool, disposables);
+                maskTree = BuildSaltedTree(maskCodewordOwner, maskTopSalts, maskCodewordLength, merkleParameters, pool, disposables);
             }
 
             //Commit phase. Absorb the public commitment (root of π_d). For a ZK
@@ -617,11 +617,11 @@ public static class BaseFoldEvaluationProver
                     if(hiding)
                     {
                         saltsByLayer![level - 1] = GenerateLayerSalts(lowerLength, saltRandom!, curve, pool, disposables);
-                        trees[level - 1] = BuildSaltedTree(codewords[level - 1]!, saltsByLayer[level - 1]!.Memory.Span[..(lowerLength * ScalarSize)], lowerLength, merkleHash, pool, disposables);
+                        trees[level - 1] = BuildSaltedTree(codewords[level - 1]!, saltsByLayer[level - 1]!.Memory.Span[..(lowerLength * ScalarSize)], lowerLength, merkleParameters, pool, disposables);
                     }
                     else
                     {
-                        trees[level - 1] = BuildTree(codewords[level - 1]!, lowerLength, merkleHash, pool, disposables);
+                        trees[level - 1] = BuildTree(codewords[level - 1]!, lowerLength, merkleParameters, pool, disposables);
                     }
 
                     transcript.AbsorbBaseFoldFoldRoot(trees[level - 1]!.Root, hash);
@@ -652,7 +652,7 @@ public static class BaseFoldEvaluationProver
             IMemoryOwner<byte> finalOracle = pool.Rent(finalLength);
             finalOracleSpan.CopyTo(finalOracle.Memory.Span[..finalLength]);
 
-            //Terminal mask binding (design doc §2 v3): the nested hiding weighted
+            //Terminal mask binding: the nested hiding weighted
             //opening of C* against the public weights w⁺ = (basis weights at the
             //bound challenges ‖ 1s on the filler ‖ 0s on the lift block), proving
             //⟨C*, w⁺⟩ = s(r) + σ_F — the claim the verifier derives from the
@@ -681,7 +681,7 @@ public static class BaseFoldEvaluationProver
 
                 (BaseFoldEvaluationProof weightedOpening, Scalar weightedClaim) = ProveCore(
                     maskCommitmentCode!, maskLiftedMle!, evaluationPoint: default, queryCount, transcript,
-                    merkleHash, hash, squeeze, reduce, add, subtract, multiply, invert,
+                    merkleParameters, hash, squeeze, reduce, add, subtract, multiply, invert,
                     maskTopSalts, saltRandom, maskRandom: null, pool, weightsMle, batch: batch);
                 disposables.Add(weightedClaim);
 
@@ -709,11 +709,13 @@ public static class BaseFoldEvaluationProver
             {
                 disposables[i].Dispose();
             }
+
+            maskBasis?.Dispose();
         }
     }
 
 
-    //y = Σ_i fTable[i]·eqTable[i] over the full hypercube; equals f(z).
+    /// <summary>Computes <c>y = Σ_i fTable[i]·eqTable[i]</c> over the full hypercube: equals <c>f(z)</c> for an evaluation opening, or the weighted sum for a weighted one.</summary>
     private static Scalar ComputeWeightedSum(
         ReadOnlySpan<byte> fTable,
         ReadOnlySpan<byte> eqTable,
@@ -739,18 +741,20 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //The degree-2 round polynomial of f·eq_z in the high (current) variable,
-    //compressed to (c_0, c_2). Pairs (i, i + half): f0 = f[i] (X = 0),
-    //f1 = f[i+half] (X = 1), and likewise for eq. With fd = f1 − f0,
-    //eqd = eq1 − eq0, the product (f0 + X·fd)(eq0 + X·eqd) has
-    //c_0 = Σ f0·eq0 and c_2 = Σ fd·eqd; c_1 is elided (the verifier
-    //reconstructs it from the running claim).
-    //
-    //For a zero-knowledge opening the statistical mask and the blend ρ are
-    //supplied: the round polynomial becomes h_k + ρ·s_k via the mask's
-    //closed-form blends into c_0 and c_2 (the c_1 share lands in the elided
-    //linear term, which the verifier reconstructs from the running claim
-    //started at y + ρ·σ).
+    /// <summary>
+    /// Computes the degree-2 round polynomial of <c>f·eq_z</c> in the high (current) variable,
+    /// compressed to <c>(c_0, c_2)</c>. Pairs <c>(i, i + half)</c>: <c>f0 = f[i]</c> (<c>X = 0</c>),
+    /// <c>f1 = f[i+half]</c> (<c>X = 1</c>), and likewise for <c>eq</c>. With <c>fd = f1 − f0</c>,
+    /// <c>eqd = eq1 − eq0</c>, the product <c>(f0 + X·fd)(eq0 + X·eqd)</c> has
+    /// <c>c_0 = Σ f0·eq0</c> and <c>c_2 = Σ fd·eqd</c>; <c>c_1</c> is elided (the verifier
+    /// reconstructs it from the running claim).
+    /// </summary>
+    /// <remarks>
+    /// For a zero-knowledge opening the statistical mask and the blend <c>ρ</c> are supplied: the
+    /// round polynomial becomes <c>h_k + ρ·s_k</c> via the mask's closed-form blends into <c>c_0</c>
+    /// and <c>c_2</c> (the <c>c_1</c> share lands in the elided linear term, which the verifier
+    /// reconstructs from the running claim started at <c>y + ρ·σ</c>).
+    /// </remarks>
     private static CompressedRoundPolynomial ComputeRoundPolynomial(
         ReadOnlySpan<byte> fTable,
         ReadOnlySpan<byte> eqTable,
@@ -791,6 +795,7 @@ public static class BaseFoldEvaluationProver
     }
 
 
+    /// <summary>Computes <see cref="ComputeRoundPolynomial"/>'s <c>(c_0, c_2)</c> one hypercube pair at a time, without a batched scalar backend.</summary>
     private static void ComputeRoundPolynomialPerElement(
         ReadOnlySpan<byte> fTable,
         ReadOnlySpan<byte> eqTable,
@@ -826,9 +831,12 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //The batched twin: f0/eq0 columns are the tables' low halves verbatim and
-    //f1/eq1 the high halves, so only the slope columns are formed before the
-    //two batched products per block.
+    /// <summary>
+    /// Computes <see cref="ComputeRoundPolynomial"/>'s <c>(c_0, c_2)</c> through the batched scalar
+    /// backend: <c>f0</c>/<c>eq0</c> are the tables' low halves verbatim and <c>f1</c>/<c>eq1</c> the
+    /// high halves, so only the slope columns need forming before the two batched products per
+    /// block.
+    /// </summary>
     private static void ComputeRoundPolynomialBatched(
         ReadOnlySpan<byte> fTable,
         ReadOnlySpan<byte> eqTable,
@@ -882,7 +890,7 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //Σ_i table[i] over all `count` entries; the mask sum σ = Σ_b s(b).
+    /// <summary>Computes <c>Σ_i table[i]</c> over the first <paramref name="count"/> entries; used for the mask sum <c>σ = Σ_b s(b)</c>.</summary>
     private static Scalar SumTable(
         ReadOnlySpan<byte> table,
         int count,
@@ -902,11 +910,13 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //An identically-zero mask block hides nothing: the opening still verifies,
-    //but the zero-knowledge property the block exists to provide is silently
-    //void. A healthy sampler produces a zero block with probability at most
-    //2^-255 per scalar, so the post-check only ever fires on a broken entropy
-    //delegate; reject at generation, the one place the drawn bytes are visible.
+    /// <summary>
+    /// Throws when <paramref name="block"/> is identically zero. An identically-zero mask block
+    /// hides nothing: the opening still verifies, but the zero-knowledge property the block exists
+    /// to provide is silently void. A healthy sampler produces a zero block with probability at most
+    /// 2^-255 per scalar, so this check only ever fires on a broken entropy delegate; it rejects at
+    /// generation, the one place the drawn bytes are visible.
+    /// </summary>
     private static void ThrowIfMaskBlockZero(ReadOnlySpan<byte> block, string blockName)
     {
         if(!block.IsEmpty && block.IndexOfAnyExcept((byte)0) < 0)
@@ -919,12 +929,13 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //Folds a dense evaluation table on its high bit in place: for i in
-    //[0, size/2), table[i] ← table[i] + r·(table[i + size/2] − table[i]),
-    //which is (1 − r)·table[i] + r·table[i + size/2]. The folded table
-    //occupies the first half. Internal so the weighted-opening verifier can
-    //evaluate the public multiplier at the squeezed challenges the same way
-    //the prover's tables collapse.
+    /// <summary>
+    /// Folds a dense evaluation table on its high bit in place: for <c>i</c> in <c>[0, size/2)</c>,
+    /// <c>table[i] ← table[i] + r·(table[i + size/2] − table[i])</c>, which is
+    /// <c>(1 − r)·table[i] + r·table[i + size/2]</c>. The folded table occupies the first half. This
+    /// method is <see langword="internal"/> so the weighted-opening verifier can evaluate the public
+    /// multiplier at the squeezed challenges the same way the prover's tables collapse.
+    /// </summary>
     internal static void FoldHighBitInPlace(
         Span<byte> table,
         int size,
@@ -988,8 +999,7 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //Assembles the proof-owned statistical-mask side: copies of com(C*)'s root,
-    //σ, and σ_F, plus the (already caller-owned) nested weighted opening.
+    /// <summary>Assembles the proof-owned statistical-mask side: copies of <c>com(C*)</c>'s root, <c>σ</c>, and <c>σ_F</c>, plus the already caller-owned nested weighted opening.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The copied root and the σ/σ_F buffers transfer ownership to the returned BaseFoldMaskOpening, which the proof owns and disposes alongside the nested weighted opening.")]
     private static BaseFoldMaskOpening BuildMaskOpening(
         MerkleTree maskTree,
@@ -1010,8 +1020,7 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //Copies the fold-layer roots π_{d-1} … π_1 (commit order) into standalone
-    //proof-owned roots so the working trees can be disposed.
+    /// <summary>Copies the fold-layer roots <c>π_{d-1} … π_1</c> (commit order) into standalone proof-owned roots so the working trees can be disposed.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "Each copied root transfers ownership to the returned array, which the proof owns and disposes.")]
     private static MerkleRoot[] CopyFoldRoots(MerkleTree?[] trees, int d, BaseMemoryPool pool)
     {
@@ -1027,41 +1036,47 @@ public static class BaseFoldEvaluationProver
     }
 
 
+    /// <summary>
+    /// Builds one fold-layer tree over the plain codeword through the scheme's
+    /// leaf commitment and registers it for the uniform disposal pass.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tree is tracked in the disposables list and released in the prover's finally block.")]
     private static MerkleTree BuildTree(
         IMemoryOwner<byte> codeword,
         int leafCount,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         BaseMemoryPool pool,
         List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, merkleHash, pool);
+        MerkleTree tree = BaseFoldCodewordTree.Build(codeword.Memory.Span[..(leafCount * ScalarSize)], leafCount, merkleParameters, pool);
         disposables.Add(tree);
 
         return tree;
     }
 
 
-    //Builds the layer tree over salted leaves hash(value ‖ salt) for the hiding
-    //commitment; the salts span carries one digest-wide salt per leaf.
+    /// <summary>
+    /// Builds one fold-layer tree over salted leaves <c>hash(value ‖ salt)</c>
+    /// for the hiding commitment and registers it for the uniform disposal
+    /// pass; the salts span carries one scalar-wide salt per leaf.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The tree is tracked in the disposables list and released in the prover's finally block.")]
     private static MerkleTree BuildSaltedTree(
         IMemoryOwner<byte> codeword,
         ReadOnlySpan<byte> salts,
         int leafCount,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         BaseMemoryPool pool,
         List<IDisposable> disposables)
     {
-        MerkleTree tree = MerkleTree.BuildSalted(codeword.Memory.Span[..(leafCount * ScalarSize)], salts, leafCount, merkleHash, pool);
+        MerkleTree tree = BaseFoldCodewordTree.BuildSalted(codeword.Memory.Span[..(leafCount * ScalarSize)], salts, leafCount, merkleParameters, pool);
         disposables.Add(tree);
 
         return tree;
     }
 
 
-    //Copies the commitment-time top-layer salts into a tracked working buffer so
-    //the openings can read them alongside the other per-layer salt arrays.
+    /// <summary>Copies the commitment-time top-layer salts into a tracked working buffer so the openings can read them alongside the other per-layer salt arrays.</summary>
     private static IMemoryOwner<byte> CopySalts(
         ReadOnlySpan<byte> salts,
         BaseMemoryPool pool,
@@ -1075,10 +1090,12 @@ public static class BaseFoldEvaluationProver
     }
 
 
-    //Draws one fresh digest-wide salt per leaf for a lower fold layer. A scalar's
-    //canonical bytes carry ample min-entropy for the ROM hiding argument and are
-    //exactly digest-wide for the wired curves, so the scalar sampler doubles as
-    //the salt source (its returned tag is irrelevant for raw salt bytes).
+    /// <summary>
+    /// Draws one fresh scalar-wide salt per leaf for a lower fold layer. A
+    /// scalar's canonical bytes carry ample min-entropy for the ROM hiding
+    /// argument, so the scalar sampler doubles as the salt source (its
+    /// returned tag is irrelevant for raw salt bytes).
+    /// </summary>
     private static IMemoryOwner<byte> GenerateLayerSalts(
         int leafCount,
         ScalarRandomDelegate saltRandom,
@@ -1099,6 +1116,7 @@ public static class BaseFoldEvaluationProver
     }
 
 
+    /// <summary>The transcript label every round polynomial is absorbed under.</summary>
     private static FiatShamirOperationLabel RoundPolynomialLabel =>
         new(WellKnownBaseFoldEvaluationParameters.RoundPolynomial);
 }

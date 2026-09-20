@@ -11,7 +11,7 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The <c>sample</c> mask-then-reject seam (conformance step C.12 stage 3) — the field's challenge-element
+/// The <c>sample</c> mask-then-reject seam — the field's challenge-element
 /// draw, google/longfellow-zk's <c>fp_generic.h::sample</c> (<c>lib/algebra/fp_generic.h:360-371</c>)
 /// dispatched from <c>RandomEngine::elt(F)</c> (<c>lib/random/random.h:39-41</c>). The byte-stream
 /// consumption of this draw is load-bearing: a different bytes-per-attempt or a byte-reuse-on-reject would
@@ -38,24 +38,37 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowSampleTests
 {
+    /// <summary>The in-memory canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The GF(2^128) field's <c>sample</c> draw width in bytes (<c>exact_bits_ == 128</c>).</summary>
     private const int GfSampleBytes = 16;
+
+    /// <summary>The P-256 base field's <c>sample</c> draw width in bytes (<c>exact_bits_ == 256</c>).</summary>
     private const int Fp256SampleBytes = 32;
+
+    /// <summary>The transcript version this gate's fixtures initialise their transcripts with.</summary>
     private const int TranscriptVersion = 6;
 
+    /// <summary>The fixed transcript seed distinguishing this gate's transcripts from every other test's.</summary>
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("sample-gate");
 
+    /// <summary>The P-256 base-field prime, read from the BigInteger reference backend.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The validated GF(2^128) addition delegate this gate's FFT depends on.</summary>
     private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The validated GF(2^128) subtraction delegate this gate's FFT depends on.</summary>
     private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The validated GF(2^128) multiplication delegate this gate's FFT depends on.</summary>
     private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The validated GF(2^128) inversion delegate this gate's FFT depends on.</summary>
     private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
-    //The Fp256 profile: of_scalar(u) reduces u mod p; the fits predicate is the < p comparison.
+    /// <summary>The Fp256 field profile: <c>of_scalar(u)</c> reduces <c>u</c> mod <c>p</c>; the <c>fits</c> predicate is the <c>&lt; p</c> comparison.</summary>
     private static LongfellowFieldProfile Fp256Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange, BaseMemoryPool.Shared);
 
 
@@ -67,6 +80,11 @@ internal sealed class LongfellowSampleTests
     }
 
 
+    /// <summary>
+    /// Asserts the GF(2^128) <c>sample</c> draw consumes exactly one 16-byte block and coincides
+    /// byte-for-byte with <c>of_bytes_field</c> over that same block, since <c>exact_bits_ == 128</c>
+    /// means every 16-byte sequence is a valid element and the loop never rejects.
+    /// </summary>
     [TestMethod]
     public void GfSampleCoincidesWithOfBytesFieldAndConsumesSixteenBytes()
     {
@@ -98,6 +116,11 @@ internal sealed class LongfellowSampleTests
     }
 
 
+    /// <summary>
+    /// Asserts the P-256 base-field <c>sample</c> draw rejects an at-modulus first block, redraws a fresh
+    /// 32-byte block rather than reusing the rejected one, and that the accepted value matches a BigInteger
+    /// oracle of the reference reject loop.
+    /// </summary>
     [TestMethod]
     public void Fp256SampleRejectsAnOutOfRangeBlockAndRedraws()
     {
@@ -125,6 +148,10 @@ internal sealed class LongfellowSampleTests
     }
 
 
+    /// <summary>
+    /// Asserts the P-256 base-field <c>sample</c> draw accepts an in-range first block immediately,
+    /// consuming exactly 32 bytes and returning that block unchanged.
+    /// </summary>
     [TestMethod]
     public void Fp256SampleAcceptsAnInRangeFirstBlockImmediately()
     {
@@ -146,6 +173,10 @@ internal sealed class LongfellowSampleTests
     }
 
 
+    /// <summary>
+    /// Asserts the mask to <c>exact_bits_ == 256</c> is a no-op over the full 32-byte draw: an all-<c>0xFE</c>
+    /// block, already below the modulus, round-trips through <c>sample</c> with every byte preserved.
+    /// </summary>
     [TestMethod]
     public void Fp256SampleMaskToExactBitsIsANoOpForTheFullThirtyTwoBytes()
     {
@@ -165,6 +196,13 @@ internal sealed class LongfellowSampleTests
     }
 
 
+    /// <summary>
+    /// Asserts the MAC key draw <c>a_v = generate_mac_key</c> is a raw 16-byte <c>of_bytes_field</c> read
+    /// through <see cref="LongfellowTranscript.SqueezeFieldElementBytes(System.Span{byte})"/>, not a
+    /// <c>sample</c> draw: it must agree with an explicit <c>SqueezeBytes(16)</c> plus <c>of_bytes_field</c>
+    /// on an identically-seeded transcript, and consume exactly 16 PRF bytes, leaving both transcripts'
+    /// read pointers in lockstep for the next draw.
+    /// </summary>
     [TestMethod]
     public void TheMacKeyDrawIsOfBytesFieldSixteenBytesNotSample()
     {
@@ -199,8 +237,13 @@ internal sealed class LongfellowSampleTests
     }
 
 
-    //The BigInteger oracle of fp_generic.h::sample: read each little-endian 32-byte block as an integer
-    //(the mask to 256 bits is a no-op), accept the first below the modulus.
+    /// <summary>
+    /// The BigInteger oracle of <c>fp_generic.h::sample</c>: reads each little-endian 32-byte block as an
+    /// integer (the mask to 256 bits is a no-op), accepting the first below the modulus.
+    /// </summary>
+    /// <param name="blocks">The scripted stream of 32-byte little-endian blocks, in draw order.</param>
+    /// <returns>The first block's value that falls below <see cref="Prime"/>.</returns>
+    /// <exception cref="InvalidOperationException">When no block in <paramref name="blocks"/> falls below <see cref="Prime"/>.</exception>
     private static BigInteger SampleOracle(params byte[][] blocks)
     {
         foreach(byte[] block in blocks)
@@ -216,15 +259,22 @@ internal sealed class LongfellowSampleTests
     }
 
 
-    //of_scalar(u): the integer u reduced mod p as a canonical big-endian scalar.
+    /// <summary><c>of_scalar(u)</c>: the integer <paramref name="coordinate"/> reduced mod <c>p</c> as a canonical big-endian scalar.</summary>
+    /// <param name="coordinate">The integer coordinate <c>u</c> to reduce.</param>
+    /// <param name="destination">Receives the canonical big-endian scalar.</param>
     private static void OfScalar(uint coordinate, Span<byte> destination) =>
         WriteCanonicalBigEndian(new BigInteger(coordinate) % Prime, destination);
 
 
-    //fits(an): the canonical big-endian integer is below the modulus.
+    /// <summary><c>fits(an)</c>: whether the canonical big-endian integer is below the modulus.</summary>
+    /// <param name="canonical">The canonical big-endian encoding to test.</param>
+    /// <returns><see langword="true"/> when <paramref name="canonical"/>'s value is below <see cref="Prime"/>.</returns>
     private static bool InRange(ReadOnlySpan<byte> canonical) => ReadCanonicalBigEndian(canonical) < Prime;
 
 
+    /// <summary>Encodes <paramref name="value"/> as a 32-byte little-endian block for scripting a <c>sample</c> byte stream.</summary>
+    /// <param name="value">The value to encode; must fit in <see cref="ScalarSize"/> canonical bytes.</param>
+    /// <returns>A new 32-byte little-endian buffer holding <paramref name="value"/>.</returns>
     private static byte[] LittleEndian32(BigInteger value)
     {
         Span<byte> canonical = stackalloc byte[ScalarSize];
@@ -239,12 +289,22 @@ internal sealed class LongfellowSampleTests
     }
 
 
+    /// <summary>Reads a little-endian byte block as an unsigned integer.</summary>
+    /// <param name="littleEndian">The little-endian encoded bytes.</param>
+    /// <returns>The decoded unsigned value.</returns>
     private static BigInteger ReadLittleEndian32(ReadOnlySpan<byte> littleEndian) => new(littleEndian, isUnsigned: true, isBigEndian: false);
 
 
+    /// <summary>Reads a canonical big-endian byte block as an unsigned integer.</summary>
+    /// <param name="bytes">The canonical big-endian encoded bytes.</param>
+    /// <returns>The decoded unsigned value.</returns>
     private static BigInteger ReadCanonicalBigEndian(ReadOnlySpan<byte> bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 
 
+    /// <summary>Writes <paramref name="value"/> into <paramref name="destination"/> as a zero-padded canonical big-endian integer.</summary>
+    /// <param name="value">The unsigned value to encode.</param>
+    /// <param name="destination">The fixed-width destination; cleared and left-padded with zero bytes as needed.</param>
+    /// <exception cref="InvalidOperationException">When <paramref name="value"/> does not fit in <paramref name="destination"/>.</exception>
     private static void WriteCanonicalBigEndian(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -262,14 +322,22 @@ internal sealed class LongfellowSampleTests
     }
 
 
+    /// <summary>Builds the production-parameter additive FFT that GF(2^128) field profiles in this gate depend on.</summary>
+    /// <returns>A new <see cref="Lch14AdditiveFft"/> over <see cref="Lch14Subfield.Production16"/>.</returns>
     private static Lch14AdditiveFft NewFft() =>
         new(Lch14Subfield.Production16, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
+    /// <summary>Builds a transcript seeded identically to every other transcript this gate creates, so their PRF streams are comparable.</summary>
+    /// <returns>A new <see cref="LongfellowTranscript"/> seeded with <see cref="TranscriptSeed"/> and <see cref="TranscriptVersion"/>.</returns>
     private static LongfellowTranscript NewTranscript() =>
         new(TranscriptSeed, TranscriptVersion, GfSampleBytes, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
+    /// <summary>The transcript's block-cipher backend: AES-256 in ECB mode over a single block.</summary>
+    /// <param name="key">The 256-bit AES key.</param>
+    /// <param name="input">The single plaintext block.</param>
+    /// <param name="output">Receives the single ciphertext block.</param>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = Aes.Create();

@@ -15,10 +15,12 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every node — leaf or internal — is one digest wide. The leaves are the
-/// codeword position values supplied at construction (for the wired curves a
-/// codeword position is a scalar-field element, which is exactly the BLAKE3
-/// digest size, so the tree is uniform). Each internal node is the two-to-one
+/// Every node — leaf or internal — is one node width wide, and that width is
+/// stated by the <see cref="MerkleCommitmentParameters"/> the tree is built
+/// with; the tree never infers it from a buffer. The leaves arrive already
+/// node-wide: the tree commits them as layer 0 verbatim and refuses any other
+/// shape, so a scheme whose values are not node-wide runs its own leaf
+/// commitment before building. Each internal node is the two-to-one
 /// <see cref="MerkleHashDelegate"/> compression of its two children, left then
 /// right; there is no leaf-versus-node domain separation, matching the binary
 /// Merkle commitment BaseFold defines (Zeilberger, Chen, Fisch, CRYPTO 2024,
@@ -38,13 +40,20 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// the tree is disposed.
 /// </para>
 /// </remarks>
-[DebuggerDisplay("MerkleTree (LeafCount = {LeafCount}, Depth = {Depth}, DigestSizeBytes = {NodeSizeBytes})")]
+[DebuggerDisplay("MerkleTree (LeafCount = {LeafCount}, Depth = {Depth}, NodeSizeBytes = {NodeSizeBytes})")]
 public sealed class MerkleTree: IDisposable
 {
+    /// <summary>The pool-rented, bottom-up node buffer holding every layer from the leaves to the root, or <see langword="null"/> once disposed.</summary>
     private IMemoryOwner<byte>? layers;
+
+    /// <summary>The owned root digest, or <see langword="null"/> once disposed.</summary>
     private MerkleRoot? root;
-    private readonly int[] layerStartNode;
-    private readonly int totalNodes;
+
+    /// <summary>The node index at which each layer begins within the buffer, indexed from the leaves (level 0) upward.</summary>
+    private int[] LayerStartNode { get; }
+
+    /// <summary>The total number of nodes across every layer, leaves through root.</summary>
+    private int TotalNodes { get; }
 
 
     /// <summary>The number of leaves; a power of two.</summary>
@@ -61,6 +70,7 @@ public sealed class MerkleTree: IDisposable
     public MerkleRoot Root => root ?? throw new ObjectDisposedException(nameof(MerkleTree));
 
 
+    /// <summary>Wraps an already-completed layer buffer and its extracted root; both transfer ownership to this tree.</summary>
     private MerkleTree(
         IMemoryOwner<byte> layers,
         MerkleRoot root,
@@ -72,8 +82,8 @@ public sealed class MerkleTree: IDisposable
     {
         this.layers = layers;
         this.root = root;
-        this.layerStartNode = layerStartNode;
-        this.totalNodes = totalNodes;
+        this.LayerStartNode = layerStartNode;
+        this.TotalNodes = totalNodes;
         LeafCount = leafCount;
         Depth = depth;
         NodeSizeBytes = nodeSizeBytes;
@@ -82,46 +92,46 @@ public sealed class MerkleTree: IDisposable
 
     /// <summary>
     /// Builds a Merkle tree over <paramref name="leaves"/>. The leaves are
-    /// supplied as one contiguous span of <paramref name="leafCount"/> equal-
-    /// size chunks; the per-leaf size is inferred as
-    /// <c>leaves.Length / leafCount</c> and is also the node digest size, so
-    /// the wired hash must produce digests of that size.
+    /// supplied as one contiguous span of <paramref name="leafCount"/> chunks,
+    /// each exactly one node wide: the tree places them in layer 0 verbatim
+    /// and never hashes a value down to node width itself, so a caller whose
+    /// values are not node-wide runs its own leaf commitment first.
     /// </summary>
-    /// <param name="leaves">The concatenated leaf values; length must be a positive multiple of <paramref name="leafCount"/>.</param>
+    /// <param name="leaves">The concatenated node-wide leaf values; one <see cref="MerkleCommitmentParameters.NodeSizeBytes"/> chunk per leaf.</param>
     /// <param name="leafCount">The number of leaves; must be a power of two.</param>
-    /// <param name="hash">The two-to-one compression for internal nodes.</param>
+    /// <param name="parameters">The compression and the node width it produces.</param>
     /// <param name="pool">The pool to rent the layer buffer from.</param>
     /// <returns>The constructed tree; the caller owns its disposal.</returns>
-    /// <exception cref="ArgumentNullException">When <paramref name="hash"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">When <paramref name="parameters"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="leafCount"/> is non-positive.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="leafCount"/> is not a power of two, or the leaf bytes do not divide evenly.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="leafCount"/> is not a power of two, or the leaf bytes are not one node width per leaf.</exception>
     [SuppressMessage("Reliability", "CA2000", Justification = "The layer buffer transfers ownership through CompleteTree to the returned MerkleTree, which releases it through its own Dispose.")]
     public static MerkleTree Build(
         ReadOnlySpan<byte> leaves,
         int leafCount,
-        MerkleHashDelegate hash,
+        MerkleCommitmentParameters parameters,
         BaseMemoryPool pool)
     {
-        ArgumentNullException.ThrowIfNull(hash);
+        ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leafCount);
         ThrowIfNotPowerOfTwo(leafCount);
 
-        if(leaves.Length == 0 || leaves.Length % leafCount != 0)
+        int nodeSize = parameters.NodeSizeBytes;
+        if(leaves.Length != leafCount * nodeSize)
         {
             throw new ArgumentException(
-                $"Leaf bytes length {leaves.Length} must be a positive multiple of the leaf count {leafCount}.",
+                $"Leaf bytes length {leaves.Length} must be one {nodeSize}-byte node per leaf ({leafCount * nodeSize}); the tree commits leaves verbatim, so a value that is not node-wide needs the scheme's own leaf commitment first.",
                 nameof(leaves));
         }
 
-        int nodeSize = leaves.Length / leafCount;
         IMemoryOwner<byte> owner = AllocateLayers(leafCount, nodeSize, pool, out int depth, out int[] layerStart, out int totalNodes);
         Span<byte> buffer = owner.Memory.Span[..(totalNodes * nodeSize)];
 
         //Layer 0 is the leaves verbatim.
         leaves.CopyTo(buffer[..(leafCount * nodeSize)]);
 
-        return CompleteTree(owner, leafCount, depth, nodeSize, layerStart, totalNodes, hash, pool);
+        return CompleteTree(owner, leafCount, depth, nodeSize, layerStart, totalNodes, parameters.Compress, pool);
     }
 
 
@@ -136,36 +146,36 @@ public sealed class MerkleTree: IDisposable
     /// recomputes the salted leaf from the revealed <c>(value, salt)</c> pair
     /// before authenticating.
     /// </summary>
-    /// <param name="leafValues">The concatenated codeword values; length must be a positive multiple of <paramref name="leafCount"/>. The per-value size is also the node digest size.</param>
-    /// <param name="salts">The concatenated per-leaf salts, one digest-wide salt per leaf; length must equal <paramref name="leafCount"/> times the per-value size.</param>
+    /// <param name="leafValues">The concatenated node-wide codeword values; one <see cref="MerkleCommitmentParameters.NodeSizeBytes"/> chunk per leaf.</param>
+    /// <param name="salts">The concatenated per-leaf salts, one node-wide salt per leaf.</param>
     /// <param name="leafCount">The number of leaves; must be a power of two.</param>
-    /// <param name="hash">The two-to-one compression, used both to salt the leaves and to compress internal nodes.</param>
+    /// <param name="parameters">The compression and the node width it produces, used both to salt the leaves and to compress internal nodes.</param>
     /// <param name="pool">The pool to rent the layer buffer from.</param>
     /// <returns>The constructed tree; the caller owns its disposal.</returns>
-    /// <exception cref="ArgumentNullException">When <paramref name="hash"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">When <paramref name="parameters"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="leafCount"/> is non-positive.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="leafCount"/> is not a power of two, the value bytes do not divide evenly, or the salt length does not match.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="leafCount"/> is not a power of two, the value bytes are not one node width per leaf, or the salt length does not match.</exception>
     [SuppressMessage("Reliability", "CA2000", Justification = "The layer buffer transfers ownership through CompleteTree to the returned MerkleTree, which releases it through its own Dispose.")]
     public static MerkleTree BuildSalted(
         ReadOnlySpan<byte> leafValues,
         ReadOnlySpan<byte> salts,
         int leafCount,
-        MerkleHashDelegate hash,
+        MerkleCommitmentParameters parameters,
         BaseMemoryPool pool)
     {
-        ArgumentNullException.ThrowIfNull(hash);
+        ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(leafCount);
         ThrowIfNotPowerOfTwo(leafCount);
 
-        if(leafValues.Length == 0 || leafValues.Length % leafCount != 0)
+        int nodeSize = parameters.NodeSizeBytes;
+        if(leafValues.Length != leafCount * nodeSize)
         {
             throw new ArgumentException(
-                $"Leaf value bytes length {leafValues.Length} must be a positive multiple of the leaf count {leafCount}.",
+                $"Leaf value bytes length {leafValues.Length} must be one {nodeSize}-byte node per leaf ({leafCount * nodeSize}).",
                 nameof(leafValues));
         }
 
-        int nodeSize = leafValues.Length / leafCount;
         if(salts.Length != leafCount * nodeSize)
         {
             throw new ArgumentException(
@@ -175,6 +185,7 @@ public sealed class MerkleTree: IDisposable
 
         IMemoryOwner<byte> owner = AllocateLayers(leafCount, nodeSize, pool, out int depth, out int[] layerStart, out int totalNodes);
         Span<byte> buffer = owner.Memory.Span[..(totalNodes * nodeSize)];
+        MerkleHashDelegate hash = parameters.Compress;
 
         //Layer 0 is the salted leaf digests: leaf_i = hash(value_i ‖ salt_i).
         for(int i = 0; i < leafCount; i++)
@@ -188,6 +199,7 @@ public sealed class MerkleTree: IDisposable
     }
 
 
+    /// <summary>Throws when the leaf count is not a power of two, the shape every layer-halving step requires.</summary>
     private static void ThrowIfNotPowerOfTwo(int leafCount)
     {
         if(!BitOperations.IsPow2((uint)leafCount))
@@ -197,10 +209,12 @@ public sealed class MerkleTree: IDisposable
     }
 
 
-    //Rents the bottom-up layer buffer and computes the per-level node-index
-    //starts: layer 0 holds leafCount nodes, each later layer halves, the last
-    //layer holds the single root. The returned owner's layer 0 is uninitialised;
-    //the caller fills it (verbatim leaves or salted digests) before CompleteTree.
+    /// <summary>
+    /// Rents the bottom-up layer buffer and computes the per-level node-index starts: layer 0 holds
+    /// leafCount nodes, each later layer halves, and the last layer holds the single root. The
+    /// returned owner's layer 0 is uninitialised; the caller fills it (verbatim leaves or salted
+    /// digests) before <see cref="CompleteTree"/>.
+    /// </summary>
     private static IMemoryOwner<byte> AllocateLayers(
         int leafCount,
         int nodeSize,
@@ -224,9 +238,11 @@ public sealed class MerkleTree: IDisposable
     }
 
 
-    //Given an owner whose layer 0 is already populated, compresses every
-    //internal node (left then right) and extracts the root, then wraps both into
-    //the returned tree. The owner and the freshly rented root transfer to it.
+    /// <summary>
+    /// Given an owner whose layer 0 is already populated, compresses every internal node (left
+    /// then right) and extracts the root, then wraps both into the returned tree. The owner and
+    /// the freshly rented root transfer to it.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The layer buffer and the root both transfer ownership to the returned MerkleTree, which releases them through its own Dispose.")]
     private static MerkleTree CompleteTree(
         IMemoryOwner<byte> owner,
@@ -279,7 +295,7 @@ public sealed class MerkleTree: IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(indexInLevel);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(indexInLevel, LeafCount >> level);
 
-        int nodeIndex = layerStartNode[level] + indexInLevel;
+        int nodeIndex = LayerStartNode[level] + indexInLevel;
         return local.Memory.Span.Slice(nodeIndex * NodeSizeBytes, NodeSizeBytes);
     }
 
@@ -295,7 +311,7 @@ public sealed class MerkleTree: IDisposable
             {
                 //The leaves are codeword values derived from the committed
                 //polynomial; clear before returning the buffer to the pool.
-                local.Memory.Span[..(totalNodes * NodeSizeBytes)].Clear();
+                local.Memory.Span[..(TotalNodes * NodeSizeBytes)].Clear();
                 local.Dispose();
             }
             catch

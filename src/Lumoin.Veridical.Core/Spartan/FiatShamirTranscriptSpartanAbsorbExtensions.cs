@@ -6,10 +6,10 @@ using System.Diagnostics.CodeAnalysis;
 namespace Lumoin.Veridical.Core.Spartan;
 
 /// <summary>
-/// Typed transcript absorbs for Spartan messages over BLS12-381. Each
-/// helper writes the message's canonical byte layout under a stable
-/// per-message operation label so prover and verifier reach the same
-/// transcript state from the same inputs.
+/// Typed transcript absorbs for Spartan messages over BLS12-381 or
+/// BN254. Each helper writes the message's canonical byte layout under
+/// a stable per-message operation label so prover and verifier reach
+/// the same transcript state from the same inputs.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,6 +22,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class FiatShamirTranscriptSpartanAbsorbExtensions
 {
+    /// <summary>Extension methods hung off <see cref="FiatShamirTranscript"/> for absorbing Spartan protocol messages.</summary>
     extension(FiatShamirTranscript transcript)
     {
         /// <summary>
@@ -29,7 +30,7 @@ public static class FiatShamirTranscriptSpartanAbsorbExtensions
         /// the label <see cref="WellKnownSpartanTranscriptLabels.SumcheckRoundPolynomial"/>.
         /// </summary>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the compressed polynomial is not over BLS12-381.</exception>
+        /// <exception cref="ArgumentException">When the compressed polynomial's curve is neither BLS12-381 nor BN254.</exception>
         public void AbsorbCompressedRoundPolynomial(
             CompressedRoundPolynomial roundPolynomial,
             FiatShamirHashDelegate hash)

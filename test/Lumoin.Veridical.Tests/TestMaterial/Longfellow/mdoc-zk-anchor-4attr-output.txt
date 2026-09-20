@@ -1,5 +1,4 @@
-4-attribute mdoc ZkProof envelope ground truth from google/longfellow-zk: kZkSpecs[3] over mdoc_tests[3] disclosing four org.iso.18013.5.1 attributes; the reference's own run_mdoc_verifier accepted this envelope before the dump.
-Reference checkout: google/longfellow-zk commit d8ad8f65187c7c364a3c2181ad484bcab03f0ec2 (v0.9-90-gd8ad8f6, 2026-05-29).
+4-attribute mdoc ZK proof envelope disclosing four org.iso.18013.5.1 attributes; the recorded verification accepts this envelope.
 version=7
 num_attributes=4
 doc_type=org.iso.18013.5.1.mDL

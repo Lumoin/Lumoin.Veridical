@@ -15,8 +15,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// bundle's bounded <c>of_scalar</c> mirroring the reference's panic.
 /// </summary>
 [TestClass]
-internal sealed class Fp24SexticBackendTests
+internal sealed class Fp24SexticBackendTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The field element width in bytes used for every canonical container.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -161,15 +177,15 @@ internal sealed class Fp24SexticBackendTests
             field.Beta(LastRepresentableBasisIndex).ToArray(),
             "The last representable basis element must embed in the constant coefficient.");
         _ = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => field.Beta(FirstUnrepresentableBasisIndex), "A basis element at or beyond the base modulus must be rejected.");
-        _ = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => field.OfScalar(Modulus), "The base modulus itself must be rejected.");
+        _ = Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => CircuitScope.OfScalar(field, Modulus), "The base modulus itself must be rejected.");
     }
 
 
     /// <summary>Builds the Logic bundle over the backend delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewBundle()
+    private LongfellowLogicFieldOperations NewBundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp24Sextic(Add, Subtract, Multiply, Invert, FromLimbs(Modulus - 1, 0, 0, 0, 0, 0));
+        return CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp24Sextic(Add, Subtract, Multiply, Invert, FromLimbs(Modulus - 1, 0, 0, 0, 0, 0), CircuitScope.Pool));
     }
 
 

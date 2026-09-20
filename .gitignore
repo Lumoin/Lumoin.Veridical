@@ -369,15 +369,11 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# Local planning / drawing-board notes kept out of source control.
 tempdocs/
 
 # Coverage and test-report output (CI artifacts, regenerated each run).
 reports/
 
-# Claude Code session state, kept local to the working tree.
 .claude/
 
-# Cloned reference projects consulted during implementation but
-# never committed.
 refs/

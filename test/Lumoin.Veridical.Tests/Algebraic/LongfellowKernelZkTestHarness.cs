@@ -112,24 +112,27 @@ internal static class LongfellowKernelZkTestHarness
 
     /// <summary>Builds the GF(2^128) field bundle used by the kernel compiler and evaluator.</summary>
     /// <returns>The GF(2^128) field operations bundle.</returns>
-    public static LongfellowLogicFieldOperations NewGfBundle() =>
-        LongfellowLogicFieldOperations.CreateGf2128(GfAdd, GfSubtract, GfMultiply, GfInvert);
+    /// <param name="scope">The test owner supplying the pool and retaining the field bundle.</param>
+    public static LongfellowLogicFieldOperations NewGfBundle(LongfellowCircuitTestScope scope) =>
+        scope.Track(LongfellowLogicFieldOperations.CreateGf2128(GfAdd, GfSubtract, GfMultiply, GfInvert, scope.Pool));
 
 
     /// <summary>Builds the P-256 base field bundle used by the kernel compiler and evaluator.</summary>
     /// <returns>The P-256 base field operations bundle.</returns>
-    public static LongfellowLogicFieldOperations NewFp256Bundle() =>
-        LongfellowLogicFieldOperations.CreateFp256(Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, Canonical(Prime - 1));
+    /// <param name="scope">The test owner supplying the pool and retaining the field bundle.</param>
+    public static LongfellowLogicFieldOperations NewFp256Bundle(LongfellowCircuitTestScope scope) =>
+        scope.Track(LongfellowLogicFieldOperations.CreateFp256(Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, Canonical(Prime - 1), scope.Pool));
 
 
-    /// <summary>The sextic field's minus one as a canonical scalar — built once for the process because <c>CreateFp24Sextic</c> retains the memory it is handed.</summary>
+    /// <summary>The sextic field's minus one as a canonical scalar — copied into each disposable field bundle.</summary>
     private static ReadOnlyMemory<byte> Fp24SexticMinusOne { get; } = BuildFp24SexticMinusOne();
 
 
     /// <summary>Builds the FIPS 204 sextic circuit-field bundle used by the kernel compiler and evaluator.</summary>
     /// <returns>The sextic field operations bundle.</returns>
-    public static LongfellowLogicFieldOperations NewFp24SexticBundle() =>
-        LongfellowLogicFieldOperations.CreateFp24Sextic(Fp24SexticAdd, Fp24SexticSubtract, Fp24SexticMultiply, Fp24SexticInvert, Fp24SexticMinusOne);
+    /// <param name="scope">The test owner supplying the pool and retaining the field bundle.</param>
+    public static LongfellowLogicFieldOperations NewFp24SexticBundle(LongfellowCircuitTestScope scope) =>
+        scope.Track(LongfellowLogicFieldOperations.CreateFp24Sextic(Fp24SexticAdd, Fp24SexticSubtract, Fp24SexticMultiply, Fp24SexticInvert, Fp24SexticMinusOne, scope.Pool));
 
 
     /// <summary>Builds the one retained minus-one constant behind <see cref="Fp24SexticMinusOne"/>.</summary>
@@ -406,7 +409,8 @@ internal static class LongfellowKernelZkTestHarness
     /// <returns>The pooled proof envelope; the caller owns its disposal.</returns>
     public static LongfellowZkProofEnvelope ProduceFp256Proof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, ReadOnlySpan<byte> witnessColumn, ReadOnlySpan<byte> seed)
     {
-        Fp256RealFft fft = NewFp256Fft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFp256Fft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -452,7 +456,8 @@ internal static class LongfellowKernelZkTestHarness
         ReadOnlySpan<byte> seed,
         bool expectedAccept)
     {
-        Fp256RealFft fft = NewFp256Fft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFp256Fft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -525,7 +530,7 @@ internal static class LongfellowKernelZkTestHarness
     }
 
 
-    /// <summary>Builds a fresh deterministic counter source: the k-th byte produced is <c>(k &amp; 0xFF)</c>, identical to the C++ oracle's <c>CounterRandomEngine</c>.</summary>
+    /// <summary>Builds a fresh deterministic counter source: the k-th byte produced is <c>(k &amp; 0xFF)</c>.</summary>
     /// <returns>The random byte source.</returns>
     public static LongfellowRandomByteSource NewCounterSource()
     {
@@ -620,12 +625,13 @@ internal static class LongfellowKernelZkTestHarness
 
     /// <summary>Builds the real FFT over the P-256 base field, deriving its root of unity.</summary>
     /// <returns>The Fp256 real FFT.</returns>
-    public static Fp256RealFft NewFp256Fft()
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    public static Fp256RealFft NewFp256Fft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, OfScalarFp256, CurveParameterSet.None, pool);
     }
 
 

@@ -38,6 +38,7 @@ namespace Lumoin.Veridical.Core.Algebraic;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class ScalarArithmeticExtensions
 {
+    /// <summary>Arithmetic members added to every <see cref="Scalar"/> instance.</summary>
     extension(Scalar a)
     {
         /// <summary>
@@ -183,6 +184,10 @@ public static class ScalarArithmeticExtensions
     }
 
 
+    /// <summary>Throws when <paramref name="a"/> and <paramref name="b"/> are scalars over different curves.</summary>
+    /// <param name="a">The first scalar.</param>
+    /// <param name="b">The second scalar.</param>
+    /// <exception cref="ArgumentException">When <paramref name="a"/> and <paramref name="b"/> have different curve codes.</exception>
     private static void ThrowIfCurveMismatch(Scalar a, Scalar b)
     {
         if(a.Curve.Code != b.Curve.Code)

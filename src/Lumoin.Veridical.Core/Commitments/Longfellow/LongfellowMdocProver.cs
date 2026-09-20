@@ -33,7 +33,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// public region of each, proves, and clears the buffers on return.
 /// </para>
 /// <para>
-/// Per D6 the circuits and parameters are pre-derived; the field bindings (row-encoder factory, profile,
+/// The circuits and parameters are pre-derived; the field bindings (row-encoder factory, profile,
 /// subfield-run codec, arithmetic delegates, subfield boundary) ride in the two
 /// <see cref="LongfellowMdocFieldProver"/> bundles. The transcript, the SHA-256 / Merkle hash delegates and
 /// the pool are shared. The GF arithmetic the macs and the squeeze use is the hash bundle's
@@ -43,18 +43,19 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal static class LongfellowMdocProver
 {
+    /// <summary>The byte width of one canonical scalar, taken from the field's own representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //f_128::kBytes: a_v is one 16-byte GF(2^128) element (generate_mac_key, mdoc_zk.cc:280).
+    /// <summary>The byte width of one GF(2^128) element (<c>f_128::kBytes</c>): <c>a_v</c> is one such element (<c>generate_mac_key</c>, <c>mdoc_zk.cc:280</c>).</summary>
     private const int MacKeyBytes = 16;
 
-    //f_128::kBits: a GF(2^128) element expands to 128 LSB-first base-field wires on the sig side.
+    /// <summary>The bit width of one GF(2^128) element (<c>f_128::kBits</c>): it expands to 128 least-significant-bit-first base-field wires on the sig side.</summary>
     private const int MacKeyBits = 128;
 
-    //The six per-credential macs and the one a_v key, in both public regions (mdoc_zk.cc:286-303).
+    /// <summary>The number of per-credential macs patched into both public regions alongside the one <c>a_v</c> key (<c>mdoc_zk.cc:286-303</c>).</summary>
     private const int MacCount = LongfellowMdocEnvelope.MacCount;
 
-    //compute_macs operates on the 3 common Fp256 values e_, dpkx, dpky (mdoc_zk.cc:124-140).
+    /// <summary>The number of common Fp256 values (<c>e_</c>, <c>dpkx</c>, <c>dpky</c>) <c>compute_macs</c> operates on (<c>mdoc_zk.cc:124-140</c>).</summary>
     private const int CommonValueCount = 3;
 
 
@@ -139,7 +140,8 @@ internal static class LongfellowMdocProver
         Span<byte> macs = macsOwner.Memory.Span[..(MacCount * ScalarSize)];
         Span<byte> avLittleEndian = stackalloc byte[MacKeyBytes];
         Span<byte> av = stackalloc byte[ScalarSize];
-        byte[] macsBytes = new byte[LongfellowMdocEnvelope.MacRegionBytes];
+        using IMemoryOwner<byte> macsBytesOwner = pool.Rent(LongfellowMdocEnvelope.MacRegionBytes);
+        Span<byte> macsBytes = macsBytesOwner.Memory.Span[..LongfellowMdocEnvelope.MacRegionBytes];
         try
         {
             //commit(hash) then commit(sig): each over its private witness + the proof pad (the public mac/av
@@ -310,8 +312,12 @@ internal static class LongfellowMdocProver
     }
 
 
-    //update_macs (GF side, mdoc_zk.cc:286-294): W_hash[hi++] = mac for each of the six macs, then a_v, each
-    //as ONE canonical GF(2^128) element (fill_gf2k<f_128, f_128> = push_back). Seven elements at hashMacIndex.
+    /// <summary>
+    /// Patches the hash column's public region (<c>update_macs</c>, GF side, <c>mdoc_zk.cc:286-294</c>):
+    /// writes each of the six macs then <c>a_v</c>, each as one canonical GF(2^128) element
+    /// (<c>fill_gf2k&lt;f_128, f_128&gt;</c> = push_back). Seven elements starting at
+    /// <paramref name="hashMacIndex"/>.
+    /// </summary>
     private static void PatchHashPublicRegion(Span<byte> hashColumn, ReadOnlySpan<byte> macs, ReadOnlySpan<byte> av, int hashMacIndex)
     {
         for(int i = 0; i < MacCount; i++)
@@ -323,9 +329,12 @@ internal static class LongfellowMdocProver
     }
 
 
-    //update_macs (Fp256 side, mdoc_zk.cc:296-303): for each of the six macs then a_v, W_sig[si++] = bit j ?
-    //one : zero for j in 0..127, the GF element's polynomial bits least-significant first
-    //(fill_gf2k<f_128, Fp256Base>). 7·128 = 896 wires at sigMacIndex.
+    /// <summary>
+    /// Patches the sig column's public region (<c>update_macs</c>, Fp256 side, <c>mdoc_zk.cc:296-303</c>):
+    /// for each of the six macs then <c>a_v</c>, writes one wire per bit, least-significant first
+    /// (<c>fill_gf2k&lt;f_128, Fp256Base&gt;</c>). <c>7·128 = 896</c> wires starting at
+    /// <paramref name="sigMacIndex"/>.
+    /// </summary>
     private static void PatchSigPublicRegion(LongfellowFieldProfile profile, Span<byte> sigColumn, ReadOnlySpan<byte> macs, ReadOnlySpan<byte> av, int sigMacIndex)
     {
         Span<byte> one = stackalloc byte[ScalarSize];
@@ -346,10 +355,14 @@ internal static class LongfellowMdocProver
     }
 
 
-    //Writes the 128 base-field wires of one GF(2^128) element, least-significant bit first: bit j picks one
-    //or zero. The canonical scalar is big-endian with the 16-byte element in its low bytes, so bit j sits in
-    //canonical[ScalarSize - 1 - (j / 8)] at position j mod 8 (mac[j], mac_reference.h:66). Returns the next
-    //wire index.
+    /// <summary>
+    /// Writes the 128 base-field wires of one GF(2^128) element, least-significant bit first: bit
+    /// <c>j</c> picks <paramref name="one"/> or <paramref name="zero"/>. The canonical scalar is
+    /// big-endian with the 16-byte element in its low bytes, so bit <c>j</c> sits in
+    /// <c>canonical[ScalarSize - 1 - (j / 8)]</c> at position <c>j mod 8</c> (<c>mac[j]</c>,
+    /// <c>mac_reference.h:66</c>).
+    /// </summary>
+    /// <returns>The next wire index.</returns>
     private static int ExpandGfBits(ReadOnlySpan<byte> element, ReadOnlySpan<byte> one, ReadOnlySpan<byte> zero, Span<byte> sigColumn, int wireIndex)
     {
         for(int j = 0; j < MacKeyBits; j++)

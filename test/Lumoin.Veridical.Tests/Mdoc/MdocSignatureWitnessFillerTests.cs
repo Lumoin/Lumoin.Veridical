@@ -9,10 +9,10 @@ using System.Numerics;
 namespace Lumoin.Veridical.Tests.Mdoc;
 
 /// <summary>
-/// Per-region self-consistent oracle gates for <see cref="MdocSignatureWitnessFiller"/>: the 3739-element
+/// Per-region self-consistent gates for <see cref="MdocSignatureWitnessFiller"/>: the 3739-element
 /// Fp256 mdoc SIG-circuit witness column (the C# port of the <c>fill_b</c> side of
-/// <c>tempdocs/longfellow-zk-reference/lib/circuits/mdoc/mdoc_zk.cc</c> + <c>MdocSignatureWitness::fill_witness</c>).
-/// No Docker: every region is re-derived from an independent oracle and byte-compared, mirroring
+/// <c>lib/circuits/mdoc/mdoc_zk.cc</c> + <c>MdocSignatureWitness::fill_witness</c>).
+/// Every region is independently re-derived and byte-compared, mirroring
 /// <see cref="EcdsaSignatureWitnessTests"/>'s nine gates and <c>MdocHashWitnessFillerTests</c>' region
 /// asserts. The load-bearing end-to-end checks are the two <c>WitnessedLadderRecoversR</c> (issuer + device,
 /// each ECDSA column terminating at the point at infinity) plus the column count/shape.
@@ -20,37 +20,63 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// <remarks>
 /// The issuer half is the REAL credential (<c>mdoc-00.cbor</c>, <c>age_over_18</c>) via
 /// <see cref="MdocDisclosure"/>; the device half is the SYNTHESIZED tuple via
-/// <see cref="MdocDeviceSignatureSynth"/> (coordinator decision OQ1). The macs/av are the COMMITTED values
-/// from the chosen-constant keys (OQ2); gate 8 asserts the committed (prove-ready) variant rather than the
+/// <see cref="MdocDeviceSignatureSynth"/>. The macs/av are the COMMITTED values
+/// from the chosen-constant keys; gate 8 asserts the committed (prove-ready) variant rather than the
 /// reference's zero-at-commit fill.
 /// </remarks>
 [TestClass]
 internal sealed class MdocSignatureWitnessFillerTests
 {
+    /// <summary>The repository-relative path to the sample credential fixture used to derive the issuer half.</summary>
     private const string CredentialRelativePath = "TestMaterial/Mdoc/mdoc-00.cbor";
 
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The GF(2^128) element width in bits.</summary>
     private const int Gf2kBits = 128;
+
+    /// <summary>The P-256 scalar/coordinate width in bits, the ECDSA ladder's step count.</summary>
     private const int LadderBits = 256;
+
+    /// <summary>The packed-word element count of one MacWitness packed word (64 two-bit plucker codes).</summary>
     private const int MacPackedWordElements = 64;
 
-    //The SIG-circuit region boundaries (element indices).
+    /// <summary>The SIG-circuit region boundary: the start of the six MAC and one av GF(2^128) expansions.</summary>
     private const int MacExpansionStart = 4;
+
+    /// <summary>The SIG-circuit region boundary: the start of the three common values (issuer hash, device key x, device key y).</summary>
     private const int CommonValuesStart = 900;
+
+    /// <summary>The SIG-circuit region boundary: the start of the issuer ECDSA column.</summary>
     private const int IssuerColumnStart = 903;
+
+    /// <summary>The SIG-circuit region boundary: the start of the device ECDSA column, immediately after the issuer column.</summary>
     private const int IssuerColumnEnd = 1937;
+
+    /// <summary>The SIG-circuit region boundary: the start of the three 256-element MacWitness fills.</summary>
     private const int MacFillsStart = 2971;
 
+    /// <summary>The P-256 base-field modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>a</c>.</summary>
     private static BigInteger CurveA { get; } = EcdsaNonceRecovery.A;
+
+    /// <summary>The P-256 short-Weierstrass curve coefficient <c>b</c>.</summary>
     private static BigInteger CurveB { get; } = P256BigIntegerG1Reference.CurveB;
 
+    /// <summary>The GF(2^128) field addition delegate.</summary>
     private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
+
+    /// <summary>The GF(2^128) field multiplication delegate.</summary>
     private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The sample credential fixture bytes, read once and shared across every test.</summary>
     private static byte[] Credential { get; } = ReadFixture(CredentialRelativePath);
 
 
+    /// <summary>Pins that the produced witness column holds exactly 3739 elements, that its first element is Fp256 one, and that the structural region map (public inputs, common values, two ECDSA columns, three MacWitness fills) sums to that total.</summary>
     [TestMethod]
     public void ColumnHasExactlyTheReferenceShapeAndCount()
     {
@@ -70,6 +96,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Pins the public prefix's layout: wire 0 is one, wires 1–3 are the issuer public key and the device hash e2, e2 is non-zero, and wire 900 is the issuer hash — distinct from e2, so a filler bug cannot swap the two hashes.</summary>
     [TestMethod]
     public void PublicPrefixLayout()
     {
@@ -85,13 +112,15 @@ internal sealed class MdocSignatureWitnessFillerTests
         //The circuit precondition: e2 != 0 (mdoc_zk.cc:196-201).
         Assert.AreNotEqual(BigInteger.Zero, device.DeviceHash, "e2 must be non-zero (the circuit precondition).");
 
-        //OQ6 anti-swap: the device hash e2 (wire 3) must not equal the issuer MSO hash e_ (wire 900).
+        //Anti-swap: the device hash e2 (wire 3) must not equal the issuer MSO hash e_ (wire 900), so a
+        //filler bug cannot silently swap the two hashes into each other's slot.
         BigInteger issuerHash = MdocSignatureWitnessFiller.IssuerHash(issuer);
-        Assert.AreNotEqual(issuerHash, device.DeviceHash, "e2 (device) must not equal e_ (issuer): OQ6 anti-swap.");
+        Assert.AreNotEqual(issuerHash, device.DeviceHash, "e2 (device) must not equal e_ (issuer): anti-swap.");
         Assert.IsTrue(Element(column, CommonValuesStart).SequenceEqual(EcdsaNonceRecovery.Bytes(issuerHash)), "Wire 900 must be e_ (the issuer hash).");
     }
 
 
+    /// <summary>Pins that the issuer ECDSA sub-column is self-consistent against an independently re-derived column, using the real credential's disclosed issuer signature.</summary>
     [TestMethod]
     public void IssuerEcdsaColumnIsSelfConsistent()
     {
@@ -108,6 +137,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Pins that the device ECDSA sub-column is self-consistent against an independently re-derived column, using a synthesized device signature that is itself a genuine .NET-verified ECDSA signature.</summary>
     [TestMethod]
     public void DeviceEcdsaColumnIsSelfConsistent()
     {
@@ -116,12 +146,13 @@ internal sealed class MdocSignatureWitnessFillerTests
 
         AssertEcdsaColumnSelfConsistent(column, IssuerColumnEnd, device.DeviceKeyX, device.DeviceKeyY, device.DeviceHash, device.SignatureR, device.SignatureS);
 
-        //The .NET oracle: the synthesized tuple is a genuine ECDSA verification, so its recovered nonce
+        //The .NET check: the synthesized tuple is a genuine ECDSA verification, so its recovered nonce
         //point is genuine (mirrors RecoveredNoncePointMatchesTheDotNetSignature).
         Assert.IsTrue(device.Verify(), "The synthesized device tuple must be a valid .NET ECDSA signature.");
     }
 
 
+    /// <summary>Pins that each MacWitness packed word decodes back to the expected common-value message half, and that the issuer-hash MAC message ties to the hash circuit's own common value.</summary>
     [TestMethod]
     public void MacMessagesMatchTheCommonValues()
     {
@@ -138,7 +169,8 @@ internal sealed class MdocSignatureWitnessFillerTests
         ];
 
         //The issuer-hash MAC message ties to the HASH-circuit common value (the cross-circuit tie). The
-        //device key halves are the SYNTH key here (not the credential's deviceKeyInfo), per OQ1.
+        //device key halves are the SYNTH key here (not the credential's deviceKeyInfo), since the device
+        //half stands in for a live device credential rather than being extracted from one.
         MdocParsedDocument parsed = MdocParsedDocument.Parse(Credential);
         MdocHashWitnessState hashState = MdocHashWitnessState.Compute(parsed, MdocRequestedAttribute.AgeOver18);
         Assert.IsTrue(expectedMessages[0].AsSpan().SequenceEqual(hashState.MacMessageE), "The issuer-hash MAC message must equal the hash circuit's MacMessageE (the common value).");
@@ -158,6 +190,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Pins the four two-bit plucker codes' encoding: <c>encode(v) = of_scalar(2v) − of_scalar(3)</c> over Fp256 yields {p-3, p-1, 1, 3}.</summary>
     [TestMethod]
     public void MacPluckerCodesAreTheFp256TwoBitConstant()
     {
@@ -166,7 +199,7 @@ internal sealed class MdocSignatureWitnessFillerTests
 
         Assert.HasCount(4, codes, "There are four 2-bit plucker codes.");
 
-        //encode(v) = of_scalar(2v) − of_scalar(3) over Fp256: {p-3, p-1, 1, 3} (OQ4; N-1=3, NOT 15).
+        //encode(v) = of_scalar(2v) − of_scalar(3) over Fp256: {p-3, p-1, 1, 3} (N-1=3, NOT 15).
         Assert.IsTrue(codes[0].AsSpan().SequenceEqual(EcdsaNonceRecovery.Bytes(Prime - 3)), "encode(0) must be p-3.");
         Assert.IsTrue(codes[1].AsSpan().SequenceEqual(EcdsaNonceRecovery.Bytes(Prime - 1)), "encode(1) must be p-1.");
         Assert.IsTrue(codes[2].AsSpan().SequenceEqual(EcdsaNonceRecovery.Bytes(BigInteger.One)), "encode(2) must be 1.");
@@ -174,6 +207,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Pins that the MacWitness fill region reproduces deterministically against a fresh fill, and that each public mac equals <c>(av + ap_i)·m_i</c> over GF(2^128) for the chosen keys and recovered message halves.</summary>
     [TestMethod]
     public void MacFillsReproduceTheKeyedConstants()
     {
@@ -212,6 +246,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Pins that the public prefix's six mac expansions and the av expansion are each the committed <c>fill_gf2k</c> bit expansion, ending exactly at the public-input count.</summary>
     [TestMethod]
     public void PublicMacAvExpansionIsTheCommittedFillGf2k()
     {
@@ -239,6 +274,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Pins that filling the column twice from the same issuer and device inputs produces byte-identical columns.</summary>
     [TestMethod]
     public void ColumnIsDeterministicForTheSameInputs()
     {
@@ -252,8 +288,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
-    //The nine VerifyWitness3 region invariants on an ECDSA sub-column, plus a byte re-derivation against
-    //EcdsaSignatureWitness.Fill (verify_witness.h).
+    /// <summary>Checks the nine VerifyWitness3 region invariants on an ECDSA sub-column, plus a byte re-derivation against <see cref="EcdsaSignatureWitness.Fill"/> (verify_witness.h).</summary>
     private static void AssertEcdsaColumnSelfConsistent(byte[] column, int start, BigInteger pkX, BigInteger pkY, BigInteger e, BigInteger r, BigInteger s)
     {
         //Re-derive the sub-column and byte-compare every element.
@@ -328,6 +363,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Builds the eight-point mux table (identity, G, pk, G+pk, R, G+R, pk+R, G+R+pk) the witnessed ladder selects from at each step.</summary>
     private static ProjectivePointFp256[] BuildMux((BigInteger X, BigInteger Y) pk, (BigInteger X, BigInteger Y) r)
     {
         (BigInteger X, BigInteger Y) gPlusPk = EcdsaNonceRecovery.AffineAdd(EcdsaNonceRecovery.G, pk);
@@ -349,7 +385,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
-    //Assert the 128-element fill_gf2k expansion of a GF(2^128) element: each wire is one (bit set) or zero.
+    /// <summary>Asserts the 128-element <c>fill_gf2k</c> expansion of a GF(2^128) element: each wire is one (bit set) or zero.</summary>
     private static void AssertGf2kExpansion(byte[] column, ref int index, byte[] element, string name)
     {
         for(int bit = 0; bit < Gf2kBits; bit++)
@@ -361,8 +397,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
-    //Decode one MacWitness packed word (64 elements, each a 2-bit plucker code) into a 16-byte
-    //little-endian message half (the inverse of pack<packed_v128>).
+    /// <summary>Decodes one MacWitness packed word (64 elements, each a 2-bit plucker code) into a 16-byte little-endian message half (the inverse of <c>pack&lt;packed_v128&gt;</c>).</summary>
     private static byte[] DecodePackedHalf(byte[] column, int wordBase)
     {
         byte[] bits = new byte[Gf2kBits];
@@ -390,7 +425,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
-    //Invert encode(v) = of_scalar(2v) − of_scalar(3) over Fp256 by matching the four codes {p-3,p-1,1,3}.
+    /// <summary>Inverts <c>encode(v) = of_scalar(2v) − of_scalar(3)</c> over Fp256 by matching the four codes {p-3, p-1, 1, 3}.</summary>
     private static int DecodePluckerCode(ReadOnlySpan<byte> code)
     {
         var value = new BigInteger(code, isUnsigned: true, isBigEndian: true);
@@ -418,12 +453,15 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Extracts the issuer disclosure (age_over_18) from the sample credential.</summary>
     private static MdocDisclosure Issuer() => MdocDisclosure.Extract(Credential, "org.iso.18013.5.1", "age_over_18");
 
 
+    /// <summary>Fills a witness column for a fresh issuer disclosure and a freshly synthesized device signature.</summary>
     private static byte[] Produce() => Produce(Issuer(), MdocDeviceSignatureSynth.Create());
 
 
+    /// <summary>Fills a witness column for the given issuer disclosure and device signature, asserting the filler reports the expected element count.</summary>
     private static byte[] Produce(MdocDisclosure issuer, MdocDeviceSignatureSynth device)
     {
         var filler = new MdocSignatureWitnessFiller();
@@ -434,6 +472,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Converts a canonical big-endian value to the little-endian to_bytes_field wire form.</summary>
     private static byte[] ToBytesField(BigInteger value)
     {
         byte[] bigEndian = EcdsaNonceRecovery.Bytes(value);
@@ -447,8 +486,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
-    //The j-th polynomial coefficient of a GF(2^128) element in the backend's canonical-scalar layout (low
-    //limb bits 0..63 big-endian in [24,32), high limb bits 64..127 in [16,24)).
+    /// <summary>Reads the j-th polynomial coefficient of a GF(2^128) element in the backend's canonical-scalar layout (low limb bits 0..63 big-endian in [24,32), high limb bits 64..127 in [16,24)).</summary>
     private static int Gf2kBit(byte[] element, int bit)
     {
         int limbBase = bit < 64 ? 24 : 16;
@@ -459,6 +497,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Checks the short-Weierstrass curve equation <c>y² = x³ + a·x + b</c> over the P-256 base field.</summary>
     private static bool OnCurve(BigInteger x, BigInteger y)
     {
         BigInteger left = ModP(y * y);
@@ -468,6 +507,7 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Reduces a value modulo the base-field prime and returns it centered around zero (in (−p/2, p/2]).</summary>
     private static BigInteger SignedResidue(BigInteger residue)
     {
         BigInteger reduced = ModP(residue);
@@ -476,9 +516,11 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Reads one canonical scalar-sized element out of a witness column at the given index.</summary>
     private static ReadOnlySpan<byte> Element(byte[] column, int index) => column.AsSpan(index * ScalarSize, ScalarSize);
 
 
+    /// <summary>Builds the canonical Fp256 encoding of one.</summary>
     private static byte[] One()
     {
         byte[] one = new byte[ScalarSize];
@@ -488,12 +530,16 @@ internal sealed class MdocSignatureWitnessFillerTests
     }
 
 
+    /// <summary>Reduces a value modulo the base-field prime into its non-negative representative.</summary>
     private static BigInteger ModP(BigInteger value) => ((value % Prime) + Prime) % Prime;
 
+    /// <summary>Reads a single bit of a value at the given position.</summary>
     private static int Bit(BigInteger value, int position) => (int)((value >> position) & BigInteger.One);
 
+    /// <summary>Interprets canonical big-endian bytes as an unsigned integer.</summary>
     private static BigInteger ToInteger(byte[] bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 
 
+    /// <summary>Reads a fixture file's raw bytes relative to the test output directory.</summary>
     private static byte[] ReadFixture(string relativePath) => File.ReadAllBytes($"../../../{relativePath}");
 }

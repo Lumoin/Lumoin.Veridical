@@ -1,3 +1,4 @@
+using System.Buffers;
 using System;
 using Lumoin.Veridical.Core.Algebraic;
 
@@ -20,11 +21,20 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// </remarks>
 internal sealed class LongfellowBitPlucker
 {
-    private readonly LongfellowLogic logic;
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowLogicFieldOperations field;
-    private readonly LongfellowCircuitPolynomial polynomial;
-    private readonly ReadOnlyMemory<byte>[][] pluckerPolynomials;
+    /// <summary>The gadget layer this plucker builds on; supplies the backend, field operations, and circuit storage.</summary>
+    private LongfellowLogic Logic { get; }
+
+    /// <summary>The circuit backend <see cref="Logic"/> exposes, cached for the constraint operations this plucker emits.</summary>
+    private LongfellowLogicBackend Backend { get; }
+
+    /// <summary>The field-operation bundle <see cref="Logic"/> exposes, used to compute plucker evaluation points and interpolate the per-bit polynomials.</summary>
+    private LongfellowLogicFieldOperations Field { get; }
+
+    /// <summary>The polynomial evaluator this plucker uses to evaluate each bit's interpolated polynomial at the packed wire.</summary>
+    private LongfellowCircuitPolynomial Polynomial { get; }
+
+    /// <summary>The <see cref="LogPointCount"/> interpolated polynomials, one per output bit, each evaluating to one where that bit is set among the packed value's <see cref="PointCount"/> points and zero elsewhere.</summary>
+    private ReadOnlyMemory<byte>[][] PluckerPolynomials { get; }
 
     /// <summary>The bit width <c>LOGN</c> this plucker extracts (the reference's template parameter).</summary>
     public int LogPointCount { get; }
@@ -47,7 +57,7 @@ internal sealed class LongfellowBitPlucker
     /// at construction time: for output bit <c>k</c>, the unique polynomial through
     /// <c>(PluckerPoint(i), OfScalar((i &gt;&gt; k) &amp; 1))</c> for every <c>i &lt; PointCount</c>.
     /// </summary>
-    /// <param name="logic">The gadget layer this plucker builds on.</param>
+    /// <param name="logic">The gadget layer this plucker builds on; it owns the polynomial bytes and must outlive this plucker.</param>
     /// <param name="logPointCount">The bit width <c>LOGN</c>.</param>
     /// <exception cref="ArgumentNullException">When <paramref name="logic"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="logPointCount"/> is not positive.</exception>
@@ -62,10 +72,10 @@ internal sealed class LongfellowBitPlucker
         const int MaxLogPointCount = 8;
         ArgumentOutOfRangeException.ThrowIfGreaterThan(logPointCount, MaxLogPointCount);
 
-        this.logic = logic;
-        backend = logic.Backend;
-        field = logic.Field;
-        polynomial = new LongfellowCircuitPolynomial(backend);
+        this.Logic = logic;
+        Backend = logic.Backend;
+        Field = logic.Field;
+        Polynomial = new LongfellowCircuitPolynomial(Backend);
 
         LogPointCount = logPointCount;
         PointCount = 1 << logPointCount;
@@ -79,21 +89,24 @@ internal sealed class LongfellowBitPlucker
         PackedV256ElementCount = CeilingDivide(PackedV256BitWidth, logPointCount);
 
         var points = new ReadOnlyMemory<byte>[PointCount];
+        using IMemoryOwner<byte> pointsOwner = Field.Pool.Rent(PointCount * Scalar.SizeBytes);
         for(int i = 0; i < PointCount; i++)
         {
-            points[i] = PluckerPoint(field, PointCount, i);
+            Memory<byte> point = pointsOwner.Memory.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes);
+            PluckerPoint(Field, PointCount, i, point.Span);
+            points[i] = point;
         }
 
-        pluckerPolynomials = new ReadOnlyMemory<byte>[logPointCount][];
+        PluckerPolynomials = new ReadOnlyMemory<byte>[logPointCount][];
         for(int k = 0; k < logPointCount; k++)
         {
             var values = new ReadOnlyMemory<byte>[PointCount];
             for(int i = 0; i < PointCount; i++)
             {
-                values[i] = field.OfScalar((ulong)((i >> k) & 1));
+                values[i] = ((i >> k) & 1) == 0 ? Field.Compiler.Zero : Field.Compiler.One;
             }
 
-            pluckerPolynomials[k] = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points);
+            PluckerPolynomials[k] = LongfellowMonomialInterpolation.MonomialOfLagrange(Field, values, points, Logic.Storage);
         }
     }
 
@@ -108,19 +121,23 @@ internal sealed class LongfellowBitPlucker
     /// <param name="field">The field-operation bundle.</param>
     /// <param name="pointCount">The total point count the packed value is drawn from.</param>
     /// <param name="bits">The packed value.</param>
-    /// <returns>The evaluation point, canonical big-endian.</returns>
+    /// <param name="difference">Receives the canonical evaluation point in a scalar-sized destination.</param>
     /// <exception cref="ArgumentNullException">When <paramref name="field"/> is <see langword="null"/>.</exception>
-    public static ReadOnlyMemory<byte> PluckerPoint(LongfellowLogicFieldOperations field, int pointCount, int bits)
+    public static void PluckerPoint(LongfellowLogicFieldOperations field, int pointCount, int bits, Span<byte> difference)
     {
         ArgumentNullException.ThrowIfNull(field);
 
-        ReadOnlyMemory<byte> doubled = field.OfScalar(2UL * (ulong)bits);
-        ReadOnlyMemory<byte> offset = field.OfScalar((ulong)(pointCount - 1));
+        //The two operands remain separate until subtraction consumes both.
+        const int OperandCount = 2;
+        using IMemoryOwner<byte> owner = field.Pool.Rent(OperandCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(OperandCount * Scalar.SizeBytes)];
+        Span<byte> doubled = buffer[..Scalar.SizeBytes];
+        Span<byte> offset = buffer[Scalar.SizeBytes..];
+        field.OfScalar(2UL * (ulong)bits, doubled);
+        field.OfScalar((ulong)(pointCount - 1), offset);
 
-        var difference = new byte[Scalar.SizeBytes];
-        field.Subtract(doubled.Span, offset.Span, difference, field.Compiler.Curve);
-
-        return difference;
+        difference.Clear();
+        field.Subtract(doubled, offset, difference, field.Compiler.Curve);
     }
 
 
@@ -137,9 +154,9 @@ internal sealed class LongfellowBitPlucker
         var result = new LongfellowBitWire[LogPointCount];
         for(int k = 0; k < LogPointCount; k++)
         {
-            int v = polynomial.Evaluate(pluckerPolynomials[k], wire);
-            _ = logic.AssertIsBit(v);
-            result[k] = new LongfellowBitWire(field, v);
+            int v = Polynomial.Evaluate(PluckerPolynomials[k], wire);
+            _ = Logic.AssertIsBit(v);
+            result[k] = new LongfellowBitWire(Field, v);
         }
 
         return result;
@@ -205,7 +222,7 @@ internal sealed class LongfellowBitPlucker
         var result = new int[elementCount];
         for(int i = 0; i < elementCount; i++)
         {
-            result[i] = logic.InputElement();
+            result[i] = Logic.InputElement();
         }
 
         return result;

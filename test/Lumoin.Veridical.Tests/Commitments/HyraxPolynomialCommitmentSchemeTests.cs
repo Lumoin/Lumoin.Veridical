@@ -13,39 +13,71 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Commitments;
 
 /// <summary>
-/// AA.2 byte-identity proof for the Hyrax adapter: routing commit / open /
+/// Byte-identity proof for the Hyrax adapter: routing commit / open /
 /// verify through the scheme-agnostic <see cref="PolynomialCommitmentProvider"/>
 /// produced by <see cref="HyraxPolynomialCommitmentScheme"/> yields exactly the
 /// same wire bytes as calling the Hyrax extension methods directly, and the
 /// provider's own commit → open → verify round-trip succeeds. This is the
-/// adapter-level guarantee that AA.2's consumer rewiring rests on.
+/// adapter-level guarantee that consumers migrating onto the scheme-agnostic
+/// provider surface can rely on.
 /// </summary>
 [TestClass]
 internal sealed class HyraxPolynomialCommitmentSchemeTests
 {
+    /// <summary>The Fiat–Shamir transcript domain label for this test's transcripts.</summary>
     private const string TranscriptDomain = "veridical.test.hyrax.pcs.v1";
 
-    //A representative non-trivial size: n = 4 gives a 4 × 4 matrix (multiple
-    //rows to combine) and a 2-round IPA (multiple folds), so the commitment,
-    //the blind, and every proof section are exercised.
+    /// <summary>
+    /// A representative non-trivial size: n = 4 gives a 4 × 4 matrix (multiple rows to combine) and a
+    /// 2-round IPA (multiple folds), so the commitment, the blind, and every proof section are
+    /// exercised.
+    /// </summary>
     private const int VariableCount = 4;
+
+    /// <summary>The fixed seed for this test's deterministic random-scalar source.</summary>
     private const int SampleSeed = 7654;
 
+    /// <summary>The BLS12-381 G1 hash-to-curve delegate.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The BLS12-381 G1 addition delegate.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BLS12-381 G1 scalar-multiplication delegate.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BLS12-381 G1 multi-scalar-multiplication delegate.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The BLS12-381 G1 on-curve check delegate.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BLS12-381 G1 prime-order-subgroup membership check delegate.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BLS12-381 scalar addition delegate.</summary>
     private static ScalarAddDelegate ScalarAdd { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar subtraction delegate.</summary>
     private static ScalarSubtractDelegate ScalarSubtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar multiplication delegate.</summary>
     private static ScalarMultiplyDelegate ScalarMul { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar inversion delegate.</summary>
     private static ScalarInvertDelegate ScalarInvert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BLS12-381 scalar reduction delegate.</summary>
     private static ScalarReduceDelegate ScalarReduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The Blake3-backed Fiat–Shamir hash delegate.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The Blake3-backed Fiat–Shamir squeeze delegate.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
 
 
+    /// <summary>Verifies that committing and opening through the scheme-agnostic provider produces byte-identical commitment, blind, opening and claimed-value bytes to calling the Hyrax extension methods directly.</summary>
     [TestMethod]
     public void ProviderCommitOpenIsByteIdenticalToDirectHyrax()
     {
@@ -108,6 +140,7 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Verifies that the provider's own commit → open → verify round-trip succeeds, and that the provider reports the Hyrax scheme and the BLS12-381 curve.</summary>
     [TestMethod]
     public void ProviderRoundtripVerifies()
     {
@@ -148,10 +181,15 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Creates a fresh transcript under this test's domain label.</summary>
+    /// <returns>The new transcript.</returns>
     private static FiatShamirTranscript NewTranscript() =>
         FiatShamirTranscript.Initialise(new FiatShamirDomainLabel(TranscriptDomain), ReadOnlySpan<byte>.Empty, WellKnownHashAlgorithms.Blake3, Hash, BaseMemoryPool.Shared);
 
 
+    /// <summary>Builds a deterministic multilinear extension over <paramref name="variableCount"/> variables, evaluation <c>i</c> set to <c>13i + 7</c>.</summary>
+    /// <param name="variableCount">The number of variables.</param>
+    /// <returns>The new multilinear extension.</returns>
     private static MultilinearExtension BuildMle(int variableCount)
     {
         int evalCount = 1 << variableCount;
@@ -167,6 +205,9 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Builds a deterministic evaluation point of <paramref name="variableCount"/> coordinates, coordinate <c>i</c> set to <c>5i + 3</c>.</summary>
+    /// <param name="variableCount">The number of coordinates.</param>
+    /// <returns>The owned point array.</returns>
     private static PointArray BuildPointArray(int variableCount)
     {
         var scalars = new Scalar[variableCount];
@@ -179,6 +220,9 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Builds a canonical scalar from a small non-negative integer.</summary>
+    /// <param name="value">The integer value.</param>
+    /// <returns>The new scalar.</returns>
     private static Scalar MakeScalar(int value)
     {
         using IMemoryOwner<byte> owner = BaseMemoryPool.Shared.Rent(Scalar.SizeBytes);
@@ -188,6 +232,10 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Reduces <paramref name="value"/> mod the BLS12-381 scalar-field order and writes it as canonical big-endian bytes.</summary>
+    /// <param name="value">The integer to reduce and encode.</param>
+    /// <param name="destination">Receives the canonical big-endian bytes.</param>
+    /// <exception cref="InvalidOperationException">When the reduced value does not fit <paramref name="destination"/>.</exception>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -207,11 +255,15 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>Creates a deterministic random-scalar source: each draw hashes an incrementing counter under <paramref name="seed"/>.</summary>
+    /// <param name="seed">The seed value.</param>
+    /// <returns>The deterministic random-scalar delegate.</returns>
     private static ScalarRandomDelegate MakeFixedRandom(int seed)
     {
         int counter = 0;
         return Sample;
 
+        //Computes the next draw as SHA-256(seed, counter) reduced mod the scalar-field order into destination, and returns inboundTag unchanged.
         Tag Sample(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
         {
             Span<byte> hashInput = stackalloc byte[8];
@@ -228,22 +280,28 @@ internal sealed class HyraxPolynomialCommitmentSchemeTests
     }
 
 
+    /// <summary>An owned array of scalars representing a multilinear evaluation point, disposed as a unit.</summary>
     private readonly struct PointArray: IDisposable
     {
-        private readonly Scalar[] scalars;
+        /// <summary>The owned scalar coordinates.</summary>
+        private Scalar[] Scalars { get; }
 
-        public PointArray(Scalar[] scalars) { this.scalars = scalars; }
+        /// <summary>Wraps an existing scalar array for disposal as a unit.</summary>
+        /// <param name="scalars">The scalars to own.</param>
+        public PointArray(Scalar[] scalars) { this.Scalars = scalars; }
 
-        public ReadOnlySpan<Scalar> AsSpan => scalars;
+        /// <summary>The coordinates as a read-only span.</summary>
+        public ReadOnlySpan<Scalar> AsSpan => Scalars;
 
+        /// <summary>Disposes every non-null coordinate scalar.</summary>
         public void Dispose()
         {
-            if(scalars is null)
+            if(Scalars is null)
             {
                 return;
             }
 
-            foreach(Scalar s in scalars)
+            foreach(Scalar s in Scalars)
             {
                 s?.Dispose();
             }

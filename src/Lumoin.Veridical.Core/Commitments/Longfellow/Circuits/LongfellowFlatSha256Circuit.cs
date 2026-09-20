@@ -67,12 +67,15 @@ internal sealed class LongfellowFlatSha256Circuit
     /// <summary>The candidate-carry slack for the final hash-state words (the reference's <c>assert_eqmod(H1[i], ..., 2)</c>).</summary>
     private const int FinalStateCarrySlack = 2;
 
-    private readonly LongfellowLogic logic;
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowBitPlucker plucker;
+    /// <summary>The gadget layer every assertion in this circuit lowers to.</summary>
+    private LongfellowLogic Logic { get; }
+    /// <summary>The logic backend's low-level wire operations, borrowed from <see cref="Logic"/>.</summary>
+    private LongfellowLogicBackend Backend { get; }
+    /// <summary>The plucker witness words are unpacked through, exposed via <see cref="Plucker"/>.</summary>
+    private LongfellowBitPlucker PluckerCollaborator { get; }
 
     /// <summary>The plucker this gadget unpacks witness words through (the reference's public <c>bp_</c>, exposed so a caller can size a matching <see cref="LongfellowBitPluckerEncoder"/>).</summary>
-    public LongfellowBitPlucker Plucker => plucker;
+    public LongfellowBitPlucker Plucker => PluckerCollaborator;
 
 
     /// <summary>
@@ -86,9 +89,9 @@ internal sealed class LongfellowFlatSha256Circuit
         ArgumentNullException.ThrowIfNull(logic);
         ArgumentNullException.ThrowIfNull(plucker);
 
-        this.logic = logic;
-        backend = logic.Backend;
-        this.plucker = plucker;
+        this.Logic = logic;
+        Backend = logic.Backend;
+        this.PluckerCollaborator = plucker;
     }
 
 
@@ -98,7 +101,7 @@ internal sealed class LongfellowFlatSha256Circuit
     /// no bitness assertion of its own — bitness follows later from <see cref="LongfellowBitPlucker.Pluck"/>).
     /// </summary>
     /// <returns>The declared packed wires.</returns>
-    public int[] PackedInputV32() => plucker.PackedInput(plucker.PackedV32ElementCount);
+    public int[] PackedInputV32() => PluckerCollaborator.PackedInput(PluckerCollaborator.PackedV32ElementCount);
 
 
     /// <summary>
@@ -128,7 +131,7 @@ internal sealed class LongfellowFlatSha256Circuit
         ArgumentNullException.ThrowIfNull(registerAWitness);
         ArgumentNullException.ThrowIfNull(finalState);
 
-        var adder = new LongfellowBitAdder(logic, LongfellowLogic.BitWidth32);
+        using var adder = new LongfellowBitAdder(Logic, LongfellowLogic.BitWidth32);
 
         var w = new LongfellowBitWire[RoundCount][];
         for(int i = 0; i < InputWordCount; i++)
@@ -154,10 +157,10 @@ internal sealed class LongfellowFlatSha256Circuit
 
         for(int t = 0; t < RoundCount; t++)
         {
-            LongfellowBitWire[] roundConstant = logic.BitVector(LongfellowLogic.BitWidth32, LongfellowSha256Constants.RoundConstants[t]);
-            int t1 = adder.Add([h, BigSigma1(e), logic.Choose(e, f, g), roundConstant, w[t]]);
+            LongfellowBitWire[] roundConstant = Logic.BitVector(LongfellowLogic.BitWidth32, LongfellowSha256Constants.RoundConstants[t]);
+            int t1 = adder.Add([h, BigSigma1(e), Logic.Choose(e, f, g), roundConstant, w[t]]);
             int scaledSigma0 = adder.AsFieldElement(BigSigma0(a));
-            int scaledMajority = adder.AsFieldElement(logic.Majority(a, b, c));
+            int scaledMajority = adder.AsFieldElement(Logic.Majority(a, b, c));
             int t2 = adder.Add(scaledSigma0, scaledMajority);
 
             h = g;
@@ -212,21 +215,21 @@ internal sealed class LongfellowFlatSha256Circuit
         var finalState = new LongfellowBitWire[StateWordCount][];
         for(int i = 0; i < StateWordCount; i++)
         {
-            finalState[i] = plucker.UnpackV32(packedFinalState[i]);
+            finalState[i] = PluckerCollaborator.UnpackV32(packedFinalState[i]);
         }
 
         var scheduleExtension = new LongfellowBitWire[ScheduleWordCount][];
         for(int i = 0; i < ScheduleWordCount; i++)
         {
-            scheduleExtension[i] = plucker.UnpackV32(packedScheduleExtension[i]);
+            scheduleExtension[i] = PluckerCollaborator.UnpackV32(packedScheduleExtension[i]);
         }
 
         var registerEWitness = new LongfellowBitWire[RoundCount][];
         var registerAWitness = new LongfellowBitWire[RoundCount][];
         for(int i = 0; i < RoundCount; i++)
         {
-            registerEWitness[i] = plucker.UnpackV32(packedRegisterEWitness[i]);
-            registerAWitness[i] = plucker.UnpackV32(packedRegisterAWitness[i]);
+            registerEWitness[i] = PluckerCollaborator.UnpackV32(packedRegisterEWitness[i]);
+            registerAWitness[i] = PluckerCollaborator.UnpackV32(packedRegisterAWitness[i]);
         }
 
         AssertTransformBlock(blockWords, initialState, scheduleExtension, registerEWitness, registerAWitness, finalState);
@@ -258,7 +261,7 @@ internal sealed class LongfellowFlatSha256Circuit
         var initialState = new LongfellowBitWire[StateWordCount][];
         for(int i = 0; i < StateWordCount; i++)
         {
-            initialState[i] = plucker.UnpackV32(packedInitialState[i]);
+            initialState[i] = PluckerCollaborator.UnpackV32(packedInitialState[i]);
         }
 
         AssertTransformBlock(blockWords, initialState, packedScheduleExtension, packedRegisterEWitness, packedRegisterAWitness, packedFinalState);
@@ -350,19 +353,19 @@ internal sealed class LongfellowFlatSha256Circuit
         var accumulated = new int[StateWordCount][];
         for(int i = 0; i < StateWordCount; i++)
         {
-            accumulated[i] = new int[plucker.PackedV32ElementCount];
+            accumulated[i] = new int[PluckerCollaborator.PackedV32ElementCount];
         }
 
         for(int block = 0; block < maxBlocks; block++)
         {
-            LongfellowBitWire isLastOccupiedBlock = logic.Equal(blockCount, (ulong)(block + 1));
-            int selector = logic.Eval(isLastOccupiedBlock);
+            LongfellowBitWire isLastOccupiedBlock = Logic.Equal(blockCount, (ulong)(block + 1));
+            int selector = Logic.Eval(isLastOccupiedBlock);
             for(int i = 0; i < StateWordCount; i++)
             {
-                for(int k = 0; k < plucker.PackedV32ElementCount; k++)
+                for(int k = 0; k < PluckerCollaborator.PackedV32ElementCount; k++)
                 {
-                    int maybeSha = backend.Mul(selector, blockWitnesses[block].FinalState[i][k]);
-                    accumulated[i][k] = block == 0 ? maybeSha : backend.Add(accumulated[i][k], maybeSha);
+                    int maybeSha = Backend.Mul(selector, blockWitnesses[block].FinalState[i][k]);
+                    accumulated[i][k] = block == 0 ? maybeSha : Backend.Add(accumulated[i][k], maybeSha);
                 }
             }
         }
@@ -370,14 +373,14 @@ internal sealed class LongfellowFlatSha256Circuit
         var reconstructedHash = new LongfellowBitWire[HashBitWidth];
         for(int j = 0; j < StateWordCount; j++)
         {
-            LongfellowBitWire[] word = plucker.UnpackV32(accumulated[j]);
+            LongfellowBitWire[] word = PluckerCollaborator.UnpackV32(accumulated[j]);
             for(int k = 0; k < LongfellowLogic.BitWidth32; k++)
             {
                 reconstructedHash[((StateWordCount - 1 - j) * LongfellowLogic.BitWidth32) + k] = word[k];
             }
         }
 
-        logic.AssertEqual(reconstructedHash, target);
+        Logic.AssertEqual(reconstructedHash, target);
     }
 
 
@@ -395,12 +398,12 @@ internal sealed class LongfellowFlatSha256Circuit
 
         for(int block = 0; block < maxBlocks; block++)
         {
-            LongfellowBitWire wantZero = logic.LessThanOrEqual(blockCount, (ulong)block);
+            LongfellowBitWire wantZero = Logic.LessThanOrEqual(blockCount, (ulong)block);
             for(int j = 0; j < BytesPerBlock; j++)
             {
                 int index = (block * BytesPerBlock) + j;
-                LongfellowBitWire isZero = logic.Equal(messageBytes[index], 0UL);
-                logic.AssertImplies(wantZero, isZero);
+                LongfellowBitWire isZero = Logic.Equal(messageBytes[index], 0UL);
+                Logic.AssertImplies(wantZero, isZero);
             }
         }
     }
@@ -421,19 +424,19 @@ internal sealed class LongfellowFlatSha256Circuit
         ArgumentNullException.ThrowIfNull(messageBytes);
         ArgumentNullException.ThrowIfNull(blockCount);
 
-        LongfellowBitWire[] length = logic.BitVector(LongfellowLogic.BitWidth64, 0UL);
+        LongfellowBitWire[] length = Logic.BitVector(LongfellowLogic.BitWidth64, 0UL);
         for(int block = 0; block < maxBlocks; block++)
         {
-            LongfellowBitWire isBlock = logic.Equal(blockCount, (ulong)(block + 1));
+            LongfellowBitWire isBlock = Logic.Equal(blockCount, (ulong)(block + 1));
             int lastByteIndex = (block * BytesPerBlock) + (BytesPerBlock - 1);
             for(int j = 0; j < LongfellowLogic.BitWidth64; j++)
             {
                 LongfellowBitWire byteBit = messageBytes[lastByteIndex - (j / LongfellowLogic.BitWidth8)][j % LongfellowLogic.BitWidth8];
-                length[j] = logic.OrExclusive(length[j], logic.And(isBlock, byteBit));
+                length[j] = Logic.OrExclusive(length[j], Logic.And(isBlock, byteBit));
             }
         }
 
-        logic.AssertIsBit(length);
+        Logic.AssertIsBit(length);
 
         return length;
     }
@@ -446,7 +449,7 @@ internal sealed class LongfellowFlatSha256Circuit
         var context = new LongfellowBitWire[StateWordCount][];
         for(int i = 0; i < StateWordCount; i++)
         {
-            context[i] = logic.BitVector(LongfellowLogic.BitWidth32, LongfellowSha256Constants.InitialHash[i]);
+            context[i] = Logic.BitVector(LongfellowLogic.BitWidth32, LongfellowSha256Constants.InitialHash[i]);
         }
 
         return context;
@@ -457,28 +460,28 @@ internal sealed class LongfellowFlatSha256Circuit
     /// <param name="x">The operand, 32 bits.</param>
     /// <returns>The rotated exclusive-or.</returns>
     private LongfellowBitWire[] BigSigma0(LongfellowBitWire[] x) =>
-        logic.Xor(LongfellowLogic.RotateRight(x, 2), LongfellowLogic.RotateRight(x, 13), LongfellowLogic.RotateRight(x, 22));
+        Logic.Xor(LongfellowLogic.RotateRight(x, 2), LongfellowLogic.RotateRight(x, 13), LongfellowLogic.RotateRight(x, 22));
 
 
     /// <summary>The reference's <c>Sigma1</c> (FIPS 180-4 section 4.1.2's uppercase Σ1).</summary>
     /// <param name="x">The operand, 32 bits.</param>
     /// <returns>The rotated exclusive-or.</returns>
     private LongfellowBitWire[] BigSigma1(LongfellowBitWire[] x) =>
-        logic.Xor(LongfellowLogic.RotateRight(x, 6), LongfellowLogic.RotateRight(x, 11), LongfellowLogic.RotateRight(x, 25));
+        Logic.Xor(LongfellowLogic.RotateRight(x, 6), LongfellowLogic.RotateRight(x, 11), LongfellowLogic.RotateRight(x, 25));
 
 
     /// <summary>The reference's <c>sigma0</c> (FIPS 180-4 section 4.1.2's lowercase σ0).</summary>
     /// <param name="x">The operand, 32 bits.</param>
     /// <returns>The rotated and shifted exclusive-or.</returns>
     private LongfellowBitWire[] SmallSigma0(LongfellowBitWire[] x) =>
-        logic.Xor(LongfellowLogic.RotateRight(x, 7), LongfellowLogic.RotateRight(x, 18), logic.ShiftRight(x, 3));
+        Logic.Xor(LongfellowLogic.RotateRight(x, 7), LongfellowLogic.RotateRight(x, 18), Logic.ShiftRight(x, 3));
 
 
     /// <summary>The reference's <c>sigma1</c> (FIPS 180-4 section 4.1.2's lowercase σ1).</summary>
     /// <param name="x">The operand, 32 bits.</param>
     /// <returns>The rotated and shifted exclusive-or.</returns>
     private LongfellowBitWire[] SmallSigma1(LongfellowBitWire[] x) =>
-        logic.Xor(LongfellowLogic.RotateRight(x, 17), LongfellowLogic.RotateRight(x, 19), logic.ShiftRight(x, 10));
+        Logic.Xor(LongfellowLogic.RotateRight(x, 17), LongfellowLogic.RotateRight(x, 19), Logic.ShiftRight(x, 10));
 }
 
 /// <summary>

@@ -23,6 +23,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 [TestClass]
 internal sealed class MaskedSpartanSoundnessTests
 {
+    /// <summary>Verifies that the masked Spartan prover throws at prove time when the witness violates a constraint.</summary>
     [TestMethod]
     public void UnsatisfyingWitnessThrowsAtProveTime()
     {
@@ -46,6 +47,7 @@ internal sealed class MaskedSpartanSoundnessTests
     }
 
 
+    /// <summary>Verifies, across fifty random fake witnesses for the one-multiply instance, that no unsatisfying witness produces a proof the masked verifier accepts.</summary>
     [TestMethod]
     public void RandomFakeWitnessNeverProducesAcceptingProof()
     {
@@ -113,13 +115,14 @@ internal sealed class MaskedSpartanSoundnessTests
     }
 
 
+    /// <summary>Verifies that a masked Spartan proof produced against one instance is rejected when verified against a different instance of the same dimensions.</summary>
     [TestMethod]
     public void VerifyAgainstDifferentInstanceRejected()
     {
-        //Statement-binding ledger check for the composed masked-Spartan path:
-        //the audit found the PCS opening sub-protocols do not themselves absorb
-        //the statement, so masked Spartan's soundness against a substituted
-        //instance rests on its outer transcript binding the instance. Prove
+        //Statement-binding check for the composed masked-Spartan path: the PCS
+        //opening sub-protocols do not themselves absorb the statement, so
+        //masked Spartan's soundness against a substituted instance rests on
+        //its outer transcript binding the instance. Prove
         //satisfaction of one 2×8 instance, then verify against a different 2×8
         //instance (same dimensions, different wiring); the composed proof must
         //reject. The plain-Spartan sibling is
@@ -147,6 +150,7 @@ internal sealed class MaskedSpartanSoundnessTests
     }
 
 
+    /// <summary>Verifies that a witness off by one in the multiplication's result slot still throws at prove time.</summary>
     [TestMethod]
     public void WitnessOffByOneInZeroSlotStillCaught()
     {
@@ -176,6 +180,8 @@ internal sealed class MaskedSpartanSoundnessTests
     }
 
 
+    /// <summary>Builds a deterministic, per-trial canonical witness of uniformly-filled scalar bytes, for the random-fake-witness soundness sweep.</summary>
+    /// <param name="trialIndex">The trial number, used as the deterministic fill salt so each trial gets a distinct witness.</param>
     private static RawR1csWitness SampleRandomWitness(int trialIndex)
     {
         int scalarSize = Scalar.SizeBytes;

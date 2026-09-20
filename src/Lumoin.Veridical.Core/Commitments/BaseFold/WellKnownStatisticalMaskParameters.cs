@@ -3,15 +3,15 @@ using System;
 namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 
 /// <summary>
-/// The deterministic parameter policy of the statistical sumcheck mask
-/// (the statistical-mask design notes, §2 v3): from the masked sumcheck's
-/// shape alone it derives where the mask's coefficient commitment lives, so the
+/// The deterministic parameter policy of the statistical sumcheck mask: from
+/// the masked sumcheck's shape alone it derives where the mask's coefficient
+/// commitment lives, so the
 /// prover and verifier agree on every size without wire data. The mask itself
 /// is the Libra sum-of-univariates (<c>perVariableDegree·d + 1</c>
 /// coefficients, degree matching the masked round format); the committed
 /// vector <c>C*</c> appends random <em>filler</em> whose all-ones-weighted
-/// coordinates launder the weighted opening's cleartext reveals (the §3
-/// ledger). Over BaseFold the commitment is additionally dimension-lifted so
+/// coordinates launder the weighted opening's cleartext reveals. Over BaseFold
+/// the commitment is additionally dimension-lifted so
 /// its IOPP query reveals are laundered by the lift block (the enforced
 /// bounded-independence budget); over Pedersen/IPA there is no lift — the
 /// commitment hides unconditionally and only the inner-product argument's
@@ -19,27 +19,30 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// </summary>
 public static class WellKnownStatisticalMaskParameters
 {
-    //The rank-slack margin over the counted level-2 reveals: the §3 lemma's
-    //generic-rank argument wants headroom beyond the exact reveal count so a
-    //rank-deficient challenge draw stays a negligible-probability event. Firmed
-    //by the SM.4 lemma; mirrors the hiding budget's additive margin in spirit.
+    /// <summary>
+    /// The rank-slack margin over the counted level-2 reveals: the generic-rank
+    /// argument wants headroom beyond the exact reveal count so a rank-deficient
+    /// challenge draw stays a negligible-probability event; mirrors the hiding
+    /// budget's additive margin in spirit.
+    /// </summary>
     private const int RankSlackCoordinateCount = 8;
 
-    //The ℓ₂ search ceiling: 2^31 coordinates is far beyond any realisable
-    //commitment; reaching it indicates a logic error, not a configuration.
+    /// <summary>The ℓ₂ search ceiling: 2^31 coordinates is far beyond any realisable commitment; reaching it indicates a logic error, not a configuration.</summary>
     private const int CoefficientVariableCountCeiling = 31;
 
-    //The per-variable degree bounds of the mask's univariates, matching the
-    //masked round formats the kernel supports: 2 for a quadratic sumcheck
-    //(BaseFold's f·eq_z, the Spartan inner), 3 for the Spartan outer cubic.
+    /// <summary>The mask univariates' degree for a quadratic sumcheck (BaseFold's <c>f·eq_z</c>, the Spartan inner): the per-variable degree bound the kernel's masked round format supports.</summary>
     private const int QuadraticDegree = 2;
+
+    /// <summary>The mask univariates' degree for the Spartan outer cubic sumcheck: the per-variable degree bound the kernel's masked round format supports.</summary>
     private const int CubicDegree = 3;
 
-    //The Pedersen/IPA weighted opening's cleartext functional reveals of the
-    //committed vector: the precommitted filler sum σ_F and the IPA's final
-    //folded scalar. The round L/R points and C_f are blinded or DLOG-hard
-    //group elements — the Pedersen path's hiding is computational there, and
-    //the filler only launders what is revealed in the clear.
+    /// <summary>
+    /// The Pedersen/IPA weighted opening's cleartext functional reveals of the committed vector:
+    /// the precommitted filler sum <c>σ_F</c> and the IPA's final folded scalar. The round
+    /// <c>L</c>/<c>R</c> points and <c>C_f</c> are blinded or DLOG-hard group elements — the
+    /// Pedersen path's hiding is computational there, and the filler only launders what is revealed
+    /// in the clear.
+    /// </summary>
     private const int PedersenIpaCleartextRevealCount = 2;
 
 
@@ -77,7 +80,7 @@ public static class WellKnownStatisticalMaskParameters
 
             //The weighted opening reveals ≈ 2·rounds + 2 functionals supported
             //on the nonzero-weight coordinates; the filler must rank-cover them
-            //with slack (design doc §3 condition 2).
+            //with slack.
             int requiredFiller = (2 * liftedVariableCount) + 2 + RankSlackCoordinateCount;
             if(maskCoefficientCount + requiredFiller <= 1 << coefficientVariableCount)
             {

@@ -1,3 +1,4 @@
+Fiat-Shamir transcript values: the of_scalar conversions and the v6 transcript's key, byte, and squeezed-element state.
 ofscalar7=e5b458d8fa0e6457581ef39fdfe7e0d7
 ofscalar8=ed7efff9a2e88d3f5c66f912da081eb6
 ofscalar9=ec7efff9a2e88d3f5c66f912da081eb6

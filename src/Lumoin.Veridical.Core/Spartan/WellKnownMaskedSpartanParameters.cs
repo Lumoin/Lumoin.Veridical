@@ -1,11 +1,11 @@
 namespace Lumoin.Veridical.Core.Spartan;
 
 /// <summary>
-/// Fixed protocol shape of the masked Spartan2 statistical masks (SM.7b,
-/// design v3 of the statistical-mask design notes): the per-variable
-/// degree of each sumcheck's sum-of-univariates kernel mask, matching the
-/// round format the mask must blanket. Pinned here so the prover, the
-/// verifier, and the proof containers derive identical mask shapes.
+/// Fixed protocol shape of the masked Spartan2 statistical masks: the
+/// per-variable degree of each sumcheck's sum-of-univariates kernel mask,
+/// matching the round format the mask must blanket. Pinned here so the
+/// prover, the verifier, and the proof containers derive identical mask
+/// shapes.
 /// </summary>
 public static class WellKnownMaskedSpartanParameters
 {

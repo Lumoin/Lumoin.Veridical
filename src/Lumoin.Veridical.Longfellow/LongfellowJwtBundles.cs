@@ -33,55 +33,66 @@ namespace Lumoin.Veridical.Longfellow;
 /// </remarks>
 internal static class LongfellowJwtBundles
 {
-    //The reference ZK run shape for the JWT statement: zk_testing.h's kLigeroRate/kLigeroNreq,
-    //the same 7/132 pair the mdoc v7 registry selects.
+    /// <summary>The Ligero code's inverse rate for the JWT statement: the same 7/132 rate/query pair the mdoc v7 registry selects.</summary>
     internal const int InverseRate = 7;
+
+    /// <summary>The number of opened Ligero columns for the JWT statement: the same 7/132 rate/query pair the mdoc v7 registry selects.</summary>
     internal const int OpenedColumnCount = 132;
 
-    //One canonical field element per 32-byte big-endian slot.
+    /// <summary>One canonical field element per 32-byte big-endian slot.</summary>
     internal const int Fp256ElementBytes = Scalar.SizeBytes;
 
-    //The Ligero sub-field element width of the production-16 profile the Fp256 encoding uses.
+    /// <summary>The Ligero sub-field element width of the production-16 profile the Fp256 encoding uses.</summary>
     internal const int SubFieldBytes = 2;
 
-    //The Fiat-Shamir transcript version tag of the kernel-compiled statement ceremony.
+    /// <summary>The Fiat-Shamir transcript version tag of the kernel-compiled statement ceremony.</summary>
     internal const int TranscriptVersion = 6;
 
-    //The reference's single-copy circuit shape.
+    /// <summary>The reference's single-copy circuit shape.</summary>
     private const int CopyCount = 1;
 
-    //The commitment root digest width heading every proof envelope.
+    /// <summary>The commitment root digest width heading every proof envelope.</summary>
     internal const int DigestSize = 32;
 
-    //The canonical-domain P-256 base-field delegates (the pinned end-to-end path) and the
-    //order-field delegates the witness generator's ECDSA advice computation dispatches on.
+    /// <summary>The canonical-domain P-256 base-field addition delegate — the pinned end-to-end path.</summary>
     private static ScalarAddDelegate Fp256Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
+
+    /// <summary>The canonical-domain P-256 base-field subtraction delegate — the pinned end-to-end path.</summary>
     private static ScalarSubtractDelegate Fp256Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
+
+    /// <summary>The canonical-domain P-256 base-field multiplication delegate — the pinned end-to-end path.</summary>
     private static ScalarMultiplyDelegate Fp256Multiply { get; } = P256BaseFieldMontgomeryBackend.GetMultiply();
+
+    /// <summary>The canonical-domain P-256 base-field inversion delegate — the pinned end-to-end path.</summary>
     private static ScalarInvertDelegate Fp256Invert { get; } = P256BaseFieldMontgomeryBackend.GetInvert();
+
+    /// <summary>The P-256 order-field multiplication delegate the witness generator's ECDSA advice computation dispatches on.</summary>
     private static ScalarMultiplyDelegate OrderMultiply { get; } = P256ScalarMontgomeryBackend.GetMultiply();
+
+    /// <summary>The P-256 order-field subtraction delegate the witness generator's ECDSA advice computation dispatches on.</summary>
     private static ScalarSubtractDelegate OrderSubtract { get; } = P256ScalarMontgomeryBackend.GetSubtract();
+
+    /// <summary>The P-256 order-field inversion delegate the witness generator's ECDSA advice computation dispatches on.</summary>
     private static ScalarInvertDelegate OrderInvert { get; } = P256ScalarMontgomeryBackend.GetInvert();
 
-    //The curve constants shared by the statement circuit and the witness generator.
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
-
-    //The canonical big-endian p − 1 the field bundle's negation constant closes over.
+    /// <summary>The canonical big-endian p − 1 the field bundle's negation constant closes over.</summary>
     private static byte[] CanonicalPrimeMinusOne { get; } = BuildCanonicalPrimeMinusOne();
 
 
     /// <summary>Builds the canonical-domain P-256 base-field bundle the compiler, witness generator and drivers share.</summary>
-    /// <returns>The field bundle.</returns>
-    internal static LongfellowLogicFieldOperations NewFieldBundle() =>
-        LongfellowLogicFieldOperations.CreateFp256(Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, CanonicalPrimeMinusOne);
+    /// <param name="pool">The caller pool supplying the field constants and compiler storage.</param>
+    /// <returns>The disposable field bundle.</returns>
+    internal static LongfellowLogicFieldOperations NewFieldBundle(BaseMemoryPool pool) =>
+        LongfellowLogicFieldOperations.CreateFp256(Fp256Add, Fp256Subtract, Fp256Multiply, Fp256Invert, CanonicalPrimeMinusOne, pool);
 
 
     /// <summary>Builds the witness generator over the same field bundle and curve the statement circuit uses.</summary>
-    /// <param name="field">The field bundle.</param>
+    /// <param name="field">The borrowed field bundle carrying the facade's pool for retained witness storage.</param>
+    /// <param name="curve">The curve constants borrowed for the generator's lifetime.</param>
     /// <param name="blockCapacity">The preimage capacity in SHA-256 blocks.</param>
-    /// <returns>The generator.</returns>
-    internal static LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field, int blockCapacity) =>
-        new(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, blockCapacity);
+    /// <returns>The disposable generator; the caller releases it before the field, curve and pool.</returns>
+    internal static LongfellowJwtWitness NewWitnessGenerator(LongfellowLogicFieldOperations field, LongfellowEllipticCurveParameters curve, int blockCapacity) =>
+        new(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, curve, blockCapacity);
 
 
     /// <summary>
@@ -89,16 +100,17 @@ internal static class LongfellowJwtBundles
     /// statement gadget constructed first, then the public inputs (issuer key, key-binding
     /// digest, the disclosed attributes), the private boundary, and the witness declaration.
     /// </summary>
-    /// <param name="field">The field bundle to compile over.</param>
+    /// <param name="field">The field bundle and originating compiler pool.</param>
+    /// <param name="curve">The live curve constants shared with the witness generator.</param>
     /// <param name="blockCapacity">The block capacity.</param>
     /// <param name="attributeCount">The disclosed attribute count.</param>
-    /// <returns>The compiled circuit.</returns>
-    internal static LongfellowSumcheckCircuit CompileStatement(LongfellowLogicFieldOperations field, int blockCapacity, int attributeCount)
+    /// <returns>The disposable compiled circuit owning its bytes independently of the compiler.</returns>
+    internal static LongfellowSumcheckCircuit CompileStatement(LongfellowLogicFieldOperations field, LongfellowEllipticCurveParameters curve, int blockCapacity, int attributeCount)
     {
-        var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        using var builder = new LongfellowQuadCircuitBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
-        var circuit = new LongfellowJwtCircuit(logic, Curve, blockCapacity);
+        using var logic = new LongfellowLogic(backend, field);
+        var circuit = new LongfellowJwtCircuit(logic, curve, blockCapacity);
 
         int pkX = logic.InputElement();
         int pkY = logic.InputElement();
@@ -359,8 +371,7 @@ internal static class LongfellowJwtBundles
     }
 
 
-    //The P-256 base-field prime is exactly 32 big-endian bytes, so the minimal unsigned write of
-    //p − 1 fills the canonical scalar completely.
+    /// <summary>Builds the canonical big-endian p − 1: the P-256 base-field prime is exactly 32 big-endian bytes, so the minimal unsigned write of p − 1 fills the canonical scalar completely.</summary>
     private static byte[] BuildCanonicalPrimeMinusOne()
     {
         byte[] canonical = new byte[Fp256ElementBytes];

@@ -9,8 +9,8 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The byte-identity gate for the GF(2^128) batched <see cref="LongfellowEq.FillEq"/> path (Perf Increment 2,
-/// Commit 1): the per-level scalar-times-vector products <c>Q[level]·eq[i]</c> routed through
+/// The byte-identity gate for the GF(2^128) batched <see cref="LongfellowEq.FillEq"/> path: the per-level
+/// scalar-times-vector products <c>Q[level]·eq[i]</c> routed through
 /// <see cref="Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate"/> must produce a byte-for-byte identical
 /// <c>eq</c> array to the per-scalar multiply path. <c>filleq</c> feeds the constraint builder's
 /// <c>eq0</c>/<c>eq1</c>/<c>eqh0</c>/<c>eqh1</c> tables, whose values flow into the Ligero <c>A·w = b</c>
@@ -29,16 +29,23 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class LongfellowEqFillEqBatchTests
 {
+    /// <summary>The width in bytes of one field element in its canonical scalar representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The on-wire GF(2^128) element width in bytes.</summary>
     private const int ElementBytes = 16;
 
+    /// <summary>The GF(2^128) field subtraction delegate both the scalar and batched <c>FillEq</c> paths are driven through.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) field multiplication delegate the scalar <c>FillEq</c> path is driven through.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The broadcast-scalar fused multiply-accumulate primitive the batched <c>FillEq</c> path routes its per-level products through.</summary>
     private static ScalarBroadcastMultiplyAccumulateDelegate BroadcastMultiplyAccumulate { get; } = Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate();
 
 
+    /// <summary>Verifies, across a range of sizes covering the even/odd split, the first-iteration overflow special case, and several binding levels, that the batched <c>FillEq</c> path produces byte-identical output to the per-scalar path.</summary>
     [TestMethod]
     public void BatchedFillEqIsByteIdenticalToTheScalarFillEq()
     {
@@ -72,6 +79,7 @@ internal sealed class LongfellowEqFillEqBatchTests
     }
 
 
+    /// <summary>Verifies that supplying a product scratch buffer one scalar short of the required size makes <c>FillEq</c> disengage the batch path and reproduce the scalar fill byte-identically.</summary>
     [TestMethod]
     public void AnUndersizedProductScratchFallsBackToTheScalarPathByteIdentically()
     {
@@ -96,7 +104,7 @@ internal sealed class LongfellowEqFillEqBatchTests
     }
 
 
-    //The GF(2^128) multiplicative one in the canonical 32-byte big-endian slot (value 1 in the low limb).
+    /// <summary>Writes the GF(2^128) multiplicative one in the canonical 32-byte big-endian slot (value 1 in the low limb).</summary>
     private static void WorkingOne(Span<byte> destination)
     {
         destination.Clear();
@@ -104,7 +112,7 @@ internal sealed class LongfellowEqFillEqBatchTests
     }
 
 
-    //logn = the number of binding rounds for n entries = ceil(log2(n)); 0 for n == 1.
+    /// <summary>Computes <c>logn</c>, the number of binding rounds for <paramref name="n"/> entries: <c>ceil(log2(n))</c>, zero for <c>n == 1</c>.</summary>
     private static int BitLength(int n)
     {
         int bits = 0;
@@ -119,9 +127,12 @@ internal sealed class LongfellowEqFillEqBatchTests
     }
 
 
-    //A deterministic SHA-256 keystream of count canonical GF(2^128) scalars: each scalar's low ElementBytes
-    //carry keystream bytes, the high bytes stay zero (the canonical slot). The seed advances per draw so the
-    //sizes do not share a q-point.
+    /// <summary>
+    /// Builds a deterministic SHA-256 keystream of <paramref name="count"/> canonical GF(2^128) scalars:
+    /// each scalar's low <see cref="ElementBytes"/> carry keystream bytes, the high bytes stay zero (the
+    /// canonical slot). <paramref name="seed"/> advances per draw so different sizes do not share a
+    /// q-point.
+    /// </summary>
     private static byte[] RandomScalars(int count, ref int seed)
     {
         byte[] scalars = new byte[Math.Max(count, 1) * ScalarSize];

@@ -10,9 +10,8 @@ namespace Lumoin.Veridical.Analysis.Simulation;
 
 /// <summary>
 /// The witness-free simulator of the full zero-knowledge BaseFold opening —
-/// the running counterpart of the statistical-mask design notes
-/// (Appendix A)'s simulator construction, and the artifact §7 recorded as
-/// the open follow-on. Given only the public statement (the evaluation point
+/// the running counterpart of the statistical-mask construction's
+/// zero-knowledge simulator argument. Given only the public statement (the evaluation point
 /// <c>z</c> and the claimed value <c>y</c>), it produces a commitment and
 /// an opening that verify against <c>(z, y)</c> under a programmed
 /// Fiat-Shamir oracle, without ever holding a witness that evaluates to
@@ -39,17 +38,17 @@ namespace Lumoin.Veridical.Analysis.Simulation;
 /// <para>
 /// Distributionally the output is a real proof of a uniformly random
 /// witness with σ shifted by a public function of <c>(y*, y, ρ)</c> —
-/// σ remains uniform, and by the Appendix A ledger lemma the joint message
-/// distribution matches real proofs of real witnesses up to the lemma's
-/// failure measure. The indistinguishability gates assert this empirically.
+/// σ remains uniform, and because the shift depends only on public values the
+/// joint message distribution matches real proofs of real witnesses up to the
+/// mask's own statistical-hiding slack. The indistinguishability gates assert this empirically.
 /// </para>
 /// </remarks>
 public static class ZkBaseFoldOpeningSimulator
 {
+    /// <summary>The byte width of a canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //SqueezeScalar squeezes this many wide bytes before reducing; the blend
-    //challenge ρ is recovered from the recorded response the same way.
+    /// <summary>The number of wide bytes <c>SqueezeScalar</c> squeezes before reducing; the blend challenge ρ is recovered from the recorded response the same way.</summary>
     private const int SqueezeWideBytes = 64;
 
 
@@ -121,7 +120,7 @@ public static class ZkBaseFoldOpeningSimulator
         var oracle = new ProgrammableFiatShamirOracle();
         using PolynomialCommitmentProvider provider = ZkBaseFoldPolynomialCommitmentScheme.CreateFullZeroKnowledge(
             providerSeed, curve, queryCount, merkleHash, hash, oracle.CreateRecordingSqueeze(squeeze), reduce,
-            add, subtract, multiply, invert, scalarRandom, hashToScalar, extraVariableCount, digestSizeBytes);
+            add, subtract, multiply, invert, scalarRandom, hashToScalar, extraVariableCount, pool, digestSizeBytes);
 
         //The fake witness f*: uniformly random, no relation to the statement.
         int evaluationCount = 1 << variableCount;
@@ -173,10 +172,7 @@ public static class ZkBaseFoldOpeningSimulator
     }
 
 
-    //The blend challenge ρ is the unique recorded squeeze whose XOF input
-    //embeds the mask-blend operation label (the transcript writes labels
-    //verbatim into the challenge input); its scalar is the recorded wide
-    //response reduced exactly as SqueezeScalar reduces it.
+    /// <summary>Recovers the blend challenge ρ: the unique recorded squeeze whose XOF input embeds the mask-blend operation label (the transcript writes labels verbatim into the challenge input), reduced exactly as <c>SqueezeScalar</c> reduces it.</summary>
     private static Scalar RecoverBlendChallenge(
         ProgrammableFiatShamirOracle oracle,
         ScalarReduceDelegate reduce,
@@ -221,9 +217,7 @@ public static class ZkBaseFoldOpeningSimulator
     }
 
 
-    //σ sits behind the witness-side sections and the mask commitment root,
-    //in front of σ_F and the nested hiding weighted opening — the offset is
-    //fully determined by the public shape helpers.
+    /// <summary>Patches the fake opening's revealed mask sum σ by <paramref name="delta"/>. σ sits behind the witness-side sections and the mask commitment root, in front of σ_F and the nested hiding weighted opening — the offset is fully determined by the public shape helpers.</summary>
     private static PolynomialOpening PatchSigma(
         PolynomialOpening fakeOpening,
         ReadOnlySpan<byte> delta,
@@ -259,6 +253,7 @@ public static class ZkBaseFoldOpeningSimulator
     }
 
 
+    /// <summary>Reports whether every byte of <paramref name="scalar"/> is zero.</summary>
     private static bool IsZero(ReadOnlySpan<byte> scalar)
     {
         for(int i = 0; i < scalar.Length; i++)

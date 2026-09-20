@@ -20,8 +20,10 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 /// </remarks>
 internal static class LongfellowCircuitIdentifier
 {
-    //The reference's field markers: 0x2 for characteristic-two fields, 0x1 for odd prime fields.
+    /// <summary>The reference's field-kind marker absorbed for a characteristic-two field.</summary>
     private const ulong CharacteristicTwoMarker = 0x2;
+
+    /// <summary>The reference's field-kind marker absorbed for an odd-prime field.</summary>
     private const ulong OddPrimeMarker = 0x1;
 
 
@@ -38,9 +40,9 @@ internal static class LongfellowCircuitIdentifier
     /// <param name="subfieldBoundary">The least input wire not known to lie in the subfield.</param>
     /// <param name="layers">The layers in walk order with their canonicalized corners.</param>
     /// <param name="hashFactory">The incremental SHA-256 factory.</param>
-    /// <returns>The 32-byte id.</returns>
+    /// <param name="destination">The final owner's 32-byte identifier destination.</param>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
-    public static byte[] Compute(
+    public static void Compute(
         LongfellowCompilerFieldOperations field,
         int outputCount,
         int outputLogCount,
@@ -50,7 +52,8 @@ internal static class LongfellowCircuitIdentifier
         int publicInputCount,
         int subfieldBoundary,
         LongfellowSumcheckLayer[] layers,
-        LongfellowIncrementalHashFactory hashFactory)
+        LongfellowIncrementalHashFactory hashFactory,
+        Span<byte> destination)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(layers);
@@ -98,10 +101,7 @@ internal static class LongfellowCircuitIdentifier
             }
         }
 
-        var id = new byte[LongfellowSumcheckCircuit.IdLength];
-        hash.FinalizeInto(id);
-
-        return id;
+        hash.FinalizeInto(destination);
     }
 
 

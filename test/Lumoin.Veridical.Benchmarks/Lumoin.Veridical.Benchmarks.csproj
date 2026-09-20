@@ -54,12 +54,24 @@
     <NoWarn>$(NoWarn);CA1707;CA1812;CA1822;CA1849;CA1515;CA5394</NoWarn>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(VERIDICAL_STRYKER_RUN)' == 'true'">
+    <!--
+      A mutation run builds the whole solution with the test project switched
+      to the VsTest host, which changes the package graph this project inherits
+      through its test-project reference. For that build only the lock file is
+      neither enforced nor rewritten, the same way the test project handles it,
+      so a mutation run never changes a tracked file.
+    -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <NuGetLockFilePath>$(BaseIntermediateOutputPath)stryker-packages.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
     <!-- xoofx native BLAKE3 binding kept here so the Blake3 head-to-head
-         benchmark can measure the managed implementation against it. The
-         src/ tree and Lumoin.Veridical.Tests do not reference this
-         package after batch O. -->
+         benchmark can measure the managed implementation against it. It
+         exists solely for this comparison; the src/ tree and
+         Lumoin.Veridical.Tests carry no reference to this package. -->
     <PackageReference Include="Blake3" />
   </ItemGroup>
 

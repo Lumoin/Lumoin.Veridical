@@ -1,6 +1,5 @@
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
-using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
@@ -35,8 +34,7 @@ public static class LongfellowJwsCompact
     /// <summary>The smallest raw ECDSA signature the statement's curve accepts: the fixed-width <c>r ‖ s</c> pair of two 32-byte scalars.</summary>
     public const int MinimumSignatureBytes = 2 * Scalar.SizeBytes;
 
-    //The P-256 base-field prime as a canonical big-endian scalar; the key-binding digest is
-    //reduced once below it, matching the witness generator's own reduction of the same value.
+    /// <summary>The P-256 base-field prime as a canonical big-endian scalar; the key-binding digest is reduced once below it, matching the witness generator's own reduction of the same value.</summary>
     private static byte[] CanonicalBasePrime { get; } = BuildCanonicalBasePrime();
 
 
@@ -158,7 +156,7 @@ public static class LongfellowJwsCompact
 
         Span<byte> raw = stackalloc byte[Scalar.SizeBytes];
         SHA256.HashData(keyBindingJws[..segments.SigningInputLength], raw);
-        LongfellowJwtWitness.ReduceOnce(raw, CanonicalBasePrime, digest);
+        CanonicalScalarReduction.ReduceOnce(raw, CanonicalBasePrime, digest);
         raw.Clear();
 
         return true;
@@ -212,8 +210,7 @@ public static class LongfellowJwsCompact
     }
 
 
-    //The P-256 base-field prime is exactly 32 big-endian bytes, so the minimal unsigned write
-    //fills the canonical scalar completely.
+    /// <summary>Builds the P-256 base-field prime as a canonical big-endian scalar; the prime is exactly 32 big-endian bytes, so the minimal unsigned write fills the canonical scalar completely.</summary>
     private static byte[] BuildCanonicalBasePrime()
     {
         byte[] canonical = new byte[Scalar.SizeBytes];

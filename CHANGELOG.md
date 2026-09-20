@@ -16,6 +16,32 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Configurable digest width, up to 64 bytes, for every hash-tree commitment (`MerkleCommitmentParameters`).
+- Commitment providers report their commitment and opening sizes.
+- Spartan2 over any polynomial commitment scheme, WHIR included (`CommitmentSpartanProof`, `ProveCommitted`, `VerifyCommitted`).
+- A 100-bit proven-Johnson soundness profile for WHIR (IACR ePrint 2025/2055).
+- `R1csIntakeLimitExceededException` and `WellKnownR1csIntakeLimits.Unbounded`, for the R1CS pipe readers' intake ceiling.
+
+### Changed
+
+- Targets `net11.0`; dependency updates, including `Lumoin.Base` 0.0.14.
+- The Poseidon, BaseFold, `MonomialBasis` and ZkInterface decoder APIs take the caller's `BaseMemoryPool`; `MonomialBasis` is disposable.
+- `PoseidonParameterGenerator.Generate` takes the scalar field from the curve.
+- The raw-instance `ProveCommitted` rejects hiding commitment providers.
+- AVX-512 kernels are selected only where 512-bit vectors are hardware-accelerated.
+- `R1csPipeReaderDelegate`, `R1csWitnessPipeReaderDelegate`, and every Circom and ZkInterface reader implementing them, take a required `maximumIntakeBytes` ceiling.
+
+### Removed
+
+- `BaseFoldSpartanProof`, `LigeroSpartanProof` and their prove and verify methods, replaced by `CommitmentSpartanProof`.
+
+### Security
+
+- WHIR rejects a commitment of the wrong width before parsing it.
+- Hash-tree commitments reject digest widths above 64 bytes at construction.
+
 ## [0.0.6] - 2026-08-12
 
 ### Added

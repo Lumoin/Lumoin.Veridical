@@ -12,8 +12,8 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// content-addressed store (the Veritas hypertrie being the intended
 /// consumer) publishes alongside its fast non-cryptographic identifiers.
 /// Hash-agnostic via <see cref="MerkleHashDelegate"/>: the same convention
-/// realises a BLAKE3 shadow root today and a Poseidon shadow root (cheap
-/// in-circuit) when a native Poseidon permutation lands — only the delegate
+/// supports a BLAKE3 shadow root and, once a native Poseidon permutation is
+/// available, a Poseidon shadow root (cheap in-circuit) — only the delegate
 /// changes.
 /// </summary>
 /// <remarks>
@@ -51,12 +51,12 @@ public static class MerkleSetCommitment
     /// </summary>
     /// <param name="entries">The concatenated entries, each <c>2 × digestSizeBytes</c> wide (<c>key ‖ value</c>), in strictly ascending byte-lexicographic key order.</param>
     /// <param name="entryCount">The number of entries; positive.</param>
-    /// <param name="digestSizeBytes">The digest size of <paramref name="hash"/>.</param>
+    /// <param name="digestSizeBytes">The digest size of <paramref name="hash"/>, in <c>[1, 64]</c>.</param>
     /// <param name="hash">The two-to-one compression, used for the leaves and the tree alike.</param>
     /// <param name="pool">The pool to rent the working buffers from.</param>
     /// <returns>The committed tree; the caller owns its disposal.</returns>
     /// <exception cref="ArgumentNullException">When a reference argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is non-positive.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">When a numeric argument is non-positive, or the digest size exceeds the supported maximum.</exception>
     /// <exception cref="ArgumentException">When the entry bytes do not match the shape, or the keys are not strictly ascending and unique.</exception>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned tree owns its layer buffer; the leaf scratch is disposed here.")]
     public static MerkleTree Commit(
@@ -70,6 +70,7 @@ public static class MerkleSetCommitment
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(entryCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(digestSizeBytes);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSizeBytes, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
 
         int entrySize = 2 * digestSizeBytes;
         if(entries.Length != entryCount * entrySize)
@@ -93,7 +94,7 @@ public static class MerkleSetCommitment
             hash(key, value, leaves.Slice(i * digestSizeBytes, digestSizeBytes));
         }
 
-        return MerkleTree.Build(leaves, leafCount, hash, pool);
+        return MerkleTree.Build(leaves, leafCount, new MerkleCommitmentParameters(hash, digestSizeBytes), pool);
     }
 
 
@@ -153,8 +154,7 @@ public static class MerkleSetCommitment
     }
 
 
-    //The canonical set order: strictly ascending byte-lexicographic keys —
-    //the determinism guarantee that makes equal sets commit identically.
+    /// <summary>Throws when the entries' keys are not strictly ascending and unique in byte-lexicographic order — the canonical set order that guarantees equal sets commit identically.</summary>
     private static void ThrowIfKeysNotStrictlyAscending(ReadOnlySpan<byte> entries, int entryCount, int digestSizeBytes)
     {
         int entrySize = 2 * digestSizeBytes;

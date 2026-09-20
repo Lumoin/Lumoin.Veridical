@@ -94,13 +94,13 @@ assumption. The base prover does not hide the per-round sumcheck
 messages or the terminating evaluations; stronger ZK over those
 artifacts is available via the separate `MaskedSpartanProver` type
 described in §10, which wraps this prover with statistical
-sum-of-univariates round masks (SM.7b). Over the Hyrax path the
+sum-of-univariates round masks. Over the Hyrax path the
 masked variant stays in the same security category as the rest of
 the stack (computational ZK in the random-oracle model rooted in
 the discrete-log assumption — the openings are Pedersen/IPA); over
 the full-ZK BaseFold provider the same construction yields the
-statistical-in-ROM flavor. See the cross-stack lineage section in
-the Spartan zero-knowledge design notes for the full map.
+statistical-in-ROM flavor. See §10.6 for the ZK-flavor lineage across
+the construction's primitives.
 
 ## 4. Transcript schedule
 
@@ -121,7 +121,7 @@ Pinned for interoperability. Domain label is `veridical.spartan2.v1`.
 | 6a   | Absorb    | `sumcheck.round.polynomial` (× log n)  | compressed round polynomial bytes      |
 | 6b   | Squeeze   | `sumcheck.round.challenge` (× log n)   | one scalar per round                   |
 | 7    | Absorb    | `spartan.witness.evaluation`           | 32 bytes (`eval_W`)                    |
-| 8    | (Hyrax)   | (inner Hyrax transcript schedule)      | pinned in batch E                      |
+| 8    | (Hyrax)   | (inner Hyrax transcript schedule)      | pinned in `WellKnownHyraxDomainLabels`  |
 
 The outer and inner sumchecks reuse `sumcheck.round.polynomial` and
 `sumcheck.round.challenge` for their per-round absorbs and squeezes.
@@ -290,12 +290,10 @@ cross-implementation fixtures.
 ## 10. Masked variant
 
 The `MaskedSpartanProver` type wraps the base prover with the
-statistically-masked Category A ZK construction (SM.7b, design v3
-of the statistical-mask design notes). The construction hides the
+statistically-masked Category A ZK construction. The construction hides the
 per-round sumcheck messages and the terminating evaluations beyond
-what the base prover's Hyrax witness commitment already hides —
-and unlike the earlier multilinear mask, the masking is
-*statistical* per round message: every revealed round coefficient,
+what the base prover's Hyrax witness commitment already hides: the
+per-round masking is *statistical*, so every revealed round coefficient,
 including the top one, is uniform given the mask's degrees of
 freedom. Over the Hyrax path the end-to-end flavor remains
 computational zero-knowledge in the random-oracle model (the
@@ -354,10 +352,9 @@ The construction lineage: the mask shape is Libra's (Xie et al,
 "Libra: Succinct Zero-Knowledge Proofs with Optimal Prover
 Computation", CRYPTO 2019, §4.1), degree-matched per CFS (Chiesa,
 Forbes, Spooner, "A Zero Knowledge Sumcheck and its Applications",
-IACR ePrint 2017/305); the binding is the filler-laundered
-weighted opening of the statistical-mask design notes (v3) — `O(d)`
-mask cost where CFS's faithful Construction 6.6 would pay
-`3^d`/`4^d`.
+IACR ePrint 2017/305); the binding is a filler-laundered
+weighted opening — `O(d)` mask cost where CFS's faithful
+Construction 6.6 would pay `3^d`/`4^d`.
 
 ### 10.2 Transcript schedule
 
@@ -460,15 +457,14 @@ The round-message channel is statistically masked: a degree-`k`
 mask carries `k·d + 1` coefficients while the rounds and `σ`
 reveal exactly `k·d + 1` constraints (degree-3 outer: `3d + 1`;
 degree-2 inner: `2d + 1`), so by Libra Theorem 3's counting the
-revealed round coefficients — including the top ones the earlier
-multilinear mask left bare — are jointly uniform given the mask's
-degrees of freedom. The terminal binding spends no extra mask
+revealed round coefficients — including the top-degree ones — are
+jointly uniform given the mask's degrees of freedom. The terminal binding spends no extra mask
 DOF: the weighted opening's claim is shifted by the precommitted
 filler sum `σ_F`, and the filler block (sized by the policy's
 ledger, `WellKnownStatisticalMaskParameters`) launders the
 opening's cleartext functional reveals (the IPA's final folded
 scalar plus `σ_F` itself over the Hyrax path; the lifted rounds
-over BaseFold — design v3 and its Appendix A ledger lemma).
+over BaseFold).
 
 The end-to-end flavor follows the commitment scheme. Over Hyrax,
 the witness commitment is perfectly hiding, the mask vector
@@ -476,8 +472,8 @@ commitment is a perfectly-hiding Pedersen row, and the
 opening arguments are computationally hiding (the IPA's `L`/`R`
 points are unblinded DLOG-hard group elements), so the proof is
 computational zero-knowledge in the random-oracle model rooted in
-the discrete-log assumption — as before SM.7b, but with the
-previously-detectable round-coefficient residual removed. Over
+the discrete-log assumption, with no round-coefficient residual
+left exposed. Over
 the full-ZK BaseFold provider the same construction composes with
 the statistical-in-ROM opening to give the statistical flavor
 end-to-end. Soundness is unchanged: every mask artifact
@@ -487,21 +483,19 @@ terminal value.
 
 ### 10.6 Stronger guarantees and the lineage
 
-The statistical round-mask upgrade this section previously
-reserved for CFS 2017's faithful Construction 6.6 landed in SM.7b
-via the sum-of-univariates kernel at `O(d)` mask cost
-(Construction 6.6's full mask is `3^d`/`4^d` coefficients — the
-road not taken, recorded by the reserved
-`SpartanProofVariant.MaskedCfs2017Strong` discriminator). What
+The statistical round-mask construction uses the sum-of-univariates
+kernel at `O(d)` mask cost. CFS 2017's faithful Construction 6.6 costs
+`3^d`/`4^d` mask coefficients, exponential in the sumcheck depth; the
+reserved `SpartanProofVariant.MaskedCfs2017Strong` discriminator names
+that construction without an implementation behind it. What
 remains computational over the Hyrax path is the opening layer
 itself, which is inherent to Pedersen/IPA; the statistical
-end-to-end flavor is available today by proving over the full-ZK
+end-to-end flavor is available by proving over the full-ZK
 BaseFold provider (`ProveZkBaseFold`).
 
-The cross-stack ZK-flavor lineage section in
-the Spartan zero-knowledge design notes records the upgrade paths available for
-each primitive currently in the codebase and the observation
-that end-to-end statistical ZK requires every primitive in the
-composition to provide statistical ZK individually — upgrading
+End-to-end statistical ZK requires every primitive in the
+composition to provide statistical ZK individually: upgrading
 only the Spartan layer while leaving BBS+ and the base
-commitments unchanged does not strengthen the overall property.
+commitments unchanged does not strengthen the overall property,
+because the least-hiding primitive in the composition bounds the
+guarantee the whole proof can offer.

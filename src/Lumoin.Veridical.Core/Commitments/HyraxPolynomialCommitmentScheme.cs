@@ -194,10 +194,10 @@ public static class HyraxPolynomialCommitmentScheme
                 pool);
         };
 
-        //The weighted-opening path (the statistical sumcheck mask's binding,
-        //SM.7b): the vector is committed as ONE Pedersen row and the inner
-        //product with a public weight vector is proven by the IPA directly —
-        //an arbitrary weight vector does not factor through the matrix split
+        //The weighted-opening path (the statistical sumcheck mask's binding):
+        //the vector is committed as ONE Pedersen row and the inner product
+        //with a public weight vector is proven by the IPA directly — an
+        //arbitrary weight vector does not factor through the matrix split
         //the evaluation opening uses.
         PolynomialCommitDelegate commitVector = (vector, pool) =>
         {
@@ -313,6 +313,11 @@ public static class HyraxPolynomialCommitmentScheme
             extraVariableCount: null, commitVector, openWeightedSum, verifyWeightedSum,
             //The Pedersen/IPA mask-shape ledger: no lift, filler covering the
             //IPA's cleartext functional reveals.
-            resolveStatisticalMaskShape: static (d, degree) => BaseFold.WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree));
+            resolveStatisticalMaskShape: static (d, degree) => BaseFold.WellKnownStatisticalMaskParameters.CreatePedersenIpa(d, degree),
+            //The one scheme whose commitment length is not constant: the matrix split
+            //puts one compressed point on each of the 2^⌈n/2⌉ rows, so the variable
+            //count fixes the length and nothing about the committed values does.
+            commitmentSizeBytes: variableCount => HyraxCommitment.GetBufferSizeBytes(
+                HyraxCommitmentDimensions.ForVariableCount(variableCount).RowCount, curve));
     }
 }

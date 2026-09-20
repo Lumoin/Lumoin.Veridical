@@ -8,13 +8,13 @@ namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
 /// Tests for the code-switch batching algebra of the hiding WHIR path
-/// (4.2 phase C2, eprint 2026/391 Construction 9.7): the zero-evader padded
+/// (eprint 2026/391 Construction 9.7): the zero-evader padded
 /// evaluation must equal plain Horner over the concatenated coefficient
 /// vector, the switch-mask covector must reproduce the mask side of the
 /// batched claim as a dot product — with the query layers stopping at the
 /// randomness boundary because the fresh pad never appears in openings — and
 /// the loud out-of-domain gate must reject a zero point, coinciding points
-/// and an underfilled pad exactly as ruled, instead of leaking silently.
+/// and an underfilled pad, instead of leaking silently.
 /// </summary>
 [TestClass]
 internal sealed class ZkWhirCodeSwitchTests
@@ -47,6 +47,10 @@ internal sealed class ZkWhirCodeSwitchTests
     private static ScalarArithmeticBackend Bls { get; } = TestScalarBackends.Bls12Curve381;
 
 
+    /// <summary>
+    /// Verifies that the zero-evader split evaluation over a message and mask message equals plain
+    /// Horner evaluation over their concatenation at the same point.
+    /// </summary>
     [TestMethod]
     public void PaddedEvaluationMatchesConcatenatedHorner()
     {
@@ -71,6 +75,7 @@ internal sealed class ZkWhirCodeSwitchTests
     }
 
 
+    /// <summary>Verifies that evaluating an empty coefficient vector yields the empty sum, zero.</summary>
     [TestMethod]
     public void EmptyCoefficientVectorEvaluatesToZero()
     {
@@ -86,6 +91,11 @@ internal sealed class ZkWhirCodeSwitchTests
     }
 
 
+    /// <summary>
+    /// Verifies that the switch-mask covector's dot product with the mask message reproduces the
+    /// sum of every layer's scaled shifted evaluation — out-of-domain layers over the whole mask
+    /// message, query layers over the randomness prefix only — across two layers of each kind.
+    /// </summary>
     [TestMethod]
     public void SwitchMaskCovectorReproducesTheMaskSideOfTheBatchedClaim()
     {
@@ -153,6 +163,7 @@ internal sealed class ZkWhirCodeSwitchTests
     }
 
 
+    /// <summary>Verifies that the out-of-domain admissibility gate rejects a zero point.</summary>
     [TestMethod]
     public void ZeroOutOfDomainPointIsRejected()
     {
@@ -160,6 +171,7 @@ internal sealed class ZkWhirCodeSwitchTests
     }
 
 
+    /// <summary>Verifies that the out-of-domain admissibility gate rejects two coinciding nonzero points.</summary>
     [TestMethod]
     public void CoincidingOutOfDomainPointsAreRejected()
     {
@@ -167,6 +179,7 @@ internal sealed class ZkWhirCodeSwitchTests
     }
 
 
+    /// <summary>Verifies that the out-of-domain admissibility gate rejects two distinct points when the declared pad length is too short.</summary>
     [TestMethod]
     public void UnderfilledPadIsRejected()
     {
@@ -174,6 +187,7 @@ internal sealed class ZkWhirCodeSwitchTests
     }
 
 
+    /// <summary>Verifies that the out-of-domain admissibility gate accepts two distinct nonzero points at a full pad length.</summary>
     [TestMethod]
     public void AdmissiblePointsPassTheGate()
     {

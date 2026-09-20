@@ -9,8 +9,8 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Benchmarks.Commitments.Longfellow;
 
 /// <summary>
-/// Deterministic, noise-immune op-count attribution of the de-recursed <see cref="LongfellowEq.RawEq2"/>
-/// (Perf Increment 2c). The dev box is noisy, so wall-clock deltas are unreliable; the win of removing the
+/// Deterministic, noise-immune op-count attribution of the de-recursed <see cref="LongfellowEq.RawEq2"/>.
+/// The dev box is noisy, so wall-clock deltas are unreliable; the win of removing the
 /// <c>fill_recursive</c> recursion is a CALL-COUNT and frame-elimination story, which is identical every run.
 /// For a range of sizes this counts the field-delegate calls the OLD recursion made (a local copy) versus the
 /// NEW GF(2^128) batched path: the per-term scalar multiplies collapse from ~2n individual delegate calls
@@ -20,16 +20,33 @@ namespace Lumoin.Veridical.Benchmarks.Commitments.Longfellow;
 /// </summary>
 internal static class RawEq2AttributionDriver
 {
+    /// <summary>The byte width of one canonical GF(2^128) scalar.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The byte width of one little-endian GF(2^128) field element within the deterministic scalar filler.</summary>
     private const int ElementBytes = 16;
+
+    /// <summary>The curve tag every delegate call in this driver routes over (GF(2^128) carries no curve, so <c>None</c>).</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
+    /// <summary>The raw GF(2^128) addition delegate both the OLD recursion and the NEW batched path count calls against.</summary>
     private static ScalarAddDelegate Add { get; } = Gf2k128Backend.GetAdd();
+
+    /// <summary>The raw GF(2^128) subtraction delegate both the OLD recursion and the NEW batched path count calls against.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = Gf2k128Backend.GetSubtract();
+
+    /// <summary>The raw GF(2^128) multiplication delegate both the OLD recursion and the NEW batched path count calls against.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = Gf2k128Backend.GetMultiply();
+
+    /// <summary>The batched broadcast-multiply-accumulate delegate the NEW path uses in place of per-term scalar multiplies.</summary>
     private static ScalarBroadcastMultiplyAccumulateDelegate BroadcastMultiplyAccumulate { get; } = Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate();
 
 
+    /// <summary>
+    /// Runs the deterministic op-count attribution across a range of sizes, printing the OLD
+    /// recursion's and the NEW batched path's field-delegate call counts and asserting their outputs
+    /// agree byte for byte.
+    /// </summary>
     public static void Run()
     {
         Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "=== raw_eq2 de-recursion op-count attribution (GF(2^128), deterministic) ==="));
@@ -81,13 +98,14 @@ internal static class RawEq2AttributionDriver
     }
 
 
-    //fill_recursive(eq, l, n, G0, G1, w0, w1): the OLD raw_eq2 recursion, retained here to count its calls.
+    /// <summary>Implements <c>fill_recursive(eq, l, n, G0, G1, w0, w1)</c>, the OLD raw_eq2 recursion, retained here to count its calls. Array overload forwarding to the span implementation.</summary>
     private static void FillRecursive(byte[] eq, int level, int n, byte[] g0, byte[] g1, byte[] w0, byte[] w1, CountingField field)
     {
         FillRecursive(eq.AsSpan(), level, n, g0, g1, w0, w1, field);
     }
 
 
+    /// <summary>Implements <c>fill_recursive(eq, l, n, G0, G1, w0, w1)</c>, the OLD raw_eq2 recursion, retained here to count its calls.</summary>
     private static void FillRecursive(Span<byte> eq, int level, int n, ReadOnlySpan<byte> g0, ReadOnlySpan<byte> g1, ReadOnlySpan<byte> w0, ReadOnlySpan<byte> w1, CountingField field)
     {
         if(level > 0)
@@ -122,6 +140,7 @@ internal static class RawEq2AttributionDriver
     }
 
 
+    /// <summary>Returns the number of bits needed to address <paramref name="n"/> positions, i.e. <c>ceil(log2(n))</c>.</summary>
     private static int BitLength(int n)
     {
         int bits = 0;
@@ -136,6 +155,7 @@ internal static class RawEq2AttributionDriver
     }
 
 
+    /// <summary>Deterministically fills <paramref name="count"/> canonical scalars from SHA-256(seed, index), for reproducible attribution runs.</summary>
     private static byte[] RandomScalars(int count, int seed)
     {
         byte[] scalars = new byte[Math.Max(count, 1) * ScalarSize];
@@ -153,40 +173,54 @@ internal static class RawEq2AttributionDriver
     }
 
 
-    //Field delegates that count their calls by kind, forwarding to the raw backend.
+    /// <summary>Field delegates that count their calls by kind, forwarding to the raw backend.</summary>
     private sealed class CountingField
     {
-        private readonly ScalarAddDelegate rawAdd;
-        private readonly ScalarSubtractDelegate rawSubtract;
-        private readonly ScalarMultiplyDelegate rawMultiply;
+        /// <summary>The underlying addition delegate every counted call forwards to.</summary>
+        private ScalarAddDelegate RawAdd { get; }
 
+        /// <summary>The underlying subtraction delegate every counted call forwards to.</summary>
+        private ScalarSubtractDelegate RawSubtract { get; }
+
+        /// <summary>The underlying multiplication delegate every counted call forwards to.</summary>
+        private ScalarMultiplyDelegate RawMultiply { get; }
+
+        /// <summary>The running count of multiplication calls.</summary>
         public long Mul;
+
+        /// <summary>The running count of addition calls.</summary>
         public long Add_;
+
+        /// <summary>The running count of subtraction calls.</summary>
         public long Sub;
 
+        /// <summary>Wraps the given raw field delegates with call counters, starting every counter at zero.</summary>
         public CountingField(ScalarAddDelegate add, ScalarSubtractDelegate subtract, ScalarMultiplyDelegate multiply)
         {
-            rawAdd = add;
-            rawSubtract = subtract;
-            rawMultiply = multiply;
+            RawAdd = add;
+            RawSubtract = subtract;
+            RawMultiply = multiply;
         }
 
+        /// <summary>Adds, incrementing <see cref="Add_"/> and forwarding to the raw delegate.</summary>
         public void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
         {
             Add_++;
-            rawAdd(a, b, result, curve);
+            RawAdd(a, b, result, curve);
         }
 
+        /// <summary>Subtracts, incrementing <see cref="Sub"/> and forwarding to the raw delegate.</summary>
         public void Subtract(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
         {
             Sub++;
-            rawSubtract(a, b, result, curve);
+            RawSubtract(a, b, result, curve);
         }
 
+        /// <summary>Multiplies, incrementing <see cref="Mul"/> and forwarding to the raw delegate.</summary>
         public void Multiply(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
         {
             Mul++;
-            rawMultiply(a, b, result, curve);
+            RawMultiply(a, b, result, curve);
         }
     }
 }

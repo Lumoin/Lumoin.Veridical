@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 
@@ -26,10 +27,29 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// for the correlation-intractability zero padding. <see cref="OutputLogCount"/> (<c>logv</c>) sizes the
 /// <c>G</c> challenge; <see cref="InputCount"/> sizes the absorbed input column.
 /// </para>
+/// <para>
+/// The circuit owns its identifier and coefficients. Layers and terms borrow that storage until
+/// disposal; the pool must outlive the circuit, and all consumers must finish before disposal.
+/// </para>
 /// </remarks>
-internal sealed class LongfellowSumcheckCircuit
+internal sealed class LongfellowSumcheckCircuit: IDisposable
 {
-    //The reference's Circuit::id is a 32-byte compiler-assigned identifier absorbed first into the FS.
+    /// <summary>The pool supplying independent lifted copies.</summary>
+    private BaseMemoryPool Pool { get; }
+
+    /// <summary>The sensitive owner of the identifier and every coefficient.</summary>
+    private LongfellowCircuitStorage Storage { get; }
+
+    /// <summary>The identifier view, valid until disposal.</summary>
+    private ReadOnlyMemory<byte> IdBytes { get; }
+
+    /// <summary>The layers borrowing this circuit's coefficient storage.</summary>
+    private LongfellowSumcheckLayer[] LayerArray { get; }
+
+    /// <summary>Whether the circuit's bytes have been released.</summary>
+    private bool isDisposed;
+
+    /// <summary>The reference's <c>Circuit::id</c> is a 32-byte compiler-assigned identifier absorbed first into the Fiat–Shamir transcript.</summary>
     internal const int IdLength = 32;
 
     /// <summary>The number of outputs for one copy (<c>nv</c>).</summary>
@@ -53,11 +73,29 @@ internal sealed class LongfellowSumcheckCircuit
     /// <summary>The number of public inputs, the index of the first private input (<c>npub_in</c>).</summary>
     public int PublicInputCount { get; }
 
-    /// <summary>The 32-byte compiler-assigned circuit identifier (<c>id</c>), absorbed first into the Fiat–Shamir transcript.</summary>
-    public ReadOnlyMemory<byte> Id { get; }
+    /// <summary>The 32-byte compiler-assigned circuit identifier (<c>id</c>), absorbed first into the Fiat–Shamir transcript. Borrowed until disposal.</summary>
+    /// <exception cref="ObjectDisposedException">When the circuit has been disposed.</exception>
+    public ReadOnlyMemory<byte> Id
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(isDisposed, this);
 
-    /// <summary>The circuit's layers (<c>l</c>), in walk order (layer 0 first).</summary>
-    public LongfellowSumcheckLayer[] Layers { get; }
+            return IdBytes;
+        }
+    }
+
+    /// <summary>The circuit's layers (<c>l</c>), in walk order (layer 0 first). Coefficients are borrowed until disposal.</summary>
+    /// <exception cref="ObjectDisposedException">When the circuit has been disposed.</exception>
+    public LongfellowSumcheckLayer[] Layers
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(isDisposed, this);
+
+            return LayerArray;
+        }
+    }
 
 
     /// <summary>The total number of terms across all layers (<c>nterms()</c>), the byte count of the correlation-intractability zero pad.</summary>
@@ -77,7 +115,7 @@ internal sealed class LongfellowSumcheckCircuit
 
 
     /// <summary>
-    /// Constructs a sumcheck circuit shape.
+    /// Constructs a sumcheck circuit owning its identifier and coefficient bytes.
     /// </summary>
     /// <param name="outputCount">The outputs per copy (<c>nv</c>).</param>
     /// <param name="outputLogCount">The output binding rounds (<c>logv</c>).</param>
@@ -87,7 +125,9 @@ internal sealed class LongfellowSumcheckCircuit
     /// <param name="publicInputCount">The number of public inputs (<c>npub_in</c>).</param>
     /// <param name="id">The 32-byte circuit identifier (<c>id</c>).</param>
     /// <param name="layers">The layers in walk order; at least one.</param>
-    /// <exception cref="ArgumentNullException">When <paramref name="layers"/> is <see langword="null"/>.</exception>
+    /// <param name="pool">The pool supplying owned bytes and subsequent lifted copies.</param>
+    /// <param name="ownedStorage">When supplied, owns all identifier and coefficient views and transfers only on success; otherwise the bytes are copied.</param>
+    /// <exception cref="ArgumentNullException">When <paramref name="layers"/> or <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When a count is out of range.</exception>
     /// <exception cref="ArgumentException">When <paramref name="id"/> is not 32 bytes or <paramref name="layers"/> is empty.</exception>
     public LongfellowSumcheckCircuit(
@@ -98,7 +138,9 @@ internal sealed class LongfellowSumcheckCircuit
         int inputCount,
         int publicInputCount,
         ReadOnlyMemory<byte> id,
-        LongfellowSumcheckLayer[] layers)
+        LongfellowSumcheckLayer[] layers,
+        BaseMemoryPool pool,
+        LongfellowCircuitStorage? ownedStorage = null)
     {
         ArgumentNullException.ThrowIfNull(layers);
         ArgumentOutOfRangeException.ThrowIfNegative(outputCount);
@@ -119,20 +161,41 @@ internal sealed class LongfellowSumcheckCircuit
             throw new ArgumentException("A sumcheck circuit has at least one layer.", nameof(layers));
         }
 
+        ArgumentNullException.ThrowIfNull(pool);
+
         OutputCount = outputCount;
         OutputLogCount = outputLogCount;
         CopyCount = copyCount;
         CopyRounds = copyRounds;
         InputCount = inputCount;
         PublicInputCount = publicInputCount;
-        Id = id;
-        Layers = layers;
+        this.Pool = pool;
+        if(ownedStorage is not null)
+        {
+            Storage = ownedStorage;
+            this.IdBytes = id;
+            this.LayerArray = layers;
+        }
+        else
+        {
+            Storage = new LongfellowCircuitStorage(pool);
+            try
+            {
+                this.IdBytes = Storage.Copy(id.Span);
+                this.LayerArray = CopyLayers(layers, Storage);
+            }
+            catch
+            {
+                Storage.Dispose();
+                throw;
+            }
+        }
     }
 
 
     /// <summary>
-    /// Returns a copy of the circuit with every quad-term coefficient lifted into a working domain (Perf
-    /// Increment 1). The circuit reader stores the field constants <c>v</c> the quad form
+    /// Returns a copy of the circuit with every quad-term coefficient lifted into a working domain.
+    /// The circuit reader stores the field constants <c>v</c> the quad form
     /// <c>V[g] = Σ v·W[h0]·W[h1]</c> multiplies as CANONICAL scalars; on the Montgomery working domain those
     /// constants must be lifted to their Montgomery residue, exactly as the witness column and the profile's
     /// of_scalar constants are, so the shared sumcheck/constraint stack multiplies a working-domain constant
@@ -143,37 +206,88 @@ internal sealed class LongfellowSumcheckCircuit
     /// identity and the result is value-identical to <see langword="this"/>.
     /// </summary>
     /// <param name="toWorking">The canonical-&gt;working-domain converter applied to each non-trivial coefficient (<c>to_montgomery</c> for the Montgomery domain).</param>
-    /// <returns>A new circuit whose quad-term coefficients are in the working domain.</returns>
+    /// <returns>A disposable circuit owning its working-domain coefficients and an independent identifier copy.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="toWorking"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">When the source circuit has been disposed.</exception>
     public LongfellowSumcheckCircuit LiftCoefficientsToWorking(LongfellowDomainConvertDelegate toWorking)
     {
         ArgumentNullException.ThrowIfNull(toWorking);
 
-        var liftedLayers = new LongfellowSumcheckLayer[Layers.Length];
-        for(int l = 0; l < Layers.Length; l++)
+        ObjectDisposedException.ThrowIf(isDisposed, this);
+        LongfellowCircuitStorage? liftedStorage = new(Pool);
+        try
         {
-            LongfellowSumcheckLayer layer = Layers[l];
-            LongfellowSumcheckQuadTerm[] terms = layer.QuadTerms;
-            if(terms.Length == 0)
+            var liftedLayers = new LongfellowSumcheckLayer[Layers.Length];
+            for(int l = 0; l < Layers.Length; l++)
             {
-                liftedLayers[l] = layer;
+                LongfellowSumcheckLayer layer = Layers[l];
+                LongfellowSumcheckQuadTerm[] terms = layer.QuadTerms;
+                var liftedTerms = new LongfellowSumcheckQuadTerm[terms.Length];
+                for(int t = 0; t < terms.Length; t++)
+                {
+                    LongfellowSumcheckQuadTerm term = terms[t];
+                    Memory<byte> coefficient = liftedStorage.Copy(term.Coefficient.Span);
+                    toWorking(coefficient.Span, coefficient.Span);
+                    liftedTerms[t] = term with { Coefficient = coefficient };
+                }
 
-                continue;
+                liftedLayers[l] = new LongfellowSumcheckLayer(layer.InputCount, layer.HandRounds, layer.TermCount, liftedTerms);
             }
 
-            var liftedTerms = new LongfellowSumcheckQuadTerm[terms.Length];
+            ReadOnlyMemory<byte> liftedId = liftedStorage.Copy(Id.Span);
+            var result = new LongfellowSumcheckCircuit(OutputCount, OutputLogCount, CopyCount, CopyRounds, InputCount, PublicInputCount, liftedId, liftedLayers, Pool, liftedStorage);
+            liftedStorage = null;
+
+            return result;
+        }
+        finally
+        {
+            liftedStorage?.Dispose();
+        }
+    }
+
+
+    /// <summary>Copies layer views and their coefficients, retaining sharing only within the new owner.</summary>
+    /// <param name="source">The borrowed layers.</param>
+    /// <param name="destination">The owner receiving every coefficient.</param>
+    /// <returns>The independently owned layer views.</returns>
+    internal static LongfellowSumcheckLayer[] CopyLayers(LongfellowSumcheckLayer[] source, LongfellowCircuitStorage destination)
+    {
+        var copies = new Dictionary<ReadOnlyMemory<byte>, ReadOnlyMemory<byte>>();
+        var result = new LongfellowSumcheckLayer[source.Length];
+        for(int l = 0; l < source.Length; l++)
+        {
+            LongfellowSumcheckLayer layer = source[l];
+            var terms = new LongfellowSumcheckQuadTerm[layer.QuadTerms.Length];
             for(int t = 0; t < terms.Length; t++)
             {
-                LongfellowSumcheckQuadTerm term = terms[t];
-                byte[] coefficient = term.Coefficient.ToArray();
-                toWorking(coefficient, coefficient);
-                liftedTerms[t] = term with { Coefficient = coefficient };
+                LongfellowSumcheckQuadTerm term = layer.QuadTerms[t];
+                if(!copies.TryGetValue(term.Coefficient, out ReadOnlyMemory<byte> coefficient))
+                {
+                    coefficient = destination.Copy(term.Coefficient.Span);
+                    copies.Add(term.Coefficient, coefficient);
+                }
+
+                terms[t] = term with { Coefficient = coefficient };
             }
 
-            liftedLayers[l] = new LongfellowSumcheckLayer(layer.InputCount, layer.HandRounds, layer.TermCount, liftedTerms);
+            result[l] = new LongfellowSumcheckLayer(layer.InputCount, layer.HandRounds, layer.TermCount, terms);
         }
 
-        return new LongfellowSumcheckCircuit(OutputCount, OutputLogCount, CopyCount, CopyRounds, InputCount, PublicInputCount, Id, liftedLayers);
+        return result;
+    }
+
+
+    /// <summary>Clears and releases the identifier and coefficient storage. Borrowed views expire here.</summary>
+    public void Dispose()
+    {
+        if(isDisposed)
+        {
+            return;
+        }
+
+        isDisposed = true;
+        Storage.Dispose();
     }
 }
 
@@ -188,9 +302,10 @@ internal sealed class LongfellowSumcheckCircuit
 /// <c>ZkCommon::verifier_constraints</c>' <c>bind_quad</c> (<c>Quad::bind_gh_all</c>) iterates.
 /// </summary>
 /// <remarks>
-/// The sc wire segment and the C.7 challenge replay do not read the <c>Quad</c>, so a layer built for
-/// those flows leaves <see cref="QuadTerms"/> empty. The C.8 full-verifier composition needs the terms
-/// to bind the quad at the output and hand points, so it constructs layers with them populated.
+/// The sc wire segment and the sumcheck-segment challenge replay do not read the <c>Quad</c>, so a
+/// layer built for those flows leaves <see cref="QuadTerms"/> empty. The end-to-end ZK verify
+/// step's composition needs the terms to bind the quad at the output and hand points, so it
+/// constructs layers with them populated.
 /// </remarks>
 internal sealed class LongfellowSumcheckLayer
 {
@@ -203,12 +318,12 @@ internal sealed class LongfellowSumcheckLayer
     /// <summary>The number of terms in the layer's quad (<c>nterms()</c>).</summary>
     public int TermCount { get; }
 
-    /// <summary>The layer's <c>Quad</c> wiring terms in iteration order; empty unless the layer was built for the ZK constraint composition.</summary>
+    /// <summary>The layer's <c>Quad</c> wiring terms in iteration order; coefficients borrow their circuit owner until its disposal.</summary>
     public LongfellowSumcheckQuadTerm[] QuadTerms { get; }
 
 
     /// <summary>
-    /// Constructs a layer shape without its quad wiring (the sc wire format and the C.7 replay).
+    /// Constructs a layer shape without its quad wiring (the sc wire format and the sumcheck-segment replay).
     /// </summary>
     /// <param name="inputCount">The layer's inputs (<c>nw</c>).</param>
     /// <param name="handRounds">The hand binding rounds (<c>logw</c>); at least one.</param>
@@ -261,5 +376,5 @@ internal sealed class LongfellowSumcheckLayer
 /// <param name="GateIndex">The gate (output) index <c>g</c>.</param>
 /// <param name="LeftIndex">The left hand index <c>h[0]</c>.</param>
 /// <param name="RightIndex">The right hand index <c>h[1]</c>.</param>
-/// <param name="Coefficient">The coefficient <c>v</c>, one canonical big-endian scalar; <c>v == 0</c> marks an assert-zero term the binding treats specially (it folds the assert-zero coefficient <c>beta</c>).</param>
+/// <param name="Coefficient">The coefficient <c>v</c>, borrowed from the circuit until disposal, as one canonical big-endian scalar; <c>v == 0</c> marks an assert-zero term the binding treats specially (it folds the assert-zero coefficient <c>beta</c>).</param>
 internal readonly record struct LongfellowSumcheckQuadTerm(int GateIndex, int LeftIndex, int RightIndex, ReadOnlyMemory<byte> Coefficient);

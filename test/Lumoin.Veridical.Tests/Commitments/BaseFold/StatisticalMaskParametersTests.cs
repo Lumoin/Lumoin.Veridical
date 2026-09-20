@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
 /// The statistical-mask parameter policy
-/// (<see cref="WellKnownStatisticalMaskParameters"/>, design doc §2 v3): the
+/// (<see cref="WellKnownStatisticalMaskParameters"/>): the
 /// resolved shape must satisfy the filler ledger (enough all-ones-weighted
 /// entropy to launder the weighted opening's round reveals), carry the
 /// commitment's own minimum hiding lift, and be the smallest such shape — all
@@ -16,13 +16,16 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class StatisticalMaskParametersTests
 {
-    //The ledger constants mirrored from the policy: the weighted opening
-    //reveals ≈ 2·rounds + 2 functionals, rank-slacked by 8 (design doc §3).
+    /// <summary>The rank slack this test mirrors from <see cref="WellKnownStatisticalMaskParameters"/>: the weighted opening reveals ≈ 2·rounds + 2 functionals, and the ledger pads by this many ranks.</summary>
     private const int RankSlack = 8;
 
+    /// <summary>The curve this test's mask parameters are computed over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that the resolved statistical-mask shape satisfies the filler ledger, carries the commitment's minimum hiding lift, and is the smallest such shape, across several sumcheck variable counts and query counts.</summary>
+    /// <param name="sumcheckVariableCount">The sumcheck's variable count <c>d</c>.</param>
+    /// <param name="queryCount">The commitment's query count <c>Q</c>.</param>
     [TestMethod]
     [DataRow(1, 8)]
     [DataRow(2, 12)]
@@ -61,14 +64,15 @@ internal sealed class StatisticalMaskParametersTests
     }
 
 
+    /// <summary>Verifies that a cubic (degree-3) mask, as the Spartan outer sumcheck uses, resolves to <c>3d + 1</c> coefficients under the same filler ledger as the default quadratic mask.</summary>
+    /// <param name="sumcheckVariableCount">The sumcheck's variable count <c>d</c>.</param>
+    /// <param name="queryCount">The commitment's query count <c>Q</c>.</param>
     [TestMethod]
     [DataRow(1, 12)]
     [DataRow(4, 273)]
     [DataRow(20, 273)]
     public void CubicDegreeResolvesTheLargerMask(int sumcheckVariableCount, int queryCount)
     {
-        //The Spartan outer sumcheck's degree-3 masks: 3d + 1 coefficients, the
-        //same filler ledger.
         StatisticalMaskParameters parameters = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(sumcheckVariableCount, Curve, queryCount, perVariableDegree: 3);
 
         Assert.AreEqual((3 * sumcheckVariableCount) + 1, parameters.MaskCoefficientCount, "A cubic mask carries 3d + 1 coefficients.");
@@ -78,6 +82,9 @@ internal sealed class StatisticalMaskParametersTests
     }
 
 
+    /// <summary>Verifies the Pedersen/IPA mask shape: no dimension lift, and filler covering exactly the two cleartext functionals of the committed vector (σ_F and the IPA final scalar) with the usual slack.</summary>
+    /// <param name="sumcheckVariableCount">The sumcheck's variable count.</param>
+    /// <param name="perVariableDegree">The per-variable mask degree.</param>
     [TestMethod]
     [DataRow(1, 2)]
     [DataRow(1, 3)]
@@ -86,8 +93,6 @@ internal sealed class StatisticalMaskParametersTests
     [DataRow(20, 3)]
     public void PedersenIpaShapeHasNoLiftAndCoversTheCleartextReveals(int sumcheckVariableCount, int perVariableDegree)
     {
-        //The Pedersen/IPA ledger: only σ_F and the IPA final scalar are
-        //cleartext functionals of the committed vector.
         const int CleartextRevealCount = 2;
 
         StatisticalMaskParameters parameters = WellKnownStatisticalMaskParameters.CreatePedersenIpa(sumcheckVariableCount, perVariableDegree);
@@ -108,6 +113,7 @@ internal sealed class StatisticalMaskParametersTests
     }
 
 
+    /// <summary>Verifies that a per-variable mask degree outside the supported kernel range (below 2 or above 3) is refused by both the classical-security and Pedersen/IPA factories.</summary>
     [TestMethod]
     public void DegreeOutsideTheKernelRangeIsRefused()
     {
@@ -118,6 +124,7 @@ internal sealed class StatisticalMaskParametersTests
     }
 
 
+    /// <summary>Pins the production-scale mask shape at <c>d = 2</c> and query count 273: the resolved coefficient variable count, extra (lift) variable count, and filler count all match the hand-derived values.</summary>
     [TestMethod]
     public void ProductionShapeIsPinned()
     {

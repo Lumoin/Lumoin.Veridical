@@ -8,17 +8,20 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 
 /// <summary>
 /// Tests for <see cref="R1csCircuitBuilder"/>: the operation sequence the
-/// fold produces, the public-input contiguity rule (D3), idempotent
+/// fold produces, the public-input contiguity rule, idempotent
 /// <see cref="R1csCircuitBuilder.Build"/>, and the declaration/constraint
 /// validation guards.
 /// </summary>
 [TestClass]
 internal sealed class R1csCircuitBuilderTests
 {
+    /// <summary>The number of property-test samples <see cref="VariableCountMatchesDeclarationsPlusConstant"/> draws.</summary>
     private const int IterationCount = 500;
+    /// <summary>The maximum number of public inputs or witness variables the property test declares in one sample.</summary>
     private const int MaxDeclarations = 5;
 
 
+    /// <summary>Verifies that building a two-input multiplier circuit produces the exact expected operation sequence: the implicit constant-one declaration, each variable declaration in order, then the multiplication constraint, with the resulting variable and input counts matching.</summary>
     [TestMethod]
     public void BuildProducesTheMultiplier2OperationSequence()
     {
@@ -48,6 +51,7 @@ internal sealed class R1csCircuitBuilderTests
     }
 
 
+    /// <summary>Verifies that declaring a public input after a witness variable throws, since public inputs must be contiguous at the front of the variable space.</summary>
     [TestMethod]
     public void DeclaringPublicInputAfterWitnessVariableThrows()
     {
@@ -59,6 +63,7 @@ internal sealed class R1csCircuitBuilderTests
     }
 
 
+    /// <summary>Verifies that declaring a public input after a constraint has been added throws, since public inputs must be contiguous at the front of the variable space.</summary>
     [TestMethod]
     public void DeclaringPublicInputAfterConstraintThrows()
     {
@@ -70,6 +75,7 @@ internal sealed class R1csCircuitBuilderTests
     }
 
 
+    /// <summary>Verifies that calling <see cref="R1csCircuitBuilder.Build"/> twice on the same builder returns equal circuits, since <c>Build</c> reads accumulated state without mutating it.</summary>
     [TestMethod]
     public void BuildIsIdempotent()
     {
@@ -81,6 +87,7 @@ internal sealed class R1csCircuitBuilderTests
     }
 
 
+    /// <summary>Verifies that declaring a second variable under a name already in use throws.</summary>
     [TestMethod]
     public void DuplicateVariableNameThrows()
     {
@@ -91,6 +98,7 @@ internal sealed class R1csCircuitBuilderTests
     }
 
 
+    /// <summary>Verifies that adding a constraint whose linear combination references an undeclared variable index throws.</summary>
     [TestMethod]
     public void ConstraintReferencingUndeclaredVariableThrows()
     {
@@ -103,6 +111,7 @@ internal sealed class R1csCircuitBuilderTests
     }
 
 
+    /// <summary>Verifies that declaring a variable with an empty name throws.</summary>
     [TestMethod]
     public void EmptyVariableNameThrows()
     {
@@ -111,6 +120,7 @@ internal sealed class R1csCircuitBuilderTests
     }
 
 
+    /// <summary>Verifies, across randomly sampled public-input and witness-variable counts, that the built circuit's variable, public-input and witness counts always equal the declared counts (plus the implicit constant-one wire for the total).</summary>
     [TestMethod]
     public void VariableCountMatchesDeclarationsPlusConstant()
     {

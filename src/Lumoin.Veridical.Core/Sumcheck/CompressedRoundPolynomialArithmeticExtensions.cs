@@ -8,9 +8,9 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 
 /// <summary>
 /// Extension verbs that bridge between <see cref="Polynomial"/> and
-/// <see cref="CompressedRoundPolynomial"/> for BLS12-381 sumcheck round
-/// polynomials: <c>Compress</c> drops the linear term, <c>Decompress</c>
-/// reconstructs it from the running sumcheck claim.
+/// <see cref="CompressedRoundPolynomial"/> for BLS12-381 or BN254
+/// sumcheck round polynomials: <c>Compress</c> drops the linear term,
+/// <c>Decompress</c> reconstructs it from the running sumcheck claim.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,6 +24,7 @@ namespace Lumoin.Veridical.Core.Sumcheck;
 [SuppressMessage("Naming", "CA1708", Justification = "C# 14 extension blocks for two distinct receiver types (Polynomial, CompressedRoundPolynomial) are surfaced under the same nested member name; both receivers are clearly distinct types and the rule is a false positive for extension-block-bearing classes.")]
 public static class CompressedRoundPolynomialArithmeticExtensions
 {
+    /// <summary>Compression members added to every <see cref="Polynomial"/> instance.</summary>
     extension(Polynomial polynomial)
     {
         /// <summary>
@@ -35,7 +36,7 @@ public static class CompressedRoundPolynomialArithmeticExtensions
         /// <param name="pool">The pool to rent the destination buffer from.</param>
         /// <returns>A compressed round polynomial of the same algebraic degree.</returns>
         /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the receiver is not over BLS12-381 or has storage degree less than 2.</exception>
+        /// <exception cref="ArgumentException">When the receiver's curve is neither BLS12-381 nor BN254, or the receiver has storage degree less than 2.</exception>
         public CompressedRoundPolynomial Compress(BaseMemoryPool pool)
         {
             ArgumentNullException.ThrowIfNull(polynomial);
@@ -78,6 +79,7 @@ public static class CompressedRoundPolynomialArithmeticExtensions
     }
 
 
+    /// <summary>Decompression members added to every <see cref="CompressedRoundPolynomial"/> instance.</summary>
     extension(CompressedRoundPolynomial compressed)
     {
         /// <summary>
@@ -91,7 +93,7 @@ public static class CompressedRoundPolynomialArithmeticExtensions
         /// <param name="pool">The pool to rent the destination buffer from.</param>
         /// <returns>A <see cref="Polynomial"/> with storage degree equal to the compressed polynomial's algebraic degree.</returns>
         /// <exception cref="ArgumentNullException">When any reference argument is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentException">When the receiver is not over BLS12-381.</exception>
+        /// <exception cref="ArgumentException">When the receiver's curve is neither BLS12-381 nor BN254.</exception>
         public Polynomial Decompress(
             Scalar claim,
             ScalarSubtractDelegate subtract,

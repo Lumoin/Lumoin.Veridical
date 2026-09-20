@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 
@@ -14,15 +15,15 @@ internal sealed class LongfellowMlDsaPublicKey
     /// <summary>The unpacked rounded vector (the reference's <c>t1</c>), indexed row, coefficient.</summary>
     public uint[][] T1 { get; }
 
-    /// <summary>The 64-byte public-key hash (the reference's <c>tr</c>).</summary>
-    public byte[] Tr { get; }
+    /// <summary>The 64-byte public-key hash borrowed until the supplying witness storage is disposed (the reference's <c>tr</c>).</summary>
+    public ReadOnlyMemory<byte> Tr { get; }
 
 
-    /// <summary>Constructs the decoded key.</summary>
+    /// <summary>Constructs a decoded key borrowing its hash from the witness storage; this object never disposes that storage.</summary>
     /// <param name="matrixA">The expanded matrix in the NTT domain.</param>
     /// <param name="t1">The unpacked rounded vector.</param>
-    /// <param name="tr">The public-key hash.</param>
-    public LongfellowMlDsaPublicKey(uint[][][] matrixA, uint[][] t1, byte[] tr)
+    /// <param name="tr">The hash view, valid until its supplying witness storage is disposed.</param>
+    public LongfellowMlDsaPublicKey(uint[][][] matrixA, uint[][] t1, ReadOnlyMemory<byte> tr)
     {
         MatrixA = matrixA;
         T1 = t1;
@@ -37,8 +38,8 @@ internal sealed class LongfellowMlDsaPublicKey
 /// </summary>
 internal sealed class LongfellowMlDsaSignature
 {
-    /// <summary>The hash commitment (the reference's <c>c_tilde</c>).</summary>
-    public byte[] CommitmentHash { get; }
+    /// <summary>The hash commitment borrowed until the supplying witness storage is disposed (the reference's <c>c_tilde</c>).</summary>
+    public ReadOnlyMemory<byte> CommitmentHash { get; }
 
     /// <summary>The unpacked response vector (the reference's <c>z</c>), canonical coefficients indexed column, coefficient.</summary>
     public uint[][] Z { get; }
@@ -47,11 +48,11 @@ internal sealed class LongfellowMlDsaSignature
     public bool[][] Hints { get; }
 
 
-    /// <summary>Constructs the decoded signature.</summary>
-    /// <param name="commitmentHash">The hash commitment.</param>
+    /// <summary>Constructs a decoded signature borrowing its hash from the witness storage; this object never disposes that storage.</summary>
+    /// <param name="commitmentHash">The hash view, valid until its supplying witness storage is disposed.</param>
     /// <param name="z">The unpacked response vector.</param>
     /// <param name="hints">The hint bits.</param>
-    public LongfellowMlDsaSignature(byte[] commitmentHash, uint[][] z, bool[][] hints)
+    public LongfellowMlDsaSignature(ReadOnlyMemory<byte> commitmentHash, uint[][] z, bool[][] hints)
     {
         CommitmentHash = commitmentHash;
         Z = z;
@@ -156,11 +157,20 @@ internal static class LongfellowMlDsaReference
     /// </summary>
     /// <param name="seed">The sampling seed.</param>
     /// <param name="blockCount">The SHAKE128 block count to extract.</param>
+    /// <param name="pool">The caller pool supplying scope-bound expansion staging.</param>
     /// <returns>The sampled polynomial.</returns>
     /// <exception cref="InvalidOperationException">When the extracted stream cannot supply 256 coefficients (the reference's <c>check</c>).</exception>
-    public static uint[] RejectionSampleNttPolynomial(ReadOnlySpan<byte> seed, int blockCount)
+    /// <exception cref="OverflowException">When the block count produces a negative or unrepresentable stream length.</exception>
+    public static uint[] RejectionSampleNttPolynomial(ReadOnlySpan<byte> seed, int blockCount, BaseMemoryPool pool)
     {
-        var stream = new byte[blockCount * LongfellowSha3Witness.Shake128Rate];
+        int streamLength = checked(blockCount * LongfellowSha3Witness.Shake128Rate);
+        if(streamLength < 0)
+        {
+            throw new OverflowException();
+        }
+
+        using IMemoryOwner<byte>? owner = streamLength == 0 ? null : pool.Rent(streamLength);
+        Span<byte> stream = owner is null ? Span<byte>.Empty : owner.Memory.Span[..streamLength];
         LongfellowSha3Witness.Shake128Hash(seed, stream);
 
         var coefficients = new uint[LongfellowMlDsaParameters.CoefficientCount];
@@ -191,8 +201,9 @@ internal static class LongfellowMlDsaReference
     /// </summary>
     /// <param name="parameters">The parameter set.</param>
     /// <param name="seed">The 32-byte expansion seed <c>rho</c>.</param>
+    /// <param name="pool">The caller pool supplying expansion staging.</param>
     /// <returns>The matrix, indexed row, column, coefficient.</returns>
-    public static uint[][][] ExpandMatrix(LongfellowMlDsaParameters parameters, ReadOnlySpan<byte> seed)
+    public static uint[][][] ExpandMatrix(LongfellowMlDsaParameters parameters, ReadOnlySpan<byte> seed, BaseMemoryPool pool)
     {
         var matrix = new uint[parameters.RowCount][][];
         Span<byte> positionSeed = stackalloc byte[seed.Length + 2];
@@ -204,7 +215,7 @@ internal static class LongfellowMlDsaReference
             {
                 positionSeed[seed.Length] = (byte)column;
                 positionSeed[seed.Length + 1] = (byte)row;
-                matrix[row][column] = RejectionSampleNttPolynomial(positionSeed, ExpandBlockCount);
+                matrix[row][column] = RejectionSampleNttPolynomial(positionSeed, ExpandBlockCount, pool);
             }
         }
 
@@ -426,8 +437,9 @@ internal static class LongfellowMlDsaReference
     /// </summary>
     /// <param name="parameters">The parameter set.</param>
     /// <param name="signature">The encoded signature.</param>
+    /// <param name="storage">The witness-owned storage retaining the decoded hash; the result borrows it until disposal.</param>
     /// <returns>The decoded signature, or <see langword="null"/> when the encoding is malformed.</returns>
-    public static LongfellowMlDsaSignature? SignatureDecode(LongfellowMlDsaParameters parameters, ReadOnlySpan<byte> signature)
+    public static LongfellowMlDsaSignature? SignatureDecode(LongfellowMlDsaParameters parameters, ReadOnlySpan<byte> signature, LongfellowCircuitStorage storage)
     {
         int bitsPerCoefficient = parameters.ResponseCoefficientBits;
         int responseBytes = 32 * bitsPerCoefficient;
@@ -438,7 +450,7 @@ internal static class LongfellowMlDsaReference
         }
 
         int offset = 0;
-        byte[] commitmentHash = signature.Slice(offset, parameters.CommitmentBytes).ToArray();
+        Memory<byte> commitmentHash = storage.Copy(signature.Slice(offset, parameters.CommitmentBytes));
         offset += parameters.CommitmentBytes;
 
         var z = new uint[parameters.ColumnCount][];
@@ -508,9 +520,11 @@ internal static class LongfellowMlDsaReference
     /// </summary>
     /// <param name="parameters">The parameter set.</param>
     /// <param name="publicKey">The encoded public key.</param>
+    /// <param name="pool">The caller pool supplying expansion staging.</param>
+    /// <param name="storage">The witness-owned storage retaining the decoded hash; the result borrows it until disposal.</param>
     /// <returns>The decoded key.</returns>
     /// <exception cref="ArgumentException">When the encoding is too short (the reference's <c>check</c>).</exception>
-    public static LongfellowMlDsaPublicKey PublicKeyDecode(LongfellowMlDsaParameters parameters, ReadOnlySpan<byte> publicKey)
+    public static LongfellowMlDsaPublicKey PublicKeyDecode(LongfellowMlDsaParameters parameters, ReadOnlySpan<byte> publicKey, BaseMemoryPool pool, LongfellowCircuitStorage storage)
     {
         int t1Bytes = 32 * T1CoefficientBits;
         int expectedSize = SeedBytes + (parameters.RowCount * t1Bytes);
@@ -523,7 +537,7 @@ internal static class LongfellowMlDsaReference
         ReadOnlySpan<byte> seed = publicKey[..SeedBytes];
         offset += SeedBytes;
 
-        uint[][][] matrixA = ExpandMatrix(parameters, seed);
+        uint[][][] matrixA = ExpandMatrix(parameters, seed, pool);
 
         var t1 = new uint[parameters.RowCount][];
         for(int i = 0; i < parameters.RowCount; i++)
@@ -532,8 +546,8 @@ internal static class LongfellowMlDsaReference
             offset += t1Bytes;
         }
 
-        var tr = new byte[PublicKeyHashBytes];
-        LongfellowSha3Witness.Shake256Hash(publicKey, tr);
+        Memory<byte> tr = storage.Allocate(PublicKeyHashBytes);
+        LongfellowSha3Witness.Shake256Hash(publicKey, tr.Span);
 
         return new LongfellowMlDsaPublicKey(matrixA, t1, tr);
     }
@@ -545,8 +559,8 @@ internal static class LongfellowMlDsaReference
     /// </summary>
     /// <param name="coefficients">The canonical coefficients, each at most <paramref name="bound"/>.</param>
     /// <param name="bound">The largest packed value, whose bit length is the packing width.</param>
-    /// <returns>The packed bytes.</returns>
-    public static byte[] SimpleBitPack(uint[] coefficients, uint bound)
+    /// <param name="destination">The destination for the packed bytes; its logical prefix is cleared before packing.</param>
+    public static void SimpleBitPack(uint[] coefficients, uint bound, Span<byte> destination)
     {
         int bitsPerCoefficient = LongfellowMlDsaParameters.BitLength(bound);
         if(bound == 0)
@@ -555,7 +569,8 @@ internal static class LongfellowMlDsaReference
         }
 
         int totalBits = LongfellowMlDsaParameters.CoefficientCount * bitsPerCoefficient;
-        var packed = new byte[(totalBits + 7) / 8];
+        Span<byte> packed = destination[..((totalBits + 7) / 8)];
+        packed.Clear();
 
         int currentBit = 0;
         for(int i = 0; i < LongfellowMlDsaParameters.CoefficientCount; i++)
@@ -571,8 +586,6 @@ internal static class LongfellowMlDsaReference
                 currentBit++;
             }
         }
-
-        return packed;
     }
 
 
@@ -582,21 +595,17 @@ internal static class LongfellowMlDsaReference
     /// </summary>
     /// <param name="parameters">The parameter set.</param>
     /// <param name="highBits">The high-bits vector, indexed row, coefficient.</param>
-    /// <returns>The packed byte string, <c>K·w1_bytes</c> long.</returns>
-    public static byte[] W1Encode(LongfellowMlDsaParameters parameters, uint[][] highBits)
+    /// <param name="destination">The destination for the <c>K·w1_bytes</c> packed bytes.</param>
+    public static void W1Encode(LongfellowMlDsaParameters parameters, uint[][] highBits, Span<byte> destination)
     {
         uint bound = parameters.HintModulus - 1;
-        var encoded = new byte[parameters.RowCount * parameters.HighBitsBytes];
 
         int offset = 0;
         for(int i = 0; i < parameters.RowCount; i++)
         {
-            byte[] packed = SimpleBitPack(highBits[i], bound);
-            packed.CopyTo(encoded.AsSpan(offset));
-            offset += packed.Length;
+            SimpleBitPack(highBits[i], bound, destination.Slice(offset, parameters.HighBitsBytes));
+            offset += parameters.HighBitsBytes;
         }
-
-        return encoded;
     }
 
 

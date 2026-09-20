@@ -12,7 +12,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold evals→coefficients interpolation (AB.4): the
+/// Tests for the BaseFold evals→coefficients interpolation: the
 /// multilinear Möbius transform that turns a <see cref="MultilinearExtension"/>'s
 /// dense hypercube evaluations into the monomial coefficient vector
 /// <see cref="FoldableCodeExtensions.Encode"/> commits to. A hand-computed case
@@ -23,16 +23,26 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class BaseFoldInterpolationTests
 {
+    /// <summary>The BLS12-381 scalar addition backend used by the forward zeta transform.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar subtraction backend the Möbius interpolation runs on.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar reduction backend used to turn raw sampled bytes into canonical field elements.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The number of random samples the property-based zeta/Möbius round-trip test draws per variable count.</summary>
     private const int IterationCount = 50;
 
+    /// <summary>The curve every evaluation, coefficient and scalar in this suite is over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Pins the coefficient-index convention against a hand-computed two-variable example: InterpolateToCoefficients must reproduce the monomial coefficients c00, c10, c01, c11 computed by hand from the hypercube evaluations.</summary>
     [TestMethod]
     public void TwoVariableCoefficientsMatchTheHandComputedMonomialForm()
     {
@@ -67,6 +77,7 @@ internal sealed class BaseFoldInterpolationTests
     }
 
 
+    /// <summary>Pins that interpolating random hypercube evaluations to monomial coefficients and then applying the forward zeta transform recovers the original evaluations exactly, confirming the Möbius transform is lossless at variable counts one through five.</summary>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -104,8 +115,7 @@ internal sealed class BaseFoldInterpolationTests
     }
 
 
-    //Forward zeta: f(b) = Σ_{S ⊆ supp(b)} coeff[S]. The inverse of the Möbius
-    //butterfly — for each variable bit, the high entry gains the low entry.
+    /// <summary>The forward zeta transform, <c>f(b) = Σ_{S ⊆ supp(b)} coeff[S]</c>: the inverse of the Möbius butterfly, where for each variable bit the high entry gains the low entry.</summary>
     private static void ZetaInPlace(Span<byte> values, int variableCount)
     {
         int count = 1 << variableCount;
@@ -128,6 +138,7 @@ internal sealed class BaseFoldInterpolationTests
     }
 
 
+    /// <summary>Writes a small non-negative integer as a canonical big-endian scalar at the given evaluation index.</summary>
     private static void WriteSmall(Span<byte> buffer, int index, int value)
     {
         Span<byte> slot = buffer.Slice(index * ScalarSize, ScalarSize);
@@ -136,6 +147,7 @@ internal sealed class BaseFoldInterpolationTests
     }
 
 
+    /// <summary>Asserts that the canonical scalar at the given coefficient index equals a small expected integer value.</summary>
     private static void AssertSmall(ReadOnlySpan<byte> buffer, int index, int expected, string name)
     {
         Span<byte> expectedSlot = stackalloc byte[ScalarSize];

@@ -17,29 +17,60 @@ namespace Lumoin.Veridical.Tests.Commitments;
 /// Round-trip and tamper tests for the Hyrax weighted opening: a single-row
 /// vector commitment proving <c>⟨vector, W⟩</c> against a public weight
 /// vector through the inner-product argument — the Pedersen/IPA analogue of
-/// BaseFold's weighted opening (SM.1), and the binding the statistical-mask
+/// BaseFold's weighted opening, and the binding the statistical-mask
 /// construction uses over the Hyrax path.
 /// </summary>
 [TestClass]
 internal sealed class HyraxWeightedOpeningTests
 {
+    /// <summary>The Fiat-Shamir domain label every transcript in this file is initialised with.</summary>
     private const string TranscriptDomain = "veridical.test.hyrax.weighted.v1";
 
+    /// <summary>The BLS12-381 G1 hash-to-curve delegate used to derive the Hyrax commitment key's generators.</summary>
     private static G1HashToCurveDelegate HashToCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetHashToCurve();
+
+    /// <summary>The BLS12-381 G1 addition delegate the Hyrax commitment and IPA use.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BLS12-381 G1 scalar-multiplication delegate the Hyrax commitment and IPA use.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The BLS12-381 G1 multi-scalar-multiplication delegate the Hyrax commitment and IPA use.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The BLS12-381 G1 on-curve validation delegate the verifier uses to screen proof points.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BLS12-381 G1 prime-order-subgroup validation delegate the verifier uses to screen proof points.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate G1IsInPrimeOrderSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BLS12-381 scalar addition delegate the weighted opening computes over.</summary>
     private static ScalarAddDelegate ScalarAdd { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar subtraction delegate the weighted opening computes over.</summary>
     private static ScalarSubtractDelegate ScalarSubtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar multiplication delegate the weighted opening computes over.</summary>
     private static ScalarMultiplyDelegate ScalarMul { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar inversion delegate the weighted opening computes over.</summary>
     private static ScalarInvertDelegate ScalarInvert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The delegate that reduces a wide byte buffer to a canonical BLS12-381 scalar.</summary>
     private static ScalarReduceDelegate ScalarReduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The Fiat-Shamir hash delegate every transcript in this file uses.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The Fiat-Shamir squeeze delegate every transcript in this file uses.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
 
 
+    /// <summary>
+    /// Verifies that an honest Hyrax weighted-opening proof's claimed value equals the directly
+    /// computed inner product of the vector and weights, and that the proof verifies, across
+    /// several variable counts.
+    /// </summary>
     [TestMethod]
     [DataRow(2)]
     [DataRow(3)]
@@ -84,6 +115,7 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Verifies that verification rejects a genuine proof when paired with a claimed value one off from the true weighted sum.</summary>
     [TestMethod]
     public void VerifyWithWrongClaimedValueFails()
     {
@@ -124,6 +156,7 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Verifies that verification rejects a genuine proof when the verifier's weight vector differs from the one the prover opened against.</summary>
     [TestMethod]
     public void VerifyWithDifferentWeightsFails()
     {
@@ -162,11 +195,20 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>
+    /// Verifies that flipping one bit anywhere in a genuine proof's bytes makes verification fail,
+    /// whether the flipped byte lands in a point slot (C_f, or an IPA round's L/R point, caught by
+    /// the subgroup screen) or a scalar slot (the IPA's final a', caught by the algebraic check).
+    /// Offset 0 is the first byte of C_f, 50 lies inside the first IPA round's L point, and 100
+    /// lies inside its R point — all three are point slots rejected by the subgroup screen before
+    /// the algebraic check runs; offset 440 lies inside the IPA's final scalar a', a scalar slot,
+    /// so it exercises the algebraic check instead.
+    /// </summary>
     [TestMethod]
-    [DataRow(0)]   //First byte of C_f: a point slot, rejected by the subgroup screen before the algebraic check runs.
-    [DataRow(50)]  //Inside the first IPA round's L point: a point slot, rejected by the subgroup screen before the algebraic check runs.
-    [DataRow(100)] //Inside the first IPA round's R point: a point slot, rejected by the subgroup screen before the algebraic check runs.
-    [DataRow(440)] //Inside the IPA's final scalar a': a scalar slot, so this still exercises the algebraic check.
+    [DataRow(0)]
+    [DataRow(50)]
+    [DataRow(100)]
+    [DataRow(440)]
     public void VerifyWithCorruptedProofFails(int byteOffset)
     {
         const int VariableCount = 4;
@@ -205,6 +247,7 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Verifies that two independent openings of the same commitment, vector and weights produce different proof bytes, since each draws a fresh C_f blind.</summary>
     [TestMethod]
     public void TwoOpeningsOfSameStatementDiffer()
     {
@@ -247,6 +290,7 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Verifies that committing a vector throws when the key was derived with fewer generators than the vector's coordinate count.</summary>
     [TestMethod]
     public void CommitVectorWithTooFewGeneratorsThrows()
     {
@@ -262,14 +306,17 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Derives a Hyrax commitment key with the given number of generators from the library's canonical seed.</summary>
     private static HyraxCommitmentKey DeriveKey(int vectorLength) =>
         HyraxCommitmentKey.Derive(vectorLength, WellKnownHyraxDomainLabels.CanonicalSeedV1, CurveParameterSet.Bls12Curve381, HashToCurve, BaseMemoryPool.Shared);
 
 
+    /// <summary>Builds a fresh Fiat-Shamir transcript scoped to this file's fixed domain, with an empty initial absorb.</summary>
     private static FiatShamirTranscript NewTranscript() =>
         FiatShamirTranscript.Initialise(new FiatShamirDomainLabel(TranscriptDomain), ReadOnlySpan<byte>.Empty, WellKnownHashAlgorithms.Blake3, Hash, BaseMemoryPool.Shared);
 
 
+    /// <summary>Computes ⟨vector, weights⟩ directly over the scalar field, as the reference the claimed opening value is checked against.</summary>
     private static Scalar ComputeDirectInnerProduct(MultilinearExtension vector, MultilinearExtension weights)
     {
         int scalarSize = Scalar.SizeBytes;
@@ -289,6 +336,7 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Builds a multilinear extension of the given variable count whose evaluations are the given function applied to each index.</summary>
     private static MultilinearExtension BuildVector(int variableCount, Func<int, int> valueAt)
     {
         int evaluationCount = 1 << variableCount;
@@ -304,6 +352,7 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Builds a canonical scalar from a small integer value.</summary>
     private static Scalar MakeScalar(int value)
     {
         Span<byte> span = stackalloc byte[Scalar.SizeBytes];
@@ -313,6 +362,7 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>Reduces a possibly negative or oversized integer modulo the scalar field order and writes it as a canonical big-endian scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();
@@ -332,11 +382,17 @@ internal sealed class HyraxWeightedOpeningTests
     }
 
 
+    /// <summary>
+    /// Builds a deterministic scalar randomness delegate: each call hashes the seed with an
+    /// incrementing counter and reduces the digest to a scalar, so a fixed seed always replays the
+    /// same sequence.
+    /// </summary>
     private static ScalarRandomDelegate MakeFixedRandom(int seed)
     {
         int counter = 0;
         return Sample;
 
+        //Produces the next scalar in this seed's deterministic sequence from SHA-256(seed, counter).
         Tag Sample(Span<byte> destination, CurveParameterSet curve, Tag inboundTag)
         {
             Span<byte> hashInput = stackalloc byte[8];

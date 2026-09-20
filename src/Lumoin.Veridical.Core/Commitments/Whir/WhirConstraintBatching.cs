@@ -70,7 +70,7 @@ public static class WhirConstraintBatching
     /// <param name="constraintPoints">Every claim's constraint points <c>p_c</c>, <c>m</c> elements per constraint, concatenated in claim order.</param>
     /// <param name="claimTargets">The claimed sums <c>σ_i</c>, one element per claim.</param>
     /// <param name="transcript">The Fiat-Shamir transcript, already initialised with the protocol's public context.</param>
-    /// <param name="merkleHash">The two-to-one Merkle compression.</param>
+    /// <param name="merkleParameters">The Merkle compression paired with the node width it produces.</param>
     /// <param name="hash">The transcript's fixed-output hash backend.</param>
     /// <param name="squeeze">The transcript's XOF backend.</param>
     /// <param name="reduce">The scalar-reduce backend for deriving challenges.</param>
@@ -89,7 +89,7 @@ public static class WhirConstraintBatching
         ReadOnlySpan<byte> constraintPoints,
         ReadOnlySpan<byte> claimTargets,
         FiatShamirTranscript transcript,
-        MerkleHashDelegate merkleHash,
+        MerkleCommitmentParameters merkleParameters,
         FiatShamirHashDelegate hash,
         FiatShamirSqueezeDelegate squeeze,
         ScalarReduceDelegate reduce,
@@ -100,7 +100,7 @@ public static class WhirConstraintBatching
     {
         ArgumentNullException.ThrowIfNull(schedule);
         ArgumentNullException.ThrowIfNull(transcript);
-        ArgumentNullException.ThrowIfNull(merkleHash);
+        ArgumentNullException.ThrowIfNull(merkleParameters);
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(squeeze);
         ArgumentNullException.ThrowIfNull(reduce);
@@ -117,7 +117,7 @@ public static class WhirConstraintBatching
         //polynomial is fixed: bind the whole batch and the input oracle's
         //root, then squeeze γ.
         transcript.AbsorbWhirBatchStatement(claimTargets, claimConstraintCounts, constraintCoefficients, constraintPoints, hash, pool);
-        using MerkleRoot boundCommitment = WhirIoppProver.ComputeInputCommitment(schedule, coefficients, merkleHash, add, subtract, multiply, pool);
+        using MerkleRoot boundCommitment = WhirIoppProver.ComputeInputCommitment(schedule, coefficients, merkleParameters, add, subtract, multiply, pool);
         transcript.AbsorbWhirOracleRoot(boundCommitment, hash);
 
         using Scalar gamma = transcript.SqueezeWhirBatchCombinationChallenge(squeeze, hash, reduce, curve, pool);
@@ -135,7 +135,7 @@ public static class WhirConstraintBatching
             constraintPoints,
             combinedTarget,
             transcript,
-            merkleHash,
+            merkleParameters,
             hash,
             squeeze,
             reduce,

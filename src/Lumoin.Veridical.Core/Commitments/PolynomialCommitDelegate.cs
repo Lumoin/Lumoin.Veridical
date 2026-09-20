@@ -6,7 +6,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <summary>
 /// Commits to a multilinear polynomial, returning the commitment and the
 /// blind retained for the matching open. One operation of the
-/// polynomial-commitment surface; a concrete scheme (Hyrax today) provides
+/// polynomial-commitment surface; a concrete scheme (such as Hyrax) provides
 /// an implementation with its commitment key and algebraic backends
 /// captured, so the call site supplies only the polynomial and a pool.
 /// </summary>

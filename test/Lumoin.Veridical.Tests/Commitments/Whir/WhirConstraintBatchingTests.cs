@@ -12,8 +12,8 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR multi-claim batching layer (4.2 phase B, WHIR
-/// Construction 5.5): honest batched round-trips on both wired curves,
+/// Tests for the WHIR multi-claim batching layer (WHIR Construction 5.5):
+/// honest batched round-trips on both wired curves,
 /// mixed per-claim constraint shapes including a constraint-free claim, the
 /// single-claim degenerate batch, the Theorem 5.6 ledger-row pins, and the
 /// rejection wall — a tampered claim target, a shifted claim boundary over
@@ -71,7 +71,11 @@ internal sealed class WhirConstraintBatchingTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
 
+
+    /// <summary>Verifies that an honest three-claim batch proves and verifies over BLS12-381.</summary>
     [TestMethod]
     public void HonestThreeClaimBatchRoundTripsOnBls12Curve381()
     {
@@ -84,6 +88,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies that an honest three-claim batch proves and verifies over BN254.</summary>
     [TestMethod]
     public void HonestThreeClaimBatchRoundTripsOnBn254()
     {
@@ -96,6 +101,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies that a batch mixing claim shapes — two constraints, zero constraints, and one constraint — proves and verifies, so the boundary encoding and γ-power scaling line up across claims of different sizes.</summary>
     [TestMethod]
     public void MixedShapeBatchWithConstraintFreeClaimRoundTrips()
     {
@@ -112,6 +118,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies the degenerate single-claim batch: γ is squeezed but the sole claim's power is γ^0, so the combined statement equals that one claim and the batch verifies.</summary>
     [TestMethod]
     public void SingleClaimBatchRoundTrips()
     {
@@ -126,6 +133,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies the Theorem 5.6 batching-ledger arithmetic: two claims price the full field floor, three claims price one bit under it, and a single claim prices as an error-free row.</summary>
     [TestMethod]
     public void BatchingLedgerRowPinsTheoremFiveSixBound()
     {
@@ -146,6 +154,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies that flipping a bit of the claim targets after proving causes verification to reject the batch.</summary>
     [TestMethod]
     public void TamperedClaimTargetIsRejected()
     {
@@ -163,7 +172,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -204,6 +213,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies that proving over one claim-boundary split and verifying over a different split of the same flat spans is rejected, since the shift changes the absorbed boundary encoding and the combined weight.</summary>
     [TestMethod]
     public void ShiftedClaimBoundaryIsRejected()
     {
@@ -226,7 +236,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -262,6 +272,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies that an empty claim list, a negative constraint count, a claim count mismatched to the targets span, and a constraint total mismatched to the flat spans are all refused before any transcript work.</summary>
     [TestMethod]
     public void MalformedBatchShapesThrow()
     {
@@ -285,6 +296,7 @@ internal sealed class WhirConstraintBatchingTests
     }
 
 
+    /// <summary>Verifies that the prover refuses to produce a proof when the combined claim target does not hold for the given witness.</summary>
     [TestMethod]
     public void ProverRejectsInconsistentClaimTarget()
     {
@@ -324,7 +336,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             tamperedTargets,
             transcript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -360,7 +372,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             Bls.Reduce,
@@ -402,33 +414,38 @@ internal sealed class WhirConstraintBatchingTests
     /// </summary>
     private sealed class BatchStatement: IDisposable
     {
-        private readonly IMemoryOwner<byte> owner;
-        private readonly int messageBytes;
-        private readonly int scalesBytes;
-        private readonly int pointsBytes;
-        private readonly int targetsBytes;
+        /// <summary>The pooled buffer backing every span this statement exposes: the coefficient, scale, point, and target regions, laid out contiguously in that order.</summary>
+        private IMemoryOwner<byte> Owner { get; }
+        /// <summary>The byte length of the coefficient region at the start of <see cref="Owner"/>.</summary>
+        private int MessageBytes { get; }
+        /// <summary>The byte length of the constraint-scales region, immediately after the coefficients.</summary>
+        private int ScalesBytes { get; }
+        /// <summary>The byte length of the constraint-points region, immediately after the scales.</summary>
+        private int PointsBytes { get; }
+        /// <summary>The byte length of the claim-targets region, immediately after the points.</summary>
+        private int TargetsBytes { get; }
 
         /// <summary>The multilinear coefficient vector.</summary>
-        public ReadOnlySpan<byte> Coefficients => owner.Memory.Span[..messageBytes];
+        public ReadOnlySpan<byte> Coefficients => Owner.Memory.Span[..MessageBytes];
 
         /// <summary>Every claim's constraint scales, concatenated in claim order.</summary>
-        public ReadOnlySpan<byte> ConstraintCoefficients => owner.Memory.Span.Slice(messageBytes, scalesBytes);
+        public ReadOnlySpan<byte> ConstraintCoefficients => Owner.Memory.Span.Slice(MessageBytes, ScalesBytes);
 
         /// <summary>Every claim's constraint points, concatenated in claim order.</summary>
-        public ReadOnlySpan<byte> ConstraintPoints => owner.Memory.Span.Slice(messageBytes + scalesBytes, pointsBytes);
+        public ReadOnlySpan<byte> ConstraintPoints => Owner.Memory.Span.Slice(MessageBytes + ScalesBytes, PointsBytes);
 
         /// <summary>The honestly evaluated claim targets, one element per claim.</summary>
-        public ReadOnlySpan<byte> ClaimTargets => owner.Memory.Span.Slice(messageBytes + scalesBytes + pointsBytes, targetsBytes);
+        public ReadOnlySpan<byte> ClaimTargets => Owner.Memory.Span.Slice(MessageBytes + ScalesBytes + PointsBytes, TargetsBytes);
 
 
         /// <summary>Wraps the populated statement buffer; the statement takes ownership.</summary>
         private BatchStatement(IMemoryOwner<byte> owner, int messageBytes, int scalesBytes, int pointsBytes, int targetsBytes)
         {
-            this.owner = owner;
-            this.messageBytes = messageBytes;
-            this.scalesBytes = scalesBytes;
-            this.pointsBytes = pointsBytes;
-            this.targetsBytes = targetsBytes;
+            this.Owner = owner;
+            this.MessageBytes = messageBytes;
+            this.ScalesBytes = scalesBytes;
+            this.PointsBytes = pointsBytes;
+            this.TargetsBytes = targetsBytes;
         }
 
 
@@ -492,7 +509,7 @@ internal sealed class WhirConstraintBatchingTests
         public void Dispose()
         {
             //The pool zeroes rented buffers on return.
-            owner.Dispose();
+            Owner.Dispose();
         }
     }
 
@@ -543,7 +560,7 @@ internal sealed class WhirConstraintBatchingTests
             statement.ConstraintPoints,
             statement.ClaimTargets,
             proverTranscript,
-            Merkle,
+            TreeParameters,
             Hash,
             Squeeze,
             backend.Reduce,

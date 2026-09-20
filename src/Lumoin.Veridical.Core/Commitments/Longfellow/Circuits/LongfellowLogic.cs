@@ -1,3 +1,4 @@
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using Lumoin.Veridical.Core.Algebraic;
@@ -55,7 +56,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// branch — produces.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowLogic
+internal sealed class LongfellowLogic: IDisposable
 {
     /// <summary>The reference's <c>v1</c> width alias.</summary>
     public const int BitWidth1 = 1;
@@ -93,8 +94,14 @@ internal sealed class LongfellowLogic
     /// <summary>The narrower of the two widths <see cref="Gf2PolynomialMultiplierKaratsuba"/> recurses on, and the threshold below which it falls back to the schoolbook multiplier (the reference's <c>w == 64</c> arm and <c>w &lt; 64</c> guard).</summary>
     private const int KaratsubaMidWidth = 64;
 
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowLogicFieldOperations field;
+    /// <summary>The backend every gate ultimately lowers to (the reference's <c>bk_</c>), exposed publicly through <see cref="Backend"/>.</summary>
+    private LongfellowLogicBackend GateBackend { get; }
+
+    /// <summary>The field-operation bundle this gadget runs over (the reference's <c>f_</c>), exposed publicly through <see cref="Field"/>.</summary>
+    private LongfellowLogicFieldOperations FieldOperations { get; }
+
+    /// <summary>Owns retained wire coefficients and helper tables until this logic is disposed.</summary>
+    internal LongfellowCircuitStorage Storage { get; }
 
     /// <summary>
     /// A carry-propagation scan over parallel generate/propagate arrays (the reference's
@@ -249,14 +256,15 @@ internal sealed class LongfellowLogic
     private static LongfellowBitWire[] EmptyBitWireVector { get; } = [];
 
     /// <summary>The backend every gate ultimately lowers to (the reference's <c>bk_</c>).</summary>
-    public LongfellowLogicBackend Backend => this.backend;
+    public LongfellowLogicBackend Backend => this.GateBackend;
 
     /// <summary>The field-operation bundle this gadget runs over (the reference's <c>f_</c>).</summary>
-    public LongfellowLogicFieldOperations Field => this.field;
+    public LongfellowLogicFieldOperations Field => this.FieldOperations;
 
 
     /// <summary>
-    /// Constructs the gadget over a backend and its field-operation bundle.
+    /// Constructs the gadget over a borrowed backend and field bundle, which must outlive it.
+    /// Returned bit-wire coefficients and helper tables borrow this gadget's storage until disposal.
     /// </summary>
     /// <param name="backend">The backend every gate lowers to.</param>
     /// <param name="field">The field-operation bundle.</param>
@@ -266,8 +274,16 @@ internal sealed class LongfellowLogic
         ArgumentNullException.ThrowIfNull(backend);
         ArgumentNullException.ThrowIfNull(field);
 
-        this.backend = backend;
-        this.field = field;
+        this.GateBackend = backend;
+        this.FieldOperations = field;
+        Storage = new LongfellowCircuitStorage(field.Pool);
+    }
+
+
+    /// <summary>Releases retained coefficients and tables. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        Storage.Dispose();
     }
 
 
@@ -279,11 +295,16 @@ internal sealed class LongfellowLogic
     /// <param name="d0">The new constant term, canonical big-endian.</param>
     /// <param name="d1">The new linear coefficient, canonical big-endian.</param>
     /// <param name="v">The bit to rebase.</param>
-    /// <returns>The rebased bit, over the same wire as <paramref name="v"/>.</returns>
+    /// <returns>The rebased bit, over the same wire as <paramref name="v"/>, borrowing coefficients until this logic is disposed.</returns>
     public LongfellowBitWire Rebase(ReadOnlySpan<byte> d0, ReadOnlySpan<byte> d1, LongfellowBitWire v)
     {
-        byte[] constantTerm = AddConstant(d0, MultiplyConstant(d1, v.ConstantTerm.Span));
-        byte[] linearCoefficient = MultiplyConstant(d1, v.LinearCoefficient.Span);
+        using IMemoryOwner<byte> owner = FieldOperations.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> product = owner.Memory.Span[..Scalar.SizeBytes];
+        MultiplyConstant(d1, v.ConstantTerm.Span, product);
+        Memory<byte> constantTerm = Storage.Allocate(Scalar.SizeBytes);
+        AddConstant(d0, product, constantTerm.Span);
+        Memory<byte> linearCoefficient = Storage.Allocate(Scalar.SizeBytes);
+        MultiplyConstant(d1, v.LinearCoefficient.Span, linearCoefficient.Span);
 
         return new LongfellowBitWire(constantTerm, linearCoefficient, v.Wire);
     }
@@ -297,10 +318,10 @@ internal sealed class LongfellowLogic
     /// <returns>The wire holding the bit's value.</returns>
     public int Eval(LongfellowBitWire v)
     {
-        int r = backend.MultiplyScaled(v.LinearCoefficient.Span, v.Wire);
+        int r = GateBackend.MultiplyScaled(v.LinearCoefficient.Span, v.Wire);
         if (!LongfellowCompilerFieldOperations.ElementIsZero(v.ConstantTerm.Span))
         {
-            r = backend.Add(backend.Constant(v.ConstantTerm.Span), r);
+            r = GateBackend.Add(GateBackend.Constant(v.ConstantTerm.Span), r);
         }
 
         return r;
@@ -324,15 +345,17 @@ internal sealed class LongfellowLogic
             throw new ArgumentOutOfRangeException(nameof(v), $"as_scalar covers at most {MaxNativeScalarBitWidth} bits.");
         }
 
-        int r = backend.Constant(field.Compiler.Zero.Span);
+        int r = GateBackend.Constant(FieldOperations.Compiler.Zero.Span);
         ulong allOnes = 0;
         for (int i = 0; i < v.Length; i++)
         {
-            r = backend.Axpy(r, field.Beta(i).Span, Eval(v[i]));
+            r = GateBackend.Axpy(r, FieldOperations.Beta(i).Span, Eval(v[i]));
             allOnes += 1UL << i;
         }
 
-        _ = field.OfScalar(allOnes);
+        using IMemoryOwner<byte> owner = FieldOperations.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> scalar = owner.Memory.Span[..Scalar.SizeBytes];
+        FieldOperations.OfScalar(allOnes, scalar);
 
         return r;
     }
@@ -346,9 +369,9 @@ internal sealed class LongfellowLogic
     /// <returns>The bit, over a real constant-one wire.</returns>
     public LongfellowBitWire Bit(int value)
     {
-        ReadOnlyMemory<byte> constantTerm = value == 0 ? field.Compiler.Zero : field.Compiler.One;
+        ReadOnlyMemory<byte> constantTerm = value == 0 ? FieldOperations.Compiler.Zero : FieldOperations.Compiler.One;
 
-        return new LongfellowBitWire(constantTerm, field.Compiler.Zero, backend.Constant(field.Compiler.One.Span));
+        return new LongfellowBitWire(constantTerm, FieldOperations.Compiler.Zero, GateBackend.Constant(FieldOperations.Compiler.One.Span));
     }
 
 
@@ -392,7 +415,7 @@ internal sealed class LongfellowLogic
     /// <summary>The reference's <c>lnot</c>: a pure representation change, <c>1 - x</c> in the standard basis.</summary>
     /// <param name="x">The bit to negate.</param>
     /// <returns>The negated bit.</returns>
-    public LongfellowBitWire Not(LongfellowBitWire x) => Rebase(field.Compiler.One.Span, field.Compiler.MinusOne.Span, x);
+    public LongfellowBitWire Not(LongfellowBitWire x) => Rebase(FieldOperations.Compiler.One.Span, FieldOperations.Compiler.MinusOne.Span, x);
 
 
     /// <summary>The reference's <c>vnot</c>: elementwise <see cref="Not(LongfellowBitWire)"/>.</summary>
@@ -506,20 +529,26 @@ internal sealed class LongfellowLogic
     /// <returns>The exclusive-or.</returns>
     public LongfellowBitWire Xor(LongfellowBitWire a, LongfellowBitWire b)
     {
-        if (field.Compiler.IsCharacteristicTwo)
+        if (FieldOperations.Compiler.IsCharacteristicTwo)
         {
             return Addv(a, b);
         }
 
-        ReadOnlyMemory<byte> minusTwo = field.Negate(field.Two.Span);
-        ReadOnlyMemory<byte> half = field.Half;
-        ReadOnlyMemory<byte> minusHalf = field.Negate(half.Span);
+        //Both basis-change coefficients are consumed before this operation returns.
+        const int CoefficientCount = 2;
+        using IMemoryOwner<byte> owner = FieldOperations.Pool.Rent(CoefficientCount * Scalar.SizeBytes);
+        Span<byte> buffer = owner.Memory.Span[..(CoefficientCount * Scalar.SizeBytes)];
+        Span<byte> minusTwo = buffer[..Scalar.SizeBytes];
+        Span<byte> minusHalf = buffer[Scalar.SizeBytes..];
+        ReadOnlyMemory<byte> half = FieldOperations.Half;
+        FieldOperations.Negate(FieldOperations.Two.Span, minusTwo);
+        FieldOperations.Negate(half.Span, minusHalf);
 
-        LongfellowBitWire a1 = Rebase(field.Compiler.One.Span, minusTwo.Span, a);
-        LongfellowBitWire b1 = Rebase(field.Compiler.One.Span, minusTwo.Span, b);
+        LongfellowBitWire a1 = Rebase(FieldOperations.Compiler.One.Span, minusTwo, a);
+        LongfellowBitWire b1 = Rebase(FieldOperations.Compiler.One.Span, minusTwo, b);
         LongfellowBitWire p = Mulv(a1, b1);
 
-        return Rebase(half.Span, minusHalf.Span, p);
+        return Rebase(half.Span, minusHalf, p);
     }
 
 
@@ -625,7 +654,7 @@ internal sealed class LongfellowLogic
     /// <param name="a">The bit.</param>
     /// <param name="b">The field element wire.</param>
     /// <returns>The wire holding the product.</returns>
-    public int Multiply(LongfellowBitWire a, int b) => Eval(Mulv(a, new LongfellowBitWire(field, b)));
+    public int Multiply(LongfellowBitWire a, int b) => Eval(Mulv(a, new LongfellowBitWire(FieldOperations, b)));
 
 
     /// <summary>The reference's <c>lmul(EltW, BitW)</c> overload: <see cref="Multiply(LongfellowBitWire, int)"/> with the operands swapped.</summary>
@@ -648,7 +677,7 @@ internal sealed class LongfellowLogic
     /// <param name="ifTrue">The wire chosen when <paramref name="control"/> is true.</param>
     /// <param name="ifFalse">The wire chosen when <paramref name="control"/> is false.</param>
     /// <returns>The wire holding the selected value.</returns>
-    public int Mux(LongfellowBitWire control, int ifTrue, int ifFalse) => backend.Add(Multiply(control, ifTrue), Multiply(Not(control), ifFalse));
+    public int Mux(LongfellowBitWire control, int ifTrue, int ifFalse) => GateBackend.Add(Multiply(control, ifTrue), Multiply(Not(control), ifFalse));
 
 
     /// <summary>The reference's <c>vmux</c>: elementwise <see cref="Mux(LongfellowBitWire, LongfellowBitWire, LongfellowBitWire)"/> into a destination.</summary>
@@ -673,7 +702,7 @@ internal sealed class LongfellowLogic
     /// <param name="i1">The exclusive range end.</param>
     /// <param name="f">The term at each index.</param>
     /// <returns>The wire holding the sum.</returns>
-    public int Add(int i0, int i1, Func<int, int> f) => ReduceRange(i0, i1, f, (left, right) => backend.Add(left, right), () => backend.Constant(field.Compiler.Zero.Span));
+    public int Add(int i0, int i1, Func<int, int> f) => ReduceRange(i0, i1, f, (left, right) => GateBackend.Add(left, right), () => GateBackend.Constant(FieldOperations.Compiler.Zero.Span));
 
 
     /// <summary>
@@ -684,7 +713,7 @@ internal sealed class LongfellowLogic
     /// <param name="i1">The exclusive range end.</param>
     /// <param name="f">The factor at each index.</param>
     /// <returns>The wire holding the product.</returns>
-    public int Multiply(int i0, int i1, Func<int, int> f) => ReduceRange(i0, i1, f, (left, right) => backend.Mul(left, right), () => backend.Constant(field.Compiler.One.Span));
+    public int Multiply(int i0, int i1, Func<int, int> f) => ReduceRange(i0, i1, f, (left, right) => GateBackend.Mul(left, right), () => GateBackend.Constant(FieldOperations.Compiler.One.Span));
 
 
     /// <summary>
@@ -743,7 +772,7 @@ internal sealed class LongfellowLogic
     /// <summary>The reference's <c>assert0(EltW)</c>: asserts that a wire's value is zero.</summary>
     /// <param name="wire">The wire whose value must be zero.</param>
     /// <returns>The asserted wire, per <see cref="LongfellowLogicBackend.AssertZero"/>.</returns>
-    public int AssertZero(int wire) => backend.AssertZero(wire);
+    public int AssertZero(int wire) => GateBackend.AssertZero(wire);
 
 
     /// <summary>The reference's <c>assert0(BitW)</c>: asserts that a bit's value is zero.</summary>
@@ -773,7 +802,7 @@ internal sealed class LongfellowLogic
     /// <param name="left">The first wire.</param>
     /// <param name="right">The second wire.</param>
     /// <returns>The asserted wire.</returns>
-    public int AssertEqual(int left, int right) => AssertZero(backend.Sub(left, right));
+    public int AssertEqual(int left, int right) => AssertZero(GateBackend.Sub(left, right));
 
 
     /// <summary>The reference's <c>assert_eq(BitW, BitW)</c>: asserts that two bits hold equal values.</summary>
@@ -819,9 +848,9 @@ internal sealed class LongfellowLogic
     /// <returns>The asserted wire.</returns>
     public int AssertIsBit(int wire)
     {
-        int square = backend.Mul(wire, wire);
+        int square = GateBackend.Mul(wire, wire);
 
-        return AssertZero(backend.Sub(wire, square));
+        return AssertZero(GateBackend.Sub(wire, square));
     }
 
 
@@ -1296,14 +1325,14 @@ internal sealed class LongfellowLogic
 
     /// <summary>The reference's <c>eltw_input</c>: declares a new witness wire without a bitness assertion.</summary>
     /// <returns>The declared wire.</returns>
-    public int InputElement() => backend.InputWire();
+    public int InputElement() => GateBackend.InputWire();
 
 
     /// <summary>The reference's <c>input</c>: declares a new witness bit and asserts it is genuinely zero or one.</summary>
     /// <returns>The declared bit.</returns>
     public LongfellowBitWire Input()
     {
-        var bit = new LongfellowBitWire(field, backend.InputWire());
+        var bit = new LongfellowBitWire(FieldOperations, GateBackend.InputWire());
         _ = AssertIsBit(bit);
 
         return bit;
@@ -1328,7 +1357,7 @@ internal sealed class LongfellowLogic
     /// <summary>The reference's <c>output(EltW, size_t)</c>: registers a wire's value as an output claim.</summary>
     /// <param name="wire">The wire whose value is the output.</param>
     /// <param name="index">The output position the value claims.</param>
-    public void Output(int wire, int index) => backend.OutputWire(wire, index);
+    public void Output(int wire, int index) => GateBackend.OutputWire(wire, index);
 
 
     /// <summary>The reference's <c>output(BitW, size_t)</c>: registers a bit's evaluated value as an output claim.</summary>
@@ -1360,7 +1389,7 @@ internal sealed class LongfellowLogic
     {
         if (LongfellowCompilerFieldOperations.ElementIsZero(a.LinearCoefficient.Span))
         {
-            return Rebase(field.Compiler.Zero.Span, a.ConstantTerm.Span, b);
+            return Rebase(FieldOperations.Compiler.Zero.Span, a.ConstantTerm.Span, b);
         }
 
         if (LongfellowCompilerFieldOperations.ElementIsZero(b.LinearCoefficient.Span))
@@ -1368,12 +1397,18 @@ internal sealed class LongfellowLogic
             return Mulv(b, a);
         }
 
-        int x = backend.MultiplyScaled(MultiplyConstant(a.LinearCoefficient.Span, b.LinearCoefficient.Span), a.Wire, b.Wire);
-        x = backend.Axpy(x, MultiplyConstant(a.ConstantTerm.Span, b.LinearCoefficient.Span), b.Wire);
-        x = backend.Axpy(x, MultiplyConstant(a.LinearCoefficient.Span, b.ConstantTerm.Span), a.Wire);
-        x = backend.Apy(x, MultiplyConstant(a.ConstantTerm.Span, b.ConstantTerm.Span));
+        using IMemoryOwner<byte> owner = FieldOperations.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> coefficient = owner.Memory.Span[..Scalar.SizeBytes];
+        MultiplyConstant(a.LinearCoefficient.Span, b.LinearCoefficient.Span, coefficient);
+        int x = GateBackend.MultiplyScaled(coefficient, a.Wire, b.Wire);
+        MultiplyConstant(a.ConstantTerm.Span, b.LinearCoefficient.Span, coefficient);
+        x = GateBackend.Axpy(x, coefficient, b.Wire);
+        MultiplyConstant(a.LinearCoefficient.Span, b.ConstantTerm.Span, coefficient);
+        x = GateBackend.Axpy(x, coefficient, a.Wire);
+        MultiplyConstant(a.ConstantTerm.Span, b.ConstantTerm.Span, coefficient);
+        x = GateBackend.Apy(x, coefficient);
 
-        return new LongfellowBitWire(field, x);
+        return new LongfellowBitWire(FieldOperations, x);
     }
 
 
@@ -1383,12 +1418,15 @@ internal sealed class LongfellowLogic
     /// </summary>
     /// <param name="a">The first operand.</param>
     /// <param name="b">The second operand.</param>
-    /// <returns>The sum, over a fresh wire in the general case.</returns>
+    /// <returns>The sum, over a fresh wire in the general case; folded coefficients borrow this logic's storage.</returns>
     private LongfellowBitWire Addv(LongfellowBitWire a, LongfellowBitWire b)
     {
         if (LongfellowCompilerFieldOperations.ElementIsZero(a.LinearCoefficient.Span))
         {
-            return new LongfellowBitWire(AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span), b.LinearCoefficient, b.Wire);
+            Memory<byte> constantTerm = Storage.Allocate(Scalar.SizeBytes);
+            AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span, constantTerm.Span);
+
+            return new LongfellowBitWire(constantTerm, b.LinearCoefficient, b.Wire);
         }
 
         if (LongfellowCompilerFieldOperations.ElementIsZero(b.LinearCoefficient.Span))
@@ -1396,12 +1434,15 @@ internal sealed class LongfellowLogic
             return Addv(b, a);
         }
 
-        int x = backend.MultiplyScaled(a.LinearCoefficient.Span, a.Wire);
-        int axb = backend.MultiplyScaled(b.LinearCoefficient.Span, b.Wire);
-        x = backend.Add(x, axb);
-        x = backend.Apy(x, AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span));
+        int x = GateBackend.MultiplyScaled(a.LinearCoefficient.Span, a.Wire);
+        int axb = GateBackend.MultiplyScaled(b.LinearCoefficient.Span, b.Wire);
+        x = GateBackend.Add(x, axb);
+        using IMemoryOwner<byte> owner = FieldOperations.Pool.Rent(Scalar.SizeBytes);
+        Span<byte> coefficient = owner.Memory.Span[..Scalar.SizeBytes];
+        AddConstant(a.ConstantTerm.Span, b.ConstantTerm.Span, coefficient);
+        x = GateBackend.Apy(x, coefficient);
 
-        return new LongfellowBitWire(field, x);
+        return new LongfellowBitWire(FieldOperations, x);
     }
 
 
@@ -1756,25 +1797,21 @@ internal sealed class LongfellowLogic
     /// <summary>Multiplies two field constants out of circuit (the reference's <c>mulf</c>, applied to compile-time coefficients).</summary>
     /// <param name="left">The first factor, canonical big-endian.</param>
     /// <param name="right">The second factor, canonical big-endian.</param>
-    /// <returns>The product, canonical big-endian.</returns>
-    private byte[] MultiplyConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    /// <param name="product">Receives the canonical product, separate from both inputs.</param>
+    private void MultiplyConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> product)
     {
-        var product = new byte[Scalar.SizeBytes];
-        field.Compiler.Multiply(left, right, product, field.Compiler.Curve);
-
-        return product;
+        product.Clear();
+        FieldOperations.Compiler.Multiply(left, right, product, FieldOperations.Compiler.Curve);
     }
 
 
     /// <summary>Adds two field constants out of circuit (the reference's <c>addf</c>, applied to compile-time coefficients).</summary>
     /// <param name="left">The first addend, canonical big-endian.</param>
     /// <param name="right">The second addend, canonical big-endian.</param>
-    /// <returns>The sum, canonical big-endian.</returns>
-    private byte[] AddConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    /// <param name="sum">Receives the canonical sum, separate from both inputs.</param>
+    private void AddConstant(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> sum)
     {
-        var sum = new byte[Scalar.SizeBytes];
-        field.Compiler.Add(left, right, sum, field.Compiler.Curve);
-
-        return sum;
+        sum.Clear();
+        FieldOperations.Compiler.Add(left, right, sum, FieldOperations.Compiler.Curve);
     }
 }

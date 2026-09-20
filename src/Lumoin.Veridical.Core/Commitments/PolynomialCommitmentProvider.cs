@@ -14,8 +14,8 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// <para>
 /// A concrete scheme produces a provider with its commitment key and the
 /// curve's scalar/group backends captured (the "non-moving parts"), so the
-/// operation delegates carry slim signatures. Today the only producer is
-/// the Hyrax scheme.
+/// operation delegates carry slim signatures. Hyrax, Ligero, WHIR, and the
+/// BaseFold family (plain and zero-knowledge) each supply one.
 /// </para>
 /// <para>
 /// This is the delegate-bundle equivalent of Microsoft Research's Spartan2
@@ -27,6 +27,7 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </remarks>
 public sealed class PolynomialCommitmentProvider: IDisposable
 {
+    /// <summary>The resource this provider disposes when it is disposed, or <see langword="null"/> when the caller retains ownership.</summary>
     private IDisposable? ownedResource;
 
 
@@ -37,12 +38,15 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     public CurveParameterSet Curve { get; }
 
     /// <summary>Commits to a multilinear polynomial.</summary>
+    /// <remarks>Do not invoke this delegate after provider disposal or concurrently with disposal.</remarks>
     public PolynomialCommitDelegate Commit { get; }
 
     /// <summary>Produces an evaluation argument for a committed polynomial at a point.</summary>
+    /// <remarks>Do not invoke this delegate after provider disposal or concurrently with disposal.</remarks>
     public PolynomialOpenDelegate Open { get; }
 
     /// <summary>Verifies an evaluation argument.</summary>
+    /// <remarks>Do not invoke this delegate after provider disposal or concurrently with disposal.</remarks>
     public PolynomialVerifyEvaluationDelegate VerifyEvaluation { get; }
 
     /// <summary>
@@ -68,6 +72,31 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     /// whose artifact sizes do not depend on a code rate the provider chooses.
     /// </summary>
     public int? InverseRate { get; }
+
+    /// <summary>
+    /// Returns the serialized length of an evaluation opening for a polynomial
+    /// in a given variable count, when the scheme's opening length is a pure
+    /// function of that count and the parameters this provider was built with.
+    /// A consumer that lays out a fixed-format proof uses this instead of
+    /// reassembling the arithmetic from <see cref="QueryCount"/>,
+    /// <see cref="InverseRate"/> and <see cref="DigestSizeBytes"/>, which only
+    /// describe some schemes: WHIR's query count varies per round, so those
+    /// figures cannot express its length at all. <see langword="null"/> when the
+    /// scheme cannot answer the question ahead of time.
+    /// </summary>
+    public PolynomialOpeningSizeDelegate? EvaluationProofSizeBytes { get; }
+
+    /// <summary>
+    /// Returns the serialized length of the commitment <see cref="Commit"/>
+    /// produces for a polynomial in a given variable count. The companion to
+    /// <see cref="EvaluationProofSizeBytes"/>, and the property that completes the
+    /// sizing seam: with both, a consumer laying out a fixed-format proof recovers
+    /// every section length from the provider alone and supplies none of its own,
+    /// so no length it holds can disagree with the scheme that produced the
+    /// section. <see langword="null"/> when the scheme cannot answer the question
+    /// ahead of time.
+    /// </summary>
+    public PolynomialCommitmentSizeDelegate? CommitmentSizeBytes { get; }
 
     /// <summary>
     /// Whether the scheme's commitment is additively homomorphic — whether two
@@ -105,7 +134,7 @@ public sealed class PolynomialCommitmentProvider: IDisposable
 
     /// <summary>
     /// Commits a vector for a later weighted opening (the statistical sumcheck
-    /// mask's coefficient vector <c>C*</c>; design doc §2 v3). Distinct from
+    /// mask's coefficient vector <c>C*</c>). Distinct from
     /// <see cref="Commit"/> because the commitment shape differs where the
     /// evaluation commitment is structured: Hyrax commits the whole vector as
     /// one Pedersen row (an arbitrary weight vector does not factor through
@@ -171,6 +200,8 @@ public sealed class PolynomialCommitmentProvider: IDisposable
     /// <param name="verifyWeightedSum">The weighted-opening verification; <see langword="null"/> when the scheme has no weighted-opening path.</param>
     /// <param name="resolveStatisticalMaskShape">The scheme's statistical-mask shape resolution; <see langword="null"/> when the scheme has no weighted-opening path.</param>
     /// <param name="inverseRate">The inverse code rate the scheme encodes under, when a consumer needs it to size variable-length artifacts (Ligero); <see langword="null"/> when not applicable.</param>
+    /// <param name="evaluationProofSizeBytes">Returns an evaluation opening's serialized length for a given variable count, when the scheme can answer that from its own parameters; <see langword="null"/> when it cannot.</param>
+    /// <param name="commitmentSizeBytes">Returns a commitment's serialized length for a given variable count, when the scheme can answer that from its own parameters; <see langword="null"/> when it cannot.</param>
     /// <exception cref="ArgumentNullException">When any operation delegate is null.</exception>
     public PolynomialCommitmentProvider(
         CommitmentScheme scheme,
@@ -188,7 +219,9 @@ public sealed class PolynomialCommitmentProvider: IDisposable
         PolynomialOpenWeightedSumDelegate? openWeightedSum = null,
         PolynomialVerifyWeightedSumDelegate? verifyWeightedSum = null,
         StatisticalMaskShapeDelegate? resolveStatisticalMaskShape = null,
-        int? inverseRate = null)
+        int? inverseRate = null,
+        PolynomialOpeningSizeDelegate? evaluationProofSizeBytes = null,
+        PolynomialCommitmentSizeDelegate? commitmentSizeBytes = null)
     {
         ArgumentNullException.ThrowIfNull(commit);
         ArgumentNullException.ThrowIfNull(open);
@@ -203,6 +236,8 @@ public sealed class PolynomialCommitmentProvider: IDisposable
         QueryCount = queryCount;
         DigestSizeBytes = digestSizeBytes;
         InverseRate = inverseRate;
+        EvaluationProofSizeBytes = evaluationProofSizeBytes;
+        CommitmentSizeBytes = commitmentSizeBytes;
         IsAdditivelyHomomorphic = isAdditivelyHomomorphic;
         IsHiding = isHiding;
         ExtraVariableCount = extraVariableCount;

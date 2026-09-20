@@ -1,0 +1,34 @@
+{
+  "stryker-config": {
+    "solution": "../../Lumoin.Veridical.slnx",
+    "project": "Lumoin.Veridical.Core.csproj",
+    "test-runner": "vstest",
+    "test-case-filter": "TestCategory!=Slow",
+    "mutate": [
+      "**/Commitments/BaseFold/MerkleTree.cs",
+      "**/Commitments/BaseFold/MerkleAuthenticationPath.cs",
+      "**/Commitments/BaseFold/MerkleSetCommitment.cs",
+      "**/Algebraic/PoseidonPermutation.cs",
+      "**/Algebraic/PoseidonParameterGenerator.cs",
+      "**/Algebraic/FiatShamirTranscript.cs",
+      "**/Commitments/Ligero/FiatShamirTranscriptLigeroExtensions.cs",
+      "**/ConstraintSystems/Interop/ZkInterface/ZkInterfaceCursorDecoder.cs",
+      "**/ConstraintSystems/Interop/Circom/CircomR1csReader.cs",
+      "**/ConstraintSystems/Interop/Circom/CircomWitnessReader.cs",
+      "**/Commitments/Longfellow/Circuits/LongfellowBase64Decoder.cs"
+    ],
+    "mutation-level": "Standard",
+    "coverage-analysis": "perTest",
+    "concurrency": 2,
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 0
+    },
+    "reporters": [
+      "html",
+      "json",
+      "markdown"
+    ]
+  }
+}

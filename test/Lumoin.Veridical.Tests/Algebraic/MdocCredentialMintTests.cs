@@ -7,36 +7,47 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// Exercises the credential composition the Longfellow end-to-end proof (LF.5)
+/// Exercises the credential composition the Longfellow end-to-end mdoc proof
 /// stands on: an mdoc-shaped credential POCO, a swappable canonical-serializer
 /// delegate (here a deterministic dummy; ISO 18013-5 CBOR/COSE is the real one
 /// a consuming library supplies — the same POCO-plus-serialization-delegate
-/// split Verifiable uses), and the LF.3a ECDSA reference as the issuer's
+/// split Verifiable uses), and the P-256 ECDSA reference as the issuer's
 /// signing primitive. Mint signs the canonical bytes; verify recomputes them.
 /// </summary>
 /// <remarks>
 /// The credential model is deliberately test-side and minimal: the in-circuit
-/// proof (LF.5) pins exactly which fields and encoding the proof commits to,
-/// and the public model graduates to the library then rather than being
-/// guessed at now. What is real here is the composition — POCO → canonical
+/// proof pins exactly which fields and encoding the proof commits to, while
+/// the actual field encoding is a concern for whichever library supplies the
+/// real serializer. What is real here is the composition — POCO → canonical
 /// bytes (via the delegate seam) → SHA-256 → ECDSA-P-256 — and that a tamper
 /// anywhere in the claims breaks the issuer signature.
 /// </remarks>
 [TestClass]
 internal sealed class MdocCredentialMintTests
 {
+    /// <summary>The canonical scalar width in bytes for a P-256 field or curve-order element.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The SEC1 compressed public-key width in bytes: a one-byte parity prefix plus the 32-byte x-coordinate.</summary>
     private const int CompressedSize = 33;
+
+    /// <summary>The stack buffer width the dummy canonical serializer writes into; large enough for this fixture's two claims.</summary>
     private const int SerializationScratch = 512;
+
+    /// <summary>A fixed ECDSA nonce, deterministic test material standing in for the RFC 6979 derivation production signing uses.</summary>
     private const string NonceHex = "1234567890abcdeffedcba9876543210112233445566778899aabbccddeeff00";
 
-    //ISO 18013-5 age-attestation element values: a single byte carrying the
-    //boolean, and the birth year as a big-endian 16-bit value (0x07C5 = 1989).
+    /// <summary>The ISO 18013-5 <c>age_over_18</c> element value asserting the claim is true: a single byte set to 1.</summary>
     private static byte[] AgeOverThresholdAsserted { get; } = [0x01];
+
+    /// <summary>The ISO 18013-5 <c>age_over_18</c> element value asserting the claim is false: a single byte set to 0.</summary>
     private static byte[] AgeOverThresholdDenied { get; } = [0x00];
+
+    /// <summary>The ISO 18013-5 <c>birth_year</c> element value for 1989, as a big-endian 16-bit integer (<c>0x07C5</c>).</summary>
     private static byte[] BirthYear1989 { get; } = [0x07, 0xC5];
 
 
+    /// <summary>Verifies that a freshly minted mdoc credential's issuer signature checks out against the issuer's own public key.</summary>
     [TestMethod]
     public void AMintedCredentialVerifiesUnderTheIssuerKey()
     {
@@ -53,6 +64,7 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Verifies that flipping the age-over-18 assertion and re-serializing breaks the issuer signature, which was computed over the original canonical bytes.</summary>
     [TestMethod]
     public void TamperingAClaimBreaksTheIssuerSignature()
     {
@@ -80,6 +92,8 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Builds a sample mdoc credential asserting age-over-18 and a 1989 birth year.</summary>
+    /// <returns>The unsigned sample credential.</returns>
     private static MdocCredential SampleCredential() => new(
         DocType: "org.iso.18013.5.1.mDL",
         Claims:
@@ -89,6 +103,13 @@ internal sealed class MdocCredentialMintTests
         ]);
 
 
+    /// <summary>Signs a credential's canonical digest with the issuer's P-256 key under the fixed test nonce, and exports the issuer's compressed public key.</summary>
+    /// <param name="issuer">The issuer keypair to sign with and export the public key from.</param>
+    /// <param name="credential">The credential to sign.</param>
+    /// <param name="serialize">The canonical serializer producing the bytes the signature covers.</param>
+    /// <param name="publicKeyCompressed">The buffer receiving the issuer's compressed public key.</param>
+    /// <param name="r">The buffer receiving the ECDSA signature's <c>r</c> component.</param>
+    /// <param name="s">The buffer receiving the ECDSA signature's <c>s</c> component.</param>
     private static void Mint(
         ECDsa issuer,
         MdocCredential credential,
@@ -113,6 +134,13 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Verifies a credential's canonical digest against an ECDSA signature and the issuer's compressed public key.</summary>
+    /// <param name="credential">The credential whose canonical digest is checked.</param>
+    /// <param name="serialize">The canonical serializer producing the bytes the digest is computed over.</param>
+    /// <param name="publicKeyCompressed">The issuer's compressed public key.</param>
+    /// <param name="r">The ECDSA signature's <c>r</c> component.</param>
+    /// <param name="s">The ECDSA signature's <c>s</c> component.</param>
+    /// <returns><see langword="true"/> when the signature verifies against the credential's canonical digest.</returns>
     private static bool VerifyIssuerSignature(
         MdocCredential credential,
         CanonicalCredentialSerializer serialize,
@@ -127,6 +155,10 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Computes the SHA-256 digest of a credential's canonical encoding, the digest the issuer signature is over.</summary>
+    /// <param name="credential">The credential to encode and hash.</param>
+    /// <param name="serialize">The canonical serializer producing the bytes to hash.</param>
+    /// <param name="digest">The buffer receiving the 32-byte digest.</param>
     private static void HashCanonical(MdocCredential credential, CanonicalCredentialSerializer serialize, Span<byte> digest)
     {
         Span<byte> canonical = stackalloc byte[SerializationScratch];
@@ -158,6 +190,10 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Writes a length-prefixed UTF-8 string: a two-byte big-endian length followed by the encoded bytes.</summary>
+    /// <param name="value">The string to encode.</param>
+    /// <param name="destination">The buffer receiving the length prefix and the encoded bytes.</param>
+    /// <returns>The total number of bytes written, including the length prefix.</returns>
     private static int WriteString(string value, Span<byte> destination)
     {
         int written = System.Text.Encoding.UTF8.GetBytes(value, destination[sizeof(ushort)..]);
@@ -167,6 +203,10 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Writes a length-prefixed byte value: a two-byte big-endian length followed by the raw bytes.</summary>
+    /// <param name="value">The bytes to write.</param>
+    /// <param name="destination">The buffer receiving the length prefix and the raw bytes.</param>
+    /// <returns>The total number of bytes written, including the length prefix.</returns>
     private static int WriteLengthPrefixed(ReadOnlySpan<byte> value, Span<byte> destination)
     {
         System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(destination, (ushort)value.Length);
@@ -176,6 +216,9 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Exports an ECDSA key's public point in SEC1 compressed form.</summary>
+    /// <param name="ecdsa">The key whose public point is exported.</param>
+    /// <param name="destination">The buffer receiving the compressed point.</param>
     private static void ExportPublicKeyCompressed(ECDsa ecdsa, Span<byte> destination)
     {
         ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
@@ -189,6 +232,9 @@ internal sealed class MdocCredentialMintTests
     }
 
 
+    /// <summary>Right-aligns a big-endian byte array into a wider fixed-size buffer, zero-filling the leading bytes.</summary>
+    /// <param name="source">The source bytes to right-align; must not be <see langword="null"/>.</param>
+    /// <param name="destination">The buffer receiving the zero-padded, right-aligned bytes.</param>
     private static void LeftPad(byte[]? source, Span<byte> destination)
     {
         destination.Clear();

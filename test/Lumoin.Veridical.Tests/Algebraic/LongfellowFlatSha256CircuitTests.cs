@@ -2,6 +2,7 @@ using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 
@@ -49,8 +50,24 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowFlatSha256CircuitTests
+internal sealed class LongfellowFlatSha256CircuitTests: IDisposable
 {
+    /// <summary>Owns this test's field, curve and scalar storage through cleanup.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Releases all pooled owners after this test, including failed assertions.</summary>
+    [TestCleanup]
+    public void Cleanup()
+    {
+        Dispose();
+    }
+
+    /// <summary>Releases this test's owners and their pool. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
     /// <summary>The reference's <c>outw[48]</c>: the witnessed schedule extension <c>w[16..63]</c>.</summary>
     private const int ScheduleWordCount = 48;
 
@@ -133,20 +150,26 @@ internal sealed class LongfellowFlatSha256CircuitTests
     /// <summary>The P-256 base field's modulus-minus-one, canonical big-endian, used to construct <see cref="Fp256Field"/>.</summary>
     private static ReadOnlyMemory<byte> Fp256MinusOne { get; } = BuildFp256MinusOne();
 
+    /// <summary>The cached Gf2128Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? gf2128Field;
+
     /// <summary>The GF(2^128) field bundle gated over by the GF(2^128) tests.</summary>
-    private static LongfellowLogicFieldOperations Gf2128Field { get; } = LongfellowLogicFieldOperations.CreateGf2128(
+    private LongfellowLogicFieldOperations Gf2128Field => gf2128Field ??= CircuitScope.Track(LongfellowLogicFieldOperations.CreateGf2128(
         Gf2k128Backend.GetAdd(),
         Gf2k128Backend.GetSubtract(),
         Gf2k128Backend.GetMultiply(),
-        Gf2k128Backend.GetInvert());
+        Gf2k128Backend.GetInvert(), CircuitScope.Pool));
+
+    /// <summary>The cached Fp256Field owner for this test instance.</summary>
+    private LongfellowLogicFieldOperations? fp256Field;
 
     /// <summary>The P-256 base field bundle gated over by the Fp256 tests.</summary>
-    private static LongfellowLogicFieldOperations Fp256Field { get; } = LongfellowLogicFieldOperations.CreateFp256(
+    private LongfellowLogicFieldOperations Fp256Field => fp256Field ??= CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(
         P256BaseFieldReference.GetAdd(),
         P256BaseFieldReference.GetSubtract(),
         P256BaseFieldReference.GetMultiply(),
         P256BaseFieldReference.GetInvert(),
-        Fp256MinusOne);
+        Fp256MinusOne, CircuitScope.Pool));
 
 
     /// <summary>Pins that TransformAndWitnessBlock reproduces the reference's kSha_bt_ block-transform vectors' final state.</summary>
@@ -221,8 +244,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     [TestMethod]
     public void AssertTransformBlockUnpackedLatchesWhenAWitnessedScheduleWordIsTampered()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -251,8 +274,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     [TestMethod]
     public void AssertTransformBlockAllPackedAcceptsTheWitnessedFirstVectorOverFp256()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -280,8 +303,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     [TestMethod]
     public void AssertMessageHashAcceptsTheAbcMessageOverFp256()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -305,8 +328,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     [TestMethod]
     public void AssertMessageHashLatchesWhenTheTargetHashIsWrong()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -331,8 +354,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     [TestMethod]
     public void AssertZeroPaddingLatchesWhenAByteBeyondTheOccupiedBlocksIsNonzero()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -355,8 +378,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     [TestMethod]
     public void AssertTransformBlockAllPackedLatchesWhenAPackedFinalStateWordIsTampered()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field, panicOnAssertionFailure: false);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var encoder = new LongfellowBitPluckerEncoder(Fp256Field, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
@@ -387,8 +410,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     [TestMethod]
     public void FindLengthRecoversTheAbcMessageBitLengthAsConstantBits()
     {
-        var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
-        var logic = new LongfellowLogic(backend, Fp256Field);
+        using var backend = new LongfellowEvaluationLogicBackend(Fp256Field);
+        using var logic = new LongfellowLogic(backend, Fp256Field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -414,8 +437,8 @@ internal sealed class LongfellowFlatSha256CircuitTests
     /// <param name="field">The field bundle to gate over.</param>
     private static void AssertUnpackedTransformBlockAcceptsVectorZero(LongfellowLogicFieldOperations field)
     {
-        var backend = new LongfellowEvaluationLogicBackend(field);
-        var logic = new LongfellowLogic(backend, field);
+        using var backend = new LongfellowEvaluationLogicBackend(field);
+        using var logic = new LongfellowLogic(backend, field);
         var plucker = new LongfellowBitPlucker(logic, LongfellowFlatSha256Circuit.SchedulePluckerLogPointCount);
         var circuit = new LongfellowFlatSha256Circuit(logic, plucker);
 
@@ -536,11 +559,13 @@ internal sealed class LongfellowFlatSha256CircuitTests
     /// <returns>The packed wires.</returns>
     private static int[] PackWord(LongfellowEvaluationLogicBackend backend, LongfellowBitPluckerEncoder encoder, uint word)
     {
-        ReadOnlyMemory<byte>[] packedElements = encoder.MakePackedV32(word);
-        var wires = new int[packedElements.Length];
-        for(int k = 0; k < packedElements.Length; k++)
+        using IMemoryOwner<byte> owner = encoder.Pool.Rent(encoder.PackedV32ElementCount * Scalar.SizeBytes);
+        Span<byte> packedElements = owner.Memory.Span[..(encoder.PackedV32ElementCount * Scalar.SizeBytes)];
+        encoder.MakePackedV32(word, packedElements);
+        var wires = new int[encoder.PackedV32ElementCount];
+        for(int k = 0; k < wires.Length; k++)
         {
-            wires[k] = backend.Constant(packedElements[k].Span);
+            wires[k] = backend.Constant(packedElements.Slice(k * Scalar.SizeBytes, Scalar.SizeBytes));
         }
 
         return wires;

@@ -32,10 +32,12 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 /// </remarks>
 internal static class BaseFoldEvaluationProofSerialization
 {
+    /// <summary>The byte width of a canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The degree-2 round polynomial is stored compressed as (c_0, c_2).
+    /// <summary>The degree of a BaseFold sumcheck round polynomial.</summary>
     private const int RoundPolynomialDegree = 2;
+    /// <summary>The byte length of one round polynomial, stored compressed as <c>(c_0, c_2)</c>.</summary>
     private const int RoundPolynomialBytes = RoundPolynomialDegree * ScalarSize;
 
 
@@ -76,7 +78,7 @@ internal static class BaseFoldEvaluationProofSerialization
 
         cursor = WriteOpenings(buffer, cursor, proof.Openings, proof.QueryCount, d, hiding);
 
-        //The statistical-ZK mask side (design doc §2 v3): com(C*)'s root, σ,
+        //The statistical-ZK mask side: com(C*)'s root, σ,
         //σ_F, then the nested hiding weighted opening at the deterministic
         //mask-commitment shape.
         if(zeroKnowledge)
@@ -95,12 +97,27 @@ internal static class BaseFoldEvaluationProofSerialization
             }
         }
 
+        //The writer must fill exactly the budget the length arithmetic set. The
+        //budget prices Merkle material at digestSize while each field is written
+        //at the width the proof actually carries, so a proof whose trees hold
+        //any other node width comes up short or long here. The scheme factories
+        //thread one width into both the trees and this codec, which makes the
+        //disagreement unreachable through them — this guard is the serializer's
+        //own invariant, because the length guard in FromBytes prices the
+        //sections the same way and cannot see the difference: the mismatch is
+        //caught at the point of serialization or it is not caught at all.
+        if(cursor != totalLength)
+        {
+            throw new ArgumentException(
+                $"A {mode} BaseFold opening budgeted {totalLength} bytes at digest size {digestSize} but serialized {cursor}. The Merkle node width the proof carries and the configured digest size must agree.",
+                nameof(proof));
+        }
+
         return (owner, totalLength);
     }
 
 
-    //Writes one side's per-query openings: for each query, each layer step's two
-    //pair values, then (when hiding) the two leaf salts, then the two paths.
+    /// <summary>Writes one side's per-query openings: for each query, each layer step's two pair values, then (when hiding) the two leaf salts, then the two paths.</summary>
     private static int WriteOpenings(
         Span<byte> buffer,
         int cursor,
@@ -236,9 +253,7 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
-    //Reads one side's per-query openings into the supplied jagged array; returns
-    //the advanced cursor. The total-length guard has already run, so the slices
-    //are in bounds.
+    /// <summary>Reads one side's per-query openings into the supplied jagged array; returns the advanced cursor. The total-length guard has already run, so the slices are in bounds.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000", Justification = "Each reconstructed path and step transfers ownership to the openings array, which the caller's failure path disposes.")]
     private static int ReadOpenings(
         ReadOnlySpan<byte> bytes,
@@ -291,8 +306,7 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
-    //Reads the statistical-ZK mask side: com(C*)'s root, σ, σ_F, then the
-    //nested hiding weighted opening at the deterministic mask-commitment shape.
+    /// <summary>Reads the statistical-ZK mask side: <c>com(C*)</c>'s root, σ, σ_F, then the nested hiding weighted opening at the deterministic mask-commitment shape.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000", Justification = "The root, the σ/σ_F buffers, and the nested proof all transfer ownership to the returned BaseFoldMaskOpening; on a mid-read throw the partially-built pieces are released here before rethrowing.")]
     private static BaseFoldMaskOpening ReadMaskOpening(
         ReadOnlySpan<byte> bytes,
@@ -343,9 +357,7 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
-    //The deterministic shape of the mask's coefficient commitment for a witness
-    //protocol of the given parameters: the policy's lifted layer count under the
-    //same classical-security code family and curve.
+    /// <summary>Computes the deterministic shape of the mask's coefficient commitment for a witness protocol of the given parameters: the policy's lifted layer count under the same classical-security code family and curve.</summary>
     private static FoldableCodeParameters MaskCommitmentParameters(FoldableCodeParameters parameters, int queryCount)
     {
         StatisticalMaskParameters maskParameters = WellKnownStatisticalMaskParameters.CreateClassicalSecurity(parameters.LayerCount, parameters.Curve, queryCount);
@@ -354,8 +366,11 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
+    /// <summary>Computes the exact wire-format byte length for the given code parameters, query count, digest size, and opening mode.</summary>
     internal static int ComputeLength(FoldableCodeParameters parameters, int queryCount, int digestSize, BaseFoldOpeningMode mode)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(digestSize, WellKnownMerkleHashParameters.MaximumDigestSizeBytes);
+
         int d = parameters.LayerCount;
         int baseUnit = parameters.InverseRate * parameters.BaseDimension;
         bool hiding = mode is BaseFoldOpeningMode.Hiding or BaseFoldOpeningMode.ZeroKnowledge;
@@ -378,7 +393,7 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
-    //The byte length of one side's per-query opening section.
+    /// <summary>The byte length of one side's per-query opening section.</summary>
     private static long QuerySectionLength(int d, int baseUnit, int digestSize, int queryCount, bool hiding)
     {
         //A hiding opening adds the two leaf salts (one scalar each) per step.
@@ -396,9 +411,7 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
-    //The Merkle tree over layer-level's codeword has n_level = baseUnit·2^level
-    //leaves, so its depth (and a leaf's path length in siblings) is
-    //log2(baseUnit·2^level). The wired code has baseUnit = c·k0 a power of two.
+    /// <summary>The Merkle tree over a layer level's codeword has <c>n_level = baseUnit·2^level</c> leaves, so its depth (and a leaf's path length in siblings) is <c>log2(baseUnit·2^level)</c>. The wired code has <c>baseUnit = c·k0</c>, a power of two.</summary>
     private static int PathDepth(int baseUnit, int level)
     {
         int leafCount = baseUnit << level;
@@ -406,6 +419,7 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
+    /// <summary>Copies the encoded authentication-path bytes into a pool-rented buffer and wraps them at the given digest size.</summary>
     private static MerkleAuthenticationPath ReadPath(ReadOnlySpan<byte> pathBytes, int digestSize, BaseMemoryPool pool)
     {
         IMemoryOwner<byte> owner = pool.Rent(pathBytes.Length);
@@ -415,6 +429,7 @@ internal static class BaseFoldEvaluationProofSerialization
     }
 
 
+    /// <summary>Copies <paramref name="source"/> into <paramref name="buffer"/> at <paramref name="cursor"/> and returns its length.</summary>
     private static int Write(Span<byte> buffer, int cursor, ReadOnlySpan<byte> source)
     {
         source.CopyTo(buffer.Slice(cursor, source.Length));

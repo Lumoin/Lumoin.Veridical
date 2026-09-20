@@ -15,10 +15,14 @@ namespace Lumoin.Veridical.Core.Commitments;
 [SuppressMessage("Design", "CA1034", Justification = "C# 14 extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class HyraxOpeningProofExtensions
 {
+    /// <summary>The transcript label prefix the IPA rounds absorb their challenges under, distinguishing Hyrax's round challenges from any other protocol sharing the same transcript.</summary>
     private const string IpaRoundLabelPrefix = "hyrax.ipa.round";
+
+    /// <summary>The transcript label the fresh <c>C_f</c> commitment is absorbed under, before the IPA challenges are drawn.</summary>
     private const string FCommitmentLabel = "hyrax.open.f-commitment";
 
 
+    /// <summary>Open/verify members added to every <see cref="HyraxCommitment"/> instance.</summary>
     extension(HyraxCommitment commitment)
     {
         /// <summary>
@@ -340,6 +344,17 @@ public static class HyraxOpeningProofExtensions
     }
 
 
+    /// <summary>
+    /// Throws when the commitment, witness, MLE, evaluation point, and key are not shape-compatible for
+    /// <c>Open</c>: a shared curve, matching variable and row counts, an evaluation point sized to the
+    /// MLE's variable count, and a key with enough generators for the commitment's column count.
+    /// </summary>
+    /// <param name="commitment">The commitment being opened.</param>
+    /// <param name="witness">The row blindings the commitment was built from.</param>
+    /// <param name="mle">The multilinear extension the commitment attests to.</param>
+    /// <param name="evaluationPoint">The point the opening proves an evaluation at.</param>
+    /// <param name="key">The commitment key supplying the generators.</param>
+    /// <exception cref="ArgumentException">When any shape or curve mismatch listed above is found.</exception>
     private static void ValidateOpenShape(
         HyraxCommitment commitment,
         HyraxOpeningWitness witness,
@@ -379,6 +394,17 @@ public static class HyraxOpeningProofExtensions
     }
 
 
+    /// <summary>
+    /// Throws when the commitment, proof, evaluation point, and key are not shape-compatible for
+    /// <c>VerifyOpening</c>: a shared curve, an evaluation point sized to the commitment's variable count,
+    /// an IPA round count matching the commitment's column count, and a key with enough generators for
+    /// that column count.
+    /// </summary>
+    /// <param name="commitment">The commitment the proof is verified against.</param>
+    /// <param name="proof">The opening proof being verified.</param>
+    /// <param name="evaluationPoint">The point the proof claims an evaluation at.</param>
+    /// <param name="key">The commitment key supplying the generators.</param>
+    /// <exception cref="ArgumentException">When any shape or curve mismatch listed above is found.</exception>
     private static void ValidateVerifyShape(
         HyraxCommitment commitment,
         HyraxOpeningProof proof,

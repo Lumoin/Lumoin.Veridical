@@ -1,3 +1,4 @@
+LCH14 binary-field basis values: the generator, beta normalization constants, node values, and the cw9x23/cw9x64 Reed-Solomon codewords.
 g=5ed02f3c88a430056b1f25adfc41e392
 beta1=5ed02f3c88a430056b1f25adfc41e392
 beta5=8b7d79d022e97273fbbf761f1911818f

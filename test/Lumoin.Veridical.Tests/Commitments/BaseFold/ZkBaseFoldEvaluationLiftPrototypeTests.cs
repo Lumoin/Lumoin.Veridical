@@ -13,10 +13,9 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// ZK.2b route-A prototype (the dimension-lift design fork, recorded in
-/// the BaseFold design notes, <em>Zero-knowledge BaseFold</em>):
-/// de-risks the dimension-lifting realisation of the zero-knowledge BaseFold
-/// evaluation. The query/π₀ leakage is closed by committing the real
+/// The dimension-lift prototype for the zero-knowledge BaseFold evaluation:
+/// de-risks the dimension-lifting realisation ahead of the full construction.
+/// The query/π₀ leakage is closed by committing the real
 /// <c>d</c>-variable witness <c>f</c> as the <c>Y = 0</c> slice of a
 /// <c>(d + t)</c>-variable polynomial <c>f'</c> whose <c>Y ≠ 0</c> evaluations are
 /// pure mask randomness, and always evaluating at the protocol-fixed point
@@ -40,13 +39,14 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 /// knowledge soundness (paper Theorem 4) and the §3 distance bound apply unchanged.
 /// The mask randomness in the <c>Y ≠ 0</c> block spreads through the linear encoder
 /// to randomise the queried codeword positions; the bounded-independence hiding
-/// budget (mask DOF ≥ query count) is a separate, statistical claim validated in
-/// ZK.4, not here. This test is the correctness gate the full
+/// budget (mask DOF ≥ query count) is a separate, statistical claim validated
+/// empirically by <see cref="Lumoin.Veridical.Tests.Analysis.ZkBaseFoldHidingValidationTests"/>,
+/// not here. This test is the correctness gate the full
 /// <c>ProveZeroKnowledge</c> path will build on.
 /// </para>
 /// <para>
 /// The lift is driven end to end through the shipped hiding provider
-/// (<see cref="ZkBaseFoldPolynomialCommitmentScheme"/>, ZK.1), so it exercises the
+/// (<see cref="ZkBaseFoldPolynomialCommitmentScheme"/>), so it exercises the
 /// salted commitment and the masked codeword together. Real BLS12-381 arithmetic
 /// and production BLAKE3 throughout.
 /// </para>
@@ -54,25 +54,57 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
 {
+    /// <summary>The BLS12-381 scalar field addition delegate, from the reference backend.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The BLS12-381 scalar field subtraction delegate, from the reference backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The BLS12-381 scalar field multiplication delegate, from the reference backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The BLS12-381 scalar field inversion delegate, from the reference backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BLS12-381 scalar reduction delegate (wide bytes to a canonical scalar), from the BigInteger reference.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BLS12-381 hash-to-scalar delegate deriving the foldable code's basis, from the BigInteger reference.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The BLS12-381 scalar sampler the mask block and the hiding salts are drawn from, from the BigInteger reference.</summary>
     private static ScalarRandomDelegate Random { get; } = Bls12Curve381BigIntegerScalarReference.GetRandom();
+
+    /// <summary>The independent BigInteger-reference multilinear-extension evaluator used to compute the real witness's expected value.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The transcript's fixed-output BLAKE3 hash backend.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The transcript's BLAKE3 XOF (squeeze) backend.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The Merkle two-to-one compression this test's trees use, <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The width in bytes of one BLS12-381 scalar in its canonical representation.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The Merkle tree's node/digest width in bytes.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The IOPP query-repetition count every provider in this file is built with.</summary>
     private const int TestQueryCount = 12;
 
+    /// <summary>The curve every gate in this file runs over: BLS12-381.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>
+    /// Verifies, for several <c>(d, t)</c> real/extra variable-count pairs, that opening a
+    /// manually lifted <c>(d+t)</c>-variable polynomial at <c>(z, 0^t)</c> recovers the real
+    /// witness's value <c>f(z)</c> and that the hiding opening verifies.
+    /// </summary>
     [TestMethod]
     [DataRow(1, 2)]
     [DataRow(2, 3)]
@@ -80,7 +112,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     public void LiftedEvaluationRecoversWitnessValueAndVerifies(int realVariableCount, int extraVariableCount)
     {
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewProvider();
+        using PolynomialCommitmentProvider provider = NewProvider(pool);
 
         int liftedVariableCount = realVariableCount + extraVariableCount;
         int realEvaluations = 1 << realVariableCount;
@@ -146,20 +178,28 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
+    /// <summary>
+    /// Verifies, for several <c>(d, t)</c> pairs meeting the hiding budget, that the
+    /// zero-knowledge provider's internal dimension lift recovers the real witness's value
+    /// <c>f(z)</c>, that the opening verifies, and that a wrong claim is rejected.
+    /// </summary>
+    /// <remarks>
+    /// Each <c>(d, t)</c> row is the minimal budget-meeting lift for its witness
+    /// size at <see cref="TestQueryCount"/>: the provider enforces the hiding
+    /// budget on commit and open, so the rows must clear
+    /// <see cref="ZkBaseFoldPolynomialCommitmentScheme.GetMinimumExtraVariableCount"/>.
+    /// </remarks>
     [TestMethod]
-    //Each (d, t) row is the minimal budget-meeting lift for its witness size at
-    //TestQueryCount = 12: the provider enforces the hiding budget on commit and
-    //open, so the rows must clear it (GetMinimumExtraVariableCount).
     [DataRow(1, 6)]
     [DataRow(2, 5)]
     [DataRow(3, 4)]
     public void ProviderInternalLiftRecoversWitnessValueAndVerifies(int realVariableCount, int extraVariableCount)
     {
-        //The ZK.2b provider does the lift internally: the consumer commits and
+        //The zero-knowledge provider does the lift internally: the consumer commits and
         //opens an ordinary d-variable witness at a d-coordinate point, and the
         //(d + t)-variable masked codeword is entirely behind the surface.
         BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using PolynomialCommitmentProvider provider = NewZeroKnowledgeProvider(extraVariableCount);
+        using PolynomialCommitmentProvider provider = NewZeroKnowledgeProvider(pool, extraVariableCount);
 
         Assert.IsTrue(provider.IsHiding, "The ZK BaseFold provider must report itself as hiding.");
 
@@ -210,20 +250,26 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
-    private static PolynomialCommitmentProvider NewProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider NewProvider(BaseMemoryPool pool)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.Create(
-            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar);
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, pool);
     }
 
 
-    private static PolynomialCommitmentProvider NewZeroKnowledgeProvider(int extraVariableCount)
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    /// <param name="extraVariableCount">The number of mask variables.</param>
+    private static PolynomialCommitmentProvider NewZeroKnowledgeProvider(BaseMemoryPool pool, int extraVariableCount)
     {
         return ZkBaseFoldPolynomialCommitmentScheme.CreateZeroKnowledge(
-            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount);
+            Seed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, Random, HashToScalar, extraVariableCount, pool);
     }
 
 
+    /// <summary>Adds the field one to <paramref name="value"/>, returning a fresh <see cref="Scalar"/> distinct from any correct claimed value derived from a well-formed evaluation.</summary>
     private static Scalar AddOne(Scalar value, BaseMemoryPool pool)
     {
         Span<byte> one = stackalloc byte[ScalarSize];
@@ -237,6 +283,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
+    /// <summary>Fills the first <paramref name="count"/> scalar slots of <paramref name="table"/> with deterministic pseudo-random reduced values, varied by <paramref name="salt"/>.</summary>
     private static void FillReduced(Span<byte> table, int count, int salt)
     {
         Span<byte> wide = stackalloc byte[ScalarSize];
@@ -250,6 +297,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
+    /// <summary>Builds a deterministic pseudo-random evaluation point of <paramref name="variableCount"/> scalars, varied by <paramref name="salt"/> so distinct call sites get distinct points.</summary>
     private static Scalar[] BuildPoint(int variableCount, int salt, BaseMemoryPool pool)
     {
         var point = new Scalar[variableCount];
@@ -268,8 +316,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
-    //Appends extraCount field-zero coordinates after the real point: the lifted
-    //evaluation point (z, 0^t). A canonical field zero is the all-zero scalar.
+    /// <summary>Appends <paramref name="extraCount"/> field-zero coordinates after <paramref name="realPoint"/>, forming the lifted evaluation point <c>(z, 0^t)</c>; a canonical field zero is the all-zero scalar.</summary>
     private static Scalar[] AppendZeros(Scalar[] realPoint, int extraCount, BaseMemoryPool pool)
     {
         var lifted = new Scalar[realPoint.Length + extraCount];
@@ -291,6 +338,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
+    /// <summary>Disposes every coordinate scalar of a point built by <see cref="BuildPoint"/> or <see cref="AppendZeros"/>.</summary>
     private static void DisposePoint(Scalar[] point)
     {
         foreach(Scalar coordinate in point)
@@ -300,6 +348,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
+    /// <summary>Creates a fresh transcript under this file's fixed domain label, seeded with no extra context bytes.</summary>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -311,6 +360,7 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
+    /// <summary>Computes the two-to-one BLAKE3 compression of <paramref name="left"/> concatenated with <paramref name="right"/> into <paramref name="output"/>, this file's Merkle node hash.</summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -320,5 +370,6 @@ internal sealed class ZkBaseFoldEvaluationLiftPrototypeTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.ZK2b.LiftPrototype.Test"u8;
+    /// <summary>The fixed domain-separation seed the foldable code is derived from in every gate.</summary>
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.ZkBaseFold.LiftPrototype.Test"u8;
 }

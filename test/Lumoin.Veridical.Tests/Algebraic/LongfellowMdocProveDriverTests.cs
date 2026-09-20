@@ -34,8 +34,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// SAME <c>ap</c> and the SAME common values (the issuer hash <c>e_</c> and the real device key
 /// <c>dpkx</c>/<c>dpky</c>); the cross-filler common-match pre-check asserts the two fillers agree before the
 /// prove. The device-auth hash <c>e2</c> is the crown-gate fixture's <c>sig_template[3]</c> reversed from
-/// little-endian to canonical big-endian (the spike's <c>ne2</c>; the byte-exact transcript-hash CBOR walk is
-/// the reference's, captured in that fixture).
+/// little-endian to canonical big-endian — the reference's own <c>ne2</c>, which
+/// <see cref="MdocDeviceAuthentication"/> reproduces from the session transcript.
 /// </para>
 /// <para>
 /// The driver commits both circuits, absorbs both roots, squeezes the shared <c>a_v</c>, computes the six
@@ -50,93 +50,159 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowMdocProveDriverTests
+internal sealed class LongfellowMdocProveDriverTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
+    /// <summary>The relative path to the reference anchor file recording the expected mac and template bytes for this dual-field envelope.</summary>
     private const string FixtureRelativePath = "TestMaterial/Longfellow/mdoc-zk-anchor-output.txt";
+
+    /// <summary>The relative path to the gzip-compressed raw circuit stream carrying both the P-256 signature circuit and the GF(2^128) hash circuit.</summary>
     private const string RawGzipRelativePath = "TestMaterial/Longfellow/mdoc-circuit-raw.gz";
+
+    /// <summary>The relative path to the real mdoc credential this gate proves over.</summary>
     private const string CredentialRelativePath = "TestMaterial/Mdoc/mdoc-00.cbor";
 
+    /// <summary>The field id tagging the P-256 signature circuit inside the imported dual-circuit stream.</summary>
     private const int Point256FieldId = 1;
+
+    /// <summary>The field id tagging the GF(2^128) hash circuit inside the imported dual-circuit stream.</summary>
     private const int Gf2128FieldId = 4;
+
+    /// <summary>The element width, in bytes, of a P-256 base-field scalar on the wire.</summary>
     private const int Point256ElementBytes = 32;
+
+    /// <summary>The element width, in bytes, of a GF(2^128) scalar on the wire.</summary>
     private const int Gf2128ElementBytes = 16;
 
+    /// <summary>The byte width of one scalar in this test's canonical scratch buffers, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The byte width of one mac key element as serialized in the envelope's mac prefix.</summary>
     private const int MacKeyBytes = 16;
 
-    //The reference v7 Ligero pair and the pinned block_enc (hash 4151, sig 4096).
+    /// <summary>The Ligero code's inverse rate; the reference generation pins it to 7 for this circuit pair.</summary>
     private const int InverseRate = 7;
+
+    /// <summary>The number of Ligero columns opened per proof; the reference generation pins it to 132 for this circuit pair.</summary>
     private const int OpenedColumnCount = 132;
+
+    /// <summary>The encoded block length the hash circuit's Ligero parameters derive to, pinned to the reference's own value.</summary>
     private const int HashBlockEncoded = 4151;
+
+    /// <summary>The encoded block length the signature circuit's Ligero parameters derive to, pinned to the reference's own value.</summary>
     private const int SigBlockEncoded = 4096;
 
-    //GF(2^128) hash circuit: 16-byte full field, GF(2^16) = Production16 subfield (2 bytes).
+    /// <summary>The full-field element width, in bytes, of the GF(2^128) hash circuit.</summary>
     private const int HashFieldBytes = 16;
+
+    /// <summary>The subfield element width, in bytes, of the GF(2^16) (Production16) subfield the hash circuit's row encoding runs over.</summary>
     private const int HashSubFieldBytes = 2;
 
-    //The reference's ZkProver rebases subfield_boundary by npub_in: hash 85112 - 952.
+    /// <summary>The subfield boundary the hash circuit's row encoding uses, rebased from the wire's <c>npub_in</c> value (952) against the one-attribute column width (85112).</summary>
     private const int HashSubfieldBoundary = 85112 - 952;
 
-    //The public mac/av region: hash macs at 945 (six macs then av, npub_in = 952); sig macs at wire 4.
+    /// <summary>The element index in the hash column where the six macs and the av trailer begin (public input count 952 follows).</summary>
     private const int HashMacIndex = 945;
+
+    /// <summary>The wire index in the signature column where the six macs and the av trailer begin.</summary>
     private const int SigMacIndex = 4;
+
+    /// <summary>The number of leading hash-column elements that form the verifier's hash public-input template, excluding the mac and av trailer.</summary>
     private const int HashTemplateElementCount = 945;
+
+    /// <summary>The number of leading signature-column elements that form the verifier's signature public-input template, excluding the mac and av trailer.</summary>
     private const int SigTemplateElementCount = 4;
 
-    //Private-witness element indices into the version-7 one-attribute hash column, from the fill order in
-    //MdocHashWitnessFiller: [0] one, [1,785) attribute encoding, [785,945) now, [945,952) mac/av (npub_in),
-    //[952,1720) the three mac messages, then FillHashWitness — NumBlocks [1720,1728), the SHA preimage bits
-    //[1728,22064) covering COSE1 bytes [18,2560). The first probe flips the low bit of the first hashed COSE1
-    //content byte (element 1728): the SHA round witnesses were computed for the original byte, so an altered
-    //hashed byte no longer satisfies the SHA gadget — the disclosed MSO content is cryptographically bound.
-    //The second flips the low bit of the last preimage byte (element 1728 + (2559-18)*8 = 22056), which for
-    //this credential's short MSO sits well past the hashed blocks: version 7 verifies those tail bytes are
-    //zero (the circuit-v6 tail-hardening), so making one non-zero is rejected.
+    /// <summary>
+    /// The element index, inside the version-7 one-attribute hash column's fill order (one at [0], attribute
+    /// encoding at [1,785), now at [785,945), mac/av at [945,952), the three mac messages at [952,1720), then
+    /// NumBlocks at [1720,1728) and the SHA preimage bits at [1728,22064) covering COSE1 bytes [18,2560)), of
+    /// the first hashed COSE1 content byte. The SHA round witnesses are computed for this byte's original
+    /// value, so flipping it no longer satisfies the SHA gadget: the disclosed MSO content is cryptographically
+    /// bound.
+    /// </summary>
     private const int HashedPreimageBitElement = 1728;
+
+    /// <summary>
+    /// The element index of the last SHA preimage bit (1728 + (2559-18)*8), which for this credential's short
+    /// MSO sits well past the hashed blocks. Version 7 verifies those tail bytes are zero, so flipping this one
+    /// non-zero is rejected.
+    /// </summary>
     private const int HashedPreimageTailBitElement = 22056;
 
-    //The transcript is baked at the GF/a_v width 16 (the sig side passes its 32-byte profile per-op).
+    /// <summary>The element width, in bytes, the shared transcript is baked at (the GF/a_v width); the sig side passes its own 32-byte profile per operation instead.</summary>
     private const int TranscriptElementBytes = 16;
+
+    /// <summary>The Longfellow transcript wire version this dual-field driver speaks.</summary>
     private const int TranscriptVersion = 7;
 
+    /// <summary>The fixed "current time" this gate proves attribute validity against.</summary>
     private static byte[] Now { get; } = Encoding.ASCII.GetBytes("2024-01-30T09:00:00Z");
 
-    //A deterministic dual-field session seed (the same seed both ends; the driver and verifier each build a
-    //fresh transcript from it).
+    /// <summary>The deterministic dual-field session seed shared by both ends; the driver and verifier each build a fresh transcript from it.</summary>
     private static byte[] SessionSeed { get; } = Encoding.ASCII.GetBytes("mdoc-dual-field-prove-driver");
 
+    /// <summary>The parsed key/value anchor fixture, loaded once and shared across every test in this class.</summary>
     private static System.Collections.Generic.Dictionary<string, string> Fixture { get; } = LoadFixture(FixtureRelativePath);
 
-    //The decompressed real-circuit bytes (~99 MB); decompress once and share across the imports.
+    /// <summary>The decompressed real-circuit bytes (~99 MB), decompressed once and shared across every circuit import in this class.</summary>
     private static byte[] RawCircuitBytes { get; } = DecompressGzip(ReadFixture(RawGzipRelativePath));
 
+    /// <summary>The P-256 base-field order, used to reduce and range-check canonical scalars in this class's helpers.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The GF(2^128) addition delegate the hash circuit's prover and verifier evaluate against.</summary>
     private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) subtraction delegate the hash circuit's prover and verifier evaluate against.</summary>
     private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) multiplication delegate the hash circuit's prover and verifier evaluate against.</summary>
     private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) inversion delegate the hash circuit's prover and verifier evaluate against.</summary>
     private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
-    //The Fp256 sig path rides the validated Montgomery base-field backend (byte-identical to the BigInteger
-    //reference, faster), the same backend the crown/real-sig gates use. Add/Subtract are domain-linear, so the
-    //canonical delegates serve both the canonical and the Montgomery working domain unchanged.
+    /// <summary>
+    /// The P-256 base-field addition delegate from the validated Montgomery backend (byte-identical to the
+    /// BigInteger reference, faster), the same backend the crown and real-signature gates use. Addition is
+    /// domain-linear, so this canonical delegate also serves the Montgomery working domain unchanged.
+    /// </summary>
     private static ScalarAddDelegate Fp256Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
 
+    /// <summary>
+    /// The P-256 base-field subtraction delegate from the validated Montgomery backend. Subtraction is
+    /// domain-linear, so this canonical delegate also serves the Montgomery working domain unchanged.
+    /// </summary>
     private static ScalarSubtractDelegate Fp256Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
 
-    //The canonical-domain multiply/invert (2 CIOS): the EvaluateCircuit fast pre-check runs over the canonical
-    //sig column.
+    /// <summary>The canonical-domain P-256 multiplication delegate (2 CIOS); the EvaluateCircuit fast pre-check runs over the canonical sig column with it.</summary>
     private static ScalarMultiplyDelegate Fp256Multiply { get; } = P256BaseFieldMontgomeryBackend.GetMultiply();
 
+    /// <summary>The canonical-domain P-256 inversion delegate (2 CIOS); the EvaluateCircuit fast pre-check runs over the canonical sig column with it.</summary>
     private static ScalarInvertDelegate Fp256Invert { get; } = P256BaseFieldMontgomeryBackend.GetInvert();
 
-    //The Montgomery-domain multiply/invert (Perf Increment 1, 1 CIOS): the production-intended prove/verify path
-    //runs over a Montgomery-lifted sig column, profile and FFT root.
+    /// <summary>The Montgomery-domain P-256 multiplication delegate (1 CIOS); the production-intended prove/verify path runs over a Montgomery-lifted sig column, profile and FFT root with it.</summary>
     private static ScalarMultiplyDelegate Fp256MultiplyMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
 
+    /// <summary>The Montgomery-domain P-256 inversion delegate (1 CIOS); the production-intended prove/verify path runs over a Montgomery-lifted sig column, profile and FFT root with it.</summary>
     private static ScalarInvertDelegate Fp256InvertMontgomery { get; } = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
 
 
@@ -144,6 +210,7 @@ internal sealed class LongfellowMdocProveDriverTests
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>Verifies that the hash filler's little-endian common values and the signature filler's canonical big-endian common values agree byte-for-byte, and that the extracted device tuple recovers a genuine nonce point.</summary>
     [TestMethod]
     public void TheTwoFillersAgreeOnTheCommonValues()
     {
@@ -166,12 +233,13 @@ internal sealed class LongfellowMdocProveDriverTests
         AssertReversedEquals(state.MacMessageDpkx, common.AsSpan(ScalarSize, ScalarSize), "common dpkx must match across fillers.");
         AssertReversedEquals(state.MacMessageDpky, common.AsSpan(2 * ScalarSize, ScalarSize), "common dpky must match across fillers.");
 
-        //The extracted device tuple must be a genuine nonce point (the spike's independent oracle), otherwise
-        //the device VerifyWitness3 column would not close.
+        //The extracted device tuple must be a genuine nonce point (RecoveredNoncePointMatches is the independent
+        //oracle), otherwise the device VerifyWitness3 column would not close.
         Assert.IsTrue(device.RecoveredNoncePointMatches(), "The real device tuple must recover R2.x mod n == r2.");
     }
 
 
+    /// <summary>Verifies that after simulating the driver's post-commit mac/av patch on both columns, the hash and signature circuits each evaluate to an all-zero output.</summary>
     [TestMethod]
     public void TheDriverColumnsSatisfyTheirCircuitsAfterASimulatedPatch()
     {
@@ -180,8 +248,8 @@ internal sealed class LongfellowMdocProveDriverTests
         //patch with a fixed a_v, compute the macs, patch both columns, and evaluate each circuit through the
         //reference's eval_circuit. A clean return proves the witness SATISFIES the circuit (A.w == b at every
         //layer) WITHOUT paying for the full Ligero prove — a filler/sign/extractor bug surfaces here cheaply.
-        LongfellowSumcheckCircuit hashCircuit = ParseHashCircuit(out _);
-        LongfellowSumcheckCircuit sigCircuit = ParseSignatureCircuit();
+        using LongfellowSumcheckCircuit hashCircuit = ParseHashCircuit(out _);
+        using LongfellowSumcheckCircuit sigCircuit = ParseSignatureCircuit();
 
         byte[] hashColumn = BuildHashColumn();
         byte[] sigColumn = BuildSigColumn();
@@ -210,6 +278,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Verifies that flipping a single bit in a private-witness element — a hashed MSO content byte, or a zero-padded SHA tail byte past the hashed blocks — makes the imported version-7 hash circuit reject the witness.</summary>
     [TestMethod]
     public void AForgingPrivateWitnessBreaksTheImportedVersion7HashCircuit()
     {
@@ -225,7 +294,7 @@ internal sealed class LongfellowMdocProveDriverTests
         //prover-controlled attribute compare-length no longer satisfies the circuit. The positive dual is
         //TheDriverColumnsSatisfyTheirCircuitsAfterASimulatedPatch (the clean witness evaluates to zero); here
         //each single-bit corruption of a PRIVATE witness element must drive at least one output wire off zero.
-        LongfellowSumcheckCircuit hashCircuit = ParseHashCircuit(out _);
+        using LongfellowSumcheckCircuit hashCircuit = ParseHashCircuit(out _);
 
         byte[] av = FixedAv();
         byte[] common = DriverCommonValues();
@@ -257,6 +326,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Verifies that the 96-byte mac prefix the driver serializes round-trips through the envelope reader back to the canonical macs the driver computed.</summary>
     [TestMethod]
     public void TheMacsRoundTripThroughTheEnvelopeSplit()
     {
@@ -281,13 +351,18 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>
+    /// Verifies the full dual-field prove/verify gate: our driver proves a real credential envelope that our
+    /// verifier accepts, and that flipping a byte in either the hash region or the signature region of the
+    /// envelope makes the corresponding circuit's verification reject it.
+    /// </summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void OurDriverProvesARealCredentialEnvelopeOurVerifierAccepts()
     {
         byte[] hashColumn = BuildHashColumn();
 
-        //The sig path runs in the Montgomery working domain (Perf Increment 1): lift the canonical sig column
+        //The sig path runs in the Montgomery working domain: lift the canonical sig column
         //element-wise to Montgomery once (the prover commits/patches it in domain), and extract the sig
         //public-input template from the Montgomery column through the Montgomery profile's to_bytes_field so the
         //LE wire bytes stay byte-identical to the canonical extraction. The hash side stays canonical.
@@ -331,18 +406,20 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //Proves the dual-field envelope through OUR driver with a fresh transcript from the session seed. The
-    //reverse Docker gate passes the REAL ISO session transcript (the crown fixture's "transcript" blob) so the
-    //reference's run_mdoc_verifier — which derives its challenges from that same session transcript — accepts;
-    //the prove-driver's self-consistent prove->verify uses the default test seed. Returns the pooled proof
-    //envelope; the caller disposes it.
-    private static LongfellowZkProofEnvelope Prove(byte[] hashColumn, byte[] sigColumn, byte[] common, byte[] ap, byte[]? transcriptSeed = null)
+    /// <summary>
+    /// Proves the dual-field envelope through our driver with a fresh transcript. This self-consistent
+    /// prove-then-verify path uses the default test seed unless <paramref name="transcriptSeed"/> is supplied,
+    /// in which case it uses the real ISO session transcript so a reference verifier deriving its own
+    /// challenges from that same transcript accepts. Returns the pooled proof envelope; the caller disposes it.
+    /// </summary>
+    private LongfellowZkProofEnvelope Prove(byte[] hashColumn, byte[] sigColumn, byte[] common, byte[] ap, byte[]? transcriptSeed = null)
     {
         using Lch14AdditiveFft hashFft = NewGfFft();
         using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
             hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
-        Fp256RealFft sigFft = NewFp256Fft();
+        using BaseMemoryPool sigFftPool = new();
+        using Fp256RealFft sigFft = NewFp256Fft(sigFftPool);
         using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
         using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
@@ -357,43 +434,20 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //Produces the validated dual-field envelope over the real credential for the REVERSE Docker interop gate
-    //(ours -> Google's run_mdoc_verifier). PURE: it builds the columns + proves and RETURNS the bytes — the IO
-    //(writing the dump file the C++ harness reads) lives in the Benchmarks console driver, never in the test
-    //project (the no-IO-in-tests discipline). The bytes are the same envelope
-    //OurDriverProvesARealCredentialEnvelopeOurVerifierAccepts proves and OUR verifier accepts. Materializes an
-    //owned array because the pooled envelope's rent does not outlive this call, and the Benchmarks driver
-    //(a separate project, not pool-aware) needs the bytes to survive to its own dump-file write.
-    internal static byte[] ReverseGateEnvelope()
-    {
-        byte[] hashColumn = BuildHashColumn();
-        byte[] sigColumn = MontgomerySigColumn(BuildSigColumn());
-        byte[] common = DriverCommonValues();
-        byte[] ap = MdocSignatureWitnessFiller.ApKeyBytes();
-
-        //Seed with the REAL ISO session transcript (the crown fixture's "transcript" blob, the same seed the
-        //crown gate verifies the reference's proof under) so the reference's run_mdoc_verifier — which derives its
-        //challenges from that session transcript — opens the same Ligero columns and accepts.
-        byte[] sessionTranscript = Convert.FromHexString(Fixture["transcript"]);
-
-        using LongfellowZkProofEnvelope envelope = Prove(hashColumn, sigColumn, common, ap, sessionTranscript);
-
-        return envelope.Bytes.ToArray();
-    }
-
-
-    private static void AssertAccepts(ReadOnlySpan<byte> envelope, byte[] hashTemplate, byte[] sigTemplate) =>
+    /// <summary>Asserts that the envelope verifies as accepted, releasing all circuit owners this verify allocates before returning.</summary>
+    private void AssertAccepts(ReadOnlySpan<byte> envelope, byte[] hashTemplate, byte[] sigTemplate) =>
         Assert.AreEqual(LongfellowMdocVerificationResult.Accepted, VerifyOnce(envelope, hashTemplate, sigTemplate), "The driver envelope must be accepted.");
 
 
-    //Runs one full dual-field verify over the envelope with a fresh transcript and fresh bundles.
-    private static LongfellowMdocVerificationResult VerifyOnce(ReadOnlySpan<byte> envelope, byte[] hashTemplate, byte[] sigTemplate)
+    /// <summary>Runs one full dual-field verify over the envelope with a fresh transcript and freshly built prover/verifier bundles, releasing all circuit owners before returning.</summary>
+    private LongfellowMdocVerificationResult VerifyOnce(ReadOnlySpan<byte> envelope, byte[] hashTemplate, byte[] sigTemplate)
     {
         using Lch14AdditiveFft hashFft = NewGfFft();
         using LongfellowFieldProfile hashProfile = LongfellowGf2k128Encoding.CreateProfile(hashFft, BaseMemoryPool.Shared);
         using LongfellowSubfieldRunCodec hashCodec = LongfellowSubfieldRunCodec.ForGf2k128(
             hashProfile, hashFft, HashSubFieldBytes, BaseMemoryPool.Shared);
-        Fp256RealFft sigFft = NewFp256Fft();
+        using BaseMemoryPool sigFftPool = new();
+        using Fp256RealFft sigFft = NewFp256Fft(sigFftPool);
         using LongfellowFieldProfile sigProfile = NewMontgomerySigProfile();
         using LongfellowSubfieldRunCodec sigCodec = LongfellowSubfieldRunCodec.ForFp256(sigProfile);
 
@@ -411,58 +465,87 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    private static LongfellowMdocFieldProver BuildHashProver(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
+    /// <summary>Builds the hash-circuit prover bundle over a freshly parsed circuit, releasing that circuit's ownership to this test's scope before returning.</summary>
+    private LongfellowMdocFieldProver BuildHashProver(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
-        LongfellowSumcheckCircuit circuit = ParseHashCircuit(out _);
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
-        LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
+        LongfellowSumcheckCircuit? circuit = null;
+        try
+        {
+            circuit = ParseHashCircuit(out _);
+            LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
+            LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
 
-        return new LongfellowMdocFieldProver(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, HashSubfieldBoundary, CurveParameterSet.None, Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate(), Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetGatherMultiplyAccumulate());
+            var result = new LongfellowMdocFieldProver(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, HashSubfieldBoundary, CurveParameterSet.None, Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate(), Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetGatherMultiplyAccumulate());
+            //The returned bundle borrows the circuit retained by this test's scope.
+            circuit = null;
+
+            return result;
+        }
+        finally
+        {
+            circuit?.Dispose();
+        }
     }
 
 
-    private static LongfellowMdocFieldProver BuildSigProver(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
+    /// <summary>Builds the signature-circuit prover bundle, lifting the circuit's coefficients to the Montgomery domain to match the Montgomery-domain backends the prover uses.</summary>
+    private LongfellowMdocFieldProver BuildSigProver(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
-        LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
+        using LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
 
-        //Lift the circuit's canonical quad-term coefficients to Montgomery (Perf Increment 1).
-        LongfellowSumcheckCircuit montgomeryCircuit = circuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
+        //Lift the circuit's canonical quad-term coefficients to Montgomery form, matching the
+        //Montgomery-domain backends the prover uses below.
+        LongfellowSumcheckCircuit montgomeryCircuit = CircuitScope.Lift(circuit, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         return new LongfellowMdocFieldProver(montgomeryCircuit, parameters, encoderFactory, profile, codec, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, LongfellowFp256Encoding.SignatureSubfieldBoundary, CurveParameterSet.None, Fp256BatchMultiply: Fp256SimdBackend.BatchMultiplyMontgomery());
     }
 
 
-    private static LongfellowMdocFieldVerifier BuildHashVerifier(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
+    /// <summary>Builds the hash-circuit verifier bundle over a freshly parsed circuit, releasing that circuit's ownership to this test's scope before returning.</summary>
+    private LongfellowMdocFieldVerifier BuildHashVerifier(Lch14AdditiveFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
-        LongfellowSumcheckCircuit circuit = ParseHashCircuit(out _);
-        LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
-        LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
+        LongfellowSumcheckCircuit? circuit = null;
+        try
+        {
+            circuit = ParseHashCircuit(out _);
+            LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, HashFieldBytes, HashSubFieldBytes, HashBlockEncoded);
+            LongfellowRowEncoderFactory encoderFactory = LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
 
-        return new LongfellowMdocFieldVerifier(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate());
+            var result = new LongfellowMdocFieldVerifier(circuit, parameters, encoderFactory, profile, codec, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, Gf2k128BatchBackend.GetBindQuadReduce(), Gf2k128BatchBackend.GetBroadcastMultiplyAccumulate());
+            //The returned bundle borrows the circuit retained by this test's scope.
+            circuit = null;
+
+            return result;
+        }
+        finally
+        {
+            circuit?.Dispose();
+        }
     }
 
 
-    private static LongfellowMdocFieldVerifier BuildSigVerifier(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
+    /// <summary>Builds the signature-circuit verifier bundle, lifting the circuit's coefficients to the Montgomery domain to match the Montgomery-domain backends the verifier uses.</summary>
+    private LongfellowMdocFieldVerifier BuildSigVerifier(Fp256RealFft fft, LongfellowFieldProfile profile, LongfellowSubfieldRunCodec codec)
     {
-        LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
+        using LongfellowSumcheckCircuit circuit = ParseSignatureCircuit();
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(
             circuit, InverseRate, OpenedColumnCount, Point256ElementBytes, LongfellowFp256Encoding.SignatureSubFieldBytes, SigBlockEncoded);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateMontgomeryEncoderFactory(
             fft, profile, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, BaseMemoryPool.Shared, Fp256SimdBackend.BatchMultiplyMontgomery());
 
-        //Lift the circuit's canonical quad-term coefficients to Montgomery (Perf Increment 1).
-        LongfellowSumcheckCircuit montgomeryCircuit = circuit.LiftCoefficientsToWorking(P256BaseFieldMontgomeryBackend.ToMontgomery);
+        //Lift the circuit's canonical quad-term coefficients to Montgomery form, matching the
+        //Montgomery-domain backends the verifier uses below.
+        LongfellowSumcheckCircuit montgomeryCircuit = CircuitScope.Lift(circuit, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         return new LongfellowMdocFieldVerifier(montgomeryCircuit, parameters, encoderFactory, profile, codec, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, CurveParameterSet.None, Fp256BatchMultiply: Fp256SimdBackend.BatchMultiplyMontgomery());
     }
 
 
-    //The hash column from the reconciled filler: the SHARED chosen ap at [85112,85118) and the zeroed public
-    //mac/av region [945,952) — the driver's commit input (NO dump splice).
+    /// <summary>Builds the hash column from the shared filler: the chosen ap at [85112,85118) and the zeroed public mac/av region [945,952), exactly as the driver's commit input.</summary>
     private static byte[] BuildHashColumn()
     {
         byte[] credential = ReadFixture(CredentialRelativePath);
@@ -473,7 +556,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //The sig column from the reconciled filler: the REAL device tuple and the zeroed public mac/av region.
+    /// <summary>Builds the signature column from the shared filler: the real device tuple and the zeroed public mac/av region.</summary>
     private static byte[] BuildSigColumn()
     {
         byte[] credential = ReadFixture(CredentialRelativePath);
@@ -485,7 +568,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //The driver's three common values (e_, dpkx, dpky) as canonical big-endian scalars.
+    /// <summary>Returns the driver's three common values (e_, dpkx, dpky) as canonical big-endian scalars.</summary>
     private static byte[] DriverCommonValues()
     {
         byte[] credential = ReadFixture(CredentialRelativePath);
@@ -496,7 +579,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //The hash public-input template: hashColumn[0..945] as 945 * 16 little-endian element bytes.
+    /// <summary>Extracts the hash public-input template — hashColumn[0..945] as 945 little-endian 16-byte elements.</summary>
     private static byte[] HashTemplate(byte[] hashColumn)
     {
         byte[] template = new byte[HashTemplateElementCount * Gf2128ElementBytes];
@@ -509,7 +592,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //The simulated-patch hash region write: macs then av as canonical GF elements at [945,952).
+    /// <summary>Writes the simulated post-commit patch into the hash column: the six macs then av as canonical GF(2^128) elements at [945,952).</summary>
     private static void PatchHashColumn(byte[] hashColumn, byte[] macs, byte[] av)
     {
         for(int i = 0; i < 6; i++)
@@ -521,7 +604,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //The simulated-patch sig region write: each mac then av as 128 one/zero wires at wire 4.
+    /// <summary>Writes the simulated post-commit patch into the signature column: each mac then av expanded to 128 one/zero wires starting at wire 4.</summary>
     private static void PatchSigColumn(byte[] sigColumn, byte[] macs, byte[] av)
     {
         byte[] one = new byte[ScalarSize];
@@ -538,6 +621,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Expands one GF(2^128) element into 128 one/zero wires (big-endian bit order) written into the signature column starting at <paramref name="wireIndex"/>, returning the next free wire index.</summary>
     private static int ExpandGfBits(ReadOnlySpan<byte> element, byte[] one, byte[] zero, byte[] sigColumn, int wireIndex)
     {
         for(int j = 0; j < 128; j++)
@@ -551,8 +635,11 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //e2 (ne2): the crown-gate fixture's sig_template[3] reversed from little-endian to canonical big-endian
-    //(the spike's recipe). The byte-exact transcript-hash CBOR walk is the reference's, captured in the fixture.
+    /// <summary>
+    /// <c>e2</c> (<c>ne2</c>): the crown-gate fixture's <c>sig_template[3]</c> reversed from little-endian to
+    /// canonical big-endian — the reference's own value, which <see cref="MdocDeviceAuthentication"/> reproduces
+    /// from the session transcript.
+    /// </summary>
     private static BigInteger DeviceHash()
     {
         byte[] sigTemplate = Convert.FromHexString(Fixture["sig_template"]);
@@ -567,8 +654,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //A fixed a_v standing in for the squeezed key in the EvaluateCircuit pre-check: a GF(2^128) constant in
-    //the canonical low 16 big-endian bytes.
+    /// <summary>Returns a fixed a_v standing in for the squeezed key in the EvaluateCircuit pre-check: a GF(2^128) constant in the canonical low 16 big-endian bytes.</summary>
     private static byte[] FixedAv()
     {
         byte[] littleEndian = Convert.FromHexString("a3f10e5572c4901bd6883f2147ac55e0");
@@ -582,6 +668,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Asserts that every output wire of the evaluated circuit is zero, the assert-zero relation a satisfying witness must produce.</summary>
     private static void AssertOutputZero(LongfellowWireTables tables, LongfellowSumcheckCircuit circuit, string side)
     {
         Span<byte> output = tables.OutputTable();
@@ -592,10 +679,13 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //A forging witness is rejected either way the reference eval_circuit can surface it: the assert-zero
-    //relation A·w == b is checked at every layer, so an inconsistent witness trips an internal gate (an
-    //InvalidOperationException) or leaves an output wire non-zero. Both are valid rejection signals; only a
-    //clean evaluation with every output wire zero would mean the forgery satisfied the circuit.
+    /// <summary>
+    /// Asserts that a forging witness is rejected, however the reference evaluator surfaces it: the assert-zero
+    /// relation A·w == b is checked at every layer, so an inconsistent witness either raises an
+    /// <see cref="InvalidOperationException"/> from an internal consistency check, or leaves an output wire
+    /// non-zero. Both are valid rejection signals; only a clean evaluation with every output wire zero means
+    /// the forgery satisfied the circuit.
+    /// </summary>
     private static void AssertForgeryRejected(LongfellowSumcheckCircuit circuit, byte[] forgedColumn, string message)
     {
         try
@@ -618,8 +708,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //Flips one bit-decomposition witness element between the GF(2^128) one and zero the fillers push (one has
-    //the low byte set, zero is all-zero); a genuine value change at that column position.
+    /// <summary>Flips one bit-decomposition witness element between the GF(2^128) one and zero the fillers push (one has the low byte set, zero is all-zero), a genuine value change at that column position.</summary>
     private static void FlipBitWitness(byte[] column, int element)
     {
         Span<byte> slot = column.AsSpan(element * ScalarSize, ScalarSize);
@@ -632,9 +721,11 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Returns whether every byte of the scalar is zero.</summary>
     private static bool IsZero(ReadOnlySpan<byte> scalar) => scalar.IndexOfAnyExcept((byte)0) < 0;
 
 
+    /// <summary>Asserts that <paramref name="littleEndian"/> equals <paramref name="canonicalBigEndian"/> read back to front, failing with <paramref name="message"/> otherwise.</summary>
     private static void AssertReversedEquals(ReadOnlySpan<byte> littleEndian, ReadOnlySpan<byte> canonicalBigEndian, string message)
     {
         byte[] reversed = new byte[ScalarSize];
@@ -647,9 +738,10 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    private static LongfellowSumcheckCircuit ParseSignatureCircuit()
+    /// <summary>Parses the P-256 signature circuit from the raw circuit bytes, retaining its ownership in this test's circuit scope.</summary>
+    private LongfellowSumcheckCircuit ParseSignatureCircuit()
     {
-        bool parsed = LongfellowCircuitReader.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out _);
+        bool parsed = CircuitScope.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out _);
         Assert.IsTrue(parsed, "The signature circuit must parse.");
         Assert.IsNotNull(signature);
 
@@ -657,12 +749,14 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    private static LongfellowSumcheckCircuit ParseHashCircuit(out int subfieldBoundary)
+    /// <summary>Parses the GF(2^128) hash circuit from the continuation span following the signature circuit, retaining its ownership in this test's circuit scope.</summary>
+    /// <param name="subfieldBoundary">Receives the hash circuit's subfield boundary as parsed from the stream.</param>
+    private LongfellowSumcheckCircuit ParseHashCircuit(out int subfieldBoundary)
     {
-        bool signatureParsed = LongfellowCircuitReader.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
+        bool signatureParsed = CircuitScope.TryRead(RawCircuitBytes, Point256FieldId, Point256ElementBytes, out _, out _, out int signatureBytes);
         Assert.IsTrue(signatureParsed, "The signature circuit must parse before the hash circuit.");
 
-        bool hashParsed = LongfellowCircuitReader.TryRead(RawCircuitBytes.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out subfieldBoundary, out _);
+        bool hashParsed = CircuitScope.TryRead(RawCircuitBytes.AsSpan(signatureBytes), Gf2128FieldId, Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out subfieldBoundary, out _);
         Assert.IsTrue(hashParsed, "The hash circuit must parse from the continuation span.");
         Assert.IsNotNull(hash);
 
@@ -670,6 +764,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Reverses a canonical big-endian scalar into its little-endian wire encoding, truncated to <paramref name="elementBytes"/>.</summary>
     private static void ToBytesField(ReadOnlySpan<byte> canonical, Span<byte> littleEndian, int elementBytes)
     {
         for(int i = 0; i < elementBytes; i++)
@@ -679,6 +774,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Reduces a small unsigned coordinate modulo the P-256 base-field order and writes it as a canonical big-endian scalar.</summary>
     private static void OfScalarFp256(uint coordinate, Span<byte> destination)
     {
         destination.Clear();
@@ -693,9 +789,11 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Returns whether a canonical big-endian scalar is strictly less than the P-256 base-field order.</summary>
     private static bool InRangeFp256(ReadOnlySpan<byte> canonical) => new BigInteger(canonical, isUnsigned: true, isBigEndian: true) < Prime;
 
 
+    /// <summary>Creates a deterministic byte source that fills its destination with an incrementing counter, wrapping modulo 256.</summary>
     private static LongfellowRandomByteSource NewCounterSource()
     {
         ulong counter = 0;
@@ -711,6 +809,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Creates a deterministic byte source producing values that stay below the P-256 base-field order when read as a big-endian scalar, by zeroing the final byte of a 32-byte draw.</summary>
     private static LongfellowRandomByteSource NewBelowModulusSource()
     {
         ulong counter = 0;
@@ -731,37 +830,43 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Creates a fresh transcript seeded with <paramref name="seed"/>, or the default session seed when none is supplied.</summary>
     private static LongfellowTranscript NewTranscript(byte[]? seed = null) =>
         new(seed ?? SessionSeed, TranscriptVersion, TranscriptElementBytes, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
+    /// <summary>Creates a fresh GF(2^128) additive FFT over the Production16 subfield.</summary>
     private static Lch14AdditiveFft NewGfFft() =>
         new(Lch14Subfield.Production16, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
-    //The Montgomery-domain Fp256 profile (Perf Increment 1): of_scalar/of_bytes_field lift canonical->Montgomery,
-    //to_bytes_field drops back, so the wire bytes are byte-identical to the canonical profile. The caller
-    //disposes it.
+    /// <summary>Creates the Montgomery-domain Fp256 profile: of_scalar/of_bytes_field lift canonical to Montgomery, to_bytes_field drops back, so the wire bytes stay byte-identical to the canonical profile. The caller disposes it.</summary>
     private static LongfellowFieldProfile NewMontgomerySigProfile() =>
         LongfellowFp256Encoding.CreateMontgomeryProfile(OfScalarFp256, InRangeFp256, P256BaseFieldMontgomeryBackend.ToMontgomery, P256BaseFieldMontgomeryBackend.FromMontgomery, BaseMemoryPool.Shared);
 
 
-    //The Montgomery-domain real-FFT: the production root is lifted per coordinate to its Montgomery residue and
-    //the multiply/invert are the Montgomery-domain delegates, so the twiddle multiplies stay 1-CIOS in domain.
-    private static Fp256RealFft NewFp256Fft()
+    /// <summary>
+    /// Creates a caller-owned P-256 FFT whose root uses the supplied pool. The production root is lifted per
+    /// coordinate to its Montgomery residue, and the multiply/invert are the Montgomery-domain delegates, so
+    /// the twiddle multiplies stay 1-CIOS in domain.
+    /// </summary>
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFp256Fft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnityWorking(root, P256BaseFieldMontgomeryBackend.ToMontgomery);
 
         using LongfellowFieldProfile profile = NewMontgomerySigProfile();
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Fp256Add, Fp256Subtract, Fp256MultiplyMontgomery, Fp256InvertMontgomery, profile.OfScalar, CurveParameterSet.None, pool);
     }
 
 
-    //Lifts a canonical sig column to the Montgomery working domain (each 32-byte element through to_montgomery):
-    //the prover commits and patches it in domain, the verifier reads its template back through the Montgomery
-    //profile, and the emitted wire bytes are domain-independent.
+    /// <summary>
+    /// Lifts a canonical signature column to the Montgomery working domain, element by element. The prover
+    /// commits and patches the column in this domain; the verifier reads its template back through the
+    /// Montgomery profile, so the emitted wire bytes stay domain-independent.
+    /// </summary>
     private static byte[] MontgomerySigColumn(byte[] canonicalColumn)
     {
         byte[] montgomery = new byte[canonicalColumn.Length];
@@ -774,9 +879,11 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
-    //The sig public-input template extracted from a MONTGOMERY column through the Montgomery profile's
-    //to_bytes_field (from_montgomery + reverse): the LE wire bytes are byte-identical to SigTemplate over the
-    //canonical column.
+    /// <summary>
+    /// Extracts the signature public-input template from a Montgomery-domain column through the Montgomery
+    /// profile's to_bytes_field (from_montgomery, then reversed to little-endian), so the wire bytes are
+    /// byte-identical to extracting the same template over the canonical column.
+    /// </summary>
     private static byte[] MontgomerySigTemplate(byte[] montgomeryColumn)
     {
         using LongfellowFieldProfile profile = NewMontgomerySigProfile();
@@ -790,9 +897,11 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Computes a one-shot SHA-256 digest of <paramref name="input"/> into <paramref name="output"/>, ignoring the caller-supplied hash-function label.</summary>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction) => SHA256.HashData(input, output);
 
 
+    /// <summary>Computes the SHA-256 digest of <paramref name="left"/> concatenated with <paramref name="right"/>, the two-to-one compression the Merkle layers use.</summary>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[left.Length + right.Length];
@@ -802,6 +911,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Encrypts one AES-256 ECB block under <paramref name="key"/>, the transcript's Fiat-Shamir expansion primitive.</summary>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = Aes.Create();
@@ -810,9 +920,11 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Reads a test-material fixture file's raw bytes, resolved relative to the test's output directory.</summary>
     private static byte[] ReadFixture(string relativePath) => File.ReadAllBytes($"../../../{relativePath}");
 
 
+    /// <summary>Decompresses a gzip-compressed byte array in full.</summary>
     private static byte[] DecompressGzip(byte[] gzip)
     {
         using var input = new MemoryStream(gzip);
@@ -824,6 +936,7 @@ internal sealed class LongfellowMdocProveDriverTests
     }
 
 
+    /// <summary>Loads a <c>key=value</c> anchor fixture file into a dictionary, skipping blank lines and lines without a separator.</summary>
     private static System.Collections.Generic.Dictionary<string, string> LoadFixture(string relativePath)
     {
         string path = $"../../../{relativePath}";

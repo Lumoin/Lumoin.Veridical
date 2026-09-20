@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 
 /// <summary>
-/// Tests for the BaseFold IOPP (AB.3): the standalone interactive-oracle proof
+/// Tests for the BaseFold IOPP: the standalone interactive-oracle proof
 /// of proximity that a Merkle-committed codeword is close to a codeword of the
 /// random foldable code. Positive tests confirm a correctly-encoded codeword
 /// verifies; negative tests confirm a word far from the code is rejected (the
@@ -25,29 +25,54 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class BaseFoldIoppTests
 {
+    /// <summary>The validated BLS12-381 scalar addition delegate this test's codeword and folding arithmetic runs on.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The validated BLS12-381 scalar subtraction delegate this test's codeword and folding arithmetic runs on.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The validated BLS12-381 scalar multiplication delegate this test's codeword and folding arithmetic runs on.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The validated BLS12-381 scalar inversion delegate this test's codeword and folding arithmetic runs on.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BigInteger reference scalar-reduction delegate for the BLS12-381 scalar field.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The BigInteger reference hash-to-scalar delegate the foldable code derives its per-layer challenges through.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir hash delegate every transcript in this class is built from.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir squeeze delegate every transcript in this class draws challenges through.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The two-to-one Merkle hash delegate backing every commitment in this class, implemented with production BLAKE3 through <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, ScalarSize);
+
+    /// <summary>The in-memory scalar width in bytes, used for every codeword, message and word stride in this class.</summary>
     private const int ScalarSize = 32;
+
+    /// <summary>The Merkle digest width every commitment and hash delegate in this class uses, taken from the library's default Merkle parameters.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
-    //A modest query count keeps the property and tamper tests fast; correctness
-    //of the protocol does not depend on the soundness-driven repetition count,
-    //which the WellKnownBaseFoldIoppParameters derivation tests cover separately.
+    /// <summary>The query count every fixed-input test in this class proves and verifies with; a modest count keeps the property and tamper tests fast, since correctness does not depend on the soundness-driven repetition count, which the query-count derivation test covers separately.</summary>
     private const int TestQueryCount = 16;
 
+    /// <summary>The number of random samples <see cref="RandomHonestCodewordsAlwaysVerify"/> draws.</summary>
     private const int IterationCount = 20;
 
+    /// <summary>The BLS12-381 curve parameter set this test's arithmetic and commitments run over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that a correctly-encoded codeword's BaseFold IOPP proof verifies, for every wired layer count.</summary>
+    /// <param name="layerCount">The number of fold layers (and so the code's dimension) to exercise.</param>
     [TestMethod]
     [DataRow(1)]
     [DataRow(2)]
@@ -70,6 +95,8 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies that a word far from the code — distinct pseudo-random scalars overwhelmingly unlikely to fold to a valid base codeword — is rejected by the final base-codeword check, for every wired layer count.</summary>
+    /// <param name="layerCount">The number of fold layers (and so the code's dimension) to exercise.</param>
     [TestMethod]
     [DataRow(2)]
     [DataRow(3)]
@@ -95,6 +122,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a bit of the Merkle commitment breaks verification of an otherwise honest proof.</summary>
     [TestMethod]
     public void TamperedCommitmentIsRejected()
     {
@@ -110,7 +138,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Build the true commitment, then flip a bit so it no longer matches.
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
@@ -126,6 +154,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a bit of the first fold-layer root breaks verification of an otherwise honest proof.</summary>
     [TestMethod]
     public void TamperedFoldRootIsRejected()
     {
@@ -141,7 +170,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Flip a bit in the first fold root (root of π_{d-1}).
         MemoryMarshal.AsMemory(proof.FoldRoots[0].AsReadOnlyMemory()).Span[0] ^= 0x01;
@@ -158,6 +187,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies that flipping a bit of one query's authentication-path sibling breaks verification of an otherwise honest proof.</summary>
     [TestMethod]
     public void TamperedAuthenticationPathIsRejected()
     {
@@ -173,7 +203,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         //Flip a bit in the first query's top-layer first-path sibling.
         MemoryMarshal.AsMemory(proof.Openings[0][0].FirstPath.AsReadOnlyMemory()).Span[0] ^= 0x01;
@@ -190,6 +220,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies that verifying an honest proof with a query count one more than the count it was proven with is rejected.</summary>
     [TestMethod]
     public void MismatchedQueryCountIsRejected()
     {
@@ -205,7 +236,7 @@ internal sealed class BaseFoldIoppTests
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, TestQueryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, TestQueryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
         BuildCommitmentBytes(codeword, codewordElements, rootBytes);
@@ -219,6 +250,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Property-based: for a random layer count and message, the honestly-encoded codeword's BaseFold IOPP proof always verifies.</summary>
     [TestMethod]
     public void RandomHonestCodewordsAlwaysVerify()
     {
@@ -252,6 +284,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies that <see cref="WellKnownBaseFoldIoppParameters.ComputeQueryCount"/> reproduces the hand-computed query count for each soundness regime at the wired 128-bit security level, and that the class's named presets match the corresponding regime.</summary>
     [TestMethod]
     public void QueryCountDerivationMatchesTheRegimeFormulas()
     {
@@ -300,6 +333,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies <c>OneAndAHalfJohnsonRadius</c>'s boundary values and its ordering against the doubly-applied Johnson radius and the unique-decoding radius at the wired code distance.</summary>
     [TestMethod]
     public void OneAndAHalfJohnsonRadiusMatchesItsDefinition()
     {
@@ -321,6 +355,7 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Verifies <c>JohnsonRadius(x) = 1 - sqrt(1 - x)</c> at its boundary and midpoint values.</summary>
     [TestMethod]
     public void JohnsonRadiusMatchesItsDefinition()
     {
@@ -331,15 +366,19 @@ internal sealed class BaseFoldIoppTests
     }
 
 
-    //Runs the prover then the verifier on the same codeword with fresh,
-    //identically-initialised transcripts, returning the verifier's verdict.
+    /// <summary>Runs the prover then the verifier on the same codeword with fresh, identically-initialised transcripts.</summary>
+    /// <param name="code">The foldable code the codeword is checked against.</param>
+    /// <param name="codeword">The codeword to prove proximity of.</param>
+    /// <param name="queryCount">The number of IOPP queries to prove and verify with.</param>
+    /// <param name="pool">The pool the prover and verifier rent their working buffers from.</param>
+    /// <returns>The verifier's verdict.</returns>
     private static bool ProveThenVerify(FoldableCode code, ReadOnlySpan<byte> codeword, int queryCount, BaseMemoryPool pool)
     {
         int codewordElements = code.Parameters.CodewordLength;
 
         using FiatShamirTranscript proverTx = NewTranscript();
         using BaseFoldIoppProof proof = BaseFoldIoppProver.Prove(
-            code, codeword, queryCount, proverTx, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
+            code, codeword, queryCount, proverTx, TreeParameters, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, pool);
 
         Span<byte> rootBytes = stackalloc byte[DigestSizeBytes];
         BuildCommitmentBytes(codeword, codewordElements, rootBytes);
@@ -351,13 +390,19 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Builds a Merkle tree over the codeword and copies its root bytes out, the commitment the IOPP proof is checked against.</summary>
+    /// <param name="codeword">The codeword to commit to.</param>
+    /// <param name="codewordElements">The number of scalar elements in <paramref name="codeword"/>.</param>
+    /// <param name="rootBytes">The buffer receiving the commitment root bytes.</param>
     private static void BuildCommitmentBytes(ReadOnlySpan<byte> codeword, int codewordElements, Span<byte> rootBytes)
     {
-        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, Merkle, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(codeword, codewordElements, new MerkleCommitmentParameters(Merkle, ScalarSize), BaseMemoryPool.Shared);
         tree.Root.AsReadOnlySpan().CopyTo(rootBytes);
     }
 
 
+    /// <summary>Creates a fresh Fiat-Shamir transcript under the BaseFold IOPP's own domain label, ready to absorb a prove or verify run.</summary>
+    /// <returns>A new transcript backed by the shared pool.</returns>
     private static FiatShamirTranscript NewTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -369,6 +414,11 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Builds a small deterministic message of distinct odd values and encodes it into a codeword through the given code.</summary>
+    /// <param name="code">The foldable code to encode through.</param>
+    /// <param name="parameters">The code's parameters, giving the message length to build.</param>
+    /// <param name="codeword">The buffer receiving the encoded codeword.</param>
+    /// <param name="pool">The pool the message buffer is rented from.</param>
     private static void EncodeSmallMessage(FoldableCode code, FoldableCodeParameters parameters, Span<byte> codeword, BaseMemoryPool pool)
     {
         int messageElements = parameters.MessageLength;
@@ -384,8 +434,9 @@ internal sealed class BaseFoldIoppTests
     }
 
 
-    //Distinct, canonical, non-trivial scalars: a counter hashed through the
-    //field-reduction backend so consecutive positions differ widely.
+    /// <summary>Fills a word with distinct, canonical, non-trivial scalars: a per-position counter pattern reduced through the field-reduction backend so consecutive positions differ widely.</summary>
+    /// <param name="word">The buffer receiving the pseudo-random scalars.</param>
+    /// <param name="elements">The number of scalar elements to fill.</param>
     private static void FillPseudoRandomScalars(Span<byte> word, int elements)
     {
         Span<byte> wide = stackalloc byte[ScalarSize];
@@ -401,6 +452,10 @@ internal sealed class BaseFoldIoppTests
     }
 
 
+    /// <summary>Concatenates two digests and hashes them with production BLAKE3, the two-to-one compression every Merkle tree in this class uses.</summary>
+    /// <param name="left">The left digest, placed first in the concatenation.</param>
+    /// <param name="right">The right digest, placed after <paramref name="left"/>.</param>
+    /// <param name="output">The buffer receiving the combined digest.</param>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -410,5 +465,6 @@ internal sealed class BaseFoldIoppTests
     }
 
 
-    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.AB3.Iopp.Test"u8;
+    /// <summary>The fixed seed deriving every foldable code in this class, distinguishing them from every other test's codes.</summary>
+    private static ReadOnlySpan<byte> Seed => "Lumoin.Veridical.BaseFold.Iopp.Test"u8;
 }

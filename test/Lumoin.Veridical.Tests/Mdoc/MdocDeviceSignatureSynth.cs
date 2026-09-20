@@ -7,13 +7,13 @@ using System.Security.Cryptography;
 namespace Lumoin.Veridical.Tests.Mdoc;
 
 /// <summary>
-/// The SYNTHESIZED device half of the mdoc SIG circuit (coordinator decision OQ1): a self-consistent
+/// The SYNTHESIZED device half of the mdoc SIG circuit: a self-consistent
 /// P-256/SHA-256 ECDSA verification tuple <c>(dpkx, dpky, e2, r2, s2)</c> standing in for the credential's
 /// real device-key signature. The SIG circuit only checks the internal consistency of each
 /// <c>VerifyWitness3</c> column (it does not bind the device key to any public value, see
-/// <c>tempdocs/longfellow-zk-reference/lib/circuits/mdoc/mdoc_zk.cc</c>), so the device tuple needs only to
+/// <c>lib/circuits/mdoc/mdoc_zk.cc</c>), so the device tuple needs only to
 /// be a genuine ECDSA verification: <c>e2</c> is the device/transcript message hash (the PUBLIC wire 3,
-/// OQ6 — distinct from the issuer MSO hash <c>e_</c>), <c>(dpkx, dpky)</c> is the device public key, and
+/// distinct from the issuer MSO hash <c>e_</c>), <c>(dpkx, dpky)</c> is the device public key, and
 /// <c>(r2, s2)</c> is a signature over <c>e2</c> under that key such that the recovered nonce point
 /// <c>R2 = (e2/s2)·G + (r2/s2)·Q2</c> has <c>R2.x mod n == r2</c>.
 /// </summary>
@@ -29,31 +29,32 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// by <see cref="Verify"/> through .NET's own <see cref="ECDsa.VerifyData(byte[], byte[], HashAlgorithmName)"/>.
 /// </para>
 /// <para>
-/// The fixed device message stands in for the full <c>compute_transcript_hash</c> CBOR construction
-/// (mdoc_witness.h:437-490); the only circuit precondition on <c>e2</c> is <c>e2 != 0</c>
-/// (mdoc_zk.cc:196-201), trivially satisfied by a SHA-256 digest. Byte-exact transcript fidelity is the
-/// deferred Docker reverse-gate concern.
+/// The fixed device message stands in for the ISO/IEC 18013-5 device-authentication construction that
+/// <see cref="MdocDeviceAuthentication"/> builds for a real credential; the only circuit precondition on
+/// <c>e2</c> is <c>e2 != 0</c> (mdoc_zk.cc:196-201), trivially satisfied by a SHA-256 digest.
 /// </para>
 /// </remarks>
 internal sealed class MdocDeviceSignatureSynth
 {
+    /// <summary>The byte width of one P-256 scalar and coordinate this synthesized tuple uses.</summary>
     private const int ScalarSize = 32;
 
-    //A deterministic P-256 device private key d2, well below n, distinct from the issuer-test key
-    //(EcdsaSignatureWitnessTests.PrivateKeyHex) so the synthesized device half is visibly independent.
+    /// <summary>A deterministic P-256 device private key d2, well below n, distinct from the issuer-test key (EcdsaSignatureWitnessTests.PrivateKeyHex) so the synthesized device half is visibly independent.</summary>
     private const string DevicePrivateKeyHex = "0fedcba9876543210123456789abcdeffedcba98765432100f1e2d3c4b5a6978";
 
-    //A fixed device message standing in for the transcript-derived DeviceAuthenticationBytes. e2 is its
-    //SHA-256, which is non-zero with overwhelming probability (the only circuit precondition on e2).
+    /// <summary>A fixed device message standing in for the transcript-derived DeviceAuthenticationBytes. e2 is its SHA-256, which is non-zero with overwhelming probability (the only circuit precondition on e2).</summary>
     private static ReadOnlySpan<byte> DeviceMessage => "Lumoin.Veridical synthesized mdoc device authentication."u8;
 
-    //A fixed ECDSA nonce k for the DETERMINISTIC device signature (well below n, distinct from d2). A fixed k
-    //is sound here because the device signs exactly one fixed message under one fixed key — no nonce reuse
-    //across distinct messages. This replaces .NET's random-nonce SignData so the synthesized signature (and so
-    //the witness column and the proof envelope) is reproducible run-to-run.
+    /// <summary>
+    /// A fixed ECDSA nonce k for the deterministic device signature (well below n, distinct from d2). A
+    /// fixed k is sound here because the device signs exactly one fixed message under one fixed key — no
+    /// nonce reuse across distinct messages. This replaces .NET's random-nonce SignData so the synthesized
+    /// signature (and so the witness column and the proof envelope) is reproducible run-to-run.
+    /// </summary>
     private const string DeviceNonceHex = "0a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566778899aabbccddeeff";
 
 
+    /// <summary>Wraps an already-synthesized device tuple; only <see cref="Create"/> constructs an instance.</summary>
     private MdocDeviceSignatureSynth(BigInteger dpkx, BigInteger dpky, BigInteger e2, BigInteger r2, BigInteger s2, byte[] message)
     {
         DeviceKeyX = dpkx;
@@ -111,7 +112,7 @@ internal sealed class MdocDeviceSignatureSynth
 
 
     /// <summary>
-    /// The independent .NET oracle confirming the synthesized tuple is a genuine nonce point: .NET's
+    /// The independent .NET check confirming the synthesized tuple is a genuine nonce point: .NET's
     /// verifier recomputes <c>R2 = (e2/s2)·G + (r2/s2)·Q2</c> and checks <c>R2.x mod n == r2</c>, exactly
     /// the property <c>VerifyWitness3</c> relies on (mirrors
     /// <c>RecoveredNoncePointMatchesTheDotNetSignature</c>).
@@ -127,8 +128,7 @@ internal sealed class MdocDeviceSignatureSynth
     }
 
 
-    //Import the device key from the fixed scalar d2, deriving Q2 = d2·G through the reference so the
-    //imported key is complete and deterministic (the established EcdsaSignatureWitnessTests.CreateKey pattern).
+    /// <summary>Imports the device key from the fixed scalar d2, deriving Q2 = d2·G through the reference so the imported key is complete and deterministic (the established EcdsaSignatureWitnessTests.CreateKey pattern).</summary>
     private static ECDsa CreateKey()
     {
         byte[] d = Convert.FromHexString(DevicePrivateKeyHex);
@@ -148,5 +148,6 @@ internal sealed class MdocDeviceSignatureSynth
     }
 
 
+    /// <summary>Reads canonical big-endian bytes as an unsigned <see cref="BigInteger"/>.</summary>
     private static BigInteger ToInteger(byte[] bytes) => new(bytes, isUnsigned: true, isBigEndian: true);
 }

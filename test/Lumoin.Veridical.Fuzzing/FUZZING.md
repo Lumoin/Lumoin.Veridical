@@ -1,4 +1,4 @@
-# Fuzzing the hand-written decoders (W1-c)
+# Fuzzing the hand-written decoders
 
 The library parses several hostile-by-assumption binary formats with hand-written readers:
 the Circom `.r1cs` / `.wtns` readers, the ZkInterface FlatBuffers decoder and its R1CS /
@@ -57,12 +57,12 @@ ReportGenerator / dotnet-validate commented out in `main.yml`. OSS-Fuzz also sti
 
 ### Activation (owner steps)
 
-1. **Trust the package.** DONE — the SharpFuzz owner (`Metalnem`, owner of both `SharpFuzz` and
-   `SharpFuzz.CommandLine` on nuget.org) is in the `<owners>` list in `NuGet.config`, and
-   `Directory.Packages.props` pins `SharpFuzz` `2.3.0`. The default lock file omits SharpFuzz, so
-   the first `EnableSharpFuzz=true` restore must regenerate it — restore with `--force-evaluate`
-   (or delete `test/Lumoin.Veridical.Fuzzing/packages.lock.json` first) to avoid a locked-mode
-   NU1004.
+1. **Trust the package.** The SharpFuzz owner (`Metalnem`, owner of both `SharpFuzz` and
+   `SharpFuzz.CommandLine` on nuget.org) is already in the `<owners>` list in `NuGet.config`, and
+   `Directory.Packages.props` pins `SharpFuzz` `2.3.0`, so this step needs no further action. The
+   default lock file omits SharpFuzz, so the first `EnableSharpFuzz=true` restore must regenerate
+   it — restore with `--force-evaluate` (or delete
+   `test/Lumoin.Veridical.Fuzzing/packages.lock.json` first) to avoid a locked-mode NU1004.
 2. **Install the instrumenter** (a global tool that rewrites IL to add libFuzzer coverage
    counters):
 
@@ -160,72 +160,47 @@ allocating without bound. To triage:
 3. Pin it. Add a fast regression test at the decoder's own level (see the two below), not only
    the Slow sweep, so normal CI catches a regression.
 
-## Findings to date
+## What the hardened decoders reject
 
-The first deterministic sweep surfaced two undocumented `OverflowException` paths on hostile
-input, both fixed and pinned:
+Every decoder below sizes its allocations and bounds its work by the input length it has actually
+seen, never by an attacker-declared count taken on faith, and rejects the listed malformed-input
+classes with the stated documented exception rather than an undocumented crash.
 
-- `CircomR1csReader` accepted `nWires` / `nConstraints` above `int.MaxValue` and overflowed the
-  `checked (int)` cast during construction. Now rejected at header validation; pinned by
+- `CircomR1csReader` rejects `nWires` / `nConstraints` header counts above `int.MaxValue` at
+  header validation, so the `checked (int)` cast during construction cannot overflow; pinned by
   `CircomR1csReaderTests.R1csRejectsHeaderCountAboveInt32Range`.
-- The ZkInterface R1CS and witness builders allowed a variable id of exactly `int.MaxValue`,
-  whose `+1` column count overflowed. Guards tightened to `>= int.MaxValue`; pinned by
-  `ZkInterfaceBuilderBoundaryTests`.
-
-The pairing-reference compressed-point decoders were separately hardened to reject off-curve and
-non-canonical inputs (verified square roots) in the same wave.
-
-A later systematic audit (2026-07-13) of every hand-written untrusted-binary parser against the
-invariant *decoded allocation and work must be bounded by input size* confirmed the parsers are
-overwhelmingly safe — each sizes its allocation by the actual input length, length-derives counts
-from the buffer, or parameter-gates with an exact `if(bytes.Length != expected) throw` before
-allocating. It surfaced and fixed four gaps:
-
-- `ZkInterfaceWitnessReader` sized the dense `z[1..]` vector from the header's `free_variable_id`
-  (and referenced ids), a declared count decoupled from the input in the sparse case — a few dozen
-  bytes could rent gigabytes. The witness builder now caps the column count at the source byte
-  length — pinned by `ZkInterfaceBuilderBoundaryTests` and `ZkInterfaceWitnessReaderTests` — and, at
-  intake, caps the per-witness byte accumulator at `Array.MaxLength`. That accumulator ceiling is
-  reachable only by hundreds of megabytes of assignments aliasing one column, so like the
-  `RelaxedR1cs` guard below it is untestable at unit scale and is not pinned by a dedicated test.
-- `ZkInterfaceCursorDecoder` re-expanded aliased FlatBuffers offsets (many vector elements pointing
-  at one shared table), turning an `M`-byte message into `O(M²)` decoded events. A decode-work
-  budget bounds total decoded events by the source byte length; pinned by
-  `ZkInterfaceCursorDecoderTests.DecoderRejectsOffsetAliasingAmplification`.
-- `CircomWitnessReader` lacked the `nWitness` int-range guard its `.r1cs` sibling already had, so
-  `(nWitness − 1) · scalarSize` overflowed to an undocumented `OverflowException` on a ~2 GiB input.
-  Now rejected at header parse; pinned by
+- The ZkInterface R1CS and witness builders reject a variable id `>= int.MaxValue`, so the `+ 1`
+  column-count computation cannot overflow; pinned by `ZkInterfaceBuilderBoundaryTests`.
+- The pairing-reference compressed-point decoders reject off-curve points and non-canonical field
+  encodings (a verified-square-root check on the recovered coordinate).
+- `ZkInterfaceWitnessReader` caps the dense `z[1..]` vector's column count at the source byte
+  length rather than trusting the header's declared `free_variable_id` (and referenced ids), and
+  caps the per-witness intake byte accumulator at `Array.MaxLength`, so a small input cannot claim
+  a multi-gigabyte allocation; the column-count cap is pinned by `ZkInterfaceBuilderBoundaryTests`
+  and `ZkInterfaceWitnessReaderTests`. The accumulator cap is reachable only by hundreds of
+  megabytes of assignments aliasing one column, so — like the `RelaxedR1cs` guard below — it is
+  untestable at unit scale and carries no dedicated test.
+- `ZkInterfaceCursorDecoder` bounds total decoded events by the source byte length (a decode-work
+  budget), so aliased FlatBuffers offsets (many vector elements pointing at one shared table)
+  cannot turn an `M`-byte message into `O(M^2)` decoded events; pinned by
+  `ZkInterfaceCursorDecoderTests.DecoderRejectsOffsetAliasingAmplification`. The same budget also
+  charges the coefficient bytes each term and assignment scans, so an aliased `constraints` /
+  `variable_ids` vector cannot amortise one offset element across many terms to drive `O(M^2)`
+  byte work while the event count stays under budget; pinned by
+  `ZkInterfaceCursorDecoderTests.DecoderRejectsCoefficientScanAmplification`.
+- `CircomWitnessReader` rejects `nWitness` at header parse when it is out of addressable range, so
+  `(nWitness - 1) * scalarSize` cannot overflow; pinned by
   `CircomWitnessReaderTests.Multiplier2WitnessRejectsNWitnessAboveAddressableRange`.
-- `RelaxedR1csWitness.FromCanonical` could overflow `witnessBytes.Length + errorBytes.Length` on a
-  >2 GiB combined input; now rejected with the documented `ArgumentException`.
+- `RelaxedR1csWitness.FromCanonical` rejects a combined `witnessBytes.Length + errorBytes.Length`
+  that would overflow, with a documented `ArgumentException`.
+- `ZkInterfaceR1csInstanceBuilder` carries the same per-matrix intake accumulator cap as the
+  witness builder, so an aliased `constraints` / `variable_ids` vector cannot grow one matrix's
+  `valueBytes` past `Array.MaxLength`.
+- `R1csMatrix.ComputeBufferSize` computes the non-zero-count times per-triple-byte-width product
+  in `Int64`, not `Int32`, and rejects a count that exceeds a single addressable array with a
+  descriptive `ArgumentException`, so the multiplication cannot wrap negative; pinned by
+  `R1csMatrixTests.ComputeBufferSizeRejectsNonzeroCountExceedingAddressableBuffer`.
 
-A follow-up verification pass (2026-07-16) tightened two of these guards and closed one the first
-audit missed. The two ZkInterface witness-builder ceilings above were gated on `int.MaxValue`, 56
-bytes above the `Array.MaxLength` limit of the `List<byte>` / pooled `byte[]` they protect; they now
-use `Array.MaxLength`, matching the `CircomWitnessReader` and `RelaxedR1csWitness` siblings, so the
-accumulator can no longer leak the very `OutOfMemoryException` its contract converts. Separately,
-`ZkInterfaceR1csInstanceBuilder` accumulated coefficient bytes into a `List<byte>` with no intake cap
-of its own: the decode-work budget bounds the *number* of decoded terms by the source byte length,
-not the 32 bytes each term accrues, and an aliased `constraints` / `variable_ids` vector amortises
-one 4-byte offset element across many terms — so an ~90 MB stream could grow one matrix's
-`valueBytes` past `Array.MaxLength` and throw an undocumented `OutOfMemoryException` mid-decode. The
-instance builder now carries the same per-matrix intake accumulator cap as the witness builder.
-
-A further adversarial review pass (2026-07-16) closed two more gaps. The decode-work budget bounded
-only the *event* axis: it charged one unit per decoded term but let each term hand the
-canonical-scalar writer an attacker-sized coefficient span to scan, so a `constraints` vector
-aliasing a few offsets onto one over-long (zero-padded) coefficient could drive `O(M²)` byte work
-while the event count stayed far under budget — an asymmetric-CPU amplification through the R1CS
-instance reader. The budget now also charges the coefficient bytes each term and assignment scans, so
-a re-read aliased coefficient exhausts it; pinned by
-`ZkInterfaceCursorDecoderTests.DecoderRejectsCoefficientScanAmplification`. Separately,
-`R1csMatrix.ComputeBufferSize` multiplied the non-zero count by the per-triple byte width in `Int32`,
-which wraps negative for a non-zero count between ~53.7M and the accumulator cap's ~67.1M ceiling —
-reachable from an accumulated constraint system before that cap trips — so the product is now taken
-in `Int64` and a count exceeding a single addressable array is rejected with a descriptive
-`ArgumentException`; pinned by
-`R1csMatrixTests.ComputeBufferSizeRejectsNonzeroCountExceedingAddressableBuffer`.
-
-The remaining int-overflow edges require multi-gigabyte inputs and already surface as
-`ArgumentOutOfRangeException` — an `ArgumentException` subtype, so the documented rejection contract
-holds.
+The remaining int-overflow edges require multi-gigabyte inputs and surface as
+`ArgumentOutOfRangeException` — an `ArgumentException` subtype — so the documented rejection
+contract holds throughout.

@@ -33,13 +33,24 @@ namespace Lumoin.Veridical.Core.Commitments;
 /// </remarks>
 public sealed class HyraxOpeningProof: SensitiveMemory
 {
+    /// <summary>The canonical byte width of one big-endian scalar field in the proof buffer — the final scalar, the final blinding, and the blinding correction — matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The number of 32-byte scalar fields trailing the IPA round pairs: the final scalar, the final blinding, and the blinding correction.</summary>
     private const int TrailingScalarCount = 3;
 
-    //The leading C_f commitment and each IPA (L, R) pair are G1 points, so
-    //their byte sizes follow the curve. Computed per-instance from Curve
-    //rather than pinned to a constant; the static sizer takes the curve.
+    /// <summary>
+    /// The byte size of the leading <c>C_f</c> commitment: one compressed G1 point sized for <see cref="Curve"/>.
+    /// Computed per instance from <see cref="Curve"/> rather than pinned to a constant, because the compressed
+    /// point size follows the curve; <see cref="GetBufferSizeBytes"/> likewise takes the curve directly.
+    /// </summary>
     private int FCommitmentSize => WellKnownCurves.GetG1CompressedSizeBytes(Curve);
+
+    /// <summary>
+    /// The byte size of one IPA <c>(L, R)</c> point pair: two compressed G1 points sized for <see cref="Curve"/>.
+    /// Computed per instance from <see cref="Curve"/> rather than pinned to a constant, because the compressed
+    /// point size follows the curve.
+    /// </summary>
     private int IpaPairSize => 2 * WellKnownCurves.GetG1CompressedSizeBytes(Curve);
 
 
@@ -50,6 +61,15 @@ public sealed class HyraxOpeningProof: SensitiveMemory
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>
+    /// Wraps an already-populated, pool-rented buffer holding the proof's canonical wire bytes into a Hyrax
+    /// opening proof for the given IPA round count and curve; ownership of <paramref name="owner"/> transfers
+    /// to this instance.
+    /// </summary>
+    /// <param name="owner">The pool-rented backing buffer, cleared and released on disposal.</param>
+    /// <param name="ipaRoundCount">The number of IPA rounds the proof was generated for.</param>
+    /// <param name="curve">The curve the proof's group elements and scalars are drawn from.</param>
+    /// <param name="tag">The sensitive-data tag identifying this buffer's role for pooling and diagnostics.</param>
     internal HyraxOpeningProof(
         IMemoryOwner<byte> owner,
         int ipaRoundCount,
@@ -134,12 +154,12 @@ public sealed class HyraxOpeningProof: SensitiveMemory
     /// </summary>
     /// <param name="proofBytes">Exactly <see cref="GetBufferSizeBytes"/>(<paramref name="ipaRoundCount"/>) bytes — the concatenated wire-format proof.</param>
     /// <param name="ipaRoundCount">The number of IPA rounds the proof was generated for; must match the originating commitment's <c>⌈log_2(ColumnCount)⌉</c>.</param>
-    /// <param name="curve">The curve. Currently only <see cref="CurveParameterSet.Bls12Curve381"/> is supported.</param>
+    /// <param name="curve">The curve; must be <see cref="CurveParameterSet.Bls12Curve381"/> or <see cref="CurveParameterSet.Bn254"/>.</param>
     /// <param name="pool">The pool to rent the backing buffer from.</param>
     /// <returns>An opening proof wrapping a fresh copy of the supplied bytes.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="ipaRoundCount"/> is negative.</exception>
-    /// <exception cref="ArgumentException">When the byte length does not match the supplied round count, or the curve is not BLS12-381.</exception>
+    /// <exception cref="ArgumentException">When the byte length does not match the supplied round count, or the curve is neither BLS12-381 nor BN254.</exception>
     public static HyraxOpeningProof FromBytes(
         ReadOnlySpan<byte> proofBytes,
         int ipaRoundCount,
@@ -170,6 +190,9 @@ public sealed class HyraxOpeningProof: SensitiveMemory
     }
 
 
+    /// <summary>Throws when <paramref name="round"/> falls outside the valid <c>[0, IpaRoundCount)</c> range for this proof.</summary>
+    /// <param name="round">The zero-based IPA round index to validate.</param>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="round"/> is negative or at least <see cref="IpaRoundCount"/>.</exception>
     private void ValidateRound(int round)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(round);

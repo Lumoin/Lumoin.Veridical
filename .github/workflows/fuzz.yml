@@ -28,7 +28,7 @@ env:
 jobs:
   fuzz:
     name: Fuzz ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -52,7 +52,7 @@ jobs:
         # audit log from the first run, then switch to block + an allowed-endpoints
         # list (mirror COMMON_ALLOWED_ENDPOINTS in main.yml, plus the SharpFuzz
         # source host raw.githubusercontent.com:443).
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
         with:
           egress-policy: audit
 
@@ -89,7 +89,7 @@ jobs:
       - name: Build the libfuzzer-dotnet loader
         # The loader source lives in its own repo (Metalnem/libfuzzer-dotnet), NOT in the
         # SharpFuzz repo — it was split out, so the old sharpfuzz/master path 404s. clang ships
-        # on ubuntu-latest; -fsanitize=fuzzer supplies the libFuzzer runtime.
+        # on ubuntu-24.04; -fsanitize=fuzzer supplies the libFuzzer runtime.
         run: |
           curl -fsSL https://raw.githubusercontent.com/Metalnem/libfuzzer-dotnet/master/libfuzzer-dotnet.cc -o libfuzzer-dotnet.cc
           clang -fsanitize=fuzzer libfuzzer-dotnet.cc -o libfuzzer-dotnet

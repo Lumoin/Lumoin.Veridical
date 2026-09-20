@@ -34,15 +34,15 @@ namespace Lumoin.Veridical.Secdsa;
 /// <para>
 /// <b>Delegate-injected arithmetic.</b> Every scalar-field group operation, HKDF derivation, and HMAC computation
 /// is supplied by the caller as a named delegate, so the package carries no concrete field/group/hash backend.
-/// The choice of implementation — the BigInteger group reference today, a constant-time backend later — is
-/// entirely a call-site concern; this algorithm is byte-for-byte stable across it.
+/// The choice of implementation — a BigInteger group reference, or a constant-time backend — is
+/// entirely a call-site concern; this algorithm is byte-for-byte stable across either.
 /// </para>
 /// <para>
 /// <b>Timing-hardening status.</b> The in-package secret-scalar checks — the <c>[1, n−1]</c> range validation on
 /// each key/key-share — are <i>branchless</i>: they inspect every byte with no data-dependent early exit, so
 /// they do not leak by an early return where a key and the order first differ. This is best-effort in managed
 /// code, not a hard constant-time guarantee, and it is the cheap part: the dominant variable-time cost is the
-/// <i>injected</i> group arithmetic (the BigInteger reference today; a constant-time scalar/group backend is a
+/// <i>injected</i> group arithmetic (a BigInteger reference, or a constant-time scalar/group backend, entirely a
 /// call-site choice), so genuine constant-time operation requires a constant-time backend, which this algorithm
 /// is byte-for-byte stable across. Key-derived scratch (the shared point, the intermediate blinded points, the
 /// MAC key) is cleared before return.
@@ -67,6 +67,10 @@ public static class EcdhMacAlgorithm
     /// </summary>
     public const int MacKeySizeBytes = 32;
 
+    /// <summary>
+    /// The NIST P-256 curve every group operation in this algorithm dispatches
+    /// against.
+    /// </summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.P256;
 
 
@@ -414,9 +418,12 @@ public static class EcdhMacAlgorithm
     }
 
 
-    //E ∈ ⟨G⟩ is realized as: reject the encoded point at infinity here, and rely on the injected
-    //G1ScalarMultiplyDelegate's SEC1-decode contract to reject a syntactically well-formed but off-curve point
-    //(P-256's cofactor of 1 then makes on-curve-and-finite equivalent to subgroup membership).
+    /// <summary>
+    /// Realizes <c>E ∈ ⟨G⟩</c>: rejects the encoded point at infinity here, and relies on the injected
+    /// <see cref="G1ScalarMultiplyDelegate"/>'s SEC1-decode contract to reject a syntactically
+    /// well-formed but off-curve point (P-256's cofactor of 1 then makes on-curve-and-finite
+    /// equivalent to subgroup membership).
+    /// </summary>
     private static void RequireNotInfinity(ReadOnlySpan<byte> compressedPoint, string name)
     {
         if(compressedPoint[0] == 0x00)
@@ -426,11 +433,14 @@ public static class EcdhMacAlgorithm
     }
 
 
-    //The point-dependent core every entry point shares: validates the peer point (length, infinity, and — via
-    //the delegate's decode contract — on-curve membership) and computes S_AB = privateScalar·peerPoint. This is
-    //the ONLY step a counterparty's malformed input can fail, which is what lets Verify scope its
-    //rejected-not-thrown handling to exactly this call while HKDF/HMAC failures propagate as caller errors.
-    //Callers validate their own scalar before calling; the result buffer receives the full compressed S_AB.
+    /// <summary>
+    /// The point-dependent core every entry point shares: validates the peer point (length, infinity,
+    /// and — via the delegate's decode contract — on-curve membership) and computes <c>S_AB =
+    /// privateScalar·peerPoint</c>. This is the ONLY step a counterparty's malformed input can fail,
+    /// which is what lets <see cref="Verify"/> scope its rejected-not-thrown handling to exactly this
+    /// call while HKDF/HMAC failures propagate as caller errors. Callers validate their own scalar
+    /// before calling; the result buffer receives the full compressed <c>S_AB</c>.
+    /// </summary>
     private static void ComputeSharedDiffieHellmanPoint(
         ReadOnlySpan<byte> privateScalar,
         ReadOnlySpan<byte> peerPublicPoint,

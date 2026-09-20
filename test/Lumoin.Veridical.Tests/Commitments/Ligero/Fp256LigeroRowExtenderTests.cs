@@ -24,22 +24,33 @@ namespace Lumoin.Veridical.Tests.Commitments.Ligero;
 [TestClass]
 internal sealed class Fp256LigeroRowExtenderTests
 {
+    /// <summary>The Montgomery-domain P-256 base-field addition backend.</summary>
     private static ScalarAddDelegate Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
+
+    /// <summary>The Montgomery-domain P-256 base-field subtraction backend.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
+
+    /// <summary>The Montgomery-domain P-256 base-field multiplication backend.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = P256BaseFieldMontgomeryBackend.GetMultiply();
+
+    /// <summary>The Montgomery-domain P-256 base-field inversion backend.</summary>
     private static ScalarInvertDelegate Invert { get; } = P256BaseFieldMontgomeryBackend.GetInvert();
+
+    /// <summary>The Montgomery-domain P-256 base-field reduction backend.</summary>
     private static ScalarReduceDelegate Reduce { get; } = P256BaseFieldMontgomeryBackend.GetReduce();
 
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //A fill salt distinct from the streams other Ligero tests draw.
+    /// <summary>A fill salt distinct from the streams other Ligero tests draw.</summary>
     private const int MessageFillSalt = 1201;
 
-    //The representative shapes: the anchor suite's small shapes, a
-    //power-of-two PCS-style shape, and the tableau's shapes at the age-gadget
-    //parameters (block 64, inverse rate 4: blockEncoded = (2+4)·64 − 1 = 383,
-    //doubleBlock = 2·64 − 1 = 127) — including the (block, doubleBlock) aext
-    //shape, the one family with messageLength < codewordLength < 2·messageLength.
+    /// <summary>
+    /// The representative shapes: the anchor suite's small shapes, a power-of-two PCS-style shape, and the
+    /// tableau's shapes at the age-gadget parameters (block 64, inverse rate 4: blockEncoded = (2+4)·64 − 1 =
+    /// 383, doubleBlock = 2·64 − 1 = 127) — including the (block, doubleBlock) aext shape, the one family with
+    /// messageLength &lt; codewordLength &lt; 2·messageLength.
+    /// </summary>
     private static (int MessageLength, int CodewordLength)[] Shapes { get; } =
     [
         (5, 16),
@@ -51,11 +62,13 @@ internal sealed class Fp256LigeroRowExtenderTests
     ];
 
 
+    /// <summary>The convolution extender matches the barycentric encoder byte for byte.</summary>
     [TestMethod]
     public void TheConvolutionExtenderMatchesTheBarycentricEncoderByteForByte()
     {
-        BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using Fp256LigeroRowExtenders extenders = NewExtenders(pool);
+        using BaseMemoryPool pool = new();
+        using Fp256RealFft fft = NewFft(pool);
+        using Fp256LigeroRowExtenders extenders = NewExtenders(fft, pool);
 
         foreach((int messageLength, int codewordLength) in Shapes)
         {
@@ -79,11 +92,13 @@ internal sealed class Fp256LigeroRowExtenderTests
     }
 
 
+    /// <summary>The extender leaves the systematic prefix untouched.</summary>
     [TestMethod]
     public void TheExtenderLeavesTheSystematicPrefixUntouched()
     {
-        BaseMemoryPool pool = BaseMemoryPool.Shared;
-        using Fp256LigeroRowExtenders extenders = NewExtenders(pool);
+        using BaseMemoryPool pool = new();
+        using Fp256RealFft fft = NewFft(pool);
+        using Fp256LigeroRowExtenders extenders = NewExtenders(fft, pool);
 
         const int MessageLength = 9;
         const int CodewordLength = 23;
@@ -102,16 +117,29 @@ internal sealed class Fp256LigeroRowExtenderTests
     }
 
 
-    private static Fp256LigeroRowExtenders NewExtenders(BaseMemoryPool pool)
+    /// <summary>Creates row extenders borrowing the caller-owned FFT.</summary>
+    /// <param name="fft">The FFT, alive until the extenders and their callbacks finish.</param>
+    /// <param name="pool">The caller pool supplying encoder storage.</param>
+    /// <returns>The disposable row extenders.</returns>
+    private static Fp256LigeroRowExtenders NewExtenders(Fp256RealFft fft, BaseMemoryPool pool)
     {
-        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
-        LongfellowFp256Encoding.RootOfUnity(root);
-        var fft = new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
-
         return new Fp256LigeroRowExtenders(fft, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
     }
 
 
+    /// <summary>Creates an FFT whose root belongs to the supplied pool.</summary>
+    /// <param name="pool">The pool, alive until the caller disposes the FFT.</param>
+    /// <returns>The owned FFT.</returns>
+    private static Fp256RealFft NewFft(BaseMemoryPool pool)
+    {
+        Span<byte> root = stackalloc byte[Fp256QuadraticExtension.ElementSize];
+        LongfellowFp256Encoding.RootOfUnity(root);
+
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, Add, Subtract, Multiply, Invert, WriteCanonicalUInt, CurveParameterSet.None, pool);
+    }
+
+
+    /// <summary>Writes a 32-bit value as a zero-padded canonical big-endian scalar.</summary>
     private static void WriteCanonicalUInt(uint value, Span<byte> destination)
     {
         destination.Clear();

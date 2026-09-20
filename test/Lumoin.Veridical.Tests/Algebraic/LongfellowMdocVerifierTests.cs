@@ -13,54 +13,106 @@ using System.Text;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The dual-field mdoc driver (conformance step C.12 stage 3) — google/longfellow-zk's
-/// <c>run_mdoc_verifier</c> (<c>lib/circuits/mdoc/mdoc_zk.cc:560-695</c>). These gate the mechanics the
-/// driver owns: the cross-field transcript order (both commitment roots absorbed BEFORE the shared MAC key
-/// <c>a_v</c> is squeezed, so flipping the roots changes <c>a_v</c>), the mac-wire index constants, the
-/// mac/av public-input splice layout (the GF side keeps each mac a single 16-byte element; the Fp256 side
-/// expands it to 128 least-significant-first bit wires), and the <c>e2</c> transcript-hash construction. The
-/// end-to-end accept of a real Fp256 signature envelope lands with the Docker dump harness (step 4); these
-/// are unit-level.
+/// The dual-field mdoc driver — google/longfellow-zk's <c>run_mdoc_verifier</c>
+/// (<c>lib/circuits/mdoc/mdoc_zk.cc:560-695</c>). These gate the mechanics the driver owns: the cross-field
+/// transcript order (both commitment roots absorbed BEFORE the shared MAC key <c>a_v</c> is squeezed, so
+/// flipping the roots changes <c>a_v</c>), the mac-wire index constants, and the mac/av public-input splice
+/// layout (the GF side keeps each mac a single 16-byte element; the Fp256 side expands it to 128
+/// least-significant-first bit wires). The <c>e2</c> transcript-hash construction is pinned beside its port in
+/// <see cref="Mdoc.MdocDeviceAuthenticationTests"/>. The end-to-end accept of a real Fp256 signature envelope
+/// These are unit-level gates, not an end-to-end accept of a real Fp256 signature envelope.
 /// </summary>
 [TestClass]
-internal sealed class LongfellowMdocVerifierTests
+internal sealed class LongfellowMdocVerifierTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The on-wire element width, in bytes, for the GF(2^128) field.</summary>
     private const int GfElementBytes = 16;
+
+    /// <summary>The on-wire element width, in bytes, for the P-256 base field.</summary>
     private const int Fp256ElementBytes = 32;
+
+    /// <summary>The MAC key width in bits; also the number of base-field bit wires each GF(2^128) MAC or <c>a_v</c> element expands to on the Fp256 side of the splice.</summary>
     private const int MacKeyBits = 128;
+
+    /// <summary>The SHA-256 digest width in bytes, matching each commitment root's size.</summary>
     private const int DigestSize = 32;
+
+    /// <summary>The transcript wire-format version (6, the deployed mdoc flow's value) the driver's transcripts are baked at.</summary>
     private const int TranscriptVersion = 6;
 
-    private const string ZkDumpRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+    /// <summary>The path, relative to the test project directory, to the GF(2^128) end-to-end ZK anchor file these tests build a real proof from.</summary>
+    private const string ZkAnchorRelativePath = "TestMaterial/Longfellow/zk-anchor-output.txt";
+
+    /// <summary>The GF(2^128) subfield element width in bytes for the anchor circuit's Ligero parameters.</summary>
     private const int AnchorSubFieldBytes = 2;
+
+    /// <summary>The Ligero code's inverse rate this test fixes for the anchor circuit's Ligero parameters.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of Ligero columns opened per proof for the anchor circuit's Ligero parameters.</summary>
     private const int OpenedColumnCount = 2;
+
+    /// <summary>The subfield-run boundary (rebased to start at the public-input count) the anchor circuit passes to the GF(2^128) prover; zero, so no witness row falls below it.</summary>
     private const int AnchorSubfieldBoundary = 0;
 
-    //A cut this far into the hash proof's com_proof keeps the fixed root and
-    //sumcheck segment intact while landing inside the run-length section.
+    /// <summary>
+    /// How far into the hash proof's <c>com_proof</c> section a truncation test cuts: far enough that
+    /// the fixed root and sumcheck segment stay intact, landing the cut inside the run-length section.
+    /// </summary>
     private const int HashComProofCutBytes = 8;
 
-    //A tail cut small enough that the hash proof still splits and only the
-    //sig-proof remainder underflows.
+    /// <summary>
+    /// How many bytes a truncation test trims from the envelope's tail: small enough that the hash
+    /// proof still splits cleanly and only the sig-proof remainder underflows.
+    /// </summary>
     private const int SigProofTailCutBytes = 5;
 
+    /// <summary>The transcript seed for the cross-field root/<c>a_v</c> ordering gates.</summary>
     private static byte[] TranscriptSeed { get; } = Encoding.ASCII.GetBytes("mdoc-driver-gate");
+
+    /// <summary>The transcript seed used when proving the anchor circuit's real GF(2^128) hash proof.</summary>
     private static byte[] AnchorProofSeed { get; } = Encoding.ASCII.GetBytes("zk8");
 
-    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkDumpRelativePath);
+    /// <summary>The parsed key/value map loaded from the GF(2^128) end-to-end ZK anchor file.</summary>
+    private static Dictionary<string, string> Anchors { get; } = LoadAnchors(ZkAnchorRelativePath);
 
+    /// <summary>The P-256 base field's prime modulus.</summary>
     private static BigInteger Prime { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The GF(2^128) addition delegate (XOR).</summary>
     private static ScalarAddDelegate GfAdd { get; } = Gf2k128Backend.GetAdd();
 
+    /// <summary>The GF(2^128) subtraction delegate (coincides with addition).</summary>
     private static ScalarSubtractDelegate GfSubtract { get; } = Gf2k128Backend.GetSubtract();
 
+    /// <summary>The GF(2^128) multiplication delegate.</summary>
     private static ScalarMultiplyDelegate GfMultiply { get; } = Gf2k128Backend.GetMultiply();
 
+    /// <summary>The GF(2^128) inversion delegate.</summary>
     private static ScalarInvertDelegate GfInvert { get; } = Gf2k128Backend.GetInvert();
 
+    /// <summary>The class-lifetime Fp256 field profile shared by the sig-splice tests; disposed in <see cref="ClassCleanup"/>.</summary>
     private static LongfellowFieldProfile Fp256Profile { get; } = LongfellowFieldProfile.ForFp256(OfScalar, InRange, BaseMemoryPool.Shared);
 
 
@@ -72,6 +124,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that absorbing the hash root then the sig root before squeezing <c>a_v</c> makes <c>a_v</c> depend on both, in order: swapping the two roots changes the squeezed key.</summary>
     [TestMethod]
     public void BothRootsAbsorbBeforeAvAndFlippingThemChangesAv()
     {
@@ -88,6 +141,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that <c>generate_mac_key</c> draws exactly 16 raw PRF bytes through <c>of_bytes_field</c>, not a sample-and-reject loop, by checking that two identically seeded transcripts stay in lockstep on the draws that follow.</summary>
     [TestMethod]
     public void TheMacKeyIsSixteenRawBytesNotASampleLoop()
     {
@@ -122,6 +176,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that the hash and signature MAC wire index formulas match the reference's constants for representative attribute counts and versions.</summary>
     [TestMethod]
     public void TheMacWireIndicesMatchTheReferenceFormulas()
     {
@@ -129,9 +184,9 @@ internal sealed class LongfellowMdocVerifierTests
         Assert.AreEqual(945, HashMacIndex(numAttrs: 1, version: 7), "getHashMacIndex(1, 7) is 945.");
         Assert.AreEqual(937, HashMacIndex(numAttrs: 1, version: 6), "getHashMacIndex(1, 6) is 937.");
 
-        //945 is exactly the C.11 hash-circuit MacPublicStart (the witness column where the macs splice in).
-        const int C11MacPublicStart = 945;
-        Assert.AreEqual(C11MacPublicStart, HashMacIndex(numAttrs: 1, version: 7), "getHashMacIndex(1, 7) must equal the C.11 MacPublicStart.");
+        //945 is exactly the witness-filler step's hash-circuit MacPublicStart (the witness column where the macs splice in).
+        const int HashCircuitMacPublicStart = 945;
+        Assert.AreEqual(HashCircuitMacPublicStart, HashMacIndex(numAttrs: 1, version: 7), "getHashMacIndex(1, 7) must equal the hash circuit's MacPublicStart.");
 
         //kSigMacIndex is the fixed location of the sig MAC wire (mdoc_zk.cc:98); the version bump that moves
         //the hash index (version<7 ? 1 : 2) does not move the sig index — it stays 4 across versions.
@@ -140,6 +195,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that splicing a GF(2^128) public-input template appends each of the six MACs and <c>a_v</c> as a single 16-byte element, not bit-expanded.</summary>
     [TestMethod]
     public void TheHashSpliceAppendsSixMacsAndAvAsSingleSixteenByteElements()
     {
@@ -183,6 +239,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that splicing an Fp256 public-input template expands each of the six MACs and <c>a_v</c> into 128 least-significant-first bit wires.</summary>
     [TestMethod]
     public void TheSigSpliceExpandsEachMacToOneTwentyEightLeastSignificantFirstBitWires()
     {
@@ -234,6 +291,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that a template whose length does not leave exactly the seven mac/<c>a_v</c> slots splices to <see langword="null"/>, for both the GF(2^128) and the Fp256 splice.</summary>
     [TestMethod]
     public void AWrongSizedTemplateSplicesToNullForBothFields()
     {
@@ -257,52 +315,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    [TestMethod]
-    public void TheTranscriptHashConstructionMatchesTheReferenceCose1Encoding()
-    {
-        //e2 = to_montgomery(compute_transcript_hash(tr, docType)); its standard-form value is
-        //SHA-256(COSE1(DeviceAuthenticationBytes)) read big-endian, reduced mod p (mdoc_witness.h:391-484).
-        //Construct the COSE1 bytes deterministically and pin the resulting reduced hash.
-        byte[] sessionTranscript = Encoding.ASCII.GetBytes("session-transcript-bytes");
-        byte[] docType = Encoding.ASCII.GetBytes("org.iso.18013.5.1.mDL");
-
-        byte[] cose1 = BuildCose1(sessionTranscript, docType);
-        byte[] digest = SHA256.HashData(cose1);
-        BigInteger e2Standard = new BigInteger(digest, isUnsigned: true, isBigEndian: true) % Prime;
-
-        //Recomputing the same construction must be stable (the recipe is deterministic), and the reduced
-        //value is a valid base-field element below the modulus.
-        byte[] cose1Again = BuildCose1(sessionTranscript, docType);
-        Assert.IsTrue(cose1.AsSpan().SequenceEqual(cose1Again), "The COSE1 DeviceAuthenticationBytes construction must be deterministic.");
-        Assert.IsLessThan(Prime, e2Standard, "e2 (standard form) is a base-field element below the modulus.");
-
-        //The construction must be sensitive to the session transcript (a different transcript moves e2).
-        byte[] other = BuildCose1(Encoding.ASCII.GetBytes("a-different-transcript"), docType);
-        BigInteger otherE2 = new BigInteger(SHA256.HashData(other), isUnsigned: true, isBigEndian: true) % Prime;
-        Assert.AreNotEqual(e2Standard, otherE2, "e2 must depend on the session transcript bytes.");
-    }
-
-
-    [TestMethod]
-    public void TheCose1LengthEncodingIsByteCorrectAtTheBoundaries()
-    {
-        //TOB-LIBZK-5 found an off-by-one in the reference's COSE1 length serialization (length 256
-        //encoded as 0 via `> 256`; text length 255 emitted nothing); the fixed reference and this port
-        //use `>= 256` / correct 24..255 handling. Pin the CBOR major-type-2 (byte string, base 0x40)
-        //and major-type-3 (text string, base 0x60) length-prefix encodings at the boundaries the bug
-        //touched: the 24 short/long-form cutover and the one-byte/two-byte length-field cutover at 256.
-        AssertBytesLen(23, [0x57]);
-        AssertBytesLen(24, [0x58, 0x18]);
-        AssertBytesLen(255, [0x58, 0xFF]);
-        AssertBytesLen(256, [0x59, 0x01, 0x00]);
-        AssertBytesLen(65535, [0x59, 0xFF, 0xFF]);
-
-        AssertTextLen(23, [0x77]);
-        AssertTextLen(24, [0x78, 0x18]);
-        AssertTextLen(255, [0x78, 0xFF]);
-    }
-
-
+    /// <summary>Verifies that an envelope shorter than the fixed MAC region returns <see cref="LongfellowMdocVerificationResult.MalformedEnvelope"/> rather than throwing.</summary>
     [TestMethod]
     public void AShortEnvelopeYieldsMalformedEnvelopeWithoutThrowing()
     {
@@ -332,6 +345,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that the driver parses both real proof slices, absorbs both roots and squeezes <c>a_v</c> before its size guard rejects an anchor circuit too small to hold the mac/<c>a_v</c> splice, returning <see cref="LongfellowMdocVerificationResult.AttributeNumberMismatch"/>.</summary>
     [TestMethod]
     public void TheDriverParsesBothProofsRecvsBothRootsThenGuardsTheSplicedSize()
     {
@@ -364,6 +378,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that cutting the envelope inside the hash proof's run-length-encoded <c>com_proof</c> section, past the intact root and sumcheck segment, yields <see cref="LongfellowMdocVerificationResult.MalformedEnvelope"/>.</summary>
     [TestMethod]
     public void ATruncationInsideTheHashComProofYieldsMalformedEnvelope()
     {
@@ -388,6 +403,7 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Verifies that trimming a few bytes off the envelope's tail, short enough that the hash proof still splits but the sig-proof remainder does not parse, yields <see cref="LongfellowMdocVerificationResult.MalformedEnvelope"/>.</summary>
     [TestMethod]
     public void ATruncationInTheSigProofTailYieldsMalformedEnvelope()
     {
@@ -406,9 +422,15 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //Builds the anchor-circuit field bundle and drives the mdoc verifier over the supplied envelope
-    //bytes. Both proof slots share the GF bundle, which suffices for the parse-level verdicts the
-    //truncation gates pin.
+    /// <summary>
+    /// Builds the anchor-circuit field bundle and drives the mdoc verifier over the supplied envelope
+    /// bytes. Both proof slots share the GF bundle, which suffices for the parse-level verdicts the
+    /// truncation gates pin.
+    /// </summary>
+    /// <param name="circuit">The anchor circuit both proof slots share.</param>
+    /// <param name="envelope">The candidate envelope bytes.</param>
+    /// <param name="result">Receives the verification result.</param>
+    /// <returns><see langword="true"/> when the envelope verifies.</returns>
     private static bool VerifyAnchorEnvelope(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> envelope, out LongfellowMdocVerificationResult result)
     {
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(circuit, InverseRate, OpenedColumnCount, GfElementBytes, AnchorSubFieldBytes);
@@ -427,8 +449,13 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //Absorbs the two roots in the given order then squeezes the 16-byte MAC key, returning it as a
-    //canonical scalar (the driver's generate_mac_key step).
+    /// <summary>
+    /// Absorbs the two roots in the given order then squeezes the 16-byte MAC key, returning it as a
+    /// canonical scalar (the driver's <c>generate_mac_key</c> step).
+    /// </summary>
+    /// <param name="firstRoot">The commitment root absorbed first.</param>
+    /// <param name="secondRoot">The commitment root absorbed second.</param>
+    /// <returns>The squeezed MAC key <c>a_v</c>, as a canonical scalar.</returns>
     private static byte[] SqueezeMacKey(byte[] firstRoot, byte[] secondRoot)
     {
         using LongfellowTranscript transcript = NewTranscript();
@@ -447,12 +474,20 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //getHashMacIndex(numAttrs, version): numAttrs*8*(96 + (version<7 ? 1 : 2)) + 160 + 1 (mdoc_zk.cc:61-64).
+    /// <summary>Computes the reference's <c>getHashMacIndex(numAttrs, version)</c> formula: <c>numAttrs*8*(96 + (version&lt;7 ? 1 : 2)) + 160 + 1</c>.</summary>
+    /// <param name="numAttrs">The disclosed attribute count.</param>
+    /// <param name="version">The mdoc circuit version.</param>
+    /// <returns>The hash-circuit MAC wire index.</returns>
     private static int HashMacIndex(int numAttrs, int version) => (numAttrs * 8 * (96 + (version < 7 ? 1 : 2))) + 160 + 1;
 
 
-    //kSigMacIndex is a fixed constant 4, independent of the version (mdoc_zk.cc:98). The parameter is kept
-    //so the gate can show it does not move with the version the way getHashMacIndex does.
+    /// <summary>
+    /// Returns the reference's <c>kSigMacIndex</c>, a fixed constant independent of
+    /// <paramref name="version"/>. The parameter is kept so a gate can show it does not move with the
+    /// version the way <see cref="HashMacIndex(int, int)"/> does.
+    /// </summary>
+    /// <param name="version">Accepted for parity with <see cref="HashMacIndex(int, int)"/>; does not affect the result.</param>
+    /// <returns>The signature-circuit MAC wire index, always 4.</returns>
     private static int SigMacIndex(int version)
     {
         _ = version;
@@ -461,99 +496,8 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //The COSE1 DeviceAuthenticationBytes encoding of compute_transcript_hash (mdoc_witness.h:440-483).
-    private static byte[] BuildCose1(byte[] sessionTranscript, byte[] docType)
-    {
-        ReadOnlySpan<byte> deviceAuthentication =
-        [
-            0x84, 0x74, (byte)'D', (byte)'e', (byte)'v', (byte)'i', (byte)'c', (byte)'e', (byte)'A', (byte)'u', (byte)'t',
-            (byte)'h', (byte)'e', (byte)'n', (byte)'t', (byte)'i', (byte)'c', (byte)'a', (byte)'t', (byte)'i', (byte)'o', (byte)'n',
-        ];
-
-        ReadOnlySpan<byte> deviceNameSpacesBytes = [0xD8, 0x18, 0x41, 0xA0];
-
-        var docTypeBytes = new List<byte>();
-        AppendTextLen(docTypeBytes, docType.Length);
-        docTypeBytes.AddRange(docType);
-
-        var da = new List<byte>();
-        da.AddRange(deviceAuthentication.ToArray());
-        da.AddRange(sessionTranscript);
-        da.AddRange(docTypeBytes);
-        da.AddRange(deviceNameSpacesBytes.ToArray());
-
-        var cose1 = new List<byte>(new byte[]
-        {
-            0x84, 0x6A, 0x53, 0x69, 0x67, 0x6E, 0x61, 0x74, 0x75, 0x72, 0x65, 0x31, 0x43, 0xA1, 0x01, 0x26, 0x40,
-        });
-
-        int l1 = da.Count;
-        int l2 = l1 + (l1 < 256 ? 4 : 5);
-        AppendBytesLen(cose1, l2);
-        cose1.Add(0xD8);
-        cose1.Add(0x18);
-        AppendBytesLen(cose1, l1);
-        cose1.AddRange(da);
-
-        return cose1.ToArray();
-    }
-
-
-    private static void AppendBytesLen(List<byte> buf, int len)
-    {
-        if(len < 24)
-        {
-            buf.Add((byte)(0x40 + len));
-        }
-        else if(len < 256)
-        {
-            buf.Add(0x58);
-            buf.Add((byte)(len & 0xFF));
-        }
-        else
-        {
-            buf.Add(0x59);
-            buf.Add((byte)((len >> 8) & 0xFF));
-            buf.Add((byte)(len & 0xFF));
-        }
-    }
-
-
-    private static void AppendTextLen(List<byte> buf, int len)
-    {
-        if(len < 24)
-        {
-            buf.Add((byte)(0x60 + len));
-        }
-        else
-        {
-            buf.Add(0x78);
-            buf.Add((byte)len);
-        }
-    }
-
-
-    //Runs AppendBytesLen into a fresh buffer and asserts the produced CBOR major-type-2 prefix is
-    //byte-exact.
-    private static void AssertBytesLen(int len, byte[] expected)
-    {
-        var buf = new List<byte>();
-        AppendBytesLen(buf, len);
-        Assert.IsTrue(buf.ToArray().AsSpan().SequenceEqual(expected), $"AppendBytesLen({len}) must match the CBOR major-type-2 encoding.");
-    }
-
-
-    //Runs AppendTextLen into a fresh buffer and asserts the produced CBOR major-type-3 prefix is
-    //byte-exact.
-    private static void AssertTextLen(int len, byte[] expected)
-    {
-        var buf = new List<byte>();
-        AppendTextLen(buf, len);
-        Assert.IsTrue(buf.ToArray().AsSpan().SequenceEqual(expected), $"AppendTextLen({len}) must match the CBOR major-type-3 encoding.");
-    }
-
-
-    //Six distinct GF macs as canonical scalars: mac i has its low element bytes filled with (0x21 + i).
+    /// <summary>Builds six distinct GF macs as canonical scalars: mac <c>i</c> has its low element bytes filled with <c>0x21 + i</c>.</summary>
+    /// <returns>The concatenated canonical-scalar MAC values.</returns>
     private static byte[] BuildMacs()
     {
         byte[] macs = new byte[LongfellowMdocEnvelope.MacCount * ScalarSize];
@@ -566,7 +510,9 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //A canonical GF(2^128) scalar with the low 16 bytes carrying a distinct pattern derived from `seed`.
+    /// <summary>Builds a canonical GF(2^128) scalar whose low 16 bytes carry a distinct pattern derived from <paramref name="seed"/>.</summary>
+    /// <param name="seed">The byte seeding the pattern.</param>
+    /// <returns>The canonical-scalar bytes.</returns>
     private static byte[] CanonicalGf(byte seed)
     {
         byte[] canonical = new byte[ScalarSize];
@@ -579,6 +525,9 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Writes the Fp256 bit-wire encoding of a zero or one witness value.</summary>
+    /// <param name="value">The bit value (0 or 1) to encode.</param>
+    /// <param name="wire">Receives the encoded wire bytes.</param>
     private static void WriteWire(uint value, Span<byte> wire)
     {
         Span<byte> canonical = stackalloc byte[ScalarSize];
@@ -587,6 +536,9 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Builds a digest-sized byte array filled with a single repeated value, standing in for a commitment root.</summary>
+    /// <param name="value">The byte value to fill.</param>
+    /// <returns>The filled root bytes.</returns>
     private static byte[] FilledRoot(byte value)
     {
         byte[] root = new byte[DigestSize];
@@ -596,7 +548,10 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //of_scalar(u): the integer u reduced mod p as a canonical big-endian scalar.
+    /// <summary>Computes <c>of_scalar(u)</c>: <paramref name="coordinate"/> reduced mod <c>p</c>, written as a canonical big-endian scalar.</summary>
+    /// <param name="coordinate">The integer to reduce.</param>
+    /// <param name="destination">Receives the canonical big-endian scalar.</param>
+    /// <exception cref="InvalidOperationException">When the reduced value does not fit <paramref name="destination"/>.</exception>
     private static void OfScalar(uint coordinate, Span<byte> destination)
     {
         destination.Clear();
@@ -615,26 +570,43 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Computes <c>fits(an)</c>: <see langword="true"/> when the canonical big-endian integer is below the P-256 field modulus.</summary>
+    /// <param name="canonical">The canonical big-endian scalar to test.</param>
+    /// <returns><see langword="true"/> when the value is below the modulus.</returns>
     private static bool InRange(ReadOnlySpan<byte> canonical) => new BigInteger(canonical, isUnsigned: true, isBigEndian: true) < Prime;
 
 
-    private static LongfellowSumcheckCircuit SmallCircuit()
+    /// <summary>
+    /// Builds a minimal circuit (four inputs, one output, no public inputs, one term-less layer) just
+    /// large enough to construct a field verifier; used where a test's envelope is rejected during
+    /// parsing, before the circuit shape is ever exercised. Circuit owners are released at test cleanup.
+    /// </summary>
+    /// <returns>The minimal circuit, owned by this test's circuit scope.</returns>
+    private LongfellowSumcheckCircuit SmallCircuit()
     {
         LongfellowSumcheckLayer layer = new(inputCount: 4, handRounds: 2, termCount: 0);
         byte[] id = new byte[LongfellowSumcheckCircuit.IdLength];
 
-        return new LongfellowSumcheckCircuit(
+        return CircuitScope.CreateCircuit(
             outputCount: 1, outputLogCount: 0, copyCount: 1, copyRounds: 0,
             inputCount: 4, publicInputCount: 0, id, [layer]);
     }
 
 
+    /// <summary>Creates the GF(2^128) row-encoder factory built from the given additive-FFT engine.</summary>
+    /// <param name="fft">The additive-FFT engine the encoder factory is built from.</param>
+    /// <returns>The new row-encoder factory.</returns>
     private static LongfellowRowEncoderFactory NewGfEncoderFactory(Lch14AdditiveFft fft) =>
         LongfellowGf2k128Encoding.CreateEncoderFactory(fft, BaseMemoryPool.Shared);
 
 
-    //The anchor's small GF(2^128) circuit (the w == (x + y)·(x + z)·x relation), the C.7/C.8 shape.
-    private static LongfellowSumcheckCircuit BuildAnchorCircuit()
+    /// <summary>
+    /// Reconstructs the anchor's small GF(2^128) circuit (the <c>w == (x + y)·(x + z)·x</c> relation, the
+    /// sumcheck-segment/end-to-end-verify shape) from the anchor's parameters. Circuit owners are
+    /// released at test cleanup.
+    /// </summary>
+    /// <returns>The reconstructed circuit, owned by this test's circuit scope.</returns>
+    private LongfellowSumcheckCircuit BuildAnchorCircuit()
     {
         int nl = AnchorInt("nl");
         var layers = new LongfellowSumcheckLayer[nl];
@@ -659,14 +631,15 @@ internal sealed class LongfellowMdocVerifierTests
 
         byte[] id = Convert.FromHexString(Anchors["id"]);
 
-        return new LongfellowSumcheckCircuit(
+        return CircuitScope.CreateCircuit(
             AnchorInt("nv"), AnchorInt("logv"), AnchorInt("nc"), AnchorInt("logc"),
             AnchorInt("ninputs"), AnchorInt("npub_in"), id, layers);
     }
 
 
-    //Produces a real GF(2^128) hash ZkProof through the C.9 prover over the anchor circuit. Returns
-    //the pooled proof envelope; the caller disposes it.
+    /// <summary>Produces a real GF(2^128) hash <c>ZkProof</c> through the end-to-end prover over the anchor circuit.</summary>
+    /// <param name="circuit">The anchor circuit to prove.</param>
+    /// <returns>The pooled proof envelope; the caller disposes it.</returns>
     private static LongfellowZkProofEnvelope ProduceAnchorHashProof(LongfellowSumcheckCircuit circuit)
     {
         byte[] witnessColumn = new byte[circuit.InputCount * ScalarSize];
@@ -695,7 +668,8 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
-    //Six distinct 16-byte little-endian MAC values prefixing the envelope.
+    /// <summary>Builds six distinct 16-byte little-endian MAC values, the fixed region prefixing an mdoc envelope.</summary>
+    /// <returns>The MAC region bytes.</returns>
     private static byte[] BuildMacRegionBytes()
     {
         byte[] region = new byte[LongfellowMdocEnvelope.MacRegionBytes];
@@ -708,6 +682,11 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Concatenates three byte spans into one newly allocated array.</summary>
+    /// <param name="first">The first span.</param>
+    /// <param name="second">The second span.</param>
+    /// <param name="third">The third span.</param>
+    /// <returns>The concatenated bytes.</returns>
     private static byte[] Concatenate(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second, ReadOnlySpan<byte> third)
     {
         byte[] result = new byte[first.Length + second.Length + third.Length];
@@ -719,9 +698,15 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Parses the anchor file's <paramref name="key"/> value as a base-10 integer.</summary>
+    /// <param name="key">The anchor key to look up.</param>
+    /// <returns>The parsed integer value.</returns>
     private static int AnchorInt(string key) => int.Parse(Anchors[key], System.Globalization.CultureInfo.InvariantCulture);
 
 
+    /// <summary>Parses a 16-byte little-endian GF element, hex-encoded, into a 32-byte big-endian canonical scalar.</summary>
+    /// <param name="hex">The little-endian GF element bytes, hex-encoded.</param>
+    /// <returns>The canonical big-endian scalar.</returns>
     private static byte[] AnchorElement(string hex)
     {
         byte[] littleEndian = Convert.FromHexString(hex);
@@ -735,6 +720,13 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>
+    /// Loads the anchor file at <paramref name="relativePath"/> (resolved from the test binary's output
+    /// directory) into a flat key/value map, splitting each non-empty line on spaces and each token on its
+    /// first <c>=</c>.
+    /// </summary>
+    /// <param name="relativePath">The anchor file's path, relative to the test project directory.</param>
+    /// <returns>The parsed key/value map.</returns>
     private static Dictionary<string, string> LoadAnchors(string relativePath)
     {
         string path = $"../../../{relativePath}";
@@ -762,17 +754,29 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Creates the LCH14 additive-FFT engine over the GF(2^128) production subfield.</summary>
+    /// <returns>The new additive-FFT engine.</returns>
     private static Lch14AdditiveFft NewFft() =>
         new(Lch14Subfield.Production16, GfAdd, GfSubtract, GfMultiply, GfInvert, CurveParameterSet.None, BaseMemoryPool.Shared);
 
 
+    /// <summary>Creates a transcript seeded with <see cref="TranscriptSeed"/> at the GF(2^128) element width.</summary>
+    /// <returns>The new transcript.</returns>
     private static LongfellowTranscript NewTranscript() =>
         new(TranscriptSeed, TranscriptVersion, GfElementBytes, Aes256Ecb, BaseMemoryPool.Shared, Sha256FiatShamirBackend.GetIncrementalFactory());
 
 
+    /// <summary>Computes a one-shot SHA-256 digest of <paramref name="input"/>; <paramref name="hashFunction"/> is accepted for signature compatibility and unused, since this delegate is always bound to SHA-256.</summary>
+    /// <param name="input">The bytes to hash.</param>
+    /// <param name="output">Receives the 32-byte digest.</param>
+    /// <param name="hashFunction">The requested hash algorithm name; ignored.</param>
     private static void Sha256OneShot(ReadOnlySpan<byte> input, Span<byte> output, string hashFunction) => SHA256.HashData(input, output);
 
 
+    /// <summary>Computes the two-to-one Merkle compression <c>SHA256(left ‖ right)</c>.</summary>
+    /// <param name="left">The left digest.</param>
+    /// <param name="right">The right digest.</param>
+    /// <param name="output">Receives the combined digest.</param>
     private static void Sha256TwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[left.Length + right.Length];
@@ -782,6 +786,10 @@ internal sealed class LongfellowMdocVerifierTests
     }
 
 
+    /// <summary>Encrypts one block with AES-256 in ECB mode and no padding: the transcript's PRF squeezes through this primitive.</summary>
+    /// <param name="key">The 32-byte AES key.</param>
+    /// <param name="input">The plaintext block.</param>
+    /// <param name="output">Receives the ciphertext block.</param>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         using Aes aes = Aes.Create();

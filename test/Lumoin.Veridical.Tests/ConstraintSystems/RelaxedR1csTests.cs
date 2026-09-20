@@ -18,10 +18,14 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 [TestClass]
 internal sealed class RelaxedR1csTests
 {
+    /// <summary>The BLS12-381 scalar addition backend used by every test's satisfaction check.</summary>
     private static ScalarAddDelegate ScalarAdd { get; } = Bls12Curve381BigIntegerScalarReference.GetAdd();
+
+    /// <summary>The BLS12-381 scalar multiplication backend used by every test's satisfaction check.</summary>
     private static ScalarMultiplyDelegate ScalarMul { get; } = Bls12Curve381BigIntegerScalarReference.GetMultiply();
 
 
+    /// <summary>Pins that a standard R1CS instance lifted to relaxed form with u = 1 and a zero error vector is satisfied by its original witness.</summary>
     [TestMethod]
     public void StandardInstanceAsRelaxedWithUOneEIsZeroIsSatisfied()
     {
@@ -36,6 +40,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Pins that with u = 2 a zero error vector violates satisfaction, and that supplying the error value the relaxed identity actually requires restores satisfaction.</summary>
     [TestMethod]
     public void NonOneURequiresMatchingError()
     {
@@ -55,6 +60,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Pins that the satisfaction check reads the constant slot z[0] as u rather than hardcoding it to one, by constructing a circuit whose only constraint touches column 0 and confirming both that the u-aware error value satisfies it and that perturbing the error breaks it.</summary>
     [TestMethod]
     public void CheckSatisfiedByUsesUInTheConstantSlot()
     {
@@ -82,6 +88,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Builds a one-constraint relaxed instance over four wires whose constraint is z[0]·z[1] = z[2], at the given relaxation scalar u, with a dummy error commitment.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "RelaxedR1csInstance.Create takes ownership of the cloned matrices and dummy commitment and disposes them through its own Dispose chain.")]
     private static RelaxedR1csInstance BuildColumnZeroTouchingInstance(int uValue)
     {
@@ -113,6 +120,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Builds the witness (z[1], z[2], and an unused third slot) and canonical error value matching <see cref="BuildColumnZeroTouchingInstance"/>.</summary>
     private static RelaxedR1csWitness BuildColumnZeroTouchingWitness(int z1Value, int z2Value, int errorValue)
     {
         int scalarSize = Scalar.SizeBytes;
@@ -131,6 +139,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Lifts the standard multiplication circuit's matrices to a relaxed instance at the given relaxation scalar u, with a dummy error commitment.</summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "RelaxedR1csInstance.Create takes ownership of the dummy commitment and disposes it through its own Dispose chain.")]
     private static RelaxedR1csInstance BuildRelaxedMultiplyInstance(int uValue)
     {
@@ -156,6 +165,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Rebuilds a matrix from its source's triples into a fresh, independently owned <see cref="R1csMatrix"/>, since the relaxed instance needs its own copy once the source's owning <c>using</c> block disposes it.</summary>
     private static R1csMatrix CloneMatrix(R1csMatrix source)
     {
         //The RawR1csInstance owns its matrices and will dispose them via the
@@ -175,6 +185,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Builds the multiplication witness (x, y, x·y) and, unless <paramref name="errorValuesAreZero"/>, the error value the relaxation scalar u requires for the relaxed identity to hold.</summary>
     private static RelaxedR1csWitness BuildRelaxedMultiplyWitness(int x, int y, bool errorValuesAreZero, int uValue)
     {
         int scalarSize = Scalar.SizeBytes;
@@ -209,7 +220,7 @@ internal sealed class RelaxedR1csTests
     /// requested row count and an arbitrary in-bounds byte pattern (the same
     /// canonical bytes a Hyrax commitment would carry). The buffer is not a
     /// valid Pedersen commitment to anything; the relaxed satisfaction check
-    /// does not read it, so this suffices for batch F's tests. The
+    /// does not read it, so this suffices for these tests. The
     /// <paramref name="columnCount"/> and <paramref name="variableCount"/> are
     /// not carried by the generic leaf type and are accepted only to keep the
     /// call sites self-documenting.
@@ -232,6 +243,7 @@ internal sealed class RelaxedR1csTests
     }
 
 
+    /// <summary>Reduces a value modulo the BLS12-381 scalar field order and writes it as a canonical big-endian, zero-padded scalar.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

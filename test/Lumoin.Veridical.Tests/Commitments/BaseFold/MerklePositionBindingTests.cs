@@ -28,12 +28,22 @@ namespace Lumoin.Veridical.Tests.Commitments.BaseFold;
 [TestClass]
 internal sealed class MerklePositionBindingTests
 {
+    /// <summary>The Merkle digest width in bytes every tree in this file is built at.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
 
 
+    /// <summary>The two-to-one BLAKE3 compression every tree and path verification in this file uses.</summary>
     private static MerkleHashDelegate Blake3TwoToOne { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Blake3TwoToOne, DigestSizeBytes);
 
+
+    /// <summary>
+    /// Verifies that an index carrying a bit beyond the path's fixed depth does not authenticate,
+    /// since folding would drop that bit and alias the index onto an in-range position, breaking
+    /// position binding.
+    /// </summary>
     [TestMethod]
     public void IndexWithBitsBeyondThePathLengthIsRejected()
     {
@@ -50,7 +60,7 @@ internal sealed class MerklePositionBindingTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(OpenedIndex, BaseMemoryPool.Shared);
         ReadOnlySpan<byte> openedLeaf = leaves.Slice(OpenedIndex * DigestSizeBytes, DigestSizeBytes);
 
@@ -60,6 +70,7 @@ internal sealed class MerklePositionBindingTests
     }
 
 
+    /// <summary>Verifies that the out-of-range-index guard does not disturb a genuine opening at the in-range index it aliases with.</summary>
     [TestMethod]
     public void TheInRangeIndexStillAuthenticates()
     {
@@ -70,7 +81,7 @@ internal sealed class MerklePositionBindingTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath path = tree.BuildPath(OpenedIndex, BaseMemoryPool.Shared);
         ReadOnlySpan<byte> openedLeaf = leaves.Slice(OpenedIndex * DigestSizeBytes, DigestSizeBytes);
 
@@ -82,6 +93,10 @@ internal sealed class MerklePositionBindingTests
     }
 
 
+    /// <summary>
+    /// Verifies that an authentication path built against a shorter tree cannot authenticate
+    /// against a taller tree's root, since its fixed length folds one level short of reaching it.
+    /// </summary>
     [TestMethod]
     public void AShortPathCannotAuthenticateAgainstATallerRoot()
     {
@@ -97,8 +112,8 @@ internal sealed class MerklePositionBindingTests
         Span<byte> largeLeaves = largeOwner.Memory.Span[..(LargeLeafCount * DigestSizeBytes)];
         FillDistinctLeaves(largeLeaves, LargeLeafCount);
 
-        using MerkleTree smallTree = MerkleTree.Build(smallLeaves, SmallLeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
-        using MerkleTree largeTree = MerkleTree.Build(largeLeaves, LargeLeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree smallTree = MerkleTree.Build(smallLeaves, SmallLeafCount, TreeParameters, BaseMemoryPool.Shared);
+        using MerkleTree largeTree = MerkleTree.Build(largeLeaves, LargeLeafCount, TreeParameters, BaseMemoryPool.Shared);
         using MerkleAuthenticationPath shortPath = smallTree.BuildPath(OpenedIndex, BaseMemoryPool.Shared);
         ReadOnlySpan<byte> openedLeaf = smallLeaves.Slice(OpenedIndex * DigestSizeBytes, DigestSizeBytes);
 
@@ -111,6 +126,11 @@ internal sealed class MerklePositionBindingTests
     }
 
 
+    /// <summary>
+    /// Verifies that an internal node's own digest, presented at every leaf position under that
+    /// leaf's genuine path, never authenticates, since the tree's fixed depth keeps a leaf slot from
+    /// accepting a value from a different level even without leaf-versus-internal domain separation.
+    /// </summary>
     [TestMethod]
     public void AnInternalNodeDigestDoesNotAuthenticateAsALeaf()
     {
@@ -122,7 +142,7 @@ internal sealed class MerklePositionBindingTests
         Span<byte> leaves = leavesOwner.Memory.Span[..(LeafCount * DigestSizeBytes)];
         FillDistinctLeaves(leaves, LeafCount);
 
-        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, Blake3TwoToOne, BaseMemoryPool.Shared);
+        using MerkleTree tree = MerkleTree.Build(leaves, LeafCount, TreeParameters, BaseMemoryPool.Shared);
 
         //The digest of an internal node — the compression of leaves 0 and 1.
         //There is no leaf/internal domain separation, so this value is a
@@ -146,8 +166,10 @@ internal sealed class MerklePositionBindingTests
     }
 
 
-    //Fills each leaf with a distinct value so a misrouted path surfaces as a
-    //mismatch rather than an accidental collision.
+    /// <summary>
+    /// Fills each leaf with a distinct value so a misrouted path surfaces as a mismatch rather than
+    /// an accidental collision.
+    /// </summary>
     private static void FillDistinctLeaves(Span<byte> leaves, int leafCount)
     {
         leaves.Clear();
@@ -159,8 +181,10 @@ internal sealed class MerklePositionBindingTests
     }
 
 
-    //Wires BLAKE3 as the two-to-one Merkle compression: the fixed 32-byte
-    //digest of the left and right child bytes concatenated.
+    /// <summary>
+    /// Wires BLAKE3 as the two-to-one Merkle compression: the fixed 32-byte digest of the left and
+    /// right child bytes concatenated.
+    /// </summary>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];

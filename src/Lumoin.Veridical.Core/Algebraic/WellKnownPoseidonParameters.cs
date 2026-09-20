@@ -18,21 +18,11 @@ public static class WellKnownPoseidonParameters
     /// <summary>The circomlib full-round count.</summary>
     public const int CircomlibFullRounds = 8;
 
-    //circomlib's partial-round table, indexed by t − 2 (state widths 2…17).
+    /// <summary>circomlib's partial-round table, indexed by t − 2 (state widths 2…17).</summary>
     private static int[] CircomlibPartialRounds { get; } =
     [
         56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68
     ];
-
-    //The wired scalar-field moduli (canonical big-endian) and bit lengths.
-    private const int Bn254FieldSizeBits = 254;
-    private const int Bls12Curve381FieldSizeBits = 255;
-
-    private static byte[] Bn254Modulus { get; } = Convert.FromHexString(
-        "30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F0000001");
-
-    private static byte[] Bls12Curve381Modulus { get; } = Convert.FromHexString(
-        "73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001");
 
 
     /// <summary>
@@ -45,11 +35,12 @@ public static class WellKnownPoseidonParameters
     /// <param name="curve">The wired curve.</param>
     /// <param name="add">Scalar-addition backend.</param>
     /// <param name="invert">Scalar-inversion backend.</param>
+    /// <param name="pool">The pool supplying temporary generation buffers.</param>
     /// <returns>The generated parameters.</returns>
-    /// <exception cref="ArgumentNullException">When a delegate argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">When a delegate argument or the pool is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">When <paramref name="inputCount"/> is outside <c>[1, 16]</c>.</exception>
     /// <exception cref="ArgumentException">When the curve is not wired.</exception>
-    public static PoseidonParameters CreateCircomlibCompatible(int inputCount, CurveParameterSet curve, ScalarAddDelegate add, ScalarInvertDelegate invert)
+    public static PoseidonParameters CreateCircomlibCompatible(int inputCount, CurveParameterSet curve, ScalarAddDelegate add, ScalarInvertDelegate invert, BaseMemoryPool pool)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(inputCount, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(inputCount, CircomlibPartialRounds.Length);
@@ -57,13 +48,12 @@ public static class WellKnownPoseidonParameters
         int stateWidth = inputCount + 1;
         int partialRounds = CircomlibPartialRounds[stateWidth - 2];
 
-        (byte[] modulus, int fieldSizeBits) = curve.Code == CurveParameterSet.Bn254.Code
-            ? (Bn254Modulus, Bn254FieldSizeBits)
-            : curve.Code == CurveParameterSet.Bls12Curve381.Code
-                ? (Bls12Curve381Modulus, Bls12Curve381FieldSizeBits)
-                : throw new ArgumentException($"Poseidon parameters are wired for Bn254 and Bls12Curve381; received '{curve}'.", nameof(curve));
+        if(curve.Code != CurveParameterSet.Bn254.Code && curve.Code != CurveParameterSet.Bls12Curve381.Code)
+        {
+            throw new ArgumentException($"Poseidon parameters are wired for Bn254 and Bls12Curve381; received '{curve}'.", nameof(curve));
+        }
 
         return PoseidonParameterGenerator.Generate(
-            stateWidth, CircomlibFullRounds, partialRounds, fieldSizeBits, modulus, curve, add, invert);
+            stateWidth, CircomlibFullRounds, partialRounds, curve, add, invert, pool);
     }
 }

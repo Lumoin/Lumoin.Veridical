@@ -44,10 +44,12 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal static class LongfellowZkProver
 {
+    /// <summary>The byte width of a canonical scalar in the field the prover operates over.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+    /// <summary>The byte width of a SHA-256 digest, the fixed size of the commitment root and Merkle leaves.</summary>
     private const int DigestLength = 32;
 
-    //The reference's ZkProver hash_of_A: {0xde, 0xad, 0xbe, 0xef} then zero-filled to 32 bytes.
+    /// <summary>The reference's <c>ZkProver</c> theorem-statement hash <c>hash_of_A</c>: <c>{0xde, 0xad, 0xbe, 0xef}</c> zero-filled to 32 bytes.</summary>
     private static byte[] TheoremStatementHash { get; } = BuildTheoremStatementHash();
 
 
@@ -121,7 +123,7 @@ internal static class LongfellowZkProver
     /// <summary>
     /// Produces a complete <c>ZkProof</c> envelope for <paramref name="circuit"/> and the full witness column
     /// <paramref name="witnessColumn"/> over an arbitrary field, the reference's <c>ZkProver::commit</c> +
-    /// <c>prove</c> + <c>ZkProof::write</c>. Field-generic per D2 (mirroring
+    /// <c>prove</c> + <c>ZkProof::write</c>. Field-generic (mirroring
     /// <see cref="LongfellowZkVerifier.VerifyFromAbsorbedRoot"/>): the caller passes the row-encoder factory,
     /// the field profile and the subfield-run codec, so one method serves both the GF(2^128) hash circuit (via
     /// the convenience overload above) and the Fp256 signature circuit. It does NOT touch
@@ -271,12 +273,15 @@ internal static class LongfellowZkProver
         int witnessCount = LongfellowZkVerifier.WitnessCount(circuit);
         int padSize = LongfellowZkVerifier.PadSize(circuit);
 
-        //Draw the pad FIRST (the reference's fill_pad before the Ligero commit), then assemble the
-        //committed witness [private inputs ‖ pad]. The pad transfers into the returned holder.
-        LongfellowProofPad pad = LongfellowProofPad.Fill(circuit, random, profile, multiply, curve, pool);
-        bool padTransferred = false;
+        //The holder owns the commitment and pad once it exists; anything still held when this block exits is released here.
+        LongfellowProofPad? pad = null;
+        LongfellowLigeroCommitment? commitment = null;
         try
         {
+            //Draw the pad FIRST (the reference's fill_pad before the Ligero commit), then assemble the
+            //committed witness [private inputs ‖ pad]. The pad transfers into the returned holder.
+            pad = LongfellowProofPad.Fill(circuit, random, profile, multiply, curve, pool);
+
             using IMemoryOwner<byte> witnessOwner = pool.Rent((witnessCount + padSize) * ScalarSize);
             Span<byte> committedWitness = witnessOwner.Memory.Span[..((witnessCount + padSize) * ScalarSize)];
             committedWitness.Clear();
@@ -293,29 +298,18 @@ internal static class LongfellowZkProver
 
                 //Commit to the witness and pad; the same random source continues from the pad draws. The
                 //caller absorbs the root before any challenge (commit-then-challenge).
-                LongfellowLigeroCommitment commitment = LongfellowLigeroCommitment.Commit(
+                commitment = LongfellowLigeroCommitment.Commit(
                     parameters, committedWitness, quadraticConstraints, subFieldBytes, subfieldBoundary, random, encoderFactory, profile,
                     add, subtract, multiply, merkleHash, leafHash, hashAlgorithm, curve, pool);
 
-                bool commitmentTransferred = false;
-                try
-                {
-                    Span<byte> root = stackalloc byte[DigestLength];
-                    commitment.CopyRoot(root);
+                Span<byte> root = stackalloc byte[DigestLength];
+                commitment.CopyRoot(root);
 
-                    var holder = new LongfellowZkCommitment(commitment, pad, quadraticConstraints, root);
-                    commitmentTransferred = true;
-                    padTransferred = true;
+                var holder = new LongfellowZkCommitment(commitment, pad, quadraticConstraints, root, pool);
+                commitment = null;
+                pad = null;
 
-                    return holder;
-                }
-                finally
-                {
-                    if(!commitmentTransferred)
-                    {
-                        commitment.Dispose();
-                    }
-                }
+                return holder;
             }
             finally
             {
@@ -324,10 +318,8 @@ internal static class LongfellowZkProver
         }
         finally
         {
-            if(!padTransferred)
-            {
-                pad.Dispose();
-            }
+            commitment?.Dispose();
+            pad?.Dispose();
         }
     }
 
@@ -447,10 +439,7 @@ internal static class LongfellowZkProver
     }
 
 
-    //Serializes the full envelope com ‖ sc ‖ com_proof (the reference's ZkProof::write) under the field's
-    //subfield-run codec — the same codec seam the Ligero proof serializer exposes (the GF path supplies the
-    //GF basis codec, the Fp256 path the full-field identity codec) — into a pooled semantic envelope the
-    //caller owns.
+    /// <summary>Serializes the full envelope <c>com ‖ sc ‖ com_proof</c> (the reference's <c>ZkProof::write</c>) under the field's subfield-run codec — the same codec seam the Ligero proof serializer exposes (the GF path supplies the GF basis codec, the Fp256 path the full-field identity codec) — into a pooled semantic envelope the caller owns.</summary>
     private static LongfellowZkProofEnvelope SerializeEnvelope(
         LongfellowSumcheckCircuit circuit,
         ReadOnlySpan<byte> root,
@@ -482,9 +471,7 @@ internal static class LongfellowZkProver
     }
 
 
-    //ZkCommon::initialize_sumcheck_fiat_shamir: id [byte string], each public input [field element],
-    //F.zero() [field element], nterms() zero bytes [byte string]. The input column is NOT absorbed; the
-    //ZK prover absorbs only public inputs (the witness stays hidden behind the commitment).
+    /// <summary>Implements <c>ZkCommon::initialize_sumcheck_fiat_shamir</c>: absorbs the circuit id (a byte string), each public input (a field element), <c>F.zero()</c> (a field element), then <c>nterms()</c> zero bytes (a byte string). The input column is not absorbed; the ZK prover absorbs only public inputs, so the witness stays hidden behind the commitment.</summary>
     private static void InitializeFiatShamir(LongfellowSumcheckCircuit circuit, ReadOnlySpan<byte> witnessColumn, LongfellowFieldProfile profile, LongfellowTranscript transcript, BaseMemoryPool pool)
     {
         transcript.AbsorbByteString(circuit.Id.Span);
@@ -509,6 +496,7 @@ internal static class LongfellowZkProver
     }
 
 
+    /// <summary>Copies <paramref name="system"/>'s linear terms into a plain array for the Ligero prover.</summary>
     private static LigeroLinearConstraint[] FlattenTerms(LongfellowZkConstraintBuilder.ConstraintSystem system)
     {
         IReadOnlyList<LigeroLinearConstraint> terms = system.Terms;
@@ -522,6 +510,7 @@ internal static class LongfellowZkProver
     }
 
 
+    /// <summary>Builds the fixed <c>{0xde, 0xad, 0xbe, 0xef}</c>-prefixed, zero-padded theorem-statement hash.</summary>
     private static byte[] BuildTheoremStatementHash()
     {
         byte[] hash = new byte[DigestLength];

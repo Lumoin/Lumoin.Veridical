@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core.Algebraic;
 using System;
+using System.Buffers;
 
 namespace Lumoin.Veridical.Core.Commitments.Ligero.Gadgets;
 
@@ -99,13 +100,22 @@ internal sealed record EcdsaCurve(
 /// </remarks>
 internal static class EcdsaVerificationGadgetExtensions
 {
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The SHA-256 digest width in bits, the length of the most-significant-first bit vector fed to the ladder as the <c>e·G</c> scalar.</summary>
     private const int DigestBits = 256;
 
 
-    //Asserts the public signature verifies under the public key for the message hash,
-    //returning the wire holding the identity accumulator's Z (asserted zero — the O
-    //check) so a test can perturb it.
+    /// <summary>
+    /// Asserts that the public signature verifies under the public key for the message hash, via the
+    /// Longfellow Alg.4 identity <c>e·G + r·Q − s·R = O</c>.
+    /// </summary>
+    /// <param name="builder">The constraint system being built.</param>
+    /// <param name="ecdsa">The curve, generator and scalar-field order.</param>
+    /// <param name="publicInputs">The public key, message hash and signature.</param>
+    /// <param name="witness">The witnessed nonce point.</param>
+    /// <returns>The wire holding the identity accumulator's <c>Z</c>, asserted zero (the <c>O</c> check); returned so a test can perturb it.</returns>
     public static int AssertVerifies(this LigeroConstraintSystemBuilder builder, EcdsaCurve ecdsa, EcdsaPublicInputs publicInputs, EcdsaWitness witness)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -153,11 +163,18 @@ internal static class EcdsaVerificationGadgetExtensions
     }
 
 
-    //Asserts the signature verifies under the public key for the SHA-256 of a witnessed
-    //message — the message hash e is computed in-circuit, binding the proof to the signed
-    //bytes rather than to a supplied e. The 256-bit digest D is fed directly as the e·G
-    //scalar: the ladder computes D·G = (D mod n)·G = e·G, so no separate mod-n reduction of
-    //the digest is needed. Returns the asserted-O wire.
+    /// <summary>
+    /// Asserts that the signature verifies under the public key for the SHA-256 of a witnessed message:
+    /// the message hash <c>e</c> is computed in-circuit, binding the proof to the signed bytes rather
+    /// than to a supplied <c>e</c>. The 256-bit digest <c>D</c> is fed directly as the <c>e·G</c> scalar:
+    /// the ladder computes <c>D·G = (D mod n)·G = e·G</c>, so no separate mod-n reduction of the digest
+    /// is needed.
+    /// </summary>
+    /// <param name="builder">The constraint system being built.</param>
+    /// <param name="ecdsa">The curve, generator and scalar-field order.</param>
+    /// <param name="publicInputs">The public key and signature; the message hash is derived in-circuit.</param>
+    /// <param name="witness">The signed message and the witnessed nonce point.</param>
+    /// <returns>The asserted-<c>O</c> wire.</returns>
     public static int AssertVerifiesHashedMessage(this LigeroConstraintSystemBuilder builder, EcdsaCurve ecdsa, EcdsaHashedPublicInputs publicInputs, EcdsaHashedWitness witness)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -174,13 +191,22 @@ internal static class EcdsaVerificationGadgetExtensions
     }
 
 
-    //Asserts the signature verifies under the public key for a message hash already present in
-    //the circuit as 256 caller-supplied bit wires (most-significant first). This is
-    //AssertVerifiesHashedMessage with the SHA-256 portion removed: the eBits ARE the e·G ladder
-    //scalar, so the ladder computes D·G = (D mod n)·G = e·G with no separate mod-n reduction of
-    //the digest. The caller MUST constrain the supplied bit wires to {0,1} — this method adds no
-    //bitness for them (in the cross-field engine the MAC region's bitness quadratics provide it).
-    //Returns the asserted-O wire.
+    /// <summary>
+    /// Asserts that the signature verifies under the public key for a message hash already present in
+    /// the circuit as 256 caller-supplied bit wires (most-significant first): the shared verification
+    /// core behind <see cref="AssertVerifiesHashedMessage"/>, with the SHA-256 step removed. The supplied
+    /// bits ARE the <c>e·G</c> ladder scalar, so the ladder computes <c>D·G = (D mod n)·G = e·G</c> with
+    /// no separate mod-n reduction of the digest. The caller MUST constrain the supplied bit wires to
+    /// <c>{0,1}</c> — this method adds no bitness for them (in the cross-field engine the MAC region's
+    /// bitness quadratics provide it).
+    /// </summary>
+    /// <param name="builder">The constraint system being built.</param>
+    /// <param name="ecdsa">The curve, generator and scalar-field order.</param>
+    /// <param name="publicInputs">The public key and signature.</param>
+    /// <param name="witness">The witnessed nonce point.</param>
+    /// <param name="digestBitsMostSignificantFirst">The 256 message-hash bit wires, most-significant first.</param>
+    /// <returns>The asserted-<c>O</c> wire.</returns>
+    /// <exception cref="ArgumentException">When <paramref name="digestBitsMostSignificantFirst"/> is not exactly <see cref="DigestBits"/> wires long.</exception>
     public static int AssertVerifiesDigestBits(this LigeroConstraintSystemBuilder builder, EcdsaCurve ecdsa, EcdsaHashedPublicInputs publicInputs, EcdsaWitness witness, ReadOnlySpan<int> digestBitsMostSignificantFirst)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -220,11 +246,20 @@ internal static class EcdsaVerificationGadgetExtensions
     }
 
 
-    //The full mdoc-shaped statement: the signature verifies under Q for e = SHA-256(message),
-    //AND the message contains the public attribute encoding at a witnessed offset — all over a
-    //SINGLE witnessed message, so the disclosed attribute is provably in the SIGNED bytes. The
-    //message stays private; only the attribute (e.g. the CBOR for age_over_18 = true) is public.
-    //Returns the asserted-O wire.
+    /// <summary>
+    /// Asserts the full mdoc-shaped statement: the signature verifies under <c>Q</c> for
+    /// <c>e = SHA-256(message)</c>, AND the message contains the public attribute encoding at a
+    /// witnessed offset — all over a single witnessed message, so the disclosed attribute is provably
+    /// in the signed bytes. The message stays private; only the attribute (e.g. the CBOR for
+    /// <c>age_over_18 = true</c>) is public.
+    /// </summary>
+    /// <param name="builder">The constraint system being built.</param>
+    /// <param name="ecdsa">The curve, generator and scalar-field order.</param>
+    /// <param name="publicInputs">The public key and signature.</param>
+    /// <param name="witness">The signed message and the witnessed nonce point.</param>
+    /// <param name="attribute">The disclosed attribute's expected bytes.</param>
+    /// <param name="attributeOffset">The byte offset of the attribute within the witnessed message.</param>
+    /// <returns>The asserted-<c>O</c> wire.</returns>
     public static int AssertVerifiesDisclosedAttribute(
         this LigeroConstraintSystemBuilder builder,
         EcdsaCurve ecdsa,
@@ -276,12 +311,21 @@ internal static class EcdsaVerificationGadgetExtensions
     }
 
 
-    //The full two-level mdoc statement in one proof: a valid issuer signature over
-    //e = SHA-256(MSO); the MSO holds SHA-256(IssuerSignedItem) at a witnessed offset; and the
-    //item holds the public attribute encoding at a witnessed offset. So a disclosed attribute is
-    //bound through the item digest up to the signature, exactly as ISO 18013-5 mdoc structures
-    //it — MSO and item private, only the attribute (e.g. age_over_18 = true) public. Returns the
-    //asserted-O wire.
+    /// <summary>
+    /// Asserts the full two-level mdoc statement in one proof: a valid issuer signature over
+    /// <c>e = SHA-256(MSO)</c>; the MSO holds <c>SHA-256(IssuerSignedItem)</c> at a witnessed offset; and
+    /// the item holds the public attribute encoding at a witnessed offset. A disclosed attribute is thus
+    /// bound through the item digest up to the signature, exactly as ISO 18013-5 mdoc structures it — the
+    /// MSO and the item stay private, only the attribute (e.g. <c>age_over_18 = true</c>) is public.
+    /// </summary>
+    /// <param name="builder">The constraint system being built.</param>
+    /// <param name="ecdsa">The curve, generator and scalar-field order.</param>
+    /// <param name="publicInputs">The public key and signature.</param>
+    /// <param name="witness">The signed MobileSecurityObject, the signed IssuerSignedItem, and the witnessed nonce point.</param>
+    /// <param name="attribute">The disclosed attribute's expected bytes.</param>
+    /// <param name="itemDigestOffset">The byte offset of the item's digest within the MSO.</param>
+    /// <param name="attributeOffset">The byte offset of the attribute within the item.</param>
+    /// <returns>The asserted-<c>O</c> wire.</returns>
     public static int AssertVerifiesMdocAttribute(
         this LigeroConstraintSystemBuilder builder,
         EcdsaCurve ecdsa,
@@ -336,20 +380,33 @@ internal static class EcdsaVerificationGadgetExtensions
     }
 
 
-    //Derives a Fiat-Shamir transcript seed bound to the public statement
-    //(domain ‖ Qx ‖ Qy ‖ e ‖ r ‖ s). Driving both the proof and the verification from
-    //this seed makes a proof non-transferable: a verifier reconstructs the seed from
-    //the statement it believes, so a proof for one (Q, e, r, s) yields different
-    //challenges — and is rejected — under any other. The public inputs are already
-    //bound as AddConstant targets; this binds the transcript to them too (domain
-    //separation), mirroring the R1CS path's AbsorbR1csInstance without touching the
-    //audited prover/verifier. Inputs must be canonical (ScalarSize bytes each).
-    public static byte[] DeriveTranscriptSeed(EcdsaPublicInputs publicInputs, ReadOnlySpan<byte> domainSeparator, FiatShamirHashDelegate hash, string hashFunction)
+    /// <summary>Writes a transcript seed bound to the domain and the five public scalar slots.</summary>
+    /// <param name="publicInputs">The public statement; short scalar slots are zero-padded.</param>
+    /// <param name="domainSeparator">The protocol domain bytes.</param>
+    /// <param name="hash">The Fiat-Shamir hash delegate.</param>
+    /// <param name="hashFunction">The hash algorithm identifier.</param>
+    /// <param name="pool">The caller's pool for the temporary transcript message.</param>
+    /// <param name="seed">Receives the scalar-sized transcript seed.</param>
+    /// <exception cref="ArgumentNullException">When <paramref name="hash"/> or <paramref name="pool"/> is null.</exception>
+    /// <remarks>
+    /// The seed is bound to <c>domain ‖ Qx ‖ Qy ‖ e ‖ r ‖ s</c>. Driving both the proof and the verification
+    /// from it makes a proof non-transferable: a verifier reconstructs the seed from the statement it
+    /// believes, so a proof for one <c>(Q, e, r, s)</c> yields different challenges — and is rejected — under
+    /// any other. The public inputs are already bound as AddConstant targets; this binds the transcript to
+    /// them too (domain separation), mirroring the R1CS path's AbsorbR1csInstance without touching the
+    /// prover/verifier. Inputs must be canonical (<c>ScalarSize</c> bytes each).
+    /// </remarks>
+    public static void DeriveTranscriptSeed(EcdsaPublicInputs publicInputs, ReadOnlySpan<byte> domainSeparator, FiatShamirHashDelegate hash, string hashFunction, BaseMemoryPool pool, Span<byte> seed)
     {
         ArgumentNullException.ThrowIfNull(hash);
+        ArgumentNullException.ThrowIfNull(pool);
 
-        byte[] message = new byte[domainSeparator.Length + (5 * ScalarSize)];
-        Span<byte> span = message;
+        //The statement binds Qx, Qy, e, r and s, each in its own scalar slot.
+        const int PublicScalarCount = 5;
+        int messageLength = checked(domainSeparator.Length + (PublicScalarCount * ScalarSize));
+        using IMemoryOwner<byte> owner = pool.Rent(messageLength);
+        Span<byte> span = owner.Memory.Span[..messageLength];
+        span.Clear();
         domainSeparator.CopyTo(span);
         int offset = domainSeparator.Length;
         publicInputs.PublicKeyX.Span.CopyTo(span.Slice(offset, ScalarSize));
@@ -358,16 +415,19 @@ internal static class EcdsaVerificationGadgetExtensions
         publicInputs.SignatureR.Span.CopyTo(span.Slice(offset + (3 * ScalarSize), ScalarSize));
         publicInputs.SignatureS.Span.CopyTo(span.Slice(offset + (4 * ScalarSize), ScalarSize));
 
-        byte[] seed = new byte[ScalarSize];
-        hash(message, seed, hashFunction);
-
-        return seed;
+        seed.Clear();
+        hash(span, seed, hashFunction);
     }
 
 
-    //The 256 bits of a SHA-256 digest, most-significant first, for use as a ladder scalar.
-    //The eight words are most-significant first; each word's bit wires are least-significant
-    //first, so they are emitted high-to-low.
+    /// <summary>
+    /// Rearranges a SHA-256 digest's eight 32-bit words into a flat 256-bit vector for use as a ladder
+    /// scalar: the words are most-significant first, and each word's bit wires are least-significant
+    /// first, so they are emitted high-to-low.
+    /// </summary>
+    /// <param name="builder">The constraint system to rent the result wire word from.</param>
+    /// <param name="digestWords">The digest's eight 32-bit wire words, most-significant word first.</param>
+    /// <returns>The 256 digest bit wires, most-significant bit first.</returns>
     private static WireWord DigestBitsMostSignificantFirst(LigeroConstraintSystemBuilder builder, WireWord[] digestWords)
     {
         const int wordBits = 32;

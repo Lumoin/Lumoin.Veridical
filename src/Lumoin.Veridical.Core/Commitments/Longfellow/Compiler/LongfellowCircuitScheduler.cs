@@ -27,12 +27,22 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 /// claimed-id assertion catches a violation.
 /// </para>
 /// </remarks>
-internal sealed class LongfellowCircuitScheduler
+internal sealed class LongfellowCircuitScheduler: IDisposable
 {
-    private readonly List<LongfellowCircuitNode> nodes;
-    private readonly List<byte[]> constants;
-    private readonly LongfellowCompilerFieldOperations field;
-    private readonly byte[] oneCoefficient;
+    /// <summary>The compiled DAG nodes, with the needed-marking pass already applied, borrowed from the live builder.</summary>
+    private List<LongfellowCircuitNode> Nodes { get; }
+
+    /// <summary>The constant table borrowed from the live builder.</summary>
+    private List<ReadOnlyMemory<byte>> Constants { get; }
+
+    /// <summary>The field-operation bundle used to add coalesced coefficients and to compare coefficients for the canonical sort orders.</summary>
+    private LongfellowCompilerFieldOperations Field { get; }
+
+    /// <summary>The owner of the identity coefficient and coalesced sums.</summary>
+    private LongfellowCircuitStorage Storage { get; }
+
+    /// <summary>The scheduler-owned multiplicative identity.</summary>
+    private ReadOnlyMemory<byte> OneCoefficient { get; }
 
     /// <summary>The scheduled wire total (<c>nwires_</c>): the output count plus every layer's input count.</summary>
     public int WireCount { get; private set; }
@@ -50,20 +60,31 @@ internal sealed class LongfellowCircuitScheduler
     /// <param name="nodes">The DAG nodes with the needed-marking pass applied.</param>
     /// <param name="constants">The compiler's constant table, canonical big-endian scalars.</param>
     /// <param name="field">The field-operation bundle.</param>
+    /// <param name="pool">The pool supplying scheduler-owned coefficients.</param>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
     public LongfellowCircuitScheduler(
         List<LongfellowCircuitNode> nodes,
-        List<byte[]> constants,
-        LongfellowCompilerFieldOperations field)
+        List<ReadOnlyMemory<byte>> constants,
+        LongfellowCompilerFieldOperations field,
+        BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(constants);
         ArgumentNullException.ThrowIfNull(field);
 
-        this.nodes = nodes;
-        this.constants = constants;
-        this.field = field;
-        oneCoefficient = field.One.ToArray();
+        this.Nodes = nodes;
+        this.Constants = constants;
+        this.Field = field;
+        Storage = new LongfellowCircuitStorage(pool);
+        try
+        {
+            OneCoefficient = Storage.Copy(field.One.Span);
+        }
+        catch
+        {
+            Storage.Dispose();
+            throw;
+        }
     }
 
 
@@ -73,7 +94,7 @@ internal sealed class LongfellowCircuitScheduler
     /// </summary>
     /// <param name="depthUpperBound">The circuit depth upper bound; layers span depths one through one less.</param>
     /// <param name="outputWireCount">Receives the output wire count (<c>nv</c>).</param>
-    /// <returns>The layers in walk order, index 0 the output layer.</returns>
+    /// <returns>The layers in walk order, index 0 the output layer; coefficients borrow the builder and scheduler until copied into a circuit.</returns>
     /// <exception cref="InvalidOperationException">When a canonicalization invariant fails or a layer degenerates to a single wire.</exception>
     public LongfellowSumcheckLayer[] Schedule(int depthUpperBound, out int outputWireCount)
     {
@@ -114,14 +135,14 @@ internal sealed class LongfellowCircuitScheduler
     /// <param name="K">The coefficient, canonical big-endian; shared with the constant table and never mutated.</param>
     /// <param name="Lop0">The first operand's position in the previous layer's node list.</param>
     /// <param name="Lop1">The second operand's position in the previous layer's node list.</param>
-    private readonly record struct LayeredTerm(byte[] K, int Lop0, int Lop1);
+    private readonly record struct LayeredTerm(ReadOnlyMemory<byte> K, int Lop0, int Lop1);
 
 
     /// <summary>A term renamed onto the previous layer's assigned wire ids, hand-ordered (<c>renamed_lterm</c>).</summary>
     private readonly struct RenamedTerm
     {
         /// <summary>The coefficient, canonical big-endian.</summary>
-        public byte[] K { get; }
+        public ReadOnlyMemory<byte> K { get; }
 
         /// <summary>The smaller renamed operand wire id.</summary>
         public int R0 { get; }
@@ -134,7 +155,7 @@ internal sealed class LongfellowCircuitScheduler
         /// <param name="k">The coefficient.</param>
         /// <param name="r0">One renamed operand wire id.</param>
         /// <param name="r1">The other renamed operand wire id.</param>
-        public RenamedTerm(byte[] k, int r0, int r1)
+        public RenamedTerm(ReadOnlyMemory<byte> k, int r0, int r1)
         {
             K = k;
             R0 = Math.Min(r0, r1);
@@ -187,7 +208,7 @@ internal sealed class LongfellowCircuitScheduler
         public int H1;
 
         /// <summary>The coefficient, canonical big-endian.</summary>
-        public byte[] V;
+        public ReadOnlyMemory<byte> V;
     }
 
 
@@ -206,12 +227,12 @@ internal sealed class LongfellowCircuitScheduler
             layered[d] = [];
         }
 
-        var placements = new List<int>[nodes.Count];
+        var placements = new List<int>[Nodes.Count];
         CopyWireOverheadCount = 0;
 
-        for(int op = 0; op < nodes.Count; op++)
+        for(int op = 0; op < Nodes.Count; op++)
         {
-            LongfellowCircuitNode n = nodes[op];
+            LongfellowCircuitNode n = Nodes[op];
             if(!n.IsNeeded || n.IsZero)
             {
                 continue;
@@ -226,7 +247,7 @@ internal sealed class LongfellowCircuitScheduler
             {
                 LongfellowCompilerTerm term = n.Terms[t];
                 terms[t] = new LayeredTerm(
-                    constants[term.Ki],
+                    Constants[term.Ki],
                     PlacementAt(placements, term.Op0, depth - 1),
                     PlacementAt(placements, term.Op1, depth - 1));
             }
@@ -241,7 +262,7 @@ internal sealed class LongfellowCircuitScheduler
                 position = layered[d].Count;
                 placements[op].Add(position);
 
-                var copy = new LayeredTerm[] { new(oneCoefficient, 0, previousPosition) };
+                var copy = new LayeredTerm[] { new(OneCoefficient, 0, previousPosition) };
                 layered[d].Add(new LayeredNode(n.DesiredWireIdAt(d, depthUpperBound), isCopyWire: true, copy));
                 CopyWireOverheadCount++;
             }
@@ -260,7 +281,7 @@ internal sealed class LongfellowCircuitScheduler
     /// <returns>The position in that depth's node list.</returns>
     private int PlacementAt(List<int>[] placements, int op, int depth)
     {
-        return placements[op][depth - nodes[op].Depth];
+        return placements[op][depth - Nodes[op].Depth];
     }
 
 
@@ -361,7 +382,7 @@ internal sealed class LongfellowCircuitScheduler
             return a.R1 < b.R1;
         }
 
-        return field.CompareLittleEndian(a.K, b.K);
+        return Field.CompareLittleEndian(a.K.Span, b.K.Span);
     }
 
 
@@ -395,7 +416,7 @@ internal sealed class LongfellowCircuitScheduler
     /// <returns><see langword="true"/> when equal.</returns>
     private static bool RenamedTermsEqual(in RenamedTerm a, in RenamedTerm b)
     {
-        return a.R0 == b.R0 && a.R1 == b.R1 && LongfellowCompilerFieldOperations.ElementsEqual(a.K, b.K);
+        return a.R0 == b.R0 && a.R1 == b.R1 && LongfellowCompilerFieldOperations.ElementsEqual(a.K.Span, b.K.Span);
     }
 
 
@@ -601,8 +622,8 @@ internal sealed class LongfellowCircuitScheduler
                 LongfellowSumcheckQuadTerm previous = coalesced[^1];
                 if(previous.GateIndex == corner.G && previous.LeftIndex == corner.H0 && previous.RightIndex == corner.H1)
                 {
-                    var sum = new byte[Scalar.SizeBytes];
-                    field.Add(previous.Coefficient.Span, corner.V, sum, field.Curve);
+                    Memory<byte> sum = Storage.Allocate(Scalar.SizeBytes);
+                    Field.Add(previous.Coefficient.Span, corner.V.Span, sum.Span, Field.Curve);
                     coalesced[^1] = previous with { Coefficient = sum };
 
                     continue;
@@ -640,16 +661,23 @@ internal sealed class LongfellowCircuitScheduler
             return a.G < b.G ? -1 : 1;
         }
 
-        if(field.CompareLittleEndian(a.V, b.V))
+        if(Field.CompareLittleEndian(a.V.Span, b.V.Span))
         {
             return -1;
         }
 
-        if(field.CompareLittleEndian(b.V, a.V))
+        if(Field.CompareLittleEndian(b.V.Span, a.V.Span))
         {
             return 1;
         }
 
         return 0;
+    }
+
+
+    /// <summary>Clears and releases scheduler coefficients after the output circuit has copied them.</summary>
+    public void Dispose()
+    {
+        Storage.Dispose();
     }
 }

@@ -9,12 +9,13 @@ namespace Lumoin.Veridical.Tests.ConstraintSystems;
 /// Structural-equality tests for <see cref="R1csCircuit"/>: two circuits
 /// assembled from equal operation and variable sequences must compare
 /// equal (and hash equally), and a single differing op must break
-/// equality. The builder lands in X.2; here the circuits are assembled
-/// directly to pin the equality contract the builder relies on.
+/// equality. Here the circuits are assembled directly, independent of the
+/// builder, to pin the equality contract the builder relies on.
 /// </summary>
 [TestClass]
 internal sealed class R1csCircuitEqualityTests
 {
+    /// <summary>Verifies that two circuits assembled from equal operation and variable sequences compare equal and hash equally.</summary>
     [TestMethod]
     public void IdenticallyAssembledCircuitsAreEqual()
     {
@@ -26,6 +27,7 @@ internal sealed class R1csCircuitEqualityTests
     }
 
 
+    /// <summary>Verifies that replacing one constraint's operand variable, otherwise keeping the same shape, breaks structural equality.</summary>
     [TestMethod]
     public void ADifferingConstraintBreaksEquality()
     {
@@ -47,6 +49,7 @@ internal sealed class R1csCircuitEqualityTests
     }
 
 
+    /// <summary>Directly assembles the circuit for <c>z = (1, x, y, z): x · y = z</c>, with no public inputs, mirroring the hand-built <c>R1csTestCircuits.BuildMultiplyCircuit</c> shape.</summary>
     private static R1csCircuit BuildMultiplyCircuit()
     {
         //z = (1, x, y, z): x · y = z, no public inputs. Mirrors the

@@ -53,22 +53,33 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal sealed class LongfellowLigeroCommitment: IDisposable
 {
+    /// <summary>The byte width of one canonical scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The reference's Digest::kLength and MerkleNonce::kLength: SHA-256 and the per-leaf nonce are 32.
+    /// <summary>The reference's <c>Digest::kLength</c>: a SHA-256 digest is 32 bytes.</summary>
     private const int DigestLength = 32;
+
+    /// <summary>The reference's <c>MerkleNonce::kLength</c>: a per-leaf nonce is 32 bytes.</summary>
     private const int NonceLength = 32;
 
+    /// <summary>The owned RS-extended tableau buffer, or <see langword="null"/> once disposed.</summary>
     private IMemoryOwner<byte>? tableauOwner;
+
+    /// <summary>The owned per-leaf nonce buffer, or <see langword="null"/> once disposed.</summary>
     private IMemoryOwner<byte>? nonceOwner;
+
+    /// <summary>The owned Merkle tree over the extension columns, or <see langword="null"/> once disposed.</summary>
     private LongfellowMerkleTree? tree;
-    private readonly int rowStrideBytes;
+
+    /// <summary>The byte stride of one tableau row.</summary>
+    private int RowStrideByteCount { get; }
 
 
     /// <summary>The layout the tableau was built to.</summary>
     public LongfellowLigeroParameters Parameters { get; }
 
 
+    /// <summary>Wraps an already-built tableau, nonce buffer and Merkle tree; this instance owns all three from construction.</summary>
     private LongfellowLigeroCommitment(
         LongfellowLigeroParameters parameters,
         IMemoryOwner<byte> tableauOwner,
@@ -80,13 +91,13 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
         this.tableauOwner = tableauOwner;
         this.nonceOwner = nonceOwner;
         this.tree = tree;
-        this.rowStrideBytes = rowStrideBytes;
+        this.RowStrideByteCount = rowStrideBytes;
     }
 
 
     /// <summary>The full RS-extended tableau, row-major <c>[RowCount, BlockEncoded]</c> canonical scalars.</summary>
     internal ReadOnlySpan<byte> Tableau =>
-        (tableauOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroCommitment))).Memory.Span[..(Parameters.RowCount * rowStrideBytes)];
+        (tableauOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroCommitment))).Memory.Span[..(Parameters.RowCount * RowStrideByteCount)];
 
     /// <summary>The per-leaf nonces, concatenated 32 bytes each, one per extension column (<c>block_ext</c> of them).</summary>
     internal ReadOnlySpan<byte> Nonces =>
@@ -98,7 +109,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
 
 
     /// <summary>The byte stride of one tableau row (<c>BlockEncoded · 32</c>).</summary>
-    internal int RowStrideBytes => rowStrideBytes;
+    internal int RowStrideBytes => RowStrideByteCount;
 
 
     /// <summary>
@@ -106,7 +117,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     /// <paramref name="columnIndex"/>.
     /// </summary>
     internal ReadOnlySpan<byte> ElementAt(int rowIndex, int columnIndex) =>
-        Tableau.Slice((rowIndex * rowStrideBytes) + (columnIndex * ScalarSize), ScalarSize);
+        Tableau.Slice((rowIndex * RowStrideByteCount) + (columnIndex * ScalarSize), ScalarSize);
 
 
     /// <summary>Copies the 32-byte commitment root (Merkle node 1) into <paramref name="destination"/>.</summary>
@@ -241,7 +252,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     /// <summary>
     /// Builds the tableau, commits, and writes the 32-byte Merkle root into <paramref name="root"/> in
     /// one shot, releasing the commitment immediately. The thin facade the commit-only conformance gate
-    /// (C.2) drives; the prove flow uses the object-returning <see cref="Commit(LongfellowLigeroParameters, ReadOnlySpan{byte}, ReadOnlySpan{LigeroQuadraticConstraint}, int, int, LongfellowRandomByteSource, LongfellowRowEncoderFactory, LongfellowFieldProfile, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/> instead.
+    /// drives; the prove flow uses the object-returning <see cref="Commit(LongfellowLigeroParameters, ReadOnlySpan{byte}, ReadOnlySpan{LigeroQuadraticConstraint}, int, int, LongfellowRandomByteSource, LongfellowRowEncoderFactory, LongfellowFieldProfile, ScalarAddDelegate, ScalarSubtractDelegate, ScalarMultiplyDelegate, MerkleHashDelegate, FiatShamirHashDelegate, string, CurveParameterSet, BaseMemoryPool)"/> instead.
     /// </summary>
     /// <param name="parameters">The wire-format tableau layout.</param>
     /// <param name="witnesses">The witness vector; exactly <see cref="LongfellowLigeroParameters.WitnessCount"/> · 32 canonical bytes.</param>
@@ -314,15 +325,18 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
         if(localTableau is not null)
         {
             tableauOwner = null;
-            localTableau.Memory.Span[..(Parameters.RowCount * rowStrideBytes)].Clear();
+            localTableau.Memory.Span[..(Parameters.RowCount * RowStrideByteCount)].Clear();
             localTableau.Dispose();
         }
     }
 
 
-    //ILDT: block random field elements. IDOT: dblock random field elements with the witness block
-    //forced to sum to zero. IQUAD: dblock random field elements with the witness columns left zero
-    //(and so not drawn from the stream). Each is RS-extended to block_enc.
+    /// <summary>
+    /// Fills the three blinding rows: ILDT draws block random field elements; IDOT draws dblock
+    /// random field elements with the witness block forced to sum to zero; IQUAD draws dblock
+    /// random field elements with the witness columns left zero (and so not drawn from the stream).
+    /// Each row is RS-extended to block_enc.
+    /// </summary>
     private static void FillBlindingRows(
         Span<byte> tableau,
         LongfellowLigeroParameters parameters,
@@ -400,8 +414,11 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     }
 
 
-    //Witness rows: each carries R subfield padding entries then up to W witnesses (subfield_boundary
-    //= nw, so the padding is subfield-sampled). The trailing row zero-pads past the witness count.
+    /// <summary>
+    /// Fills the witness rows: each carries R subfield padding entries then up to W witnesses
+    /// (<c>subfield_boundary = nw</c>, so the padding is subfield-sampled). The trailing row
+    /// zero-pads past the witness count.
+    /// </summary>
     private static void FillWitnessRows(
         Span<byte> tableau,
         LongfellowLigeroParameters parameters,
@@ -450,9 +467,11 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     }
 
 
-    //Quadratic-constraint rows: three rows per triple. Each row draws 3·R worth of field padding
-    //(R per x/y/z row) then the x/y/z operands of up to W constraints; the prover asserts each triple
-    //satisfies W[z] = W[x]·W[y].
+    /// <summary>
+    /// Fills the quadratic-constraint rows: three rows per triple. Each row draws 3·R worth of
+    /// field padding (R per x/y/z row) then the x/y/z operands of up to W constraints; asserts each
+    /// triple satisfies W[z] = W[x]·W[y].
+    /// </summary>
     private static void FillQuadraticRows(
         Span<byte> tableau,
         LongfellowLigeroParameters parameters,
@@ -523,9 +542,11 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     }
 
 
-    //Merkle-commit the extension columns. Leaf j (j in [0, block_ext)) draws a 32-byte nonce then
-    //hashes SHA256(nonce || to_bytes_field of column dblock+j over all nrow rows). The nonces are
-    //drawn from the same stream, after all the tableau randomness, and retained in `nonces`.
+    /// <summary>
+    /// Merkle-commits the extension columns. Leaf j (j in [0, block_ext)) draws a 32-byte nonce then
+    /// hashes SHA256(nonce || to_bytes_field of column dblock+j over all nrow rows). The nonces are
+    /// drawn from the same stream, after all the tableau randomness, and retained in <paramref name="nonces"/>.
+    /// </summary>
     [SuppressMessage("Reliability", "CA2000", Justification = "The returned tree owns its heap buffer; the caller (Commit) transfers it into the commitment, which disposes it.")]
     private static LongfellowMerkleTree CommitColumns(
         Span<byte> tableau,
@@ -594,19 +615,23 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     }
 
 
-    //Draws one field element through the field's sample mask-then-reject loop, the reference's rng.elt(F)
-    //(random.h:39-41). GF(2^128) is one 16-byte draw (never rejects); the Fp256 profile redraws a fresh
-    //32-byte block until one is below the modulus. The canonical scalar is 32-byte big-endian with the
-    //element in its low bytes.
+    /// <summary>
+    /// Draws one field element through the field's sample mask-then-reject loop, the reference's
+    /// <c>rng.elt(F)</c> (<c>random.h:39-41</c>). GF(2^128) is one 16-byte draw (never rejects); the
+    /// Fp256 profile redraws a fresh 32-byte block until one is below the modulus. The canonical
+    /// scalar is 32-byte big-endian with the element in its low bytes.
+    /// </summary>
     private static void DrawFieldElement(LongfellowRandomByteSource random, LongfellowFieldProfile profile, Span<byte> destination)
     {
         profile.SampleElement(random, destination);
     }
 
 
-    //Draws one subfield element: kSubFieldBytes raw little-endian bytes interpreted as a coordinate
-    //integer u, mapped through of_scalar(u) (the binary basis combination over GF, the integer u mod p
-    //over Fp256).
+    /// <summary>
+    /// Draws one subfield element: <c>kSubFieldBytes</c> raw little-endian bytes interpreted as a
+    /// coordinate integer u, mapped through <c>of_scalar(u)</c> (the binary basis combination over
+    /// GF, the integer u mod p over Fp256).
+    /// </summary>
     private static void DrawSubfieldElement(LongfellowRandomByteSource random, LongfellowFieldProfile profile, int subFieldBytes, Span<byte> destination)
     {
         //The coordinate accumulator is 32 bits; a wider subfield draw would silently drop the high bytes.
@@ -628,7 +653,7 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     }
 
 
-    //Subtracts the sum of the witness block [r, r+w) from column r so the block sums to zero.
+    /// <summary>Subtracts the sum of the witness block [r, r+w) from column r so the block sums to zero.</summary>
     private static void ZeroWitnessBlockSum(Span<byte> row, int r, int w, ScalarAddDelegate add, ScalarSubtractDelegate subtract, CurveParameterSet curve)
     {
         Span<byte> sum = stackalloc byte[ScalarSize];
@@ -645,23 +670,28 @@ internal sealed class LongfellowLigeroCommitment: IDisposable
     }
 
 
-    //RS-extends the row's message prefix to the full block_enc codeword in place. The row encoder carries
-    //the message length and the block-encoded length; it reads the message from the row's prefix and
-    //fills the rest.
+    /// <summary>
+    /// RS-extends the row's message prefix to the full block_enc codeword in place. The row encoder
+    /// carries the message length and the block-encoded length; it reads the message from the row's
+    /// prefix and fills the rest.
+    /// </summary>
     private static void ExtendRow(Span<byte> row, int blockEncoded, LongfellowRowEncoder rs)
     {
         rs.Interpolate(row[..(blockEncoded * ScalarSize)]);
     }
 
 
+    /// <summary>Slices out the tableau row at the given row index.</summary>
     private static Span<byte> RowSpan(Span<byte> tableau, int rowStrideBytes, int rowIndex) =>
         tableau.Slice(rowIndex * rowStrideBytes, rowStrideBytes);
 
 
+    /// <summary>Slices out the canonical scalar at the given column index within a row.</summary>
     private static Span<byte> ScalarAt(Span<byte> row, int columnIndex) =>
         row.Slice(columnIndex * ScalarSize, ScalarSize);
 
 
+    /// <summary>Slices out the witness at the given index, rejecting an index outside the witness vector.</summary>
     private static ReadOnlySpan<byte> WitnessAt(ReadOnlySpan<byte> witnesses, int index, int witnessCount)
     {
         if((uint)index >= (uint)witnessCount)

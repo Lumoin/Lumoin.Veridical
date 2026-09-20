@@ -27,11 +27,10 @@ namespace Lumoin.Veridical.Core.Algebraic;
 /// <c>2^(n-1)</c> linear interpolations, one per pair.
 /// </para>
 /// <para>
-/// This is the inner loop of every sumcheck-based proof system; the
-/// reviewer's intent is that backends vectorise it (lane-interleaved
-/// pairs, two field-multiplications and one add per output slot). A
-/// correct backend reduces every output element modulo the field order
-/// before writing.
+/// This is the inner loop of every sumcheck-based proof system, so a performant
+/// backend vectorises it (lane-interleaved pairs, two field-multiplications and
+/// one add per output slot). A correct backend reduces every output element
+/// modulo the field order before writing.
 /// </para>
 /// </remarks>
 public delegate void MleFoldDelegate(

@@ -11,7 +11,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// <c>LigeroProof&lt;Field&gt;</c> (<c>lib/ligero/ligero_param.h</c>). It carries the three tests'
 /// response rows, the opened-column elements, and the Merkle opening (per-leaf nonces plus the
 /// compressed multi-proof path) — every field the reference's proof object holds, in the same shapes,
-/// so the C.5 serializer can lay them into the ZkSpec envelope and a verifier can replay the flow.
+/// so the serializer can lay them into the ZkSpec envelope and a verifier can replay the flow.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -35,64 +35,87 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal sealed class LongfellowLigeroProof: IDisposable
 {
+    /// <summary>The byte width of one scalar in this proof's response and column buffers, matching the library-wide scalar size.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The reference's MerkleNonce::kLength and Digest::kLength: nonce and digest are 32 bytes.
+    /// <summary>The reference's <c>MerkleNonce::kLength</c>: a per-leaf nonce is 32 bytes.</summary>
     private const int NonceLength = 32;
+
+    /// <summary>The reference's <c>Digest::kLength</c>: a Merkle path digest is 32 bytes.</summary>
     private const int DigestLength = 32;
 
+    /// <summary>The owned response-row buffer, surfaced by <see cref="Responses"/> until disposed.</summary>
     private IMemoryOwner<byte>? responseOwner;
+
+    /// <summary>The owned opened-columns matrix, surfaced by <see cref="OpenedColumns"/> until disposed.</summary>
     private IMemoryOwner<byte>? openedColumnsOwner;
+
+    /// <summary>The owned per-leaf nonce buffer, surfaced by <see cref="Nonces"/> until disposed.</summary>
     private IMemoryOwner<byte>? nonceOwner;
+
+    /// <summary>The owned compressed Merkle multi-proof buffer, surfaced by <see cref="MerklePath"/> until disposed.</summary>
     private IMemoryOwner<byte>? merklePathOwner;
+
+    /// <summary>The owned opened-column indices buffer, surfaced by <see cref="OpenedColumnIndices"/> until disposed.</summary>
     private IMemoryOwner<byte>? indicesOwner;
 
-    private readonly int block;
-    private readonly int doubleBlock;
-    private readonly int randomCount;
-    private readonly int rowCount;
-    private readonly int openedColumnCount;
-    private readonly int merklePathLength;
+    /// <summary>The cached low-degree-test block size (<see cref="Parameters"/>.Block), the width of <see cref="LowDegreeResponse"/>.</summary>
+    private int Block { get; }
+
+    /// <summary>The cached doubled block size (<see cref="Parameters"/>.DoubleBlock), the width of <see cref="DotResponse"/>.</summary>
+    private int DoubleBlock { get; }
+
+    /// <summary>The cached random-mask count (<see cref="Parameters"/>.RandomCount), the width of <see cref="QuadraticResponseLow"/>.</summary>
+    private int RandomCount { get; }
+
+    /// <summary>The cached row count (<see cref="Parameters"/>.RowCount), the row dimension of <see cref="OpenedColumns"/>.</summary>
+    private int RowCount { get; }
+
+    /// <summary>The cached opened-column count (<see cref="Parameters"/>.OpenedColumnCount), the column dimension of <see cref="OpenedColumns"/> and the length of <see cref="OpenedColumnIndices"/> and <see cref="Nonces"/>.</summary>
+    private int OpenedColumnCount { get; }
+
+    /// <summary>The number of digests in the compressed Merkle multi-proof, surfaced by <see cref="MerklePathLength"/>.</summary>
+    private int PathDigestCount { get; }
 
 
     /// <summary>The layout the proof was produced for.</summary>
     public LongfellowLigeroParameters Parameters { get; }
 
     /// <summary>The low-degree-test response row <c>y_ldt</c>: <c>block</c> canonical scalars.</summary>
-    public ReadOnlySpan<byte> LowDegreeResponse => Responses[..(block * ScalarSize)];
+    public ReadOnlySpan<byte> LowDegreeResponse => Responses[..(Block * ScalarSize)];
 
     /// <summary>The dot-product (linear) response row <c>y_dot</c>: <c>dblock</c> canonical scalars.</summary>
-    public ReadOnlySpan<byte> DotResponse => Responses.Slice(block * ScalarSize, doubleBlock * ScalarSize);
+    public ReadOnlySpan<byte> DotResponse => Responses.Slice(Block * ScalarSize, DoubleBlock * ScalarSize);
 
     /// <summary>The first part of the quadratic response row <c>y_quad_0</c>: <c>r</c> canonical scalars.</summary>
-    public ReadOnlySpan<byte> QuadraticResponseLow => Responses.Slice((block + doubleBlock) * ScalarSize, randomCount * ScalarSize);
+    public ReadOnlySpan<byte> QuadraticResponseLow => Responses.Slice((Block + DoubleBlock) * ScalarSize, RandomCount * ScalarSize);
 
     /// <summary>The last part of the quadratic response row <c>y_quad_2</c>: <c>dblock − block</c> canonical scalars.</summary>
-    public ReadOnlySpan<byte> QuadraticResponseHigh => Responses[(((block + doubleBlock) * ScalarSize) + (randomCount * ScalarSize))..];
+    public ReadOnlySpan<byte> QuadraticResponseHigh => Responses[(((Block + DoubleBlock) * ScalarSize) + (RandomCount * ScalarSize))..];
 
     /// <summary>The opened columns <c>req</c>, row-major <c>[nrow, nreq]</c> canonical scalars.</summary>
     public ReadOnlySpan<byte> OpenedColumns =>
-        (openedColumnsOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(rowCount * openedColumnCount * ScalarSize)];
+        (openedColumnsOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(RowCount * OpenedColumnCount * ScalarSize)];
 
     /// <summary>The opened-column indices <c>idx</c>: <c>nreq</c> distinct columns in <c>[0, block_ext)</c>, in selection order.</summary>
     public ReadOnlySpan<int> OpenedColumnIndices =>
-        MemoryMarshal.Cast<byte, int>((indicesOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(openedColumnCount * sizeof(int))]);
+        MemoryMarshal.Cast<byte, int>((indicesOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(OpenedColumnCount * sizeof(int))]);
 
     /// <summary>The per-leaf nonces of the opened columns: <c>nreq</c> · 32 bytes.</summary>
     public ReadOnlySpan<byte> Nonces =>
-        (nonceOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(openedColumnCount * NonceLength)];
+        (nonceOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(OpenedColumnCount * NonceLength)];
 
     /// <summary>The compressed Merkle multi-proof path: <see cref="MerklePathLength"/> · 32 bytes, in selection order.</summary>
     public ReadOnlySpan<byte> MerklePath =>
-        (merklePathOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(merklePathLength * DigestLength)];
+        (merklePathOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..(PathDigestCount * DigestLength)];
 
     /// <summary>The number of digests in the compressed Merkle multi-proof.</summary>
-    public int MerklePathLength => merklePathLength;
+    public int MerklePathLength => PathDigestCount;
 
 
     /// <summary>Returns the element of opened-column row <paramref name="rowIndex"/> at opened slot <paramref name="slot"/>.</summary>
     public ReadOnlySpan<byte> OpenedColumnElement(int rowIndex, int slot) =>
-        OpenedColumns.Slice(((rowIndex * openedColumnCount) + slot) * ScalarSize, ScalarSize);
+        OpenedColumns.Slice(((rowIndex * OpenedColumnCount) + slot) * ScalarSize, ScalarSize);
 
     /// <summary>Returns the per-leaf nonce of opened slot <paramref name="slot"/>.</summary>
     public ReadOnlySpan<byte> Nonce(int slot) => Nonces.Slice(slot * NonceLength, NonceLength);
@@ -101,10 +124,12 @@ internal sealed class LongfellowLigeroProof: IDisposable
     public ReadOnlySpan<byte> PathDigest(int index) => MerklePath.Slice(index * DigestLength, DigestLength);
 
 
+    /// <summary>The packed response buffer holding <c>y_ldt | y_dot | y_quad_0 | y_quad_2</c>, the storage the four response-row properties slice.</summary>
     private Span<byte> Responses =>
         (responseOwner ?? throw new ObjectDisposedException(nameof(LongfellowLigeroProof))).Memory.Span[..ResponseBufferSize(Parameters)];
 
 
+    /// <summary>Wraps already-populated, pool-rented buffers into a proof; the proof takes ownership of every buffer.</summary>
     internal LongfellowLigeroProof(
         LongfellowLigeroParameters parameters,
         IMemoryOwner<byte> responseOwner,
@@ -120,13 +145,13 @@ internal sealed class LongfellowLigeroProof: IDisposable
         this.indicesOwner = indicesOwner;
         this.nonceOwner = nonceOwner;
         this.merklePathOwner = merklePathOwner;
-        this.merklePathLength = merklePathLength;
+        this.PathDigestCount = merklePathLength;
 
-        block = parameters.Block;
-        doubleBlock = parameters.DoubleBlock;
-        randomCount = parameters.RandomCount;
-        rowCount = parameters.RowCount;
-        openedColumnCount = parameters.OpenedColumnCount;
+        Block = parameters.Block;
+        DoubleBlock = parameters.DoubleBlock;
+        RandomCount = parameters.RandomCount;
+        RowCount = parameters.RowCount;
+        OpenedColumnCount = parameters.OpenedColumnCount;
     }
 
 
@@ -161,7 +186,7 @@ internal sealed class LongfellowLigeroProof: IDisposable
         if(localColumns is not null)
         {
             openedColumnsOwner = null;
-            localColumns.Memory.Span[..(rowCount * openedColumnCount * ScalarSize)].Clear();
+            localColumns.Memory.Span[..(RowCount * OpenedColumnCount * ScalarSize)].Clear();
             localColumns.Dispose();
         }
 
@@ -169,7 +194,7 @@ internal sealed class LongfellowLigeroProof: IDisposable
         if(localNonce is not null)
         {
             nonceOwner = null;
-            localNonce.Memory.Span[..(openedColumnCount * NonceLength)].Clear();
+            localNonce.Memory.Span[..(OpenedColumnCount * NonceLength)].Clear();
             localNonce.Dispose();
         }
 
@@ -177,7 +202,7 @@ internal sealed class LongfellowLigeroProof: IDisposable
         if(localPath is not null)
         {
             merklePathOwner = null;
-            localPath.Memory.Span[..(merklePathLength * DigestLength)].Clear();
+            localPath.Memory.Span[..(PathDigestCount * DigestLength)].Clear();
             localPath.Dispose();
         }
 
@@ -185,7 +210,7 @@ internal sealed class LongfellowLigeroProof: IDisposable
         if(localIndices is not null)
         {
             indicesOwner = null;
-            localIndices.Memory.Span[..(openedColumnCount * sizeof(int))].Clear();
+            localIndices.Memory.Span[..(OpenedColumnCount * sizeof(int))].Clear();
             localIndices.Dispose();
         }
     }

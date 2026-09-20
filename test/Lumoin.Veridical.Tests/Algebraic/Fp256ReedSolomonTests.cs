@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// The Fp256 Reed–Solomon engine (conformance step C.12, the foundational P-256 primitive), gated as a
+/// The Fp256 Reed–Solomon engine, the foundational P-256 primitive, gated as a
 /// faithful port of google/longfellow-zk's <c>ReedSolomon&lt;Fp256Base, FFTExtConvolutionFactory&gt;</c>
 /// (<c>lib/algebra/reed_solomon.h</c> over <c>lib/algebra/convolution.h</c> and <c>lib/algebra/rfft.h</c>) —
 /// the point-evaluation interpolator the reference instantiates for the P-256 signature circuit's Ligero
@@ -25,9 +25,8 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The anchor (fp256-rs-anchor-output.txt in TestMaterial/Longfellow) is computed by the reference
-/// implementation in its own Docker build environment via development tooling outside this repository. It
-/// dumps the root of unity, a few field anchors, and several full interpolated codewords: for each
+/// The anchor (fp256-rs-anchor-output.txt in TestMaterial/Longfellow) carries the root of unity, a few
+/// field anchors, and several full interpolated codewords: for each
 /// <c>cwNxM</c> a degree-(&lt;N) polynomial with the coefficients <c>of_scalar(i·i + 42 + (M+11)·(N+22))</c>
 /// is evaluated at <c>0, …, N−1</c> and extended in place to all <c>M</c> points, each printed as 32
 /// little-endian to_bytes_field bytes.
@@ -36,7 +35,7 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// The gates:
 /// </para>
 /// <list type="bullet">
-///   <item><description><b>Byte identity</b>: our interpolator's full codeword equals the reference's, element for element, for each <c>cwNxM</c> — over the small dimensions, the 9×23 / 9×64 shapes (matching the binary C.1 anchor shapes), and a larger 17×68.</description></item>
+///   <item><description><b>Byte identity</b>: our interpolator's full codeword equals the reference's, element for element, for each <c>cwNxM</c> — over the small dimensions, the 9×23 / 9×64 shapes (matching the GF(2^128) Reed–Solomon encoder's own shapes), and a larger 17×68.</description></item>
 ///   <item><description><b>Systematic</b>: the first <c>N</c> outputs are the unchanged inputs (the encoder is systematic).</description></item>
 ///   <item><description><b>Field anchors</b>: the parsed root of unity and of_scalar samples match.</description></item>
 /// </list>
@@ -44,46 +43,64 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Fp256ReedSolomonTests
 {
+    /// <summary>The repository-relative path to the Fp256 Reed–Solomon anchor file.</summary>
     private const string AnchorRelativePath = "TestMaterial/Longfellow/fp256-rs-anchor-output.txt";
+
+    /// <summary>The byte width of one canonical Fp256 scalar.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //mdoc_zk.cc's omega_order for the Fp256 RS convolution: 2^31.
+    /// <summary>The FFT's root-of-unity order the reference implementation's Fp256 RS convolution uses: 2^31.</summary>
     private const ulong OmegaOrder = 1UL << 31;
 
+    /// <summary>The P-256 base field's order, read from the reference field constants.</summary>
     private static BigInteger FieldOrder { get; } = P256BaseFieldReference.FieldOrder;
 
+    /// <summary>The Montgomery-backend Fp256 addition delegate the interpolator and its tests share.</summary>
     private static ScalarAddDelegate Add { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
 
+    /// <summary>The Montgomery-backend Fp256 subtraction delegate the interpolator and its tests share.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = P256BaseFieldMontgomeryBackend.GetSubtract();
 
+    /// <summary>The Montgomery-backend Fp256 multiplication delegate the interpolator and its tests share.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = P256BaseFieldMontgomeryBackend.GetMultiply();
 
+    /// <summary>The Montgomery-backend Fp256 inversion delegate the interpolator and its tests share.</summary>
     private static ScalarInvertDelegate Invert { get; } = P256BaseFieldMontgomeryBackend.GetInvert();
 
+    /// <summary>The delegate that reduces a Montgomery-domain Fp256 accumulator back to canonical form.</summary>
     private static ScalarReduceDelegate Reduce { get; } = P256BaseFieldMontgomeryBackend.GetReduce();
 
+    /// <summary>The reference implementation's anchor key/value pairs, loaded once for every test.</summary>
     private static Dictionary<string, string> Anchors { get; } = LoadAnchors();
 
-    //Boundary-blended base-field draws for the property tests below: the
-    //canonical-domain corpus (0, 1, 2, the midpoint, the top neighbours, and
-    //limb-boundary patterns folded into the field) blended with uniform
-    //32-byte draws.
+    /// <summary>
+    /// Boundary-blended base-field draws for the property tests below: the canonical-domain corpus
+    /// (0, 1, 2, the midpoint, the top neighbours, and limb-boundary patterns folded into the field)
+    /// blended with uniform 32-byte draws.
+    /// </summary>
     private static Gen<byte[]> BoundaryFieldBytesGen { get; } = BoundaryCorpusGen.CanonicalDomain(FieldOrder);
 
-    //cw5x16's dimensions: the smallest interpolator shape the fixed anchors
-    //exercise, kept here so the property sweep below stays fast per
-    //iteration while still driving the real FFT convolution.
+    /// <summary>The systematic row count for the property sweep, matching the anchor's smallest codeword shape (cw5x16).</summary>
     private const int PropertyMessageDimension = 5;
+
+    /// <summary>The full codeword length for the property sweep, matching the anchor's smallest codeword shape (cw5x16).</summary>
     private const int PropertyBlockLength = 16;
+
+    /// <summary>The number of random samples the property sweep draws, kept small so each iteration's real FFT convolution stays fast.</summary>
     private const long PropertyIterationCount = 40;
 
+    /// <summary>The MSTest-provided context for the running test; this fixture does not read it directly.</summary>
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>
+    /// Verifies that the anchor carries the root-of-unity's two coordinates and that its recorded
+    /// of_scalar samples (1, 7, 300) match this engine's own of_scalar.
+    /// </summary>
     [TestMethod]
     public void TheParsedRootOfUnityMatchesTheReference()
     {
-        //The root of unity is parsed by the reference from kRootX/kRootY; the dump prints its two
+        //The root of unity is parsed by the reference from kRootX/kRootY; the anchor file records its two
         //coordinates in to_bytes_field order. We only confirm the anchor carries them (the engine
         //consumes them as opaque field bytes); the codeword gates exercise the value end to end.
         Assert.IsTrue(Anchors.ContainsKey("rootx"), "The anchor must carry the root-of-unity real part.");
@@ -98,22 +115,30 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>Verifies the 5x16 codeword matches the reference byte for byte, the smallest anchored shape.</summary>
     [TestMethod]
     public void TheSmallCodewordMatchesTheReferenceByteForByte() => AssertCodeword("cw5x16", 5, 16);
 
 
+    /// <summary>Verifies the 9x23 codeword matches the reference byte for byte.</summary>
     [TestMethod]
     public void TheNineByTwentyThreeCodewordMatchesTheReferenceByteForByte() => AssertCodeword("cw9x23", 9, 23);
 
 
+    /// <summary>Verifies the 9x64 codeword matches the reference byte for byte.</summary>
     [TestMethod]
     public void TheNineBySixtyFourCodewordMatchesTheReferenceByteForByte() => AssertCodeword("cw9x64", 9, 64);
 
 
+    /// <summary>Verifies a larger 17x68 codeword matches the reference byte for byte.</summary>
     [TestMethod]
     public void TheSeventeenBySixtyEightCodewordMatchesTheReferenceByteForByte() => AssertCodeword("cw17x68", 17, 68);
 
 
+    /// <summary>
+    /// Verifies that the length-2 real-FFT shortcut path round-trips: HC2R(R2HC(x)) equals 2*x
+    /// elementwise, since the transform is unnormalized, and that the length-1 branch is a no-op.
+    /// </summary>
     [TestMethod]
     public void ForwardThenBackwardAtLengthTwoScalesByTwo()
     {
@@ -133,7 +158,8 @@ internal sealed class Fp256ReedSolomonTests
         byte[] noopInput = OfScalar(137);
         byte[] noopData1 = new byte[Length1 * ScalarSize];
         noopInput.CopyTo(noopData1.AsSpan(0, ScalarSize));
-        var fft1 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool fft1Pool = new();
+        using var fft1 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fft1Pool);
         fft1.ForwardRealToHalfComplex(noopData1, Length1);
         Assert.IsTrue(noopData1.AsSpan(0, ScalarSize).SequenceEqual(noopInput), "Length-1 forward must leave input unchanged.");
         fft1.BackwardHalfComplexToReal(noopData1, Length1);
@@ -145,7 +171,8 @@ internal sealed class Fp256ReedSolomonTests
         byte[] data2 = new byte[Length2 * ScalarSize];
         x0.CopyTo(data2.AsSpan(0, ScalarSize));
         x1.CopyTo(data2.AsSpan(ScalarSize, ScalarSize));
-        var fft2 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool fft2Pool = new();
+        using var fft2 = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fft2Pool);
         fft2.ForwardRealToHalfComplex(data2, Length2);
         fft2.BackwardHalfComplexToReal(data2, Length2);
         byte[] expected0 = FieldMultiply(x0, two);
@@ -155,6 +182,10 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Verifies that interpolation is systematic: the first n outputs of an m-length codeword are
+    /// left unchanged from the inputs.
+    /// </summary>
     [TestMethod]
     public void TheEncoderIsSystematic()
     {
@@ -169,10 +200,15 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Verifies that interpolating in the Montgomery working domain, then dropping each output back
+    /// to canonical form, equals interpolating directly in the canonical domain element for element;
+    /// the fast pre-check for the 1-CIOS Reed–Solomon path the signature prove uses.
+    /// </summary>
     [TestMethod]
     public void TheMontgomeryDomainInterpolationDropsToTheCanonicalCodeword()
     {
-        //Perf Increment 1: the RS engine + real-FFT + convolution run domain-agnostically over the injected
+        //The RS engine + real-FFT + convolution run domain-agnostically over the injected
         //delegates, so interpolating in the Montgomery working domain (the witness lifted, the FFT root lifted
         //per coordinate, the of_scalar constants lifted) and dropping each output back must equal the canonical
         //interpolation element for element. This is the fast pre-check for the 1-CIOS RS path the sig prove uses.
@@ -197,13 +233,15 @@ internal sealed class Fp256ReedSolomonTests
         P256BaseFieldMontgomeryBackend.ToMontgomery(canonicalRoot.AsSpan(0, ScalarSize), montRoot.AsSpan(0, ScalarSize));
         P256BaseFieldMontgomeryBackend.ToMontgomery(canonicalRoot.AsSpan(ScalarSize, ScalarSize), montRoot.AsSpan(ScalarSize, ScalarSize));
 
-        var cfft = new Fp256RealFft(canonicalRoot, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool cfftPool = new();
+        using var cfft = new Fp256RealFft(canonicalRoot, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, cfftPool);
         using var crs = new Fp256ReedSolomon(N, M, cfft, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
         crs.Interpolate(canonicalEval);
 
         ScalarMultiplyDelegate mMul = P256BaseFieldMontgomeryBackend.GetMultiplyMontgomery();
         ScalarInvertDelegate mInv = P256BaseFieldMontgomeryBackend.GetInvertMontgomery();
-        var mfft = new Fp256RealFft(montRoot, OmegaOrder, Add, Subtract, mMul, mInv, MontOfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool mfftPool = new();
+        using var mfft = new Fp256RealFft(montRoot, OmegaOrder, Add, Subtract, mMul, mInv, MontOfScalarInto, CurveParameterSet.None, mfftPool);
         using var mrs = new Fp256ReedSolomon(N, M, mfft, Add, Subtract, mMul, mInv, MontOfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
         mrs.Interpolate(montEval);
 
@@ -216,6 +254,13 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Verifies, for boundary-seeded random coefficients rather than the anchor's fixed formula,
+    /// that every interpolated output (the first N systematic, the remaining M-N extended) equals
+    /// that same polynomial evaluated directly by Horner's method; the anchor's root of unity is
+    /// reused since the FFT convolution cannot be correct without it, but no anchor codeword lookup
+    /// is needed.
+    /// </summary>
     [TestMethod]
     public void InterpolateOfBoundarySeededMessagesMatchesDirectEvaluationEverywhere()
     {
@@ -253,7 +298,8 @@ internal sealed class Fp256ReedSolomonTests
             rootX.CopyTo(rootOfUnity.AsSpan(0, ScalarSize));
             rootY.CopyTo(rootOfUnity.AsSpan(ScalarSize, ScalarSize));
 
-            var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+            using BaseMemoryPool fftPool = new();
+            using var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fftPool);
             using var rs = new Fp256ReedSolomon(PropertyMessageDimension, PropertyBlockLength, fft, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
             rs.Interpolate(evaluations);
 
@@ -271,6 +317,7 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>Writes of_scalar(value) directly in the Montgomery working domain.</summary>
     private static void MontOfScalarInto(uint value, Span<byte> destination)
     {
         OfScalar(value).CopyTo(destination);
@@ -278,6 +325,10 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Builds and interpolates the anchor's fixed n/m-shaped polynomial and asserts every one of the
+    /// m interpolated elements matches the anchor's recorded codeword under the given label.
+    /// </summary>
     private static void AssertCodeword(string label, int n, int m)
     {
         (byte[] evaluations, _, _) = BuildAndInterpolate(n, m);
@@ -290,10 +341,14 @@ internal sealed class Fp256ReedSolomonTests
                 $"{label}[{i}] must match the reference (expected {Convert.ToHexString(expected)}, got {Convert.ToHexString(evaluations.AsSpan(i * ScalarSize, ScalarSize).ToArray())}).");
         }
     }
-
-
-    //Builds the anchor's polynomial, evaluates it at 0..n-1, and runs our interpolator over the m-length
-    //buffer. Returns the full m-element codeword.
+    /// <summary>
+    /// Builds a deterministic row and interpolates it while owning the FFT through completion:
+    /// evaluates the anchor's polynomial at <c>0..n-1</c> and runs the interpolator over the
+    /// <c>m</c>-length buffer.
+    /// </summary>
+    /// <param name="n">The systematic row count.</param>
+    /// <param name="m">The full codeword length.</param>
+    /// <returns>The full <c>m</c>-element codeword, alongside the row and codeword lengths used to build it.</returns>
     private static (byte[] Evaluations, int N, int M) BuildAndInterpolate(int n, int m)
     {
         byte[][] coefficients = BuildCoefficients(n, m);
@@ -309,7 +364,8 @@ internal sealed class Fp256ReedSolomonTests
         ParseElement(Anchors["rootx"]).CopyTo(rootOfUnity.AsSpan(0, ScalarSize));
         ParseElement(Anchors["rooty"]).CopyTo(rootOfUnity.AsSpan(ScalarSize, ScalarSize));
 
-        var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
+        using BaseMemoryPool fftPool = new();
+        using var fft = new Fp256RealFft(rootOfUnity, OmegaOrder, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, fftPool);
         using var rs = new Fp256ReedSolomon(n, m, fft, Add, Subtract, Multiply, Invert, OfScalarInto, CurveParameterSet.None, BaseMemoryPool.Shared);
         rs.Interpolate(evaluations);
 
@@ -317,7 +373,9 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
-    //The anchor's coefficient construction: M[i] = of_scalar(i*i + 42 + (m+11)*(n+22)).
+    /// <summary>
+    /// Builds the anchor's fixed coefficient set: M[i] = of_scalar(i*i + 42 + (m+11)*(n+22)).
+    /// </summary>
     private static byte[][] BuildCoefficients(int n, int m)
     {
         byte[][] coefficients = new byte[n][];
@@ -331,7 +389,10 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
-    //Horner evaluation of the monomial-basis polynomial at x (the anchor's eval_poly).
+    /// <summary>
+    /// Evaluates the monomial-basis polynomial with the given coefficients at x by Horner's method,
+    /// matching the reference's eval_poly.
+    /// </summary>
     private static byte[] EvaluatePolynomial(byte[][] coefficients, ReadOnlySpan<byte> x)
     {
         byte[] result = new byte[ScalarSize];
@@ -349,14 +410,15 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
-    //of_scalar(u) in the canonical working domain, in the engines' Action<uint, Span<byte>> shape: the
-    //integer reduced mod p as a canonical 32-byte big-endian scalar. The RS/FFT engines source their field
-    //constants through this so they stay domain-agnostic; for the canonical domain the bytes are identical
-    //to the engines' former baked OfOne/OfScalar.
+    /// <summary>
+    /// Writes of_scalar(value) in the canonical working domain, in the engines' delegate shape: the
+    /// integer reduced mod p as a canonical 32-byte big-endian scalar. The RS/FFT engines source
+    /// their field constants through this delegate so they stay domain-agnostic.
+    /// </summary>
     private static void OfScalarInto(uint value, Span<byte> destination) => OfScalar(value).CopyTo(destination);
 
 
-    //of_scalar(value): value reduced mod p as a canonical 32-byte big-endian scalar.
+    /// <summary>Computes of_scalar(value): value reduced mod p as a canonical 32-byte big-endian scalar.</summary>
     private static byte[] OfScalar(ulong value)
     {
         byte[] canonical = new byte[ScalarSize];
@@ -373,7 +435,7 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
-    //Multiplies two base-field elements and returns the product as a new 32-byte canonical scalar.
+    /// <summary>Multiplies two base-field elements and returns the product as a new 32-byte canonical scalar.</summary>
     private static byte[] FieldMultiply(byte[] a, byte[] b)
     {
         byte[] result = new byte[ScalarSize];
@@ -383,7 +445,7 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
-    //Parses a 32-byte little-endian to_bytes_field element into a 32-byte big-endian canonical scalar.
+    /// <summary>Parses a 32-byte little-endian to_bytes_field element into a 32-byte big-endian canonical scalar.</summary>
     private static byte[] ParseElement(string hex)
     {
         byte[] littleEndian = Convert.FromHexString(hex);
@@ -397,6 +459,10 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>
+    /// Reads the Fp256 Reed–Solomon anchor file and collects its <c>key=hex</c> data lines into a
+    /// dictionary, skipping the prose header lines that do not parse as pure hex.
+    /// </summary>
     private static Dictionary<string, string> LoadAnchors()
     {
         string path = $"../../../{AnchorRelativePath}";
@@ -423,6 +489,7 @@ internal sealed class Fp256ReedSolomonTests
     }
 
 
+    /// <summary>Returns whether every character in the value is a hexadecimal digit.</summary>
     private static bool IsHex(string value)
     {
         foreach(char c in value)

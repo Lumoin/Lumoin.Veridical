@@ -132,7 +132,10 @@ public static class WhirIoppVerifier
             target.CopyTo(claim);
             Span<byte> challengeBlock = RentTracked(foldingParameter * ScalarSize, pool, disposables);
             Span<byte> blockScratch = RentTracked((1 << foldingParameter) * ScalarSize, pool, disposables);
-            Span<byte> digestScratch = RentTracked(Math.Max(1, (1 << foldingParameter) / 2 * ScalarSize), pool, disposables);
+            //Sized for the widest node the Merkle surface admits, because the
+            //leaf recomputation folds at the width each authenticated root
+            //carries rather than a width fixed here.
+            Span<byte> digestScratch = RentTracked(Math.Max(1, (1 << foldingParameter) / 2 * WellKnownMerkleHashParameters.MaximumDigestSizeBytes), pool, disposables);
             Span<byte> coordinates = RentTracked(variableCount * ScalarSize, pool, disposables);
             Span<byte> queryRoot = stackalloc byte[ScalarSize];
             Span<byte> domainRoot = stackalloc byte[ScalarSize];
@@ -514,8 +517,10 @@ public static class WhirIoppVerifier
 
 
     /// <summary>
-    /// Recomputes the coset leaf digest from the revealed values and
-    /// authenticates it at the block index against the oracle's root.
+    /// Recomputes the coset leaf digest from the revealed values at the width
+    /// the root carries and authenticates it at the block index against the
+    /// oracle's root. A root wider than the Merkle surface admits is a
+    /// non-match, not a fault.
     /// </summary>
     internal static bool AuthenticateOpening(
         WhirQueryOpening opening,
@@ -524,7 +529,19 @@ public static class WhirIoppVerifier
         MerkleHashDelegate merkleHash,
         Span<byte> digestScratch)
     {
-        Span<byte> digest = stackalloc byte[ScalarSize];
+        //The root's own width is the node width the coset fold recomputes at —
+        //the data-driven stance every verifier in the library takes. A root
+        //past the Merkle surface's cap authenticates nothing the surface can
+        //walk, so it is answered as a non-match: the verification surface
+        //stays exception-safe against malformed inputs.
+        int nodeSize = root.AsReadOnlySpan().Length;
+        if(nodeSize > WellKnownMerkleHashParameters.MaximumDigestSizeBytes)
+        {
+            return false;
+        }
+
+        Span<byte> digest = stackalloc byte[WellKnownMerkleHashParameters.MaximumDigestSizeBytes];
+        digest = digest[..nodeSize];
         WhirCosetLeaf.ComputeLeafDigest(opening.BlockValues.Span, merkleHash, digest, digestScratch);
 
         return opening.Path.Verify(root, blockIndex, digest, merkleHash);

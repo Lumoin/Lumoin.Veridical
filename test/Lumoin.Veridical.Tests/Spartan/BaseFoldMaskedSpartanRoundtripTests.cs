@@ -20,7 +20,7 @@ namespace Lumoin.Veridical.Tests.Spartan;
 
 /// <summary>
 /// End-to-end round-trip tests for the masked Spartan2 construction with
-/// BaseFold as its polynomial commitment scheme (AB.5 Stage B): the masked
+/// BaseFold as its polynomial commitment scheme: the masked
 /// prover assembles a <see cref="BaseFoldMaskedSpartanProof"/> over
 /// <c>x · y = 15</c> through <c>ProveBaseFoldSound</c>, and the masked verifier
 /// accepts it through <c>VerifyBaseFoldSound</c>. Tampering a mask-opening byte and a
@@ -30,36 +30,75 @@ namespace Lumoin.Veridical.Tests.Spartan;
 /// The masked construction's zero-knowledge guarantee assumes a hiding
 /// commitment; BaseFold's Merkle commitment is binding but not hiding, so this
 /// exercises structural correctness (a sound argument of knowledge), not the
-/// witness privacy the "masked" name implies. See the BaseFold design notes.
+/// witness privacy the "masked" name implies: witness hiding requires a
+/// hiding polynomial commitment scheme, and a Merkle-tree commitment is
+/// binding without being hiding.
 /// </remarks>
 [TestClass]
 internal sealed class BaseFoldMaskedSpartanRoundtripTests
 {
+    /// <summary>The production BLAKE3 Fiat-Shamir hash delegate every transcript in this class is built from.</summary>
     private static FiatShamirHashDelegate Hash { get; } = FiatShamirBlake3Reference.GetHash();
+
+    /// <summary>The production BLAKE3 Fiat-Shamir squeeze delegate every transcript in this class draws challenges through.</summary>
     private static FiatShamirSqueezeDelegate Squeeze { get; } = FiatShamirBlake3Reference.GetSqueeze();
+
+    /// <summary>The BigInteger reference scalar-reduction delegate for the BLS12-381 scalar field.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
+
+    /// <summary>The validated BLS12-381 scalar addition delegate the masked Spartan-over-BaseFold prove/verify runs on.</summary>
     private static ScalarAddDelegate Add { get; } = TestScalarBackends.Bls12Curve381.Add;
+
+    /// <summary>The validated BLS12-381 scalar subtraction delegate the masked Spartan-over-BaseFold prove/verify runs on.</summary>
     private static ScalarSubtractDelegate Subtract { get; } = TestScalarBackends.Bls12Curve381.Subtract;
+
+    /// <summary>The validated BLS12-381 scalar multiplication delegate the masked Spartan-over-BaseFold prove/verify runs on.</summary>
     private static ScalarMultiplyDelegate Multiply { get; } = TestScalarBackends.Bls12Curve381.Multiply;
+
+    /// <summary>The validated BLS12-381 scalar inversion delegate the masked Spartan-over-BaseFold prove/verify runs on.</summary>
     private static ScalarInvertDelegate Invert { get; } = TestScalarBackends.Bls12Curve381.Invert;
+
+    /// <summary>The BigInteger reference hash-to-scalar delegate the BaseFold provider derives its challenges through.</summary>
     private static ScalarHashToScalarDelegate HashToScalar { get; } = Bls12Curve381BigIntegerScalarReference.GetHashToScalar();
+
+    /// <summary>The BigInteger reference G1 point-addition delegate for BLS12-381.</summary>
     private static G1AddDelegate G1Add { get; } = Bls12Curve381BigIntegerG1Reference.GetAdd();
+
+    /// <summary>The BigInteger reference G1 scalar-multiplication delegate for BLS12-381.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+
+    /// <summary>The validated BLS12-381 G1 multi-scalar-multiplication delegate the Spartan commitments run on.</summary>
     private static G1MultiScalarMultiplyDelegate G1Msm { get; } = TestG1Backends.Bls12Curve381Msm;
+
+    /// <summary>The BigInteger reference multilinear-extension evaluation delegate.</summary>
     private static MleEvaluateDelegate MleEvaluate { get; } = MultilinearExtensionBigIntegerReference.GetEvaluate();
+
+    /// <summary>The BigInteger reference multilinear-extension folding delegate.</summary>
     private static MleFoldDelegate MleFold { get; } = MultilinearExtensionBigIntegerReference.GetFold();
+
+    /// <summary>The two-to-one Merkle hash delegate backing the BaseFold provider, implemented with production BLAKE3 through <see cref="HashTwoToOne"/>.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The Merkle digest width the BaseFold provider and hash delegate use, taken from the library's default Merkle parameters.</summary>
     private const int DigestSizeBytes = WellKnownMerkleHashParameters.DefaultDigestSizeBytes;
+
+    /// <summary>The opened-column count the BaseFold provider uses; small enough to keep the fixture fast.</summary>
     private const int TestQueryCount = 8;
+
+    /// <summary>The Fiat-Shamir domain-separation label for this test's transcript, distinguishing it from every other transcript domain in the suite.</summary>
     private const string TranscriptDomain = "veridical.spartan2.basefold.masked.test.v1";
 
+    /// <summary>The BaseFold code seed deriving this test's provider's linear code, distinguishing it from every other test's codes.</summary>
     private static byte[] CodeSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.masked.code.v1");
+
+    /// <summary>The seed for the deterministic randomness the masked Spartan prover draws its masking scalars from.</summary>
     private static byte[] RandomSeed { get; } = Encoding.UTF8.GetBytes("veridical.spartan2.basefold.masked.rng.v1");
 
+    /// <summary>The BLS12-381 curve parameter set this test's arithmetic and commitments run over.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
 
+    /// <summary>Verifies that an honest masked BaseFold-backed Spartan proof of <c>x · y = 15</c> verifies.</summary>
     [TestMethod]
     public void XyEquals15RoundTripsThroughMaskedBaseFold()
     {
@@ -71,6 +110,7 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Verifies that flipping the last byte of an honest proof (inside the witness-opening section) makes verification reject.</summary>
     [TestMethod]
     public void TamperedWitnessOpeningIsRejected()
     {
@@ -85,6 +125,7 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Verifies that flipping the first byte of the shared sumcheck middle (right after the three roots and two mask-sum scalars) makes verification reject.</summary>
     [TestMethod]
     public void TamperedSumcheckMiddleIsRejected()
     {
@@ -100,13 +141,14 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations; the returned proof transfers to the caller.")]
+    /// <summary>Produces the test proof and releases provider storage through the owning prover.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the proving key and the key to the prover, which the using declaration releases; the key and prover constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static BaseFoldMaskedSpartanProof Prove(BaseMemoryPool pool)
     {
         using RawR1csInstance instance = BuildInstance();
         using RawR1csWitness witness = BuildWitness();
 
-        var provingKey = new SpartanProvingKey(BuildProvider());
+        var provingKey = new SpartanProvingKey(BuildProvider(pool));
         using var prover = new MaskedSpartanProver(provingKey);
         using FiatShamirTranscript transcript = FreshTranscript();
 
@@ -119,10 +161,11 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "Ownership transfers through using declarations.")]
+    /// <summary>Verifies the test proof and releases provider storage through the owning verifier.</summary>
+    [SuppressMessage("Reliability", "CA2000", Justification = "The provider's pooled storage transfers to the verifying key and the key to the verifier, which the using declaration releases; the key and verifier constructors cannot fail for a non-null argument, so no path leaves the provider unreleased.")]
     private static bool Verify(BaseFoldMaskedSpartanProof proof, BaseMemoryPool pool)
     {
-        var verifyingKey = new SpartanVerifyingKey(BuildProvider());
+        var verifyingKey = new SpartanVerifyingKey(BuildProvider(pool));
         using var verifier = new MaskedSpartanVerifier(verifyingKey);
         using RawR1csInstance instance = BuildInstance();
         using FiatShamirTranscript transcript = FreshTranscript();
@@ -133,14 +176,17 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
-    [SuppressMessage("Reliability", "CA2000", Justification = "The BaseFold provider holds no disposable key; the Spartan key that consumes it disposes it.")]
-    private static PolynomialCommitmentProvider BuildProvider()
+    /// <summary>Builds the commitment provider using the caller's pool.</summary>
+    /// <param name="pool">The pool supplied by the test.</param>
+    private static PolynomialCommitmentProvider BuildProvider(BaseMemoryPool pool)
     {
         return BaseFoldPolynomialCommitmentScheme.Create(
-            CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, DigestSizeBytes);
+            CodeSeed, Curve, TestQueryCount, Merkle, Hash, Squeeze, Reduce, Add, Subtract, Multiply, Invert, HashToScalar, pool, DigestSizeBytes);
     }
 
 
+    /// <summary>Builds the fixture circuit's public instance for <c>x · y = 15</c>: <c>z = (1, 15, x, y)</c>, two rows, four columns.</summary>
+    /// <returns>The raw R1CS instance; the caller disposes it.</returns>
     private static RawR1csInstance BuildInstance()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -166,6 +212,8 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Builds the fixture circuit's satisfying witness <c>(x, y) = (3, 5)</c>.</summary>
+    /// <returns>The raw R1CS witness; the caller disposes it.</returns>
     private static RawR1csWitness BuildWitness()
     {
         int scalarSize = Scalar.SizeBytes;
@@ -176,6 +224,8 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Creates a fresh Fiat-Shamir transcript under this test's domain label, ready to absorb a prove or verify run.</summary>
+    /// <returns>A new transcript backed by the shared pool.</returns>
     private static FiatShamirTranscript FreshTranscript()
     {
         return FiatShamirTranscript.Initialise(
@@ -187,6 +237,10 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Concatenates two digests and hashes them with production BLAKE3, the two-to-one compression the BaseFold provider's Merkle tree uses.</summary>
+    /// <param name="left">The left digest, placed first in the concatenation.</param>
+    /// <param name="right">The right digest, placed after <paramref name="left"/>.</param>
+    /// <param name="output">The buffer receiving the combined digest.</param>
     private static void HashTwoToOne(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
     {
         Span<byte> combined = stackalloc byte[2 * DigestSizeBytes];
@@ -196,6 +250,9 @@ internal sealed class BaseFoldMaskedSpartanRoundtripTests
     }
 
 
+    /// <summary>Reduces <paramref name="value"/> modulo the BLS12-381 scalar field order and writes it as a canonical big-endian scalar.</summary>
+    /// <param name="value">The integer value to reduce and encode.</param>
+    /// <param name="destination">The buffer receiving the canonical big-endian scalar; its length fixes the scalar width.</param>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

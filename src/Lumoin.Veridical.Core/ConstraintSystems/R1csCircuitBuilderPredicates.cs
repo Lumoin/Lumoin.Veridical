@@ -32,12 +32,15 @@ namespace Lumoin.Veridical.Core.ConstraintSystems;
 [SuppressMessage("Design", "CA1034", Justification = "C# extension blocks are surfaced as nested types by the analyzer but are not nested types in the language sense.")]
 public static class R1csCircuitBuilderPredicates
 {
-    //The largest bit width a range check accepts. Both wired curves have a
-    //~254-bit scalar field, so 2^253 < r and the range semantics hold without
-    //modular wraparound for any width up to this bound.
+    /// <summary>
+    /// The largest bit width a range check accepts. Both wired curves have a
+    /// ~254-bit scalar field, so <c>2^253 &lt; r</c> and the range semantics hold
+    /// without modular wraparound for any width up to this bound.
+    /// </summary>
     private const int MaximumRangeCheckBits = 253;
 
 
+    /// <summary>Predicate members added to every <see cref="R1csCircuitBuilder"/> instance: equality, boolean-ness, range, ordering, and set membership.</summary>
     extension(R1csCircuitBuilder builder)
     {
         /// <summary>
@@ -209,5 +212,10 @@ public static class R1csCircuitBuilderPredicates
     }
 
 
+    /// <summary>
+    /// The linear combination representing the field constant <c>1</c>, used as the
+    /// fixed left- or right-hand multiplicand in constraints that are really linear
+    /// equalities expressed through the builder's multiplicative constraint shape.
+    /// </summary>
     private static R1csLinearCombination One => R1csLinearCombination.FromConstant(BigInteger.One);
 }

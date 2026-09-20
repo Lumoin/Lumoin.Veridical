@@ -5,9 +5,9 @@ using System.Diagnostics;
 namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 
 /// <summary>
-/// The statistical-ZK mask side of a <see cref="BaseFoldEvaluationProof"/>
-/// (the statistical-mask design notes, §2 v3): the sum-of-univariates
-/// sumcheck mask's coefficient vector, extended by laundering filler, is
+/// The statistical-ZK mask side of a <see cref="BaseFoldEvaluationProof"/>: the
+/// sum-of-univariates sumcheck mask's coefficient vector, extended by
+/// laundering filler, is
 /// committed (salted and lifted) as <see cref="CommitmentRoot"/>; the mask sum
 /// <c>σ</c> and the filler sum <c>σ_F</c> are precommitted alongside it before
 /// the blend challenge <c>ρ</c>; and the terminal mask evaluation is bound by
@@ -24,13 +24,23 @@ namespace Lumoin.Veridical.Core.Commitments.BaseFold;
 [DebuggerDisplay("BaseFoldMaskOpening (WeightedOpening d = {WeightedOpening.Parameters.LayerCount})")]
 public sealed class BaseFoldMaskOpening: IDisposable
 {
+    /// <summary>The owned root backing <see cref="CommitmentRoot"/>, or <see langword="null"/> once disposed.</summary>
     private MerkleRoot? commitmentRoot;
+
+    /// <summary>The owned buffer backing <see cref="Sigma"/>, or <see langword="null"/> once disposed.</summary>
     private IMemoryOwner<byte>? sigma;
+
+    /// <summary>The owned buffer backing <see cref="FillerSum"/>, or <see langword="null"/> once disposed.</summary>
     private IMemoryOwner<byte>? fillerSum;
+
+    /// <summary>The owned nested proof backing <see cref="WeightedOpening"/>, or <see langword="null"/> once disposed.</summary>
     private BaseFoldEvaluationProof? weightedOpening;
-    private readonly int scalarSize;
+
+    /// <summary>The byte width of one canonical scalar, sizing the visible span of <see cref="sigma"/> and <see cref="fillerSum"/>.</summary>
+    private int ScalarSize { get; }
 
 
+    /// <summary>Wraps the mask section's already-produced parts; this instance owns all of them from construction.</summary>
     internal BaseFoldMaskOpening(
         MerkleRoot commitmentRoot,
         IMemoryOwner<byte> sigma,
@@ -41,7 +51,7 @@ public sealed class BaseFoldMaskOpening: IDisposable
         this.commitmentRoot = commitmentRoot;
         this.sigma = sigma;
         this.fillerSum = fillerSum;
-        this.scalarSize = scalarSize;
+        this.ScalarSize = scalarSize;
         this.weightedOpening = weightedOpening;
     }
 
@@ -57,7 +67,7 @@ public sealed class BaseFoldMaskOpening: IDisposable
         get
         {
             IMemoryOwner<byte> local = sigma ?? throw new ObjectDisposedException(nameof(BaseFoldMaskOpening));
-            return local.Memory.Span[..scalarSize];
+            return local.Memory.Span[..ScalarSize];
         }
     }
 
@@ -68,7 +78,7 @@ public sealed class BaseFoldMaskOpening: IDisposable
         get
         {
             IMemoryOwner<byte> local = fillerSum ?? throw new ObjectDisposedException(nameof(BaseFoldMaskOpening));
-            return local.Memory.Span[..scalarSize];
+            return local.Memory.Span[..ScalarSize];
         }
     }
 
@@ -87,7 +97,7 @@ public sealed class BaseFoldMaskOpening: IDisposable
         if(localSigma is not null)
         {
             sigma = null;
-            localSigma.Memory.Span[..scalarSize].Clear();
+            localSigma.Memory.Span[..ScalarSize].Clear();
             localSigma.Dispose();
         }
 
@@ -95,7 +105,7 @@ public sealed class BaseFoldMaskOpening: IDisposable
         if(localFillerSum is not null)
         {
             fillerSum = null;
-            localFillerSum.Memory.Span[..scalarSize].Clear();
+            localFillerSum.Memory.Span[..ScalarSize].Clear();
             localFillerSum.Dispose();
         }
 

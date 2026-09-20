@@ -18,7 +18,7 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// <para>
 /// This is the empirically <em>measurable</em> form of the zero-knowledge claim
 /// for this stack. A literal real-versus-simulated test would compare a real proof
-/// against a simulator's output (design doc §5: sample salted roots as uniform
+/// against a simulator's output (sample salted roots as uniform
 /// digests, masked round polynomials subject to the running claim, queried values
 /// uniformly, then program the random oracle at the queried leaves). That
 /// simulator needs a <em>programmable</em> Fiat-Shamir oracle; the production
@@ -40,7 +40,9 @@ namespace Lumoin.Veridical.Analysis.BaseFoldLeakage;
 /// </remarks>
 public static class BaseFoldProofWitnessIndependenceExperiment
 {
+    /// <summary>This experiment's name, reported in <see cref="BaseFoldLeakageExperimentResult.Experiment"/>.</summary>
     private const string Name = "witness-independence";
+    /// <summary>The maximum byte value, used to normalize the mean-byte metric to <c>[0, 1]</c>.</summary>
     private const int ByteScale = 255;
 
 
@@ -106,8 +108,7 @@ public static class BaseFoldProofWitnessIndependenceExperiment
     }
 
 
-    //Projects a proof to a single real-valued metric: the mean of its byte values,
-    //normalised to [0, 1]. Coarse by design (see the type remarks).
+    /// <summary>Projects a proof to a single real-valued metric: the mean of its byte values, normalized to <c>[0, 1]</c>. Coarse by design (see the type remarks).</summary>
     private static double MeanByte(byte[] proof)
     {
         long total = 0;
@@ -120,6 +121,7 @@ public static class BaseFoldProofWitnessIndependenceExperiment
     }
 
 
+    /// <summary>Disposes every scalar in <paramref name="scalars"/>.</summary>
     private static void DisposeAll(Scalar[] scalars)
     {
         foreach(Scalar scalar in scalars)

@@ -4,7 +4,7 @@ namespace Lumoin.Veridical.Longfellow;
 /// One row of the reference proof-specification registry (the google/longfellow-zk <c>kZkSpecs</c> table):
 /// the circuit-shape and Ligero-encoding constants a dual-field mdoc prove or verify is parameterized by.
 /// Every supported (version, attribute-count) pair is a pinned static instance; the upstream-pin tests
-/// assert each instance against the reference dump, so a regeneration from a different upstream state
+/// assert each instance against the reference's recorded values, so a regeneration from a different upstream state
 /// fails the suite.
 /// </summary>
 /// <remarks>
@@ -31,6 +31,17 @@ public sealed class LongfellowMdocZkSpec
     public const int SignatureMacIndex = 4;
 
 
+    /// <summary>
+    /// Creates one pinned specification row from its circuit-shape and Ligero-encoding constants, assigning
+    /// each parameter directly to the like-named property. The two static instances below are the only
+    /// callers, one per supported (version, attribute-count) pair.
+    /// </summary>
+    /// <param name="proofSpecVersion">The proof-specification version (the reference <c>ZkSpec.version</c>); selects the transcript framing.</param>
+    /// <param name="attributeCount">The number of disclosed attributes the circuit proves.</param>
+    /// <param name="hashBlockEncoded">The hash circuit's Reed-Solomon block-encoding length (the reference <c>block_enc_hash</c>).</param>
+    /// <param name="signatureBlockEncoded">The signature circuit's Reed-Solomon block-encoding length (the reference <c>block_enc_sig</c>).</param>
+    /// <param name="hashTemplateElementCount">The element count of the hash public-input template: <c>[constant-one, attribute bits, now bits]</c>.</param>
+    /// <param name="hashSubfieldBoundary">The hash prover's rebased subfield boundary: the raw circuit's <c>subfield_boundary</c> minus its <c>npub_in</c>.</param>
     private LongfellowMdocZkSpec(
         int proofSpecVersion,
         int attributeCount,

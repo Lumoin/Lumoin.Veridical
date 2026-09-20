@@ -23,6 +23,15 @@ namespace Lumoin.Veridical.Core.ConstraintSystems.Interop;
 /// reject mismatched fields with <see cref="R1csUnsupportedFieldException"/>.
 /// </param>
 /// <param name="pool">The pool the resulting witness's buffer is rented from.</param>
+/// <param name="maximumIntakeBytes">
+/// The largest number of bytes the reader admits from
+/// <paramref name="pipe"/> before rejecting the input with
+/// <see cref="R1csIntakeLimitExceededException"/>, checked as bytes
+/// accumulate rather than once the whole stream has arrived.
+/// <see cref="WellKnownR1csIntakeLimits.Unbounded"/> imposes no
+/// ceiling beyond the runtime's own addressable limit; a caller
+/// parsing untrusted input states a real budget instead.
+/// </param>
 /// <param name="cancellationToken">Cancellation for the read loop.</param>
 /// <returns>The constructed <see cref="RawR1csWitness"/>.</returns>
 public delegate RawR1csWitness R1csWitnessPipeReaderDelegate(
@@ -30,4 +39,5 @@ public delegate RawR1csWitness R1csWitnessPipeReaderDelegate(
     WellKnownR1csFormatLabel format,
     CurveParameterSet curve,
     BaseMemoryPool pool,
+    long maximumIntakeBytes,
     CancellationToken cancellationToken);

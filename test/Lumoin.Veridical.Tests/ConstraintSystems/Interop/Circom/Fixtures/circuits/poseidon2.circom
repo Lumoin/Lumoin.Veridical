@@ -3,16 +3,14 @@ pragma circom 2.0.0;
 include "circomlib/circuits/poseidon.circom";
 
 // Two-input Poseidon preimage: proves knowledge of (in[0], in[1]) whose
-// Poseidon digest is `out`. Mirrors the shape of the previously-imported
-// poseidon fixture (a circomlib Poseidon(2) two-input preimage).
+// Poseidon digest is `out`.
 //
 // The target curve is a compile-time `--prime` flag; the source is
-// curve-independent. The exact constraint and wire counts are
-// circomlib-VERSION-dependent — Poseidon's round constants are field-specific
-// and emitted by circom per `--prime`. A recompilation with a different
-// circomlib version may produce a different constraint count than the
-// historically-imported fixture's 100; the reader/satisfaction tests assert
-// PROPERTIES (parse succeeds, witness satisfies), not a frozen shape.
+// curve-independent. The exact constraint and wire counts are not
+// portable across compiler and template-library versions — Poseidon's
+// round constants are field-specific — so the reader/satisfaction tests
+// assert PROPERTIES (parse succeeds, witness satisfies), not a frozen
+// shape.
 template Poseidon2() {
     signal input in[2];
     signal output out;

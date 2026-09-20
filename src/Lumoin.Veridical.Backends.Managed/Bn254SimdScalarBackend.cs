@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Telemetry;
 using System;
+using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.Wasm;
 using System.Runtime.Intrinsics.X86;
@@ -18,7 +19,12 @@ namespace Lumoin.Veridical.Backends.Managed;
 /// <para>
 /// Capability ordering (highest to lowest): AVX-512F (8-wide), AVX2 (4-wide),
 /// AArch64 NEON (2-wide), WebAssembly PackedSimd (2-wide; mutually exclusive
-/// with the others in practice). <see cref="IsSupported"/> is the inclusive OR over the
+/// with the others in practice). The AVX-512F backend is selected only where the
+/// runtime also reports 512-bit vectors as hardware-accelerated
+/// (<see cref="Vector512.IsHardwareAccelerated"/>), because on parts whose JIT
+/// prefers 256-bit operation the 512-bit kernels can run below the AVX2 kernels;
+/// where that report is false the ordering falls through to AVX2.
+/// <see cref="IsSupported"/> is the inclusive OR over the
 /// backends' capability checks; when none are supported callers fall back to
 /// <see cref="Bn254BigIntegerScalarReference"/>, which has no SIMD requirement.
 /// </para>
@@ -41,7 +47,7 @@ internal static class Bn254SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarAddDelegate GetAdd()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetAdd();
         }
@@ -69,7 +75,7 @@ internal static class Bn254SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarSubtractDelegate GetSubtract()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetSubtract();
         }
@@ -97,7 +103,7 @@ internal static class Bn254SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarBatchAddDelegate GetBatchAdd()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetBatchAdd();
         }
@@ -125,7 +131,7 @@ internal static class Bn254SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarBatchSubtractDelegate GetBatchSubtract()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetBatchSubtract();
         }
@@ -153,7 +159,7 @@ internal static class Bn254SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarMultiplyDelegate GetMultiply()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetMultiply();
         }
@@ -181,7 +187,7 @@ internal static class Bn254SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarNegateDelegate GetNegate()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetNegate();
         }
@@ -209,7 +215,7 @@ internal static class Bn254SimdScalarBackend
     /// <exception cref="PlatformNotSupportedException">When no SIMD backend is supported on the host CPU.</exception>
     public static ScalarInvertDelegate GetInvert()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetInvert();
         }
@@ -240,7 +246,7 @@ internal static class Bn254SimdScalarBackend
     /// </summary>
     public static ScalarBatchMultiplyDelegate GetBatchMultiply()
     {
-        if(Avx512F.IsSupported)
+        if(Avx512F.IsSupported && Vector512.IsHardwareAccelerated)
         {
             return Bn254Avx512ScalarBackend.GetBatchMultiply();
         }
@@ -264,7 +270,17 @@ internal static class Bn254SimdScalarBackend
     }
 
 
-    private static void BatchMultiply(
+    /// <summary>
+    /// Serial fallback returned by the facade when no per-ISA backend is available; internal so the
+    /// test project can exercise the loop on hosts whose facade never selects it.
+    /// </summary>
+    /// <param name="leftOperandsConcatenated">Concatenated canonical left scalars.</param>
+    /// <param name="rightOperandsConcatenated">Concatenated canonical right scalars.</param>
+    /// <param name="resultsConcatenated">Destination containing exactly one scalar slot per element.</param>
+    /// <param name="count">Number of scalar products.</param>
+    /// <param name="curve">Curve identity used by the operation counter.</param>
+    /// <exception cref="ArgumentException">A buffer does not contain exactly <paramref name="count"/> scalar slots.</exception>
+    internal static void BatchMultiply(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
         Span<byte> resultsConcatenated,
@@ -293,6 +309,8 @@ internal static class Bn254SimdScalarBackend
     }
 
 
+    /// <summary>Builds the exception thrown when no per-ISA SIMD backend is supported on the host CPU.</summary>
+    /// <returns>The exception, naming the supported instruction sets and the guard to check first.</returns>
     private static PlatformNotSupportedException NoBackendAvailable() => new(
         "No SIMD scalar backend is supported on this host. AVX-512F, AVX2 (Intel/AMD x64), AArch64 NEON (ARM 64-bit), and WebAssembly PackedSimd are the supported sets. Check Bn254SimdScalarBackend.IsSupported before requesting a delegate.");
 }

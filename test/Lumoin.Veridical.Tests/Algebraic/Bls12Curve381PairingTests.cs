@@ -21,39 +21,51 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// one of these failing.
 /// </summary>
 /// <remarks>
-/// There is no external KAT here. The IETF BBS+ test vectors that
-/// arrive in batch H.5 are the external gate for the pairing
-/// implementation; until then bilinearity + non-degeneracy +
-/// Frobenius-identity are the strongest internal-consistency checks
-/// available without hand-transcribing a known-good <c>e(G1, G2)</c>
-/// hex from another implementation (a transcription gate is itself a
-/// failure mode worth avoiding).
+/// There is no external KAT at this layer. The IETF BBS+ test vectors
+/// are the external gate for the signature scheme the pairing
+/// supports; for the pairing primitive itself, bilinearity +
+/// non-degeneracy + Frobenius-identity are the strongest
+/// internal-consistency checks available without hand-transcribing a
+/// known-good <c>e(G1, G2)</c> hex from another implementation (a
+/// transcription gate is itself a failure mode worth avoiding).
 /// </remarks>
 [TestClass]
 internal sealed class Bls12Curve381PairingTests
 {
+    /// <summary>The Fp12 Frobenius endomorphism delegate under test.</summary>
     private static Fp12FrobeniusDelegate Frobenius { get; } = Bls12Curve381BigIntegerPairingReference.GetFrobenius();
+    /// <summary>The Fp12 cyclotomic-square delegate under test.</summary>
     private static Fp12CyclotomicSquareDelegate CyclotomicSquare { get; } = Bls12Curve381BigIntegerPairingReference.GetCyclotomicSquare();
+    /// <summary>The BLS12-381 optimal-Ate pairing delegate under test.</summary>
     private static PairingDelegate Pair { get; } = Bls12Curve381BigIntegerPairingReference.GetPairing();
 
+    /// <summary>The regular (non-cyclotomic) Fp12 squaring delegate, used as the ground truth <see cref="CyclotomicSquare"/> must agree with.</summary>
     private static Fp12SquareDelegate RegularSquare { get; } = Bls12Curve381BigIntegerFp12Reference.GetSquare();
 
+    /// <summary>The BLS12-381 G1 scalar multiplication delegate used to build the bilinearity test's <c>[a]G1</c>.</summary>
     private static G1ScalarMultiplyDelegate G1ScalarMul { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
+    /// <summary>The BLS12-381 G2 scalar multiplication delegate used to build the bilinearity test's <c>[a]G2</c>.</summary>
     private static G2ScalarMultiplyDelegate G2ScalarMul { get; } = Bls12Curve381BigIntegerG2Reference.GetScalarMultiply();
+    /// <summary>The BLS12-381 scalar-field reduction delegate used to reduce sampled bytes to a canonical scalar.</summary>
     private static ScalarReduceDelegate Reduce { get; } = Bls12Curve381BigIntegerScalarReference.GetReduce();
 
+    /// <summary>The BLS12-381 G1 on-curve predicate used to confirm the off-curve probes are actually off-curve.</summary>
     private static G1IsOnCurveDelegate G1IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+    /// <summary>The BLS12-381 G2 on-curve predicate used to confirm the off-curve probes are actually off-curve.</summary>
     private static G2IsOnCurveDelegate G2IsOnCurve { get; } = Bls12Curve381BigIntegerG2Reference.GetIsOnCurve();
 
+    /// <summary>The BLS12-381 base-field prime, used to reduce sampled Fp12 component bytes to canonical range.</summary>
     private static BigInteger BaseFieldPrime { get; } = Bls12Curve381BigIntegerG1Reference.BaseFieldPrime;
+    /// <summary>The byte width of one Fp12 component (an Fp element).</summary>
     private const int CompSize = WellKnownCurves.Bls12Curve381BaseFieldSizeBytes;
 
-    //CsCheck iteration count: kept very small because a full pairing
-    //takes ~500ms in BigInteger. Frobenius-only tests run with more.
+    /// <summary>The number of CsCheck samples for pairing-bilinearity property tests; kept small because a full BigInteger pairing takes about 500ms per sample.</summary>
     private const long PairingIterationCount = 3;
+    /// <summary>The number of CsCheck samples for the cheaper Frobenius-only and cyclotomic-square property tests, which can afford more samples than a full pairing.</summary>
     private const long FrobeniusIterationCount = 20;
 
 
+    /// <summary>Verifies that applying Frobenius twelve times to a random Fp12 element returns the original element, since Fp12 has characteristic p and 12 is the embedding degree; this catches a sign or value mistake in the γ-constants computed from ξ at static initialization.</summary>
     [TestMethod]
     public void FrobeniusTwelfthPowerIsIdentity()
     {
@@ -84,6 +96,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that an Fp element lifted into Fp12 (the tower embedding <c>(a,0) → ((a,0),0,0) → (((a,0),0,0),0)</c>) is fixed by Frobenius, since <c>a^p = a</c> for <c>a ∈ Fp</c>.</summary>
     [TestMethod]
     public void FrobeniusFixesFpEmbedding()
     {
@@ -98,6 +111,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that the reference's cyclotomic-square delegate agrees byte-for-byte with regular Fp12 squaring on random inputs, documenting the contract any production backend specializing cyclotomic-square must also satisfy.</summary>
     [TestMethod]
     public void CyclotomicSquareAgreesWithRegularSquare()
     {
@@ -117,6 +131,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that <c>e(G1, G2)</c> is neither the Fp12 identity nor zero, since either would make the pairing degenerate and cryptographically useless.</summary>
     [TestMethod]
     public void PairingOfGeneratorsIsNonTrivial()
     {
@@ -131,6 +146,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that <c>e(0, G2)</c> equals the Fp12 identity.</summary>
     [TestMethod]
     public void PairingWithG1IdentityIsOne()
     {
@@ -142,6 +158,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that <c>e(G1, 0)</c> equals the Fp12 identity.</summary>
     [TestMethod]
     public void PairingWithG2IdentityIsOne()
     {
@@ -153,6 +170,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that the BLS12-381 ate parameter's magnitude and sign survive hex parsing correctly. <see cref="NumberStyles.HexNumber"/> reads a literal whose leading nibble has the high bit set as a two's-complement negative number, and the ate parameter's magnitude starts with 'd' (1101), so the literal needs a leading zero nibble to parse as the intended unsigned value; without it the Miller loop would iterate 61 times instead of 63 and bilinearity would silently break.</summary>
     [TestMethod]
     public void CurveParameterHasCorrectMagnitudeAndSign()
     {
@@ -170,6 +188,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies the pairing's defining bilinearity identity <c>e([a]·G1, G2) = e(G1, [a]·G2)</c> for random scalars; a wrong line evaluation, a wrong Miller-loop iteration count, a bad final exponentiation, or a flipped twist sign would each break it.</summary>
     [TestMethod]
     public void PairingIsBilinearAcrossG1AndG2()
     {
@@ -192,6 +211,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that pairing a G1 point whose abscissa is off-curve throws rather than silently fabricating a y-coordinate via the unverified <c>a^((p+1)/4)</c> shortcut. The probe is confirmed off-curve through the reference on-curve predicate first, and the other operand is a genuine generator, so no identity short-circuit can hide the off-curve decode.</summary>
     [TestMethod]
     public void PairingRejectsOffCurveG1Point()
     {
@@ -208,6 +228,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that pairing a G2 point whose abscissa is off-curve throws, confirmed off-curve through the reference on-curve predicate first.</summary>
     [TestMethod]
     public void PairingRejectsOffCurveG2Point()
     {
@@ -219,6 +240,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Verifies that a masked G1 x-coordinate at or above the base-field prime — a non-canonical encoding — is rejected rather than silently reduced.</summary>
     [TestMethod]
     public void PairingRejectsNonCanonicalG1XCoordinate()
     {
@@ -233,6 +255,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Pairs <paramref name="p"/> and <paramref name="q"/> into a discarded scratch buffer, so a test can assert only on the thrown exception.</summary>
     private static void PairInto(byte[] p, byte[] q)
     {
         Span<byte> result = stackalloc byte[WellKnownCurves.Bls12Curve381Fp12SizeBytes];
@@ -240,6 +263,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Returns the compressed encoding of the BLS12-381 G1 generator.</summary>
     private static byte[] GeneratorG1Compressed()
     {
         using G1Point g1 = G1Point.Generator(CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
@@ -248,6 +272,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Returns the compressed encoding of the BLS12-381 G2 generator.</summary>
     private static byte[] GeneratorG2Compressed()
     {
         using G2Point g2 = G2Point.Generator(CurveParameterSet.Bls12Curve381, BaseMemoryPool.Shared);
@@ -256,6 +281,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Builds a compressed G1 encoding whose abscissa is off-curve: the first small candidate abscissa whose <c>x³ + 4</c> is a quadratic non-residue, encoded with only the compression flag set.</summary>
     private static byte[] BuildOffCurveG1()
     {
         //Scan small abscissas for the first whose x³ + 4 is a quadratic non-residue,
@@ -276,6 +302,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Builds a compressed G2 encoding whose abscissa is off the twist curve: the first small <c>x.c0</c> (with <c>x.c1 = 0</c>) that is off-curve. The layout is <c>[x.c1 : 48 bytes big-endian][x.c0 : 48 bytes big-endian]</c> with the flags in the leading c1 byte, so the trailing byte carries <c>x.c0</c>.</summary>
     private static byte[] BuildOffCurveG2()
     {
         //Scan small x.c0 with x.c1 = 0 for the first off the twist curve. Layout is
@@ -297,6 +324,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Reduces each of the twelve 48-byte Fp components of <paramref name="raw"/> to canonical range below the base-field prime and wraps the result as an <see cref="Fp12Element"/>.</summary>
     private static Fp12Element ReduceAndWrapFp12(ReadOnlySpan<byte> raw)
     {
         Span<byte> packed = stackalloc byte[WellKnownCurves.Bls12Curve381Fp12SizeBytes];
@@ -314,6 +342,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Reduces <paramref name="raw"/> to a canonical BLS12-381 scalar.</summary>
     private static Scalar ReduceToScalar(ReadOnlySpan<byte> raw)
     {
         Span<byte> bytes = stackalloc byte[Scalar.SizeBytes];
@@ -322,6 +351,7 @@ internal sealed class Bls12Curve381PairingTests
     }
 
 
+    /// <summary>Writes <paramref name="value"/> to <paramref name="destination"/> as a canonical big-endian scalar, zero-padded on the left.</summary>
     private static void WriteCanonical(BigInteger value, Span<byte> destination)
     {
         destination.Clear();

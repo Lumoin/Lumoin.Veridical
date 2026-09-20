@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Lumoin.Veridical.Core.Algebraic;
 
@@ -16,8 +17,9 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// exhausted SampleInBall stream, or a recomputed commitment hash that does not match the
 /// signature's. The reference marks its ML-DSA implementation as experimental research code that is
 /// not vetted for production; this port carries the same status.
+/// All retained byte views, including the decoded hashes, borrow this witness's storage until disposal.
 /// </remarks>
-internal sealed class LongfellowMlDsaWitness
+internal sealed class LongfellowMlDsaWitness: IDisposable
 {
     /// <summary>The largest context byte count FIPS 204 admits.</summary>
     private const int ContextByteBound = 255;
@@ -28,23 +30,53 @@ internal sealed class LongfellowMlDsaWitness
     /// <summary>The context-bound message's header width: the domain separator and the context length prefix.</summary>
     private const int BoundMessageHeaderBytes = 2;
 
+    /// <summary>The Tr bytes borrowed from this witness's storage.</summary>
+    private ReadOnlyMemory<byte> tr;
+
+    /// <summary>The CommitmentHash bytes borrowed from this witness's storage.</summary>
+    private ReadOnlyMemory<byte> commitmentHash;
+
+    /// <summary>The Mu bytes borrowed from this witness's storage.</summary>
+    private Memory<byte> mu;
+
+    /// <summary>The W1Tilde bytes borrowed from this witness's storage.</summary>
+    private Memory<byte> w1Tilde;
+
+    /// <summary>The RecomputedCommitmentHash bytes borrowed from this witness's storage.</summary>
+    private Memory<byte> recomputedCommitmentHash;
+
+    /// <summary>The JValues bytes borrowed from this witness's storage.</summary>
+    private Memory<byte> JValuesMemory { get; }
+
+    /// <summary>The Rho bytes borrowed from this witness's storage.</summary>
+    private Memory<byte> rho;
+
+    /// <summary>The Message bytes borrowed from this witness's storage.</summary>
+    private Memory<byte> message;
+
+    /// <summary>Owns every retained byte region, including the decoded key and signature hashes.</summary>
+    private LongfellowCircuitStorage Storage { get; }
+
+    /// <summary>The triangular position rows flattened in step order.</summary>
+    private Memory<byte> PositionTraceMemory { get; }
+
     /// <summary>The parameter set this witness was computed for.</summary>
     public LongfellowMlDsaParameters Parameters { get; }
 
     /// <summary>The 64-byte public-key hash (the reference's <c>tr_</c>).</summary>
-    public byte[] Tr { get; private set; } = [];
+    public ReadOnlySpan<byte> Tr => tr.Span;
 
     /// <summary>The signature's hash commitment (the reference's <c>c_tilde_</c>).</summary>
-    public byte[] CommitmentHash { get; private set; } = [];
+    public ReadOnlySpan<byte> CommitmentHash => commitmentHash.Span;
 
     /// <summary>The 64-byte message representative <c>mu = H(tr || M', 64)</c> (the reference's <c>mu_</c>).</summary>
-    public byte[] Mu { get; private set; } = [];
+    public ReadOnlySpan<byte> Mu => mu.Span;
 
     /// <summary>The packed high-bits byte string (the reference's <c>w1_tilde_</c>).</summary>
-    public byte[] W1Tilde { get; private set; } = [];
+    public ReadOnlySpan<byte> W1Tilde => w1Tilde.Span;
 
     /// <summary>The recomputed commitment hash (the reference's <c>c_prime_tilde_</c>).</summary>
-    public byte[] RecomputedCommitmentHash { get; private set; } = [];
+    public ReadOnlySpan<byte> RecomputedCommitmentHash => recomputedCommitmentHash.Span;
 
     /// <summary>The sponge witnesses of the recomputed commitment hash (the reference's <c>c_prime_tilde_bws_</c>).</summary>
     public IReadOnlyList<LongfellowSha3BlockWitness> CommitmentBlockWitnesses { get; private set; } = [];
@@ -59,13 +91,13 @@ internal sealed class LongfellowMlDsaWitness
     public LongfellowSha3BlockWitness SampleInBallBlockWitness { get; private set; } = new();
 
     /// <summary>The accepted rejection samples (the reference's <c>j_vals_</c>).</summary>
-    public byte[] JValues { get; }
+    public ReadOnlySpan<byte> JValues => JValuesMemory.Span;
 
     /// <summary>The stream index where each accepted sample was found (the reference's <c>j_k_indices_</c>).</summary>
     public ushort[] JIndices { get; }
 
-    /// <summary>The Fisher-Yates position trace (the reference's <c>position_trace_</c>): step <c>s</c> holds <c>s + 1</c> positions.</summary>
-    public byte[][] PositionTrace { get; }
+    /// <summary>The Fisher-Yates position trace (the reference's <c>position_trace_</c>): step <c>s</c> holds <c>s + 1</c> positions starting at <c>s * (s + 1) / 2</c>; borrowed until disposal.</summary>
+    public ReadOnlySpan<byte> PositionTrace => PositionTraceMemory.Span;
 
     /// <summary>The challenge polynomial in the coefficient domain (the reference's <c>c_coeffs_</c>).</summary>
     public uint[] ChallengeCoefficients { get; private set; } = [];
@@ -98,40 +130,46 @@ internal sealed class LongfellowMlDsaWitness
     public ulong[][] W1Bits { get; }
 
     /// <summary>The matrix-expansion seed (the reference's <c>rho_</c>).</summary>
-    public byte[] Rho { get; private set; } = [];
+    public ReadOnlySpan<byte> Rho => rho.Span;
 
     /// <summary>The decoded public key (the reference's <c>ref_pk_</c>).</summary>
-    public LongfellowMlDsaPublicKey PublicKey { get; private set; } = new([], [], []);
+    public LongfellowMlDsaPublicKey PublicKey { get; private set; } = new([], [], ReadOnlyMemory<byte>.Empty);
 
     /// <summary>The decoded signature (the reference's <c>ref_sig_</c>).</summary>
-    public LongfellowMlDsaSignature Signature { get; private set; } = new([], [], []);
+    public LongfellowMlDsaSignature Signature { get; private set; } = new(ReadOnlyMemory<byte>.Empty, [], []);
 
     /// <summary>The signed message (the reference's <c>msg_</c>).</summary>
-    public byte[] Message { get; private set; } = [];
+    public ReadOnlySpan<byte> Message => message.Span;
 
 
     /// <summary>Allocates the fixed-shape regions for a parameter set; <see cref="Compute"/> fills them.</summary>
     /// <param name="parameters">The parameter set.</param>
-    private LongfellowMlDsaWitness(LongfellowMlDsaParameters parameters)
+    /// <param name="pool">The caller pool, which must outlive the witness.</param>
+    private LongfellowMlDsaWitness(LongfellowMlDsaParameters parameters, BaseMemoryPool pool)
     {
-        Parameters = parameters;
-        ZBits = NewRows(parameters.ColumnCount);
-        JValues = new byte[parameters.ChallengeWeight];
-        JIndices = new ushort[parameters.ChallengeWeight];
-        PositionTrace = new byte[parameters.ChallengeWeight][];
-        for(int s = 0; s < parameters.ChallengeWeight; s++)
+        Storage = new LongfellowCircuitStorage(pool);
+        try
         {
-            PositionTrace[s] = new byte[s + 1];
-        }
+            Parameters = parameters;
+            ZBits = NewRows(parameters.ColumnCount);
+            JValuesMemory = Storage.Allocate(parameters.ChallengeWeight);
+            JIndices = new ushort[parameters.ChallengeWeight];
+            PositionTraceMemory = Storage.Allocate(checked(parameters.ChallengeWeight * (parameters.ChallengeWeight + 1) / 2));
 
-        NttZ = NewPolynomialRows(parameters.ColumnCount);
-        NttT1 = NewPolynomialRows(parameters.RowCount);
-        WPrimeApprox = NewPolynomialRows(parameters.RowCount);
-        W1 = NewSignedRows(parameters.RowCount);
-        HintAuxBits = NewRows(parameters.RowCount);
-        WPrime1 = NewSignedRows(parameters.RowCount);
-        WPrime1Bits = NewRows(parameters.RowCount);
-        W1Bits = NewRows(parameters.RowCount);
+            NttZ = NewPolynomialRows(parameters.ColumnCount);
+            NttT1 = NewPolynomialRows(parameters.RowCount);
+            WPrimeApprox = NewPolynomialRows(parameters.RowCount);
+            W1 = NewSignedRows(parameters.RowCount);
+            HintAuxBits = NewRows(parameters.RowCount);
+            WPrime1 = NewSignedRows(parameters.RowCount);
+            WPrime1Bits = NewRows(parameters.RowCount);
+            W1Bits = NewRows(parameters.RowCount);
+        }
+        catch
+        {
+            Storage.Dispose();
+            throw;
+        }
     }
 
 
@@ -162,13 +200,15 @@ internal sealed class LongfellowMlDsaWitness
     /// <param name="signature">The encoded signature.</param>
     /// <param name="message">The signed message.</param>
     /// <param name="context">The signing context, at most 255 bytes.</param>
-    /// <returns>The computed witness, or <see langword="null"/> exactly where the reference returns false.</returns>
+    /// <param name="pool">The caller pool, which must outlive the returned witness and every borrowed view.</param>
+    /// <returns>The caller-owned disposable witness, or <see langword="null"/> exactly where the reference returns false.</returns>
     public static LongfellowMlDsaWitness? Compute(
         LongfellowMlDsaParameters parameters,
         ReadOnlySpan<byte> publicKey,
         ReadOnlySpan<byte> signature,
         ReadOnlySpan<byte> message,
-        ReadOnlySpan<byte> context)
+        ReadOnlySpan<byte> context,
+        BaseMemoryPool pool)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
@@ -177,210 +217,225 @@ internal sealed class LongfellowMlDsaWitness
             return null;
         }
 
-        var witness = new LongfellowMlDsaWitness(parameters);
+        LongfellowMlDsaWitness? witness = new(parameters, pool);
 
-        LongfellowMlDsaPublicKey decodedKey = LongfellowMlDsaReference.PublicKeyDecode(parameters, publicKey);
-        witness.PublicKey = decodedKey;
-        witness.Rho = publicKey[..32].ToArray();
-        witness.Tr = decodedKey.Tr;
-
-        LongfellowMlDsaSignature? decodedSignature = LongfellowMlDsaReference.SignatureDecode(parameters, signature);
-        if(decodedSignature is null)
+        try
         {
-            return null;
-        }
+            LongfellowMlDsaPublicKey decodedKey = LongfellowMlDsaReference.PublicKeyDecode(parameters, publicKey, pool, witness.Storage);
+            witness.PublicKey = decodedKey;
+            witness.rho = witness.Storage.Copy(publicKey[..32]);
+            witness.tr = decodedKey.Tr;
 
-        witness.Signature = decodedSignature;
-        witness.CommitmentHash = decodedSignature.CommitmentHash;
-        witness.Message = message.ToArray();
-
-        ulong hintSum = 0;
-        for(int i = 0; i < parameters.RowCount; i++)
-        {
-            for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
+            LongfellowMlDsaSignature? decodedSignature = LongfellowMlDsaReference.SignatureDecode(parameters, signature, witness.Storage);
+            if(decodedSignature is null)
             {
-                if(decodedSignature.Hints[i][k])
-                {
-                    hintSum++;
-                }
-            }
-        }
-
-        witness.HintSum = hintSum;
-
-        for(int i = 0; i < parameters.ColumnCount; i++)
-        {
-            uint[] zRow = decodedSignature.Z[i];
-            for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
-            {
-                int value = (int)zRow[j];
-                if(value > (int)LongfellowMlDsaParameters.Modulus / 2)
-                {
-                    value -= (int)LongfellowMlDsaParameters.Modulus;
-                }
-
-                int bound = (int)(parameters.MaskingBound - parameters.RejectionBound);
-                int shifted = value + bound - 1;
-                witness.ZBits[i][j] = (ulong)shifted;
+                return null;
             }
 
-            zRow.CopyTo(witness.NttZ[i], 0);
-            LongfellowMlDsaReference.NumberTheoreticTransform(witness.NttZ[i]);
-        }
+            witness.Signature = decodedSignature;
+            witness.commitmentHash = decodedSignature.CommitmentHash;
+            witness.message = message.IsEmpty ? Memory<byte>.Empty : witness.Storage.Copy(message);
 
-        witness.ChallengeCoefficients = LongfellowMlDsaReference.SampleInBall(parameters, decodedSignature.CommitmentHash);
-        witness.NttC = (uint[])witness.ChallengeCoefficients.Clone();
-        LongfellowMlDsaReference.NumberTheoreticTransform(witness.NttC);
-
-        IReadOnlyList<LongfellowSha3BlockWitness> shakeWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(
-            decodedSignature.CommitmentHash, LongfellowMlDsaReference.SampleInBallHashBytes);
-        witness.SampleInBallBlockWitness = shakeWitnesses[0];
-
-        Span<byte> sampleStream = stackalloc byte[LongfellowMlDsaReference.SampleInBallHashBytes];
-        LongfellowSha3Witness.Shake256Hash(decodedSignature.CommitmentHash, sampleStream);
-
-        int count = 0;
-        int streamIndex = LongfellowMlDsaReference.SampleInBallStreamStart;
-        for(int i = LongfellowMlDsaParameters.CoefficientCount - parameters.ChallengeWeight; i < LongfellowMlDsaParameters.CoefficientCount; i++)
-        {
-            byte j;
-            do
+            ulong hintSum = 0;
+            for(int i = 0; i < parameters.RowCount; i++)
             {
-                //The reference documents the same small completeness error: when 136 bytes cannot
-                //supply the samples, witness generation fails rather than resqueezing.
-                if(streamIndex >= sampleStream.Length)
+                for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
                 {
-                    return null;
-                }
-
-                j = sampleStream[streamIndex++];
-            }
-            while(j > i);
-
-            witness.JValues[count] = j;
-            witness.JIndices[count] = (ushort)(streamIndex - 1);
-            count++;
-        }
-
-        var currentPositions = new List<byte>(parameters.ChallengeWeight);
-        for(int s = 0; s < parameters.ChallengeWeight; s++)
-        {
-            byte j = witness.JValues[s];
-            byte i = (byte)(LongfellowMlDsaParameters.CoefficientCount - parameters.ChallengeWeight + s);
-
-            for(int p = 0; p < currentPositions.Count; p++)
-            {
-                if(currentPositions[p] == j)
-                {
-                    currentPositions[p] = i;
-
-                    break;
+                    if(decodedSignature.Hints[i][k])
+                    {
+                        hintSum++;
+                    }
                 }
             }
 
-            currentPositions.Add(j);
-            for(int p = 0; p <= s; p++)
-            {
-                witness.PositionTrace[s][p] = currentPositions[p];
-            }
-        }
+            witness.HintSum = hintSum;
 
-        uint scaleFactor = 1u << LongfellowMlDsaParameters.DroppedBits;
-        for(int i = 0; i < parameters.RowCount; i++)
-        {
-            for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
+            for(int i = 0; i < parameters.ColumnCount; i++)
             {
-                witness.NttT1[i][j] = LongfellowMlDsaReference.MultiplyModQ(decodedKey.T1[i][j], scaleFactor);
-            }
-
-            LongfellowMlDsaReference.NumberTheoreticTransform(witness.NttT1[i]);
-        }
-
-        for(int i = 0; i < parameters.RowCount; i++)
-        {
-            for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
-            {
-                uint az = 0;
-                for(int j = 0; j < parameters.ColumnCount; j++)
+                uint[] zRow = decodedSignature.Z[i];
+                for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
                 {
-                    az = LongfellowMlDsaReference.AddModQ(az, LongfellowMlDsaReference.MultiplyModQ(decodedKey.MatrixA[i][j][k], witness.NttZ[j][k]));
+                    int value = (int)zRow[j];
+                    if(value > (int)LongfellowMlDsaParameters.Modulus / 2)
+                    {
+                        value -= (int)LongfellowMlDsaParameters.Modulus;
+                    }
+
+                    int bound = (int)(parameters.MaskingBound - parameters.RejectionBound);
+                    int shifted = value + bound - 1;
+                    witness.ZBits[i][j] = (ulong)shifted;
                 }
 
-                uint ct1 = LongfellowMlDsaReference.MultiplyModQ(witness.NttC[k], witness.NttT1[i][k]);
-                witness.WPrimeApprox[i][k] = LongfellowMlDsaReference.SubtractModQ(az, ct1);
+                zRow.CopyTo(witness.NttZ[i], 0);
+                LongfellowMlDsaReference.NumberTheoreticTransform(witness.NttZ[i]);
             }
 
-            LongfellowMlDsaReference.InverseNumberTheoreticTransform(witness.WPrimeApprox[i]);
-        }
+            witness.ChallengeCoefficients = LongfellowMlDsaReference.SampleInBall(parameters, decodedSignature.CommitmentHash.Span);
+            witness.NttC = (uint[])witness.ChallengeCoefficients.Clone();
+            LongfellowMlDsaReference.NumberTheoreticTransform(witness.NttC);
 
-        for(int i = 0; i < parameters.RowCount; i++)
-        {
-            for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
+            IReadOnlyList<LongfellowSha3BlockWitness> shakeWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(
+                decodedSignature.CommitmentHash.Span, LongfellowMlDsaReference.SampleInBallHashBytes);
+            witness.SampleInBallBlockWitness = shakeWitnesses[0];
+
+            Span<byte> sampleStream = stackalloc byte[LongfellowMlDsaReference.SampleInBallHashBytes];
+            LongfellowSha3Witness.Shake256Hash(decodedSignature.CommitmentHash.Span, sampleStream);
+
+            int count = 0;
+            int streamIndex = LongfellowMlDsaReference.SampleInBallStreamStart;
+            for(int i = LongfellowMlDsaParameters.CoefficientCount - parameters.ChallengeWeight; i < LongfellowMlDsaParameters.CoefficientCount; i++)
             {
-                int value = (int)witness.WPrimeApprox[i][k];
-                (int highPart, _) = LongfellowMlDsaReference.Decompose(parameters, value);
+                byte j;
+                do
+                {
+                    //The reference documents the same small completeness error: when 136 bytes cannot
+                    //supply the samples, witness generation fails rather than resqueezing.
+                    if(streamIndex >= sampleStream.Length)
+                    {
+                        return null;
+                    }
 
-                bool hintBit = decodedSignature.Hints[i][k];
-                witness.WPrime1[i][k] = (int)LongfellowMlDsaReference.UseHint(parameters, hintBit, value);
-                witness.W1[i][k] = highPart;
+                    j = sampleStream[streamIndex++];
+                }
+                while(j > i);
 
-                long gamma2 = parameters.RoundingRange;
-                long delta = value - (highPart * 2L * gamma2);
-                delta = SymmetricReduce(delta);
-
-                ulong shiftedRemainder = (ulong)(delta + gamma2);
-                ulong signBit = delta > 0 ? 0UL : 1UL;
-
-                ulong auxBits = shiftedRemainder | (signBit << parameters.LowBitsWidth);
-                witness.HintAuxBits[i][k] = NormalizeModQ((long)auxBits);
-
-                witness.WPrime1Bits[i][k] = NormalizeModQ(witness.WPrime1[i][k]);
-                witness.W1Bits[i][k] = NormalizeModQ(witness.W1[i][k]);
+                witness.JValuesMemory.Span[count] = j;
+                witness.JIndices[count] = (ushort)(streamIndex - 1);
+                count++;
             }
-        }
 
-        var highBits = new uint[parameters.RowCount][];
-        for(int i = 0; i < parameters.RowCount; i++)
-        {
-            highBits[i] = new uint[LongfellowMlDsaParameters.CoefficientCount];
-            for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
+            var currentPositions = new List<byte>(parameters.ChallengeWeight);
+            for(int s = 0; s < parameters.ChallengeWeight; s++)
             {
-                highBits[i][j] = (uint)witness.WPrime1[i][j];
+                byte j = witness.JValues[s];
+                byte i = (byte)(LongfellowMlDsaParameters.CoefficientCount - parameters.ChallengeWeight + s);
+
+                for(int p = 0; p < currentPositions.Count; p++)
+                {
+                    if(currentPositions[p] == j)
+                    {
+                        currentPositions[p] = i;
+
+                        break;
+                    }
+                }
+
+                currentPositions.Add(j);
+                for(int p = 0; p <= s; p++)
+                {
+                    witness.PositionTraceMemory.Span[((s * (s + 1)) / 2) + p] = currentPositions[p];
+                }
             }
+
+            uint scaleFactor = 1u << LongfellowMlDsaParameters.DroppedBits;
+            for(int i = 0; i < parameters.RowCount; i++)
+            {
+                for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
+                {
+                    witness.NttT1[i][j] = LongfellowMlDsaReference.MultiplyModQ(decodedKey.T1[i][j], scaleFactor);
+                }
+
+                LongfellowMlDsaReference.NumberTheoreticTransform(witness.NttT1[i]);
+            }
+
+            for(int i = 0; i < parameters.RowCount; i++)
+            {
+                for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
+                {
+                    uint az = 0;
+                    for(int j = 0; j < parameters.ColumnCount; j++)
+                    {
+                        az = LongfellowMlDsaReference.AddModQ(az, LongfellowMlDsaReference.MultiplyModQ(decodedKey.MatrixA[i][j][k], witness.NttZ[j][k]));
+                    }
+
+                    uint ct1 = LongfellowMlDsaReference.MultiplyModQ(witness.NttC[k], witness.NttT1[i][k]);
+                    witness.WPrimeApprox[i][k] = LongfellowMlDsaReference.SubtractModQ(az, ct1);
+                }
+
+                LongfellowMlDsaReference.InverseNumberTheoreticTransform(witness.WPrimeApprox[i]);
+            }
+
+            for(int i = 0; i < parameters.RowCount; i++)
+            {
+                for(int k = 0; k < LongfellowMlDsaParameters.CoefficientCount; k++)
+                {
+                    int value = (int)witness.WPrimeApprox[i][k];
+                    (int highPart, _) = LongfellowMlDsaReference.Decompose(parameters, value);
+
+                    bool hintBit = decodedSignature.Hints[i][k];
+                    witness.WPrime1[i][k] = (int)LongfellowMlDsaReference.UseHint(parameters, hintBit, value);
+                    witness.W1[i][k] = highPart;
+
+                    long gamma2 = parameters.RoundingRange;
+                    long delta = value - (highPart * 2L * gamma2);
+                    delta = SymmetricReduce(delta);
+
+                    ulong shiftedRemainder = (ulong)(delta + gamma2);
+                    ulong signBit = delta > 0 ? 0UL : 1UL;
+
+                    ulong auxBits = shiftedRemainder | (signBit << parameters.LowBitsWidth);
+                    witness.HintAuxBits[i][k] = NormalizeModQ((long)auxBits);
+
+                    witness.WPrime1Bits[i][k] = NormalizeModQ(witness.WPrime1[i][k]);
+                    witness.W1Bits[i][k] = NormalizeModQ(witness.W1[i][k]);
+                }
+            }
+
+            var highBits = new uint[parameters.RowCount][];
+            for(int i = 0; i < parameters.RowCount; i++)
+            {
+                highBits[i] = new uint[LongfellowMlDsaParameters.CoefficientCount];
+                for(int j = 0; j < LongfellowMlDsaParameters.CoefficientCount; j++)
+                {
+                    highBits[i][j] = (uint)witness.WPrime1[i][j];
+                }
+            }
+
+            witness.w1Tilde = witness.Storage.Allocate(checked(parameters.RowCount * parameters.HighBitsBytes));
+            LongfellowMlDsaReference.W1Encode(parameters, highBits, witness.w1Tilde.Span);
+
+            int muInputLength = checked(witness.Tr.Length + BoundMessageHeaderBytes + context.Length + message.Length);
+            using IMemoryOwner<byte> muInputOwner = pool.Rent(muInputLength);
+            Span<byte> muInput = muInputOwner.Memory.Span[..muInputLength];
+            int muCursor = 0;
+            witness.Tr.CopyTo(muInput[muCursor..]);
+            muCursor += witness.Tr.Length;
+            muInput[muCursor++] = PureDomainSeparator;
+            muInput[muCursor++] = (byte)context.Length;
+            context.CopyTo(muInput[muCursor..]);
+            muCursor += context.Length;
+            message.CopyTo(muInput[muCursor..]);
+
+            Memory<byte> mu = witness.Storage.Allocate(LongfellowMlDsaReference.PublicKeyHashBytes);
+            LongfellowSha3Witness.Shake256Hash(muInput, mu.Span);
+            witness.mu = mu;
+
+            int commitmentInputLength = checked(mu.Length + witness.W1Tilde.Length);
+            using IMemoryOwner<byte> commitmentInputOwner = pool.Rent(commitmentInputLength);
+            Span<byte> commitmentInput = commitmentInputOwner.Memory.Span[..commitmentInputLength];
+            mu.Span.CopyTo(commitmentInput);
+            witness.W1Tilde.CopyTo(commitmentInput[mu.Length..]);
+
+            Memory<byte> recomputedCommitment = witness.Storage.Allocate(parameters.CommitmentBytes);
+            LongfellowSha3Witness.Shake256Hash(commitmentInput, recomputedCommitment.Span);
+            witness.recomputedCommitmentHash = recomputedCommitment;
+
+            witness.CommitmentBlockWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(commitmentInput, parameters.CommitmentBytes);
+
+            if(!recomputedCommitment.Span.SequenceEqual(witness.CommitmentHash))
+            {
+                return null;
+            }
+
+            LongfellowMlDsaWitness result = witness;
+            witness = null;
+
+            return result;
         }
-
-        witness.W1Tilde = LongfellowMlDsaReference.W1Encode(parameters, highBits);
-
-        var muInput = new byte[witness.Tr.Length + BoundMessageHeaderBytes + context.Length + message.Length];
-        int muCursor = 0;
-        witness.Tr.CopyTo(muInput.AsSpan(muCursor));
-        muCursor += witness.Tr.Length;
-        muInput[muCursor++] = PureDomainSeparator;
-        muInput[muCursor++] = (byte)context.Length;
-        context.CopyTo(muInput.AsSpan(muCursor));
-        muCursor += context.Length;
-        message.CopyTo(muInput.AsSpan(muCursor));
-
-        var mu = new byte[LongfellowMlDsaReference.PublicKeyHashBytes];
-        LongfellowSha3Witness.Shake256Hash(muInput, mu);
-        witness.Mu = mu;
-
-        var commitmentInput = new byte[mu.Length + witness.W1Tilde.Length];
-        mu.CopyTo(commitmentInput.AsSpan(0));
-        witness.W1Tilde.CopyTo(commitmentInput.AsSpan(mu.Length));
-
-        var recomputedCommitment = new byte[parameters.CommitmentBytes];
-        LongfellowSha3Witness.Shake256Hash(commitmentInput, recomputedCommitment);
-        witness.RecomputedCommitmentHash = recomputedCommitment;
-
-        witness.CommitmentBlockWitnesses = LongfellowSha3Witness.ComputeWitnessShake256(commitmentInput, parameters.CommitmentBytes);
-
-        if(!recomputedCommitment.AsSpan().SequenceEqual(witness.CommitmentHash))
+        finally
         {
-            return null;
+            witness?.Dispose();
         }
-
-        return witness;
     }
 
 
@@ -473,7 +528,7 @@ internal sealed class LongfellowMlDsaWitness
         {
             for(int k = 0; k <= s; k++)
             {
-                WriteBits(field, destination, ref cursor, PositionTrace[s][k], LongfellowLogic.BitWidth8);
+                WriteBits(field, destination, ref cursor, PositionTrace[((s * (s + 1)) / 2) + k], LongfellowLogic.BitWidth8);
             }
         }
 
@@ -552,7 +607,7 @@ internal sealed class LongfellowMlDsaWitness
     /// <param name="value">The scalar to embed.</param>
     private static void WriteElement(LongfellowLogicFieldOperations field, Span<byte> destination, ref int cursor, ulong value)
     {
-        field.OfScalar(value).Span.CopyTo(destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
+        field.OfScalar(value, destination.Slice(cursor * Scalar.SizeBytes, Scalar.SizeBytes));
         cursor++;
     }
 
@@ -631,5 +686,12 @@ internal sealed class LongfellowMlDsaWitness
         }
 
         return rows;
+    }
+
+
+    /// <summary>Clears and releases all retained byte storage. Repeated disposal has no effect.</summary>
+    public void Dispose()
+    {
+        Storage.Dispose();
     }
 }

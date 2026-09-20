@@ -20,41 +20,65 @@ namespace Lumoin.Veridical.Tests.Gkr;
 /// masked-quotient publication (see <see cref="GkrCrossFieldMacSupport"/>). The fold-map parity
 /// simulation is gated directly against the carry-less backend before any proof trusts it. The
 /// reference's canonicity (vlt) check is deliberately absent: the bits ARE the message on both
-/// sides; canonicity matters only when recomposing bits into a unique field element, which is
-/// the separately-solved LF.5 problem.
+/// sides; canonicity matters only when recomposing bits into a unique field element, which the
+/// ECDSA verifier's <c>e·G</c> ladder scalar in the digest-plus-ECDSA binding
+/// (<see cref="GkrMdocEcdsaTests"/>) solves separately.
 /// </summary>
 [TestClass]
 internal sealed class GkrCrossFieldMacTests
 {
+    /// <summary>The byte width of one GF(2^128) scalar.</summary>
     private const int ScalarSize = GkrCrossFieldMacSupport.ScalarSize;
+
+    /// <summary>The bit width of one half of a split MAC value.</summary>
     private const int HalfBits = GkrCrossFieldMacSupport.HalfBits;
+
+    /// <summary>The number of halves a MAC value is split into.</summary>
     private const int Halves = GkrCrossFieldMacSupport.Halves;
+
+    /// <summary>The byte width of the combined Fp witness that carries the MAC region.</summary>
     private const int FpWitnessBytes = GkrCrossFieldMacSupport.FpWitnessBytes;
 
+    /// <summary>The Reed-Solomon code rate's inverse used by the test Ligero parameters.</summary>
     private const int InverseRate = 4;
+
+    /// <summary>The number of columns the Ligero verifier opens per proof.</summary>
     private const int OpenedColumns = 4;
+
+    /// <summary>The Ligero block size shared by the Fp and GF parameter sets.</summary>
     private const int Block = 64;
 
+    /// <summary>The Fiat-Shamir domain label that scopes every transcript this file builds.</summary>
     private static FiatShamirDomainLabel Domain { get; } = new("veridical.gkr.crossmac.test");
 
+    /// <summary>The Fiat-Shamir label under which the Fp proving seed is squeezed from the shared transcript.</summary>
     private static FiatShamirOperationLabel FpSeedLabel { get; } = new("veridical.gkr.crossmac.fp.seed");
 
+    /// <summary>The fixed seed for the Fp commitment's deterministic randomness source.</summary>
     private static byte[] FpRandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.crossmac.fp.rng.v1");
 
+    /// <summary>The fixed seed for the GF commitment's deterministic randomness source.</summary>
     private static byte[] GfRandomnessSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.crossmac.gf.rng.v1");
 
+    /// <summary>The fixed seed for the Fp witness's masking randomness.</summary>
     private static byte[] MaskSeed { get; } = System.Text.Encoding.UTF8.GetBytes("veridical.gkr.crossmac.mask.v1");
 
+    /// <summary>The two fixed MAC key shares the tests combine into the verifier's probe key.</summary>
     private static byte[][] KeyShares { get; } =
     [
         GkrCrossFieldMacSupport.Element(0x0123456789abcdefUL, 0x0fedcba987654321UL),
         GkrCrossFieldMacSupport.Element(0xdeadbeefcafebabeUL, 0x13579bdf2468ace0UL),
     ];
 
-    //The 256-bit value bound across the two fields: a real digest.
+    /// <summary>The 256-bit value bound across the two fields: a real digest.</summary>
     private static byte[] Value { get; } = SHA256.HashData("abc"u8);
 
 
+    /// <summary>
+    /// Verifies that the fold-map parity simulation's per-bit mac simulation matches the native
+    /// carry-less multiplication, across several verifier keys including degenerate ones, for
+    /// every bit of every half.
+    /// </summary>
     [TestMethod]
     public void TheFoldedParitySimulationMatchesTheCarrylessBackend()
     {
@@ -89,6 +113,10 @@ internal sealed class GkrCrossFieldMacTests
     }
 
 
+    /// <summary>
+    /// Verifies end to end that the cross-field MAC binds independent Fp and GF commitments of the
+    /// same digest: a genuine proof pair verifies, and a mac differing by one byte is rejected.
+    /// </summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void TheCrossFieldMacBindsTheTwoCommitments()
@@ -122,6 +150,12 @@ internal sealed class GkrCrossFieldMacTests
     }
 
 
+    /// <summary>
+    /// Verifies that proving fails when the Fp side commits a value one bit different from the
+    /// value the GF side (and hence the macs) actually reflects, because the Fp integer column sum
+    /// for some mac bit then has the wrong parity, leaving no masked quotient that satisfies the
+    /// parity constraint.
+    /// </summary>
     [TestMethod]
     [TestCategory(TestCategories.Slow)]
     public void AFpCommitmentOfADifferentValueIsUnprovable()
@@ -148,9 +182,11 @@ internal sealed class GkrCrossFieldMacTests
     }
 
 
-    //The full prover protocol: commit Fp, commit GF (both roots into the shared transcript),
-    //squeeze the verifier key, compute the macs from the GF-side value, prove the GF instance,
-    //then prove the Fp parity statement under a transcript-derived seed.
+    /// <summary>
+    /// Runs the full prover protocol: commits Fp, commits GF with both roots into the shared
+    /// transcript, squeezes the verifier key, computes the macs from the GF-side value, proves the
+    /// GF instance, then proves the Fp parity statement under a transcript-derived seed.
+    /// </summary>
     private static (LigeroProof FpProof, GkrCommittedProof GfProof) ProveCrossField(
         ReadOnlySpan<byte> fpWitness,
         ReadOnlySpan<byte> gfWitness,
@@ -217,7 +253,7 @@ internal sealed class GkrCrossFieldMacTests
     }
 
 
-    //The full verifier protocol, mirroring the prover's transcript order exactly.
+    /// <summary>Runs the full verifier protocol, mirroring the prover's transcript order exactly.</summary>
     private static bool VerifyCrossField(LigeroProof fpProof, GkrCommittedProof gfProof, ReadOnlySpan<byte> macs, ulong[] maskedQuotients)
     {
         LigeroQuadraticConstraint[] fpQuadratics = GkrCrossFieldMacSupport.BuildFpQuadratics();
@@ -262,8 +298,10 @@ internal sealed class GkrCrossFieldMacTests
     }
 
 
-    //The integer column sums of one half, from the canonical value and key shares — the
-    //oracle-side computation.
+    /// <summary>
+    /// Computes the integer column sums of one half, from the canonical value and key shares, as
+    /// the oracle-side computation the folded parity simulation is checked against.
+    /// </summary>
     private static long[] IntegerColumnSums(int half, ReadOnlySpan<byte> verifierKey)
     {
         long[] sums = new long[HalfBits];
@@ -293,6 +331,7 @@ internal sealed class GkrCrossFieldMacTests
     }
 
 
+    /// <summary>Builds a fresh Fiat-Shamir transcript scoped to this file's fixed domain and seed.</summary>
     private static FiatShamirTranscript NewTranscript() =>
         GkrGf2kTestSupport.NewTranscript(Domain, "veridical.gkr.crossmac.seed"u8, []);
 }

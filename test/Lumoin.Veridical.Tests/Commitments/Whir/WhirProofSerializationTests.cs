@@ -12,7 +12,7 @@ using System.Buffers;
 namespace Lumoin.Veridical.Tests.Commitments.Whir;
 
 /// <summary>
-/// Tests for the WHIR proof wire codec (4.2 phase B): a serialize →
+/// Tests for the WHIR proof wire codec: a serialize →
 /// deserialize round-trip that still verifies, the exact schedule-derived
 /// length, and the reader funnel's rejections — a truncated buffer, a
 /// non-canonical out-of-domain reply, final-polynomial element and opening
@@ -62,7 +62,11 @@ internal sealed class WhirProofSerializationTests
     /// <summary>The two-to-one Merkle compression over BLAKE3.</summary>
     private static MerkleHashDelegate Merkle { get; } = HashTwoToOne;
 
+    /// <summary>The compression paired with the node width it produces.</summary>
+    private static MerkleCommitmentParameters TreeParameters { get; } = new(Merkle, WellKnownMerkleHashParameters.DefaultDigestSizeBytes);
 
+
+    /// <summary>Verifies that an honest proof's serialized bytes are exactly the schedule-derived length and deserialize back into a proof that still verifies.</summary>
     [TestMethod]
     public void SerializedProofRoundTripsAndVerifies()
     {
@@ -100,6 +104,7 @@ internal sealed class WhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that a proof buffer one byte short of the schedule-derived length is refused by the exact-length check.</summary>
     [TestMethod]
     public void TruncatedBytesAreRejected()
     {
@@ -117,12 +122,10 @@ internal sealed class WhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that overwriting the first out-of-domain reply (which sits after the oracle roots and round polynomials) with an all-ones, non-canonical encoding is refused at the reader funnel.</summary>
     [TestMethod]
     public void NonCanonicalOutOfDomainReplyIsRejected()
     {
-        //The out-of-domain replies sit after the oracle roots and the round
-        //polynomials; overwriting one with all-ones bytes encodes an integer
-        //above both wired scalar orders.
         WhirParameterSchedule schedule = CreateFastSchedule();
         int replyOffset = RootsSectionBytes(schedule) + RoundPolynomialSectionBytes(schedule);
 
@@ -130,6 +133,7 @@ internal sealed class WhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that overwriting the first final-polynomial element with an all-ones, non-canonical encoding is refused at the reader funnel.</summary>
     [TestMethod]
     public void NonCanonicalFinalPolynomialIsRejected()
     {
@@ -142,6 +146,7 @@ internal sealed class WhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that overwriting the first opening block value with an all-ones, non-canonical encoding is refused at the reader funnel.</summary>
     [TestMethod]
     public void NonCanonicalOpeningBlockIsRejected()
     {
@@ -155,6 +160,7 @@ internal sealed class WhirProofSerializationTests
     }
 
 
+    /// <summary>Verifies that computing a serialized length with a non-positive or above-cap digest size is refused.</summary>
     [TestMethod]
     public void DigestSizeCapsAreEnforced()
     {
@@ -219,9 +225,14 @@ internal sealed class WhirProofSerializationTests
     /// </summary>
     private sealed class ProofRun: IDisposable
     {
-        private readonly IMemoryOwner<byte> statementOwner;
-        private readonly int messageBytes;
-        private readonly int pointBytes;
+        /// <summary>The rented buffer backing every statement section.</summary>
+        private IMemoryOwner<byte> StatementOwner { get; }
+
+        /// <summary>The byte length of the coefficient section.</summary>
+        private int MessageBytes { get; }
+
+        /// <summary>The byte length of the constraint-point section.</summary>
+        private int PointBytes { get; }
 
         /// <summary>The proof under test.</summary>
         public WhirIoppProof Proof { get; }
@@ -230,21 +241,21 @@ internal sealed class WhirProofSerializationTests
         public MerkleRoot Commitment { get; }
 
         /// <summary>The single constraint's scale, one element.</summary>
-        public ReadOnlySpan<byte> ConstraintCoefficients => statementOwner.Memory.Span.Slice(messageBytes, ScalarSize);
+        public ReadOnlySpan<byte> ConstraintCoefficients => StatementOwner.Memory.Span.Slice(MessageBytes, ScalarSize);
 
         /// <summary>The single constraint's point coordinates.</summary>
-        public ReadOnlySpan<byte> ConstraintPoints => statementOwner.Memory.Span.Slice(messageBytes + ScalarSize, pointBytes);
+        public ReadOnlySpan<byte> ConstraintPoints => StatementOwner.Memory.Span.Slice(MessageBytes + ScalarSize, PointBytes);
 
         /// <summary>The honestly evaluated target <c>σ</c>, one element.</summary>
-        public ReadOnlySpan<byte> Target => statementOwner.Memory.Span.Slice(messageBytes + ScalarSize + pointBytes, ScalarSize);
+        public ReadOnlySpan<byte> Target => StatementOwner.Memory.Span.Slice(MessageBytes + ScalarSize + PointBytes, ScalarSize);
 
 
         /// <summary>Wraps the run's parts; the run takes ownership.</summary>
         private ProofRun(IMemoryOwner<byte> statementOwner, int messageBytes, int pointBytes, WhirIoppProof proof, MerkleRoot commitment)
         {
-            this.statementOwner = statementOwner;
-            this.messageBytes = messageBytes;
-            this.pointBytes = pointBytes;
+            this.StatementOwner = statementOwner;
+            this.MessageBytes = messageBytes;
+            this.PointBytes = pointBytes;
             Proof = proof;
             Commitment = commitment;
         }
@@ -276,7 +287,7 @@ internal sealed class WhirProofSerializationTests
 
                 using FiatShamirTranscript proverTranscript = NewTranscript();
                 (WhirIoppProof proof, MerkleRoot commitment) = WhirIoppProver.Prove(
-                    schedule, coefficients, scale, point, target, proverTranscript, Merkle, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
+                    schedule, coefficients, scale, point, target, proverTranscript, TreeParameters, Hash, Squeeze, Bls.Reduce, Bls.Add, Bls.Subtract, Bls.Multiply, pool);
 
                 return new ProofRun(owner, messageBytes, pointBytes, proof, commitment);
             }
@@ -294,7 +305,7 @@ internal sealed class WhirProofSerializationTests
             //The pool zeroes rented buffers on return.
             Proof.Dispose();
             Commitment.Dispose();
-            statementOwner.Dispose();
+            StatementOwner.Dispose();
         }
     }
 

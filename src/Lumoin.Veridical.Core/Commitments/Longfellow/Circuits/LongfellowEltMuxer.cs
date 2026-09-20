@@ -1,4 +1,6 @@
 using System;
+using System.Buffers;
+using Lumoin.Veridical.Core.Algebraic;
 
 namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 
@@ -21,9 +23,14 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 /// </remarks>
 internal sealed class LongfellowEltMuxer
 {
-    private readonly LongfellowLogicBackend backend;
-    private readonly LongfellowCircuitPolynomial polynomial;
-    private readonly int[] coefficients;
+    /// <summary>The gadget layer's backend, used to build the coefficient and mux arithmetic.</summary>
+    private LongfellowLogicBackend Backend { get; }
+
+    /// <summary>The circuit-polynomial helper supplying <see cref="LongfellowCircuitPolynomial.PowersOfX"/> for <see cref="Mux"/>.</summary>
+    private LongfellowCircuitPolynomial Polynomial { get; }
+
+    /// <summary>The monomial coefficient wires the constructor accumulates, one per interpolation point.</summary>
+    private int[] Coefficients { get; }
 
     /// <summary>The array length <c>N</c> (the reference's <c>kN</c>), also the interpolation point count.</summary>
     public int ElementCount { get; }
@@ -34,7 +41,7 @@ internal sealed class LongfellowEltMuxer
 
     /// <summary>
     /// Constructs the muxer over an array of element wires, interpolating one even-spaced Lagrange
-    /// basis polynomial per array entry and accumulating <c>basis_i[j] · array[i]</c> into the
+    /// basis polynomial per array entry in call-owned storage and accumulating <c>basis_i[j] · array[i]</c> into the
     /// <c>j</c>-th monomial coefficient wire, exactly as the reference constructor does.
     /// </summary>
     /// <param name="logic">The gadget layer this muxer builds on.</param>
@@ -55,23 +62,26 @@ internal sealed class LongfellowEltMuxer
         const int MaxElementCount = 16;
         ArgumentOutOfRangeException.ThrowIfGreaterThan(array.Length, MaxElementCount);
 
-        backend = logic.Backend;
+        Backend = logic.Backend;
         LongfellowLogicFieldOperations field = logic.Field;
-        polynomial = new LongfellowCircuitPolynomial(backend);
+        Polynomial = new LongfellowCircuitPolynomial(Backend);
 
         ElementCount = array.Length;
         PointSetSize = pointSetSize == 0 ? array.Length : pointSetSize;
 
         var points = new ReadOnlyMemory<byte>[ElementCount];
+        using IMemoryOwner<byte> pointsOwner = field.Pool.Rent(ElementCount * Scalar.SizeBytes);
         for(int i = 0; i < ElementCount; i++)
         {
-            points[i] = LongfellowBitPlucker.PluckerPoint(field, PointSetSize, i);
+            Memory<byte> point = pointsOwner.Memory.Slice(i * Scalar.SizeBytes, Scalar.SizeBytes);
+            LongfellowBitPlucker.PluckerPoint(field, PointSetSize, i, point.Span);
+            points[i] = point;
         }
 
-        coefficients = new int[ElementCount];
+        Coefficients = new int[ElementCount];
         for(int i = 0; i < ElementCount; i++)
         {
-            coefficients[i] = backend.Constant(field.Compiler.Zero.Span);
+            Coefficients[i] = Backend.Constant(field.Compiler.Zero.Span);
         }
 
         for(int i = 0; i < ElementCount; i++)
@@ -79,15 +89,16 @@ internal sealed class LongfellowEltMuxer
             var values = new ReadOnlyMemory<byte>[ElementCount];
             for(int j = 0; j < ElementCount; j++)
             {
-                values[j] = field.OfScalar(j == i ? 1UL : 0UL);
+                values[j] = j == i ? field.Compiler.One : field.Compiler.Zero;
             }
 
-            ReadOnlyMemory<byte>[] basis = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points);
+            using var storage = new LongfellowCircuitStorage(field.Pool);
+            ReadOnlyMemory<byte>[] basis = LongfellowMonomialInterpolation.MonomialOfLagrange(field, values, points, storage);
             for(int j = 0; j < ElementCount; j++)
             {
-                int basisWire = backend.Constant(basis[j].Span);
-                int scaled = backend.Mul(basisWire, array[i]);
-                coefficients[j] = backend.Add(coefficients[j], scaled);
+                int basisWire = Backend.Constant(basis[j].Span);
+                int scaled = Backend.Mul(basisWire, array[i]);
+                Coefficients[j] = Backend.Add(Coefficients[j], scaled);
             }
         }
     }
@@ -104,13 +115,13 @@ internal sealed class LongfellowEltMuxer
     public int Mux(int index)
     {
         var powers = new int[ElementCount];
-        polynomial.PowersOfX(powers, index);
+        Polynomial.PowersOfX(powers, index);
 
-        int result = backend.Constant(backend.Field.Compiler.Zero.Span);
+        int result = Backend.Constant(Backend.Field.Compiler.Zero.Span);
         for(int i = 0; i < ElementCount; i++)
         {
-            int term = backend.Mul(coefficients[i], powers[i]);
-            result = backend.Add(result, term);
+            int term = Backend.Mul(Coefficients[i], powers[i]);
+            result = Backend.Add(result, term);
         }
 
         return result;

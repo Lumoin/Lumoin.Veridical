@@ -21,13 +21,11 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every pinned figure was regenerated from the pinned reference commit by running its own gtests
-/// (<c>ECDSA.Size</c>, <c>Base64.Circuit</c>, <c>jwt.JwtZk7</c>/<c>JwtZk9</c>) in the
-/// longfellow-ref Docker oracle; the header comments in the reference sources are stale and do not
-/// reproduce at the pin even in the reference itself. Matching every counter pins the whole
-/// gadget-to-scheduler pipeline — the muxer interpolations, the barrel-shift association trees, the
-/// espresso covers, the complete-addition arithmetization and the dead-node structure — without a
-/// circuit blob.
+/// Every pinned figure matches the reference compiler's published statistics for its
+/// <c>ECDSA.Size</c>, <c>Base64.Circuit</c>, and <c>jwt.JwtZk7</c>/<c>JwtZk9</c> shapes. Matching every
+/// counter pins the whole gadget-to-scheduler pipeline — the muxer interpolations, the barrel-shift
+/// association trees, the espresso covers, the complete-addition arithmetization and the dead-node
+/// structure — without a circuit blob.
 /// </para>
 /// <para>
 /// The end-to-end gate proves the reference SD-JWT+KB token's statement (one disclosed attribute)
@@ -36,8 +34,26 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 /// </para>
 /// </remarks>
 [TestClass]
-internal sealed class LongfellowJwtCompileTests
+internal sealed class LongfellowJwtCompileTests: IDisposable
 {
+    /// <summary>The independent compiler and circuit lifetime for this test.</summary>
+    private LongfellowCircuitTestScope CircuitScope { get; } = new();
+
+    /// <summary>Calls <see cref="Dispose"/> after each test, including when an assertion fails.</summary>
+    [TestCleanup]
+    public void DisposeCircuits()
+    {
+        Dispose();
+    }
+
+
+    /// <summary>Releases this test's compiler and circuit storage. Repeated calls have no effect.</summary>
+    public void Dispose()
+    {
+        CircuitScope.Dispose();
+    }
+
+
     /// <summary>The field element width in bytes used for every witness column entry.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
@@ -50,7 +66,7 @@ internal sealed class LongfellowJwtCompileTests
     /// <summary>The disclosed attribute count every pinned shape uses.</summary>
     private const int AttributeCount = 1;
 
-    /// <summary>The ECDSA circuit's reference depth upper bound (Docker oracle, <c>ECDSA.Size</c>).</summary>
+    /// <summary>The ECDSA circuit's reference depth upper bound, matching the reference's <c>ECDSA.Size</c> shape.</summary>
     private const int EcdsaDepth = 12;
 
     /// <summary>The ECDSA circuit's reference wire count.</summary>
@@ -74,7 +90,7 @@ internal sealed class LongfellowJwtCompileTests
     /// <summary>The ECDSA circuit's reference not-needed count.</summary>
     private const int EcdsaNotNeededCount = 37213;
 
-    /// <summary>The base64 decoder circuit's reference depth upper bound (Docker oracle, <c>Base64.Circuit</c>, GF(2^128)).</summary>
+    /// <summary>The base64 decoder circuit's reference depth upper bound, matching the reference's <c>Base64.Circuit</c> shape over GF(2^128).</summary>
     private const int Base64Depth = 8;
 
     /// <summary>The base64 decoder circuit's reference wire count.</summary>
@@ -98,7 +114,7 @@ internal sealed class LongfellowJwtCompileTests
     /// <summary>The base64 decoder circuit's reference not-needed count.</summary>
     private const int Base64NotNeededCount = 195;
 
-    /// <summary>The seven-block JWT circuit's reference depth upper bound (Docker oracle, <c>jwt.JwtZk7</c>).</summary>
+    /// <summary>The seven-block JWT circuit's reference depth upper bound, matching the reference's <c>jwt.JwtZk7</c> shape.</summary>
     private const int JwtSevenDepth = 23;
 
     /// <summary>The seven-block JWT circuit's reference wire count.</summary>
@@ -122,7 +138,7 @@ internal sealed class LongfellowJwtCompileTests
     /// <summary>The seven-block JWT circuit's reference not-needed count.</summary>
     private const int JwtSevenNotNeededCount = 1879760;
 
-    /// <summary>The nine-block JWT circuit's reference depth upper bound (Docker oracle, <c>jwt.JwtZk9</c>).</summary>
+    /// <summary>The nine-block JWT circuit's reference depth upper bound, matching the reference's <c>jwt.JwtZk9</c> shape.</summary>
     private const int JwtNineDepth = 23;
 
     /// <summary>The nine-block JWT circuit's reference wire count.</summary>
@@ -149,8 +165,11 @@ internal sealed class LongfellowJwtCompileTests
     /// <summary>The Fiat-Shamir transcript seed for the end-to-end gate.</summary>
     private static byte[] JwtTranscriptSeed { get; } = Encoding.ASCII.GetBytes("jwt-fp256-kernel-e2e");
 
+    /// <summary>The cached Curve owner for this test instance.</summary>
+    private LongfellowEllipticCurveParameters? curve;
+
     /// <summary>The curve constants shared by the circuit and the witness generator.</summary>
-    private static LongfellowEllipticCurveParameters Curve { get; } = LongfellowEllipticCurveParameters.CreateP256();
+    private LongfellowEllipticCurveParameters Curve => curve ??= CircuitScope.Track(LongfellowEllipticCurveParameters.CreateP256(CircuitScope.Pool));
 
     /// <summary>The production Montgomery base field addition delegate (the BigInteger reference delegates are too slow for this circuit's size).</summary>
     private static ScalarAddDelegate FastAdd { get; } = P256BaseFieldMontgomeryBackend.GetAdd();
@@ -195,9 +214,9 @@ internal sealed class LongfellowJwtCompileTests
     [TestMethod]
     public void TheBase64DecoderCircuitTelemetryMatchesTheReferenceCompiler()
     {
-        var builder = new LongfellowQuadCircuitBuilder(NewGfBundle().Compiler);
-        var backend = new LongfellowCompileLogicBackend(NewGfBundle(), builder);
-        var logic = new LongfellowLogic(backend, NewGfBundle());
+        var builder = CircuitScope.CreateBuilder(NewGfBundle(CircuitScope).Compiler);
+        var backend = new LongfellowCompileLogicBackend(NewGfBundle(CircuitScope), builder);
+        using var logic = new LongfellowLogic(backend, NewGfBundle(CircuitScope));
         var decoder = new LongfellowBase64Decoder(logic);
 
         LongfellowBitWire[] input = logic.InputVector(LongfellowLogic.BitWidth8);
@@ -205,7 +224,7 @@ internal sealed class LongfellowJwtCompileTests
         decoder.Decode(input, output);
         logic.OutputVector(output, 0);
 
-        _ = builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        _ = CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
 
         Assert.AreEqual(Base64Depth, builder.DepthUpperBound, "The decoder circuit's depth must match the reference compiler's.");
         Assert.AreEqual(Base64WireCount, builder.WireCount, "The decoder circuit's wire count must match the reference compiler's.");
@@ -294,11 +313,11 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="blocks">The block capacity.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileJwtCircuit(LongfellowLogicFieldOperations field, int blocks, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileJwtCircuit(LongfellowLogicFieldOperations field, int blocks, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var circuit = new LongfellowJwtCircuit(logic, Curve, blocks);
 
         int pkX = logic.InputElement();
@@ -315,7 +334,7 @@ internal sealed class LongfellowJwtCompileTests
 
         circuit.AssertJwtAttributes(pkX, pkY, e2, attributes, witness);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -326,11 +345,11 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="field">The field bundle to compile over.</param>
     /// <param name="builder">Receives the builder for telemetry assertions.</param>
     /// <returns>The compiled circuit.</returns>
-    private static LongfellowSumcheckCircuit CompileEcdsaCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
+    private LongfellowSumcheckCircuit CompileEcdsaCircuit(LongfellowLogicFieldOperations field, out LongfellowQuadCircuitBuilder builder)
     {
-        builder = new LongfellowQuadCircuitBuilder(field.Compiler);
+        builder = CircuitScope.CreateBuilder(field.Compiler);
         var backend = new LongfellowCompileLogicBackend(field, builder);
-        var logic = new LongfellowLogic(backend, field);
+        using var logic = new LongfellowLogic(backend, field);
         var verify = new LongfellowEcdsaVerifyCircuit(logic, Curve);
 
         int pkX = logic.InputElement();
@@ -340,7 +359,7 @@ internal sealed class LongfellowJwtCompileTests
 
         verify.VerifySignature3(pkX, pkY, e, witness);
 
-        return builder.MakeCircuit(CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
+        return CircuitScope.Compile(builder, CopyCount, Sha256FiatShamirBackend.GetIncrementalFactory());
     }
 
 
@@ -352,7 +371,7 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="circuit">The compiled circuit declaring the input count.</param>
     /// <param name="eBitsStartWire">Receives the digest-bit region's first wire, for the unprovability probe.</param>
     /// <returns>The witness column, one canonical scalar per declared input wire.</returns>
-    private static byte[] BuildWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, out int eBitsStartWire)
+    private byte[] BuildWitnessColumn(LongfellowLogicFieldOperations field, LongfellowSumcheckCircuit circuit, out int eBitsStartWire)
     {
         LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
         byte[] token = Encoding.ASCII.GetBytes(vector.Token);
@@ -361,7 +380,7 @@ internal sealed class LongfellowJwtCompileTests
         byte[] e2 = ParseScalar(vector.E2);
         var attribute = LongfellowJwtOpenedAttribute.FromStrings("given_name", "Erika");
 
-        var generator = new LongfellowJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, SevenBlocks);
+        var generator = CircuitScope.CreateJwtWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve, SevenBlocks);
         Assert.IsTrue(generator.ComputeWitness(token, pkX, pkY, [attribute]), "The reference token must produce a witness at seven blocks.");
 
         byte[] column = new byte[circuit.InputCount * ScalarSize];
@@ -378,7 +397,7 @@ internal sealed class LongfellowJwtCompileTests
         //The digest-bit region sits after the three witness scalars and both advice bundles and the
         //preimage bytes; the layout mirrors the declaration order.
         int witnessStart = cursor;
-        var probeGenerator = new LongfellowEcdsaVerifyWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
+        var probeGenerator = CircuitScope.CreateEcdsaWitness(field, OrderMultiply, OrderSubtract, OrderInvert, CurveParameterSet.P256, Curve);
         eBitsStartWire = witnessStart + 3 + (2 * probeGenerator.ElementCount) + (SevenBlocks * 64 * LongfellowLogic.BitWidth8);
 
         int witnessElements = generator.GetElementCount(AttributeCount);
@@ -396,7 +415,8 @@ internal sealed class LongfellowJwtCompileTests
     /// <returns>The pooled proof envelope; the caller disposes it.</returns>
     private static LongfellowZkProofEnvelope ProduceProof(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, byte[] witnessColumn)
     {
-        Fp256RealFft fft = NewFastFft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFastFft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -435,7 +455,8 @@ internal sealed class LongfellowJwtCompileTests
     /// <param name="expectedAccept">Whether the proof is expected to be accepted.</param>
     private static void AssertJwtVerifies(LongfellowSumcheckCircuit circuit, LongfellowLigeroParameters parameters, ReadOnlySpan<byte> proof, byte[] publicInputs, bool expectedAccept)
     {
-        Fp256RealFft fft = NewFastFft();
+        using BaseMemoryPool fftPool = new();
+        using Fp256RealFft fft = NewFastFft(fftPool);
         LongfellowRowEncoderFactory encoderFactory = LongfellowFp256Encoding.CreateEncoderFactory(
             fft, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
         using LongfellowFieldProfile profile = LongfellowFp256Encoding.CreateProfile(OfScalarFp256, InRangeFp256, BaseMemoryPool.Shared);
@@ -483,20 +504,21 @@ internal sealed class LongfellowJwtCompileTests
 
     /// <summary>Builds the P-256 base field bundle over the production Montgomery backend delegates.</summary>
     /// <returns>The bundle.</returns>
-    private static LongfellowLogicFieldOperations NewFastFp256Bundle()
+    private LongfellowLogicFieldOperations NewFastFp256Bundle()
     {
-        return LongfellowLogicFieldOperations.CreateFp256(FastAdd, FastSubtract, FastMultiply, FastInvert, Canonical(Prime - 1));
+        return CircuitScope.Track(LongfellowLogicFieldOperations.CreateFp256(FastAdd, FastSubtract, FastMultiply, FastInvert, Canonical(Prime - 1), CircuitScope.Pool));
     }
 
 
     /// <summary>Builds the real FFT over the P-256 base field with the production Montgomery delegates.</summary>
     /// <returns>The FFT.</returns>
-    private static Fp256RealFft NewFastFft()
+    /// <param name="pool">The caller pool supplying the root until the returned FFT is disposed.</param>
+    private static Fp256RealFft NewFastFft(BaseMemoryPool pool)
     {
         byte[] root = new byte[Fp256QuadraticExtension.ElementSize];
         LongfellowFp256Encoding.RootOfUnity(root);
 
-        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, BaseMemoryPool.Shared);
+        return new Fp256RealFft(root, LongfellowFp256Encoding.OmegaOrder, FastAdd, FastSubtract, FastMultiply, FastInvert, OfScalarFp256, CurveParameterSet.None, pool);
     }
 
 

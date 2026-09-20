@@ -33,7 +33,7 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// (<see cref="BindQuad"/>, the port of <c>Quad::bind_gh_all</c>) binds the layer's <c>Quad</c> at the
 /// output point and the hand challenges; <c>eqv</c> (<see cref="LongfellowEq.Eval"/>, the port of <c>Eq::eval</c>)
 /// binds the copy variables — it is <c>1</c> when <c>logc == 0</c>. The transcript drives identically to
-/// the C.7 replay: <c>begin_circuit</c> squeezes <c>Q</c>/<c>G</c>, each layer's <c>begin_layer</c>
+/// the sumcheck-segment replay: <c>begin_circuit</c> squeezes <c>Q</c>/<c>G</c>, each layer's <c>begin_layer</c>
 /// squeezes <c>alpha</c>/<c>beta</c>, each round absorbs the two transmitted points and squeezes the
 /// hand challenge, and the two <c>wc</c> claims are absorbed.
 /// </para>
@@ -55,13 +55,16 @@ namespace Lumoin.Veridical.Core.Commitments.Longfellow;
 /// </remarks>
 internal static class LongfellowZkConstraintBuilder
 {
+    /// <summary>The width in bytes of one field element in its canonical scalar representation.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
 
-    //The reference's Challenge::kMaxBindings: Q and G are squeezed as kMaxBindings-element arrays.
+    /// <summary>The reference's <c>Challenge::kMaxBindings</c>: <c>Q</c> and <c>G</c> are squeezed from the transcript as arrays of this many elements.</summary>
     private const int MaxBindings = 40;
 
-    //A round polynomial has three evaluation points {0, 1, g}; the wire transmits points 0 and 2.
+    /// <summary>The number of evaluation points a round polynomial carries: three, at the nodes <c>{0, 1, t}</c>; only the points at 0 and 2 travel on the wire, since the point at 1 is reconstructed from the sumcheck relation.</summary>
     private const int RoundPolynomialPoints = LongfellowSumcheckProof.RoundPolynomialPoints;
+
+    /// <summary>The number of hands per sumcheck round: two, one binding the layer's left input variables and one binding its right input variables.</summary>
     private const int HandCount = LongfellowSumcheckProof.HandCount;
 
 
@@ -71,40 +74,82 @@ internal static class LongfellowZkConstraintBuilder
     /// </summary>
     internal sealed class ConstraintSystem: IDisposable
     {
-        private readonly BaseMemoryPool pool;
-        private readonly List<LigeroLinearConstraint> terms;
+        /// <summary>Amortizes coefficient rentals in 16 KiB slabs while preserving stable term views.</summary>
+        private const int CoefficientsPerSlab = 512;
+
+        /// <summary>The pool every rental in this constraint system draws from and returns to.</summary>
+        private BaseMemoryPool Pool { get; }
+
+        /// <summary>The sparse linear terms accumulated so far, backing <see cref="Terms"/>.</summary>
+        private List<LigeroLinearConstraint> TermStorage { get; }
+        /// <summary>Owns every coefficient slab until all constraint consumers finish.</summary>
+        private List<IMemoryOwner<byte>> CoefficientSlabs { get; } = [];
+        /// <summary>The current slab's logical memory.</summary>
+        private Memory<byte> coefficientSlab;
+        /// <summary>The number of occupied scalar slots in the current slab.</summary>
+        private int coefficientOffset;
+
+        /// <summary>The rented backing store for <see cref="Targets"/>, or <see langword="null"/> once disposed.</summary>
         private IMemoryOwner<byte>? targetsOwner;
+
+        /// <summary>The number of canonical scalars written into the target rental so far.</summary>
         private int targetCount;
 
 
         /// <summary>The number of constraints <c>cn</c> (the Ligero verifier's constraint count).</summary>
         public int ConstraintCount { get; internal set; }
 
-        /// <summary>The sparse linear terms; each contributes <c>k · W[w]</c> to constraint <c>c</c>.</summary>
-        public IReadOnlyList<LigeroLinearConstraint> Terms => terms;
+        /// <summary>The sparse linear terms; their coefficient views remain valid until this system is disposed.</summary>
+        public IReadOnlyList<LigeroLinearConstraint> Terms => TermStorage;
 
         /// <summary>The constraint targets <c>b</c>: <see cref="ConstraintCount"/> canonical scalars.</summary>
         public ReadOnlySpan<byte> Targets => (targetsOwner ?? throw new ObjectDisposedException(nameof(ConstraintSystem))).Memory.Span[..(targetCount * ScalarSize)];
 
 
+        /// <summary>Creates an empty constraint system, pre-renting target storage for up to <paramref name="constraintCapacity"/> constraints.</summary>
+        /// <param name="pool">The pool every rental draws from.</param>
+        /// <param name="constraintCapacity">The expected number of constraints, sizing the target rental (at least one scalar's worth).</param>
+        /// <param name="termCapacity">The expected number of sparse linear terms, sizing the initial term-list capacity.</param>
         internal ConstraintSystem(BaseMemoryPool pool, int constraintCapacity, int termCapacity)
         {
-            this.pool = pool;
-            terms = new List<LigeroLinearConstraint>(termCapacity);
+            this.Pool = pool;
+            TermStorage = new List<LigeroLinearConstraint>(termCapacity);
             targetsOwner = pool.Rent(Math.Max(constraintCapacity, 1) * ScalarSize);
             targetsOwner.Memory.Span[..(Math.Max(constraintCapacity, 1) * ScalarSize)].Clear();
             targetCount = 0;
         }
 
 
+        /// <summary>Copies a coefficient into owned slab storage and appends its sparse linear term.</summary>
+        /// <remarks>Short coefficients retain zero padding to the scalar width.</remarks>
         internal void AddTerm(int constraintIndex, int witnessIndex, ReadOnlySpan<byte> coefficient)
         {
-            byte[] copy = new byte[ScalarSize];
-            coefficient.CopyTo(copy);
-            terms.Add(new LigeroLinearConstraint(constraintIndex, witnessIndex, copy));
+            if(CoefficientSlabs.Count == 0 || coefficientOffset == CoefficientsPerSlab)
+            {
+                IMemoryOwner<byte>? owner = Pool.Rent(CoefficientsPerSlab * ScalarSize);
+                try
+                {
+                    Memory<byte> memory = owner.Memory[..(CoefficientsPerSlab * ScalarSize)];
+                    CoefficientSlabs.Add(owner);
+                    owner = null;
+                    coefficientSlab = memory;
+                    coefficientOffset = 0;
+                }
+                finally
+                {
+                    owner?.Dispose();
+                }
+            }
+
+            Memory<byte> copy = coefficientSlab.Slice(coefficientOffset * ScalarSize, ScalarSize);
+            copy.Span.Clear();
+            coefficient.CopyTo(copy.Span);
+            TermStorage.Add(new LigeroLinearConstraint(constraintIndex, witnessIndex, copy));
+            coefficientOffset++;
         }
 
 
+        /// <summary>Appends one canonical scalar to the constraint targets <c>b</c>, in order.</summary>
         internal void AddTarget(ReadOnlySpan<byte> target)
         {
             Span<byte> destination = (targetsOwner ?? throw new ObjectDisposedException(nameof(ConstraintSystem))).Memory.Span;
@@ -113,7 +158,7 @@ internal static class LongfellowZkConstraintBuilder
         }
 
 
-        /// <inheritdoc/>
+        /// <summary>Releases the target and coefficient rentals owned by this constraint system.</summary>
         public void Dispose()
         {
             IMemoryOwner<byte>? local = targetsOwner;
@@ -123,6 +168,15 @@ internal static class LongfellowZkConstraintBuilder
                 local.Memory.Span.Clear();
                 local.Dispose();
             }
+
+            foreach(IMemoryOwner<byte> slab in CoefficientSlabs)
+            {
+                slab.Dispose();
+            }
+
+            CoefficientSlabs.Clear();
+            coefficientSlab = Memory<byte>.Empty;
+            coefficientOffset = 0;
         }
     }
 
@@ -191,8 +245,8 @@ internal static class LongfellowZkConstraintBuilder
             throw new ArgumentException($"Expected {circuit.PublicInputCount * elementBytes} public-input bytes; received {publicInputs.Length}.", nameof(publicInputs));
         }
 
-        //The field multiplicative one in the working domain, sourced from the profile (Foundation-A): the
-        //canonical 0x01 for GF / the canonical Fp profile, to_montgomery(1) for the Montgomery Fp profile.
+        //The field multiplicative one in the working domain, sourced from the profile: the canonical
+        //0x01 for GF / the canonical Fp profile, to_montgomery(1) for the Montgomery Fp profile.
         using IMemoryOwner<byte> oneOwner = pool.Rent(ScalarSize);
         Span<byte> one = oneOwner.Memory.Span[..ScalarSize];
         profile.CopyWorkingOne(one);
@@ -243,25 +297,47 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //The per-layer claim state mimicking the reference's Claims struct: the two outgoing claims, the
-    //g-points (g[0], g[1]) and the q-point of the claim, plus logv (the binding count of the claim).
+    /// <summary>
+    /// The per-layer claim state mimicking the reference's <c>Claims</c> struct: the two outgoing
+    /// claims, the g-points <c>g[0]</c>/<c>g[1]</c> and the q-point of the claim, plus the claim's
+    /// binding count.
+    /// </summary>
     private ref struct ClaimState
     {
+        /// <summary>The claim's binding count in bits (the reference's <c>logv</c>): log2 of the number of values the claim ranges over.</summary>
         public int OutputLogCount;
+
+        /// <summary>The claim's first scalar component (the reference's <c>cl0</c>).</summary>
         public Span<byte> Claim0;
+
+        /// <summary>The claim's second scalar component (the reference's <c>cl1</c>).</summary>
         public Span<byte> Claim1;
+
+        /// <summary>The claim's q-point: the copy-variable challenges the claim is bound at.</summary>
         public Span<byte> Q;
+
+        /// <summary>The claim's first g-point (the reference's <c>g[0]</c>): the accumulated hand-0 challenges from the previous layer's rounds, or the circuit's initial <c>G</c> before any layer.</summary>
         public Span<byte> G0;
+
+        /// <summary>The claim's second g-point (the reference's <c>g[1]</c>): the accumulated hand-1 challenges from the previous layer's rounds, or the circuit's initial <c>G</c> before any layer.</summary>
         public Span<byte> G1;
     }
 
 
+    /// <summary>
+    /// Replays the sumcheck verifier's per-layer walk against the parsed proof: per layer it folds
+    /// the entering claim through the symbolic constraint expression, absorbs each round's
+    /// transmitted points and squeezes the hand challenge, binds the layer's quad-term reduction,
+    /// and emits one linear constraint into <paramref name="system"/>. After the last layer it
+    /// closes with the input binding via <see cref="InputConstraint"/> and records the final
+    /// constraint count.
+    /// </summary>
     private static void WalkLayers(
         LongfellowSumcheckCircuit circuit,
         LongfellowSumcheckProof proof,
         ReadOnlySpan<byte> publicInputs,
-        Span<byte> circuitQ,
-        Span<byte> circuitG,
+        ReadOnlySpan<byte> circuitQ,
+        ReadOnlySpan<byte> circuitG,
         int firstPadIndex,
         LongfellowFieldProfile profile,
         int elementBytes,
@@ -417,9 +493,13 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //binding(inputs, R) = binding(pub, R_p) + binding(witness, R_w). Compute the public binding
-    //explicitly, then add the constraint binding(witness, R_w) = got - pub_binding. The reference's
-    //input_constraint. The public inputs enter b through the public binding fold-out.
+    /// <summary>
+    /// Emits the final constraint binding the witness inputs, the reference's
+    /// <c>input_constraint</c>: computes the public binding <c>binding(pub, R_p)</c> explicitly from
+    /// <paramref name="publicInputs"/> and adds the constraint
+    /// <c>binding(witness, R_w) = got − pub_binding</c>, where the public inputs enter the
+    /// constraint's target through the public-binding fold-out rather than as linear terms.
+    /// </summary>
     private static void InputConstraint(
         LongfellowSumcheckCircuit circuit,
         LongfellowSumcheckProof proof,
@@ -477,7 +557,7 @@ internal static class LongfellowZkConstraintBuilder
         //LE wire bytes reversed to canonical, then lifted into the working domain (identity for GF / the
         //canonical Fp profile, to_montgomery for the Montgomery Fp profile). The public inputs are
         //working-domain values the input-binding multiplies against the working-domain b_i, so they MUST cross
-        //the profile seam, not bypass it as raw canonical bytes (Perf Increment 1: the public-input boundary).
+        //the profile seam, not bypass it as raw canonical bytes (the public-input boundary).
         using IMemoryOwner<byte> pubScalarsOwner = pool.Rent(Math.Max(numInputs, 1) * ScalarSize);
         Span<byte> pubScalars = pubScalarsOwner.Memory.Span[..(numInputs * ScalarSize)];
         pubScalars.Clear();
@@ -527,22 +607,29 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //Below this term count the parallel partition's overhead (task dispatch, the partials rental and
-    //the deterministic combine) outweighs the win, so the sequential path runs. The real hash circuit's
-    //layers carry millions of terms; small layers stay sequential.
+    /// <summary>
+    /// Below this term count the parallel partition's overhead (task dispatch, the partials rental
+    /// and the deterministic combine) outweighs the win, so the sequential path runs. The real hash
+    /// circuit's layers carry millions of terms; small layers stay sequential.
+    /// </summary>
     private const int ParallelTermThreshold = 4096;
 
 
-    //bind_quad: Quad::bind_gh_all over the layer's terms. Computes
-    //   Σ_term prep_v(v, eqg[g], beta) * eqh0[h0] * eqh1[h1]
-    //where eqg[i] = EQ(G0, i) + alpha*EQ(G1, i) (raw_eq2), eqh0[i] = EQ(H0, i), eqh1[i] = EQ(H1, i),
-    //and prep_v(v, dot, beta) = (v == 0 ? beta : v) * dot. Field add is associative, commutative and
-    //exact (GF(2^128) XOR; Fp256 modular add), so the term sum partitions into P chunks summed into
-    //their own scratch, then the P partials combine in a fixed partition-index order — byte-identical
-    //to the sequential sum. The eq tables fill once before the loop and stay read-only across the
-    //partitions; the only per-partition mutable state is its own stack scratch and its own partials slot.
-    //Exposed internal (not private) so the Fp256-batch-vs-scalar agreement gate can drive the reduction
-    //directly with a synthetic layer + eq inputs, the LongfellowEqFillEqBatchTests pattern.
+    /// <summary>
+    /// Computes bind_quad: <c>Σ_term prep_v(v, eqg[g], beta) · eqh0[h0] · eqh1[h1]</c> over the
+    /// layer's quad terms, the port of <c>Quad::bind_gh_all</c>. <c>eqg[i] = EQ(G0, i) +
+    /// alpha·EQ(G1, i)</c> (<c>raw_eq2</c>), <c>eqh0[i] = EQ(H0, i)</c>, <c>eqh1[i] = EQ(H1, i)</c>,
+    /// and <c>prep_v(v, dot, beta) = (v == 0 ? beta : v) · dot</c>.
+    /// </summary>
+    /// <remarks>
+    /// Field addition is associative, commutative and exact (GF(2^128) XOR; Fp256 modular add), so
+    /// the term sum partitions into contiguous chunks summed independently and then combined in a
+    /// fixed partition-index order, byte-identical to the sequential sum. The eq tables fill once
+    /// before the loop and stay read-only across partitions; the only per-partition mutable state is
+    /// its own stack scratch and its own partials slot. This method is <see langword="internal"/>
+    /// rather than private so a same-assembly agreement test can drive the reduction directly
+    /// against a synthetic layer and eq-table inputs.
+    /// </remarks>
     internal static void BindQuad(
         LongfellowSumcheckLayer layer,
         int logv,
@@ -598,10 +685,10 @@ internal static class LongfellowZkConstraintBuilder
         int termCount = terms.Length;
 
         //The v == 0 decision per term, precomputed once. The terms reference the circuit's constant
-        //table by position, so the same backing byte[] recurs across many terms (the C.10 reader's
-        //first-encounter indexing); the 32-byte compare runs once per distinct coefficient object, not
-        //per term, and the per-term inner loop reads the cached bool. This does not change which terms
-        //are treated as zero.
+        //table by position, so the same backing byte[] recurs across many terms (the circuit
+        //reader's first-encounter indexing); the 32-byte compare runs once per distinct coefficient
+        //object, not per term, and the per-term inner loop reads the cached bool. This does not
+        //change which terms are treated as zero.
         bool[] termIsZero = ComputeTermZeroFlags(terms);
 
         //The fused GF(2^128) path: route the per-term chained reduction through the injected primitive.
@@ -631,7 +718,7 @@ internal static class LongfellowZkConstraintBuilder
 
         if(termCount < ParallelTermThreshold || Environment.ProcessorCount < 2)
         {
-            //Sequential path: the existing reduction, now reading the precomputed zero flags.
+            //Sequential path: the reduction over the precomputed zero flags.
             Span<byte> accumulator = stackalloc byte[ScalarSize];
             accumulator.Clear();
             ReduceRange(terms, termIsZero, 0, termCount, eqg, eqh0, eqh1, beta, add, multiply, curve, accumulator);
@@ -686,15 +773,21 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //The fused bind_quad reduction: build the structure-of-arrays once (the per-term gate/left/right
-    //indices, a deduped coefficient table + per-term indices, and the term-zero flags reinterpreted as
-    //bytes), then drive the injected primitive over it. The same threshold and partition arithmetic as
-    //the scalar path: small layers run one un-partitioned call; large layers partition [0, termCount)
-    //into P contiguous chunks, each primitive call accumulating into its own partials slot, and the
-    //partials combine in partition-index order — byte-identical to the sequential reduction. The SoA and
-    //the eq tables ride in pooled Memory (never .Shared), read-only across the partitions; each worker
-    //reconstructs its read-only views from the captured Memory handles (the ref-struct spans cannot cross
-    //the lambda boundary) and writes ONLY its own partials slot.
+    /// <summary>
+    /// Computes the fused bind_quad reduction: builds the structure-of-arrays once (the per-term
+    /// gate/left/right indices, a deduped coefficient table plus per-term indices, and the
+    /// term-zero flags reinterpreted as bytes), then drives <paramref name="bindQuadReduce"/> over
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// The same threshold and partition arithmetic as the scalar path applies: small layers run one
+    /// un-partitioned call; large layers partition <c>[0, termCount)</c> into contiguous chunks,
+    /// each primitive call accumulating into its own partials slot, and the partials combine in
+    /// partition-index order, byte-identical to the sequential reduction. The structure-of-arrays
+    /// and the eq tables ride in pooled memory (never <c>.Shared</c>), read-only across the
+    /// partitions; each worker reconstructs its read-only views from the captured memory handles
+    /// (the ref-struct spans cannot cross the lambda boundary) and writes only its own partials slot.
+    /// </remarks>
     private static void BindQuadFused(
         LongfellowSumcheckQuadTerm[] terms,
         int termCount,
@@ -838,22 +931,32 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //The number of terms gathered and multiplied per batched pass. Five chunk-sized scratch buffers (the two
-    //gathered operands, the two chain intermediates and the product) stay cache-resident at this width
-    //(5 · 1024 · 32 bytes ≈ 160 KB). Measured: gather + batch beats the scalar three-multiply chain ~1.25–1.42×
-    //per term across small-to-large eq tables (the dev-box back-to-back driver --fp256-bindquad-timing).
+    /// <summary>
+    /// The number of terms gathered and multiplied per batched pass. Five chunk-sized scratch
+    /// buffers (the two gathered operands, the two chain intermediates and the product) stay
+    /// cache-resident at this width (5 · 1024 · 32 bytes ≈ 160 KB); gather-and-batch beats the
+    /// scalar three-multiply chain by roughly 1.25–1.42× per term across small-to-large eq tables
+    /// (the back-to-back driver <c>--fp256-bindquad-timing</c>).
+    /// </summary>
     private const int Fp256BatchChunk = 1024;
 
 
-    //The Fp256 batched bind_quad reduction: the same Σ_term prep_v(v)·eqg[g]·eqh0[h0]·eqh1[h1] as the scalar
-    //ReduceRange, but the per-term three-multiply chain runs through the lane-parallel batch multiply. The same
-    //threshold and partition arithmetic as the scalar path: small layers run one un-partitioned chunked
-    //reduction; large layers partition [0, termCount) into P contiguous chunks, each reduced into its own
-    //partials slot, and the partials combine in partition-index order — byte-identical to the sequential sum
-    //(Fp256 modular add is exact, associative and commutative). The eq tables ride in pooled Memory
-    //(tablesMemory, never .Shared), read-only across the partitions; the per-partition gather scratch is
-    //pre-rented ONCE outside the parallel region and sliced one block per partition (so no worker rents from
-    //the pool concurrently), and each worker writes ONLY its own scratch block and its own partials slot.
+    /// <summary>
+    /// Computes the Fp256 batched bind_quad reduction: the same
+    /// <c>Σ_term prep_v(v)·eqg[g]·eqh0[h0]·eqh1[h1]</c> as the scalar <see cref="ReduceRange"/>, but
+    /// the per-term three-multiply chain runs through the lane-parallel batch multiply.
+    /// </summary>
+    /// <remarks>
+    /// The same threshold and partition arithmetic as the scalar path applies: small layers run one
+    /// un-partitioned chunked reduction; large layers partition <c>[0, termCount)</c> into
+    /// contiguous chunks, each reduced into its own partials slot, and the partials combine in
+    /// partition-index order, byte-identical to the sequential sum (Fp256 modular addition is
+    /// exact, associative and commutative). The eq tables ride in pooled memory (never
+    /// <c>.Shared</c>), read-only across the partitions; the per-partition gather scratch is
+    /// pre-rented once outside the parallel region and sliced one block per partition (so no
+    /// worker rents from the pool concurrently), and each worker writes only its own scratch block
+    /// and its own partials slot.
+    /// </remarks>
     private static void BindQuadFp256Batch(
         LongfellowSumcheckQuadTerm[] terms,
         int termCount,
@@ -944,13 +1047,18 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //One partition's chunked gather+batch reduction: for each chunk of up to `chunk` terms, gather the
-    //index-addressed operands into the contiguous scratch (left = v_k or beta, right = eqg[g_k]), batch-multiply
-    //into qv, gather eqh0[h0_k] and batch-multiply into term, gather eqh1[h1_k] and batch-multiply into prod,
-    //then field-add accumulate prod[j] in term order. Byte-identical to ReduceRange: each batch multiply element
-    //equals the scalar MultiplyMontgomery, and the accumulate order (chunks in order, terms in order within a
-    //chunk) matches ReduceRange's per-term accumulate over the same [start, end). `scratch` is five chunk-sized
-    //blocks (left, right, qv, term, prod) laid out contiguously.
+    /// <summary>
+    /// Reduces one partition's terms via chunked gather-and-batch: for each chunk of up to
+    /// <paramref name="chunk"/> terms, gathers the index-addressed operands into the contiguous
+    /// scratch (<c>left = v_k</c> or <paramref name="beta"/>, <c>right = eqg[g_k]</c>),
+    /// batch-multiplies into <c>qv</c>, gathers <c>eqh0[h0_k]</c> and batch-multiplies into
+    /// <c>term</c>, gathers <c>eqh1[h1_k]</c> and batch-multiplies into <c>prod</c>, then field-add
+    /// accumulates <c>prod[j]</c> in term order. Byte-identical to <see cref="ReduceRange"/>: each
+    /// batch-multiply element equals the scalar Montgomery multiply, and the accumulate order
+    /// (chunks in order, terms in order within a chunk) matches its per-term accumulate over the
+    /// same <c>[start, end)</c>. <paramref name="scratch"/> is five chunk-sized blocks (left, right,
+    /// qv, term, prod) laid out contiguously.
+    /// </summary>
     private static void GatherBatchReduceRange(
         LongfellowSumcheckQuadTerm[] terms,
         bool[] termIsZero,
@@ -1019,9 +1127,12 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //One partition's reduction: Σ_{k in [start, end)} prep_v(v_k) * eqg[g_k] * eqh0[h0_k] * eqh1[h1_k],
-    //accumulated into `accumulator` (caller-cleared). prep_v(v) = (v == 0 ? beta : v) * eqg[g]; the
-    //v == 0 decision is the precomputed `termIsZero[k]`. The eq tables and the term array are read-only.
+    /// <summary>
+    /// Reduces one partition: <c>Σ_{k in [start, end)} prep_v(v_k) · eqg[g_k] · eqh0[h0_k] ·
+    /// eqh1[h1_k]</c>, accumulated into <paramref name="accumulator"/> (caller-cleared).
+    /// <c>prep_v(v) = (v == 0 ? beta : v) · eqg[g]</c>; the <c>v == 0</c> decision is the
+    /// precomputed <paramref name="termIsZero"/>. The eq tables and the term array are read-only.
+    /// </summary>
     private static void ReduceRange(
         LongfellowSumcheckQuadTerm[] terms,
         bool[] termIsZero,
@@ -1059,9 +1170,12 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //The per-term v == 0 flags. The same constant-table byte[] backs many terms, so the 32-byte compare
-    //is memoised by the coefficient's backing array identity (reference equality); a term whose coefficient
-    //is not array-backed falls back to the direct span compare. Byte-identical to comparing every term.
+    /// <summary>
+    /// Computes the per-term <c>v == 0</c> flags. The same constant-table backing array backs many
+    /// terms, so the 32-byte compare is memoised by the coefficient's backing array identity
+    /// (reference equality); a term whose coefficient is not array-backed falls back to the direct
+    /// span compare. Byte-identical to comparing every term independently.
+    /// </summary>
     private static bool[] ComputeTermZeroFlags(LongfellowSumcheckQuadTerm[] terms)
     {
         bool[] flags = new bool[terms.Length];
@@ -1089,12 +1203,17 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
+    /// <summary>Reports whether every byte of <paramref name="value"/> is zero.</summary>
     private static bool IsAllZero(ReadOnlySpan<byte> value) => value.IndexOfAnyExcept((byte)0) < 0;
 
 
-    //dot_wpoly.coef(x): the Lagrange weights of a degree-3 (N = 3) polynomial at point x over the
-    //evaluation nodes {0, 1, t}. weight[k] = Π_{j != k} (x - X[j]) / (X[k] - X[j]). The reference's
-    //Poly<3>::dot_interpolation precomputes these; here they are computed per challenge.
+    /// <summary>
+    /// Computes <c>dot_wpoly.coef(x)</c>: the Lagrange weights of a degree-3 (<c>N = 3</c>)
+    /// polynomial at point <paramref name="x"/> over the evaluation nodes <c>{0, 1, t}</c>,
+    /// <c>weight[k] = Π_{j != k} (x - X[j]) / (X[k] - X[j])</c>. The reference's
+    /// <c>Poly&lt;3&gt;::dot_interpolation</c> precomputes these for its fixed set of challenges;
+    /// this method computes them per challenge instead.
+    /// </summary>
     private static void LagrangeWeights(
         ReadOnlySpan<byte> x,
         ReadOnlySpan<byte> evalPoints,
@@ -1139,7 +1258,7 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
-    //destination += addend, via a scratch.
+    /// <summary>Adds <paramref name="addend"/> into <paramref name="destination"/> in place, via a scratch buffer.</summary>
     private static void AddInPlace(Span<byte> destination, ReadOnlySpan<byte> addend, ScalarAddDelegate add, CurveParameterSet curve)
     {
         Span<byte> scratch = stackalloc byte[ScalarSize];
@@ -1148,5 +1267,6 @@ internal static class LongfellowZkConstraintBuilder
     }
 
 
+    /// <summary>Slices the scalar at <paramref name="index"/> out of a packed scalar buffer.</summary>
     private static ReadOnlySpan<byte> ScalarAt(ReadOnlySpan<byte> buffer, int index) => buffer.Slice(index * ScalarSize, ScalarSize);
 }

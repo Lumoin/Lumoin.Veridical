@@ -52,7 +52,9 @@ public static class LongfellowMdoc
         ArgumentNullException.ThrowIfNull(pool);
         LongfellowMdocCryptoSuite cryptoSuite = suite ?? LongfellowMdocCryptoSuite.Default;
 
-        ParseCircuits(circuits, spec, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
+        ParseCircuits(circuits, spec, pool, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
+        using LongfellowSumcheckCircuit signatureOwner = signatureCircuit;
+        using LongfellowSumcheckCircuit hashOwner = hashCircuit;
 
         //The hash side runs over GF(2^128); its circuit is committed as parsed (no coefficient lift). The FFT
         //and the GF codec own pooled state and must outlive the driver call, so they are using-declared.
@@ -61,12 +63,13 @@ public static class LongfellowMdoc
         using LongfellowSubfieldRunCodec hashCodec = LongfellowMdocBundles.NewGfCodec(hashProfile, hashFft, pool);
         LongfellowMdocFieldProver hashBundle = LongfellowMdocBundles.BuildHashProver(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
-        //The sig side runs over the P-256 base field in the Montgomery working domain. The real-FFT owns no
-        //pooled state (it is not disposable); the Fp256 codec owns nothing but is still disposable.
+        //The sig side runs over the P-256 base field in the Montgomery working domain. The real-FFT's
+        //pooled root remains owned through every signature encoder callback.
         using LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile(pool);
-        Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
+        using Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
         LongfellowMdocFieldProver signatureBundle = LongfellowMdocBundles.BuildSigProver(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
+        using LongfellowSumcheckCircuit workingSignatureOwner = signatureBundle.Circuit;
 
         //Lift the caller's canonical signature column to the Montgomery working domain into a pooled buffer the
         //facade owns and clears (it carries the secret signature wires).
@@ -127,7 +130,9 @@ public static class LongfellowMdoc
         LongfellowMdocCryptoSuite cryptoSuite = suite ?? LongfellowMdocCryptoSuite.Default;
         LongfellowMdocZkSpec spec = statement.Spec;
 
-        ParseCircuits(circuits, spec, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
+        ParseCircuits(circuits, spec, pool, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
+        using LongfellowSumcheckCircuit signatureOwner = signatureCircuit;
+        using LongfellowSumcheckCircuit hashOwner = hashCircuit;
 
         using Lch14AdditiveFft hashFft = LongfellowMdocBundles.NewGfFft(pool);
         using LongfellowFieldProfile hashProfile = LongfellowMdocBundles.NewGfProfile(hashFft, pool);
@@ -135,9 +140,10 @@ public static class LongfellowMdoc
         LongfellowMdocFieldVerifier hashBundle = LongfellowMdocBundles.BuildHashVerifier(spec, hashCircuit, hashProfile, hashFft, hashCodec, pool);
 
         using LongfellowFieldProfile signatureProfile = LongfellowMdocBundles.NewMontgomerySigProfile(pool);
-        Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
+        using Fp256RealFft signatureFft = LongfellowMdocBundles.NewFp256Fft(signatureProfile, pool);
         using LongfellowSubfieldRunCodec signatureCodec = LongfellowMdocBundles.NewSigCodec(signatureProfile);
         LongfellowMdocFieldVerifier signatureBundle = LongfellowMdocBundles.BuildSigVerifier(spec, signatureCircuit, signatureProfile, signatureFft, signatureCodec, pool);
+        using LongfellowSumcheckCircuit workingSignatureOwner = signatureBundle.Circuit;
 
         //Frame the canonical signature template into the little-endian wire form the verifier's splice consumes
         //(the hash template is already in GF wire framing and passes through as supplied).
@@ -170,31 +176,44 @@ public static class LongfellowMdoc
     }
 
 
-    //Parses the signature circuit first (field id 1 / 32-byte elements) to learn its length, then the hash
-    //circuit from the continuation span (field id 4 / 16-byte elements). Both must parse, and the hash
-    //circuit's public-input count must match the specification: the public region is the template followed
-    //by the six MACs and the shared key, so npub_in pins the specification's template element count and a
-    //statement built for one specification cannot ride another specification's circuit bytes.
-    private static void ParseCircuits(LongfellowMdocCircuitSource circuits, LongfellowMdocZkSpec spec, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit)
+    /// <summary>Parses both circuits and verifies the hash public-input count against the specification.</summary>
+    /// <param name="circuits">The concatenated circuit-definition bytes.</param>
+    /// <param name="spec">The expected specification.</param>
+    /// <param name="pool">The pool supplying both circuits' owned bytes.</param>
+    /// <param name="signatureCircuit">Receives the independently owned signature circuit on success.</param>
+    /// <param name="hashCircuit">Receives the independently owned hash circuit on success.</param>
+    /// <exception cref="ArgumentException">When parsing or the specification check fails.</exception>
+    private static void ParseCircuits(LongfellowMdocCircuitSource circuits, LongfellowMdocZkSpec spec, BaseMemoryPool pool, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit)
     {
         ReadOnlySpan<byte> raw = circuits.RawCircuitBytes.Span;
-
-        if(!LongfellowCircuitReader.TryRead(raw, LongfellowMdocBundles.Point256FieldId, LongfellowMdocBundles.Point256ElementBytes, out LongfellowSumcheckCircuit? signature, out _, out int signatureBytes, LongfellowMdocBundles.InRangeFp256) || signature is null)
+        LongfellowSumcheckCircuit? signature = null;
+        LongfellowSumcheckCircuit? hash = null;
+        try
         {
-            throw new ArgumentException("The signature circuit could not be parsed from the circuit-definition bytes.", nameof(circuits));
-        }
+            if(!LongfellowCircuitReader.TryRead(raw, LongfellowMdocBundles.Point256FieldId, LongfellowMdocBundles.Point256ElementBytes, pool, out signature, out _, out int signatureBytes, LongfellowMdocBundles.InRangeFp256) || signature is null)
+            {
+                throw new ArgumentException("The signature circuit could not be parsed from the circuit-definition bytes.", nameof(circuits));
+            }
 
-        if(!LongfellowCircuitReader.TryRead(raw[signatureBytes..], LongfellowMdocBundles.Gf2128FieldId, LongfellowMdocBundles.Gf2128ElementBytes, out LongfellowSumcheckCircuit? hash, out _, out _) || hash is null)
+            if(!LongfellowCircuitReader.TryRead(raw[signatureBytes..], LongfellowMdocBundles.Gf2128FieldId, LongfellowMdocBundles.Gf2128ElementBytes, pool, out hash, out _, out _) || hash is null)
+            {
+                throw new ArgumentException("The hash circuit could not be parsed from the circuit-definition continuation.", nameof(circuits));
+            }
+
+            if(hash.PublicInputCount != spec.HashPublicInputCount)
+            {
+                throw new ArgumentException($"The hash circuit's public-input count is {hash.PublicInputCount}; the specification (version {spec.ProofSpecVersion}, {spec.AttributeCount} attribute(s)) requires {spec.HashPublicInputCount}.", nameof(circuits));
+            }
+
+            signatureCircuit = signature;
+            signature = null;
+            hashCircuit = hash;
+            hash = null;
+        }
+        finally
         {
-            throw new ArgumentException("The hash circuit could not be parsed from the circuit-definition continuation.", nameof(circuits));
+            signature?.Dispose();
+            hash?.Dispose();
         }
-
-        if(hash.PublicInputCount != spec.HashPublicInputCount)
-        {
-            throw new ArgumentException($"The hash circuit's public-input count is {hash.PublicInputCount}; the specification (version {spec.ProofSpecVersion}, {spec.AttributeCount} attribute(s)) requires {spec.HashPublicInputCount}.", nameof(circuits));
-        }
-
-        signatureCircuit = signature;
-        hashCircuit = hash;
     }
 }

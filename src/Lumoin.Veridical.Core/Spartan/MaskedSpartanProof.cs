@@ -10,8 +10,7 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// <summary>
 /// A Spartan2 wire-format proof produced by <c>MaskedSpartanProver</c>:
 /// the base proof's contents augmented with the per-sumcheck statistical
-/// mask sections (SM.7b, design v3 of the statistical-mask design notes;
-/// lineage Libra §4.1 / CFS 2017): the two mask coefficient-vector
+/// mask sections (lineage Libra §4.1 / CFS 2017): the two mask coefficient-vector
 /// commitments (single Pedersen rows), the sums <c>σ</c> and filler sums
 /// <c>σ_F</c>, and the two weighted-opening IPA proofs binding the masks'
 /// terminal evaluations.
@@ -50,18 +49,24 @@ namespace Lumoin.Veridical.Core.Spartan;
 /// sumcheck, <c>joint + ρ_inner · σ_inner</c> for the inner) before
 /// running the per-round identity checks; the filler sums <c>σ_F</c>
 /// are embedded because the weighted-opening claims
-/// <c>v = g(r) + σ_F</c> depend on them (design v3).
+/// <c>v = g(r) + σ_F</c> depend on them.
 /// </para>
 /// </remarks>
 public sealed class MaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
 {
+    /// <summary>The canonical scalar width in bytes.</summary>
     private const int ScalarSize = Scalar.SizeBytes;
+
+    /// <summary>The outer sumcheck's compressed round-polynomial size in bytes (degree 3, three scalars).</summary>
     private const int OuterRoundCompressedSize = 3 * ScalarSize;
+
+    /// <summary>The inner sumcheck's compressed round-polynomial size in bytes (degree 2, two scalars).</summary>
     private const int InnerRoundCompressedSize = 2 * ScalarSize;
+
+    /// <summary>The combined byte size of the three outer terminating claims <c>(claim_Az, claim_Bz, claim_Cz)</c>.</summary>
     private const int OuterClaimsSize = 3 * ScalarSize;
 
-    //The commitment G1 rows are sized by the curve; computed per-instance
-    //from Curve rather than pinned to a constant.
+    /// <summary>The compressed G1 point size in bytes for <see cref="Curve"/>; computed per-instance rather than pinned to a constant, because the commitment rows are sized by the curve.</summary>
     private int G1Size => WellKnownCurves.GetG1CompressedSizeBytes(Curve);
 
 
@@ -96,6 +101,7 @@ public sealed class MaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
     public CurveParameterSet Curve { get; }
 
 
+    /// <summary>Wraps an already-populated wire-format buffer with its section dimensions. Used by <see cref="Build"/> and <see cref="FromBytes"/>; the properties above document each dimension.</summary>
     internal MaskedSpartanProof(
         IMemoryOwner<byte> owner,
         int witnessCommitmentRowCount,
@@ -580,16 +586,26 @@ public sealed class MaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
     }
 
 
-    //Section size helpers. These mirror the byte layout the Hyrax commitment
-    //scheme produces, expressed in curve-generic terms so the proof type names
-    //no scheme type. A future scheme with a differently-shaped proof brings its
-    //own layout; this proof remains the Hyrax-shaped one.
+    /// <summary>
+    /// Computes a Hyrax commitment section's byte size: <paramref name="rowCount"/> compressed G1
+    /// points. This and its sibling section-size helpers mirror the byte layout the Hyrax commitment
+    /// scheme produces, expressed in curve-generic terms so this proof type names no scheme type; a
+    /// future scheme with a differently-shaped proof brings its own layout, and this proof remains the
+    /// Hyrax-shaped one.
+    /// </summary>
+    /// <param name="rowCount">The commitment's row count.</param>
+    /// <param name="curve">The curve sizing the G1 points.</param>
+    /// <returns>The section's byte size.</returns>
     private static int CommitmentSizeBytes(int rowCount, CurveParameterSet curve)
     {
         return rowCount * WellKnownCurves.GetG1CompressedSizeBytes(curve);
     }
 
 
+    /// <summary>Computes a Hyrax IPA opening proof's byte size for the given round count.</summary>
+    /// <param name="ipaRoundCount">The IPA round count.</param>
+    /// <param name="curve">The curve sizing the G1 points and scalars.</param>
+    /// <returns>The opening proof's byte size.</returns>
     private static int OpeningProofSizeBytes(int ipaRoundCount, CurveParameterSet curve)
     {
         int g1Size = WellKnownCurves.GetG1CompressedSizeBytes(curve);
@@ -597,7 +613,10 @@ public sealed class MaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
     }
 
 
-    //Inverse of OpeningProofSizeBytes: rounds = (len − g1 − 3·scalar) / (2·g1).
+    /// <summary>Recovers the IPA round count from an opening proof's byte length, the inverse of <see cref="OpeningProofSizeBytes"/>.</summary>
+    /// <param name="lengthBytes">The opening proof's byte length.</param>
+    /// <param name="curve">The curve sizing the G1 points and scalars.</param>
+    /// <returns>The recovered IPA round count.</returns>
     private static int IpaRoundCountFromBytes(int lengthBytes, CurveParameterSet curve)
     {
         int g1Size = WellKnownCurves.GetG1CompressedSizeBytes(curve);
@@ -605,30 +624,42 @@ public sealed class MaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
     }
 
 
+    /// <summary>The witness commitment section's byte size.</summary>
     private int WitnessCommitmentSize() => WitnessCommitmentRowCount * G1Size;
+
+    /// <summary>The outer mask commitment section's byte size.</summary>
     private int OuterMaskCommitmentSize() => OuterMaskCommitmentRowCount * G1Size;
+
+    /// <summary>The inner mask commitment section's byte size.</summary>
     private int InnerMaskCommitmentSize() => InnerMaskCommitmentRowCount * G1Size;
 
+    /// <summary>The byte offset just past the three commitments and the four mask sums, where the outer sumcheck rounds begin.</summary>
     private int MaskingSectionEnd() =>
         WitnessCommitmentSize()
         + OuterMaskCommitmentSize()
         + InnerMaskCommitmentSize()
         + (4 * ScalarSize);
 
-    //End of the outer section: masking section, outer rounds, the three
-    //outer claims, and E(r_x). The inner rounds start here.
+    /// <summary>The byte offset just past the masking section, the outer sumcheck rounds, the three outer claims, and <c>E(r_x)</c>, where the inner sumcheck rounds begin.</summary>
     private int OuterSectionEnd() =>
         MaskingSectionEnd()
         + (OuterRoundCount * OuterRoundCompressedSize)
         + OuterClaimsSize
         + ScalarSize;
 
+    /// <summary>The byte offset just past the inner sumcheck rounds and <c>eval_W</c>, where the four opening proofs begin.</summary>
     private int OpeningsSectionStart() =>
         OuterSectionEnd()
         + (InnerRoundCount * InnerRoundCompressedSize)
         + ScalarSize;
 
 
+    /// <summary>Validates that every round in <paramref name="rounds"/> has the expected curve and degree.</summary>
+    /// <param name="rounds">The sumcheck rounds to validate.</param>
+    /// <param name="expectedDegree">The required per-round polynomial degree.</param>
+    /// <param name="phase">The phase name ("outer" or "inner") used in the exception message.</param>
+    /// <param name="curve">The required curve.</param>
+    /// <exception cref="ArgumentException">When a round's curve or degree does not match.</exception>
     private static void ValidateRoundShape(
         IReadOnlyList<SumcheckRound> rounds,
         int expectedDegree,
@@ -652,6 +683,9 @@ public sealed class MaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
     }
 
 
+    /// <summary>Builds the algebraic tag for a fresh masked-Spartan proof over <paramref name="curve"/>.</summary>
+    /// <param name="curve">The proof's curve.</param>
+    /// <returns>The composed tag.</returns>
     private static Tag ComposeAlgebraicTag(CurveParameterSet curve)
     {
         return Tag.Create(AlgebraicRole.ZkProof)
@@ -660,6 +694,10 @@ public sealed class MaskedSpartanProof: SensitiveMemory, IMaskedSpartanProofView
     }
 
 
+    /// <summary>Merges the masked-Spartan proof role, curve and variant onto a caller-supplied tag.</summary>
+    /// <param name="tag">The caller-supplied base tag.</param>
+    /// <param name="curve">The proof's curve.</param>
+    /// <returns>The merged tag.</returns>
     private static Tag MergeWithAlgebraicTag(Tag tag, CurveParameterSet curve)
     {
         return tag.With(AlgebraicRole.ZkProof)

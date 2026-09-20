@@ -21,37 +21,44 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bls12Curve381SubgroupCheckAgreementTests
 {
+    /// <summary>The BigInteger reference's on-curve predicate for BLS12-381 G1.</summary>
     private static G1IsOnCurveDelegate IsOnCurve { get; } = Bls12Curve381BigIntegerG1Reference.GetIsOnCurve();
+
+    /// <summary>The BigInteger reference's naive <c>[r]P == O</c> subgroup predicate for BLS12-381 G1.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate NaiveIsInSubgroup { get; } = Bls12Curve381BigIntegerG1Reference.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The production endomorphism-based subgroup predicate for BLS12-381 G1.</summary>
     private static G1IsInPrimeOrderSubgroupDelegate EndomorphismIsInSubgroup { get; } = Bls12Curve381EndomorphismG1Backend.GetIsInPrimeOrderSubgroup();
+
+    /// <summary>The BigInteger reference's scalar multiplication delegate for BLS12-381 G1.</summary>
     private static G1ScalarMultiplyDelegate ScalarMultiply { get; } = Bls12Curve381BigIntegerG1Reference.GetScalarMultiply();
 
+    /// <summary>The BLS12-381 curve parameter set under test.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
 
     /// <summary>
-    /// Point of exact order 3, generated and self-verified by the reference
-    /// harness (deterministic seed points multiplied by the group exponent
-    /// over the target order; <c>E(Fp)</c> is <c>Z_{3mr} × Z_m</c> with
-    /// <c>m = 11·10177·859267·52437899</c>). This is the x = 0 point with the
+    /// Point of exact order 3: deterministic seed points multiplied by the group exponent
+    /// over the target order, where <c>E(Fp)</c> is <c>Z_{3mr} × Z_m</c> with
+    /// <c>m = 11·10177·859267·52437899</c>. This is the x = 0 point with the
     /// lexicographically smaller y — the sibling of the wrong-subgroup probe
     /// pinned in the BBS suite, exercising the other y-parity flag.
     /// </summary>
     private static byte[] Order3Point { get; } = Convert.FromHexString(
         "800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
 
-    /// <summary>Point of exact order 11; on-curve, <c>[11]P = O</c>, <c>[r]P ≠ O</c>, self-verified at generation.</summary>
+    /// <summary>Point of exact order 11; on-curve, <c>[11]P = O</c>, <c>[r]P ≠ O</c>.</summary>
     private static byte[] Order11Point { get; } = Convert.FromHexString(
         "99b3e2c8c6bbf59d3c326b531fc1e639d29200c28624ac604f251a12908c9b7f735318617f625954cc71cdf03229b1ef");
 
-    /// <summary>Point of exact order 10177; on-curve, <c>[10177]P = O</c>, <c>[r]P ≠ O</c>, self-verified at generation.</summary>
+    /// <summary>Point of exact order 10177; on-curve, <c>[10177]P = O</c>, <c>[r]P ≠ O</c>.</summary>
     private static byte[] Order10177Point { get; } = Convert.FromHexString(
         "985e6001ca42834242f7d049fa38825b5fdbefc520a58dd73601a7e64f9dae2f5e122bf2e2a1015b7859191cd2e58686");
 
-    /// <summary>Point of exact order 859267; on-curve, <c>[859267]P = O</c>, <c>[r]P ≠ O</c>, self-verified at generation.</summary>
+    /// <summary>Point of exact order 859267; on-curve, <c>[859267]P = O</c>, <c>[r]P ≠ O</c>.</summary>
     private static byte[] Order859267Point { get; } = Convert.FromHexString(
         "8d98f6e31a3547b73785be9705ce2100f49f3968f436bbaeb1685e9e2a3779975a1d7a661ab72b22322cd730e621b129");
 
-    /// <summary>Point of exact order 52437899; on-curve, <c>[52437899]P = O</c>, <c>[r]P ≠ O</c>, self-verified at generation.</summary>
+    /// <summary>Point of exact order 52437899; on-curve, <c>[52437899]P = O</c>, <c>[r]P ≠ O</c>.</summary>
     private static byte[] Order52437899Point { get; } = Convert.FromHexString(
         "8431dabc768bcb1eb40696a5c59a377ff626be9ba1c3fa9b03305d4063fae6dcc057d08efa04efd76ed6ac7fe3e8cf5e");
 
