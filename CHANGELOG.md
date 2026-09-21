@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-09-21
+
 ### Added
 
 - Configurable digest width, up to 64 bytes, for every hash-tree commitment (`MerkleCommitmentParameters`).
