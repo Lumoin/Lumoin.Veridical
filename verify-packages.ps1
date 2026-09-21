@@ -1,3 +1,5 @@
+#Requires -Version 7.0
+
 # Verifies every NuGet package in the full dependency graph against the
 # signature and trusted-signer (owners) requirements in NuGet.config --
 # the same NU3034 check a clean-cache CI restore performs, runnable
@@ -11,61 +13,79 @@
 # since for example RID-specific ILCompiler packages only appear after a
 # matching publish.
 
-$globalPackages = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $HOME '.nuget/packages' }
-Write-Host "NuGet global packages folder: $globalPackages"
+$globalPackagesFolder = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path -Path $env:USERPROFILE -ChildPath '.nuget' -AdditionalChildPath 'packages' }
+Write-Output "NuGet global packages folder: $globalPackagesFolder"
 
-# Collect unique id|version pairs from every lock file outside bin/obj.
-$pairs = [System.Collections.Generic.SortedSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-Get-ChildItem -Recurse -Filter packages.lock.json | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } | ForEach-Object {
-    $lock = Get-Content $_.FullName -Raw | ConvertFrom-Json
-    foreach ($framework in $lock.dependencies.PSObject.Properties) {
-        foreach ($dependency in $framework.Value.PSObject.Properties) {
-            if ($dependency.Value.type -ne 'Project' -and $dependency.Value.resolved) {
-                [void]$pairs.Add("$($dependency.Name)|$($dependency.Value.resolved)")
+$pairs = [System.Collections.Generic.List[string]]::new()
+
+$lockFiles = Get-ChildItem -Path '.' -Filter 'packages.lock.json' -Recurse -File |
+    Where-Object -FilterScript { $_.FullName -notmatch '\\(bin|obj)\\' }
+
+foreach ($lockFile in $lockFiles) {
+    $lockDocument = ConvertFrom-Json -InputObject (Get-Content -Path $lockFile.FullName -Raw)
+
+    foreach ($frameworkProperty in $lockDocument.dependencies.PSObject.Properties) {
+        foreach ($packageProperty in $frameworkProperty.Value.PSObject.Properties) {
+            $dependency = $packageProperty.Value
+
+            if ($dependency.type -ne 'Project' -and $null -ne $dependency.resolved) {
+                $pairs.Add("$($packageProperty.Name)|$($dependency.resolved)")
             }
         }
     }
 }
 
-# Local dotnet tools are restored with the same NuGet.config policy.
-$toolsManifest = Join-Path (Get-Location) '.config/dotnet-tools.json'
-if (Test-Path $toolsManifest) {
-    $tools = Get-Content $toolsManifest -Raw | ConvertFrom-Json
-    foreach ($tool in $tools.tools.PSObject.Properties) {
-        [void]$pairs.Add("$($tool.Name)|$($tool.Value.version)")
+$toolsManifestPath = Join-Path -Path '.config' -ChildPath 'dotnet-tools.json'
+if (Test-Path -Path $toolsManifestPath -PathType Leaf) {
+    $toolsManifest = ConvertFrom-Json -InputObject (Get-Content -Path $toolsManifestPath -Raw)
+
+    foreach ($toolProperty in $toolsManifest.tools.PSObject.Properties) {
+        $pairs.Add("$($toolProperty.Name)|$($toolProperty.Value.version)")
     }
 }
 
-Write-Host "Verifying $($pairs.Count) packages (direct + transitive + tools)."
+$uniquePairs = @($pairs | Sort-Object -Unique)
+$total = $uniquePairs.Count
+Write-Output "Verifying $total packages (direct + transitive + tools)."
 
-$failedPackages = @()
-$missingPackages = @()
-foreach ($pair in $pairs) {
-    $id, $version = $pair.Split('|')
-    $packagePath = Join-Path $globalPackages $id.ToLowerInvariant() $version.ToLowerInvariant() "$($id.ToLowerInvariant()).$($version.ToLowerInvariant()).nupkg"
+$failedCount = 0
+$missingCount = 0
 
-    if (-not (Test-Path $packagePath)) {
-        $missingPackages += $pair
-        Write-Host "MISSING (not in local cache, skipping): $id $version"
+foreach ($pair in $uniquePairs) {
+    $id, $version = $pair -split '\|', 2
+    $idLower = $id.ToLowerInvariant()
+    $versionLower = $version.ToLowerInvariant()
+    $packagePath = Join-Path -Path $globalPackagesFolder -ChildPath $idLower -AdditionalChildPath $versionLower, "$idLower.$versionLower.nupkg"
+
+    if (-not (Test-Path -Path $packagePath -PathType Leaf)) {
+        $missingCount++
+        Write-Output "MISSING (not in local cache, skipping): $id $version"
         continue
     }
 
-    $output = & dotnet nuget verify --all "$packagePath" --configfile NuGet.config 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $failedPackages += $pair
-        Write-Host "FAILED: $id $version" -ForegroundColor Red
-        Write-Host ($output -join [Environment]::NewLine)
-    } else {
-        Write-Host "ok: $id $version"
+    $verifyOutput = & dotnet nuget verify --all $packagePath --configfile NuGet.config 2>&1
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -ne 0) {
+        $failedCount++
+        Write-Output "FAILED: $id $version"
+
+        foreach ($line in $verifyOutput) {
+            Write-Output $line.ToString()
+        }
+    }
+    else {
+        Write-Output "ok: $id $version"
     }
 }
 
-Write-Host ""
-Write-Host "Verified: $($pairs.Count - $failedPackages.Count - $missingPackages.Count), missing from cache: $($missingPackages.Count), failed: $($failedPackages.Count)"
-if ($failedPackages.Count -gt 0) {
-    Write-Host "One or more package verifications failed:" -ForegroundColor Red
-    $failedPackages | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+Write-Output ''
+$verifiedCount = $total - $failedCount - $missingCount
+Write-Output "Verified: $verifiedCount, missing from cache: $missingCount, failed: $failedCount"
+
+if ($failedCount -gt 0) {
+    Write-Output 'One or more package verifications failed.'
     exit 1
 }
 
-Write-Host "All cached package verifications succeeded." -ForegroundColor Green
+Write-Output 'All cached package verifications succeeded.'

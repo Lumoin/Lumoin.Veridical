@@ -13,6 +13,7 @@
     <File Path="README.md" />
     <File Path="SECURITY.md" />
     <File Path="spellcheckerexclusion.dic" />
+    <File Path="verify-packages.ps1" />
     <File Path="verify-packages.sh" />
   </Folder>
   <Folder Name="/src/">
