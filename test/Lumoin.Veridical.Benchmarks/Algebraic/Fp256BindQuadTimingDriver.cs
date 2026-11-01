@@ -10,8 +10,8 @@ using System.Runtime.Intrinsics.X86;
 namespace Lumoin.Veridical.Benchmarks.Algebraic;
 
 /// <summary>
-/// Stage-3 go/no-go measurement for wiring the AVX2 lane-parallel Fp256 batch multiply
-/// (<see cref="P256BaseFieldMontgomeryBatchBackendAvx2.GetBatchMultiplyMontgomery"/>) into the Longfellow
+/// Measures whether wiring the AVX2 lane-parallel Fp256 batch multiply
+/// (<see cref="P256BaseFieldMontgomeryBatchBackendAvx2.GetBatchMultiplyMontgomery"/>) pays off inside the Longfellow
 /// <c>bind_quad</c> reduction (the dominant Fp256 cost, <see cref="Lumoin.Veridical.Core.Commitments.Longfellow.LongfellowZkConstraintBuilder"/>'s
 /// <c>ReduceRange</c>). The scalar path forms, per term, the four-way CHAINED Montgomery product
 /// <c>(zero ? beta : coef) · eqg[g] · eqh0[h0] · eqh1[h1]</c> as three sequential single-CIOS multiplies
@@ -23,11 +23,11 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 /// <para>
 /// The batch multiply is 3.20×/multiply faster than the scalar on ALREADY-CONTIGUOUS operands
 /// (<c>--fp256-reduction-timing</c>), but <c>bind_quad</c> operands are index-addressed (scattered), so the
-/// per-term GATHER memory traffic may eat the gain. This driver measures the gather cost back-to-back: it is
-/// the explicit gate for committing Stage 3 (the <c>115ec51</c> lesson — op-count proves a call-count change,
-/// NOT a wall-clock win; measure before claiming perf). The dev box is noisy, so absolute times are not
-/// trusted — the two paths are timed INTERLEAVED across many rounds and only the scalar/batch RATIO is
-/// reported, in which the box's common-mode noise cancels. A per-shape byte-identity check confirms the
+/// per-term GATHER memory traffic may eat the gain. This driver times the gather cost directly, back-to-back
+/// with the scalar path: an operation count shows only that fewer calls are made, not that the reduction runs
+/// faster. Timing on a loaded machine is noisy, so absolute times are not relied on; the two paths are timed
+/// INTERLEAVED across many rounds and only the scalar/batch RATIO is reported, in which common-mode noise
+/// cancels. A per-shape byte-identity check confirms the
 /// gather+batch path reproduces the scalar accumulator exactly before any timing is trusted.
 /// </para>
 /// <para>

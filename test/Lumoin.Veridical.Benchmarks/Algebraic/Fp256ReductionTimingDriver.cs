@@ -13,8 +13,8 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 /// the generic <c>m·Modulus</c> CIOS reduction (the live managed path) versus the P-256-specialized
 /// signed-sparse reduction (the retained alternative; both ship side by side and emit the identical residue,
 /// and the specialized form drops 20 of the 36 <see cref="ulong"/> multiplies yet runs slower in managed .NET
-/// for lack of ADX). The dev box is noisy, so the absolute times are not trusted — the two are
-/// timed INTERLEAVED across many rounds and only the generic/specialized RATIO is reported, in which the box's
+/// for lack of ADX). Timing on a loaded machine is noisy, so absolute times are not relied on — the two are
+/// timed INTERLEAVED across many rounds and only the generic/specialized RATIO is reported, in which the
 /// common-mode noise cancels. Avoids BenchmarkDotNet (the soak project's auto-gen path is currently snagged);
 /// this is a direct <see cref="Stopwatch"/> loop, the <c>--ligero-attribution</c> pattern.
 /// </summary>
