@@ -2,7 +2,6 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Telemetry;
 using System;
-using System.Buffers.Binary;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
@@ -393,57 +392,136 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     }
 
 
+    /// <summary>Loads eight canonical scalars into eight limb-major <see cref="Vector512{T}"/> registers of 32-bit limbs, one lane per scalar.</summary>
+    /// <remarks>
+    /// <see cref="LoadScalarLowHighLimbs"/> yields each scalar's limbs 0-3 and 4-7 zero-extended to
+    /// 64-bit lanes. Scalars 0-3 and scalars 4-7 are transposed separately by
+    /// <see cref="TransposeQuartetLanes"/>, once for each limb half, and every limb position's two
+    /// half-width results are joined with <c>Vector512.Create(lower, upper)</c>.
+    /// </remarks>
+    /// <param name="octetBytes">Eight consecutive canonical scalars.</param>
+    /// <param name="limbVectors">Receives the eight 32-bit-limb vectors, least-significant limb first.</param>
     private static void LoadOctetTo32LimbVectors(ReadOnlySpan<byte> octetBytes, Span<Vector512<ulong>> limbVectors)
     {
-        Span<uint> s = stackalloc uint[ElementsPerOctet * Limb32Count];
         int stride = ElementBytes;
-        for(int scalarIndex = 0; scalarIndex < ElementsPerOctet; scalarIndex++)
-        {
-            LoadCanonicalTo32Limbs(octetBytes.Slice(scalarIndex * stride, stride), s.Slice(scalarIndex * Limb32Count, Limb32Count));
-        }
+        LoadScalarLowHighLimbs(octetBytes.Slice(0 * stride, stride), out Vector256<ulong> scalar0Low, out Vector256<ulong> scalar0High);
+        LoadScalarLowHighLimbs(octetBytes.Slice(1 * stride, stride), out Vector256<ulong> scalar1Low, out Vector256<ulong> scalar1High);
+        LoadScalarLowHighLimbs(octetBytes.Slice(2 * stride, stride), out Vector256<ulong> scalar2Low, out Vector256<ulong> scalar2High);
+        LoadScalarLowHighLimbs(octetBytes.Slice(3 * stride, stride), out Vector256<ulong> scalar3Low, out Vector256<ulong> scalar3High);
+        LoadScalarLowHighLimbs(octetBytes.Slice(4 * stride, stride), out Vector256<ulong> scalar4Low, out Vector256<ulong> scalar4High);
+        LoadScalarLowHighLimbs(octetBytes.Slice(5 * stride, stride), out Vector256<ulong> scalar5Low, out Vector256<ulong> scalar5High);
+        LoadScalarLowHighLimbs(octetBytes.Slice(6 * stride, stride), out Vector256<ulong> scalar6Low, out Vector256<ulong> scalar6High);
+        LoadScalarLowHighLimbs(octetBytes.Slice(7 * stride, stride), out Vector256<ulong> scalar7Low, out Vector256<ulong> scalar7High);
 
-        for(int k = 0; k < Limb32Count; k++)
-        {
-            limbVectors[k] = Vector512.Create(
-                (ulong)s[(0 * Limb32Count) + k], s[(1 * Limb32Count) + k], s[(2 * Limb32Count) + k], s[(3 * Limb32Count) + k],
-                s[(4 * Limb32Count) + k], s[(5 * Limb32Count) + k], s[(6 * Limb32Count) + k], s[(7 * Limb32Count) + k]);
-        }
+        TransposeQuartetLanes(scalar0Low, scalar1Low, scalar2Low, scalar3Low, out Vector256<ulong> lowerLimb0, out Vector256<ulong> lowerLimb1, out Vector256<ulong> lowerLimb2, out Vector256<ulong> lowerLimb3);
+        TransposeQuartetLanes(scalar4Low, scalar5Low, scalar6Low, scalar7Low, out Vector256<ulong> upperLimb0, out Vector256<ulong> upperLimb1, out Vector256<ulong> upperLimb2, out Vector256<ulong> upperLimb3);
+        limbVectors[0] = Vector512.Create(lowerLimb0, upperLimb0);
+        limbVectors[1] = Vector512.Create(lowerLimb1, upperLimb1);
+        limbVectors[2] = Vector512.Create(lowerLimb2, upperLimb2);
+        limbVectors[3] = Vector512.Create(lowerLimb3, upperLimb3);
+
+        TransposeQuartetLanes(scalar0High, scalar1High, scalar2High, scalar3High, out Vector256<ulong> lowerLimb4, out Vector256<ulong> lowerLimb5, out Vector256<ulong> lowerLimb6, out Vector256<ulong> lowerLimb7);
+        TransposeQuartetLanes(scalar4High, scalar5High, scalar6High, scalar7High, out Vector256<ulong> upperLimb4, out Vector256<ulong> upperLimb5, out Vector256<ulong> upperLimb6, out Vector256<ulong> upperLimb7);
+        limbVectors[4] = Vector512.Create(lowerLimb4, upperLimb4);
+        limbVectors[5] = Vector512.Create(lowerLimb5, upperLimb5);
+        limbVectors[6] = Vector512.Create(lowerLimb6, upperLimb6);
+        limbVectors[7] = Vector512.Create(lowerLimb7, upperLimb7);
     }
 
 
+    /// <summary>Writes eight limb-major 32-bit-limb <see cref="Vector512{T}"/> registers back into eight canonical scalars, one lane per scalar.</summary>
+    /// <remarks>
+    /// <see cref="TransposeQuartetLanes"/> inverts limb-major back to scalar-major, applied to the
+    /// lower and upper halves of limbs 0-3 and of limbs 4-7. <see cref="StoreScalarLowHighLimbs"/>
+    /// narrows and writes each scalar's pair of halves as canonical bytes.
+    /// </remarks>
+    /// <param name="limbVectors">The eight 32-bit-limb vectors, least-significant limb first.</param>
+    /// <param name="octetBytes">Receives the eight consecutive canonical scalars.</param>
     private static void Store32LimbVectorsToOctet(ReadOnlySpan<Vector512<ulong>> limbVectors, Span<byte> octetBytes)
     {
+        TransposeQuartetLanes(limbVectors[0].GetLower(), limbVectors[1].GetLower(), limbVectors[2].GetLower(), limbVectors[3].GetLower(), out Vector256<ulong> scalar0Low, out Vector256<ulong> scalar1Low, out Vector256<ulong> scalar2Low, out Vector256<ulong> scalar3Low);
+        TransposeQuartetLanes(limbVectors[0].GetUpper(), limbVectors[1].GetUpper(), limbVectors[2].GetUpper(), limbVectors[3].GetUpper(), out Vector256<ulong> scalar4Low, out Vector256<ulong> scalar5Low, out Vector256<ulong> scalar6Low, out Vector256<ulong> scalar7Low);
+        TransposeQuartetLanes(limbVectors[4].GetLower(), limbVectors[5].GetLower(), limbVectors[6].GetLower(), limbVectors[7].GetLower(), out Vector256<ulong> scalar0High, out Vector256<ulong> scalar1High, out Vector256<ulong> scalar2High, out Vector256<ulong> scalar3High);
+        TransposeQuartetLanes(limbVectors[4].GetUpper(), limbVectors[5].GetUpper(), limbVectors[6].GetUpper(), limbVectors[7].GetUpper(), out Vector256<ulong> scalar4High, out Vector256<ulong> scalar5High, out Vector256<ulong> scalar6High, out Vector256<ulong> scalar7High);
+
         int stride = ElementBytes;
-        Span<uint> scalarLimbs = stackalloc uint[Limb32Count];
-        for(int scalarIndex = 0; scalarIndex < ElementsPerOctet; scalarIndex++)
-        {
-            for(int k = 0; k < Limb32Count; k++)
-            {
-                scalarLimbs[k] = (uint)limbVectors[k].GetElement(scalarIndex);
-            }
-
-            StoreCanonicalFrom32Limbs(scalarLimbs, octetBytes.Slice(scalarIndex * stride, stride));
-        }
+        StoreScalarLowHighLimbs(scalar0Low, scalar0High, octetBytes.Slice(0 * stride, stride));
+        StoreScalarLowHighLimbs(scalar1Low, scalar1High, octetBytes.Slice(1 * stride, stride));
+        StoreScalarLowHighLimbs(scalar2Low, scalar2High, octetBytes.Slice(2 * stride, stride));
+        StoreScalarLowHighLimbs(scalar3Low, scalar3High, octetBytes.Slice(3 * stride, stride));
+        StoreScalarLowHighLimbs(scalar4Low, scalar4High, octetBytes.Slice(4 * stride, stride));
+        StoreScalarLowHighLimbs(scalar5Low, scalar5High, octetBytes.Slice(5 * stride, stride));
+        StoreScalarLowHighLimbs(scalar6Low, scalar6High, octetBytes.Slice(6 * stride, stride));
+        StoreScalarLowHighLimbs(scalar7Low, scalar7High, octetBytes.Slice(7 * stride, stride));
     }
 
 
-    private static void LoadCanonicalTo32Limbs(ReadOnlySpan<byte> canonical, Span<uint> limbs)
+    /// <summary>Reads one scalar's 32 canonical big-endian bytes as its eight 32-bit limbs, zero-extended into two <see cref="Vector256{T}"/> of <see cref="ulong"/>.</summary>
+    /// <remarks>
+    /// Reversing the 32 bytes end to end and reading little-endian 32-bit words in increasing offset
+    /// order yields the big-endian words of the original in decreasing offset order, which is limbs 0-7
+    /// least-significant first. The reinterpretation relies on the little-endian lane layout of the
+    /// x86-64 hosts this backend runs on.
+    /// </remarks>
+    /// <param name="canonical">The 32 canonical big-endian scalar bytes.</param>
+    /// <param name="low">Receives limbs 0-3, one per 64-bit lane.</param>
+    /// <param name="high">Receives limbs 4-7, one per 64-bit lane.</param>
+    private static void LoadScalarLowHighLimbs(ReadOnlySpan<byte> canonical, out Vector256<ulong> low, out Vector256<ulong> high)
     {
-        for(int i = 0; i < Limb32Count; i++)
-        {
-            limbs[i] = BinaryPrimitives.ReadUInt32BigEndian(canonical.Slice((Limb32Count - 1 - i) * sizeof(uint), sizeof(uint)));
-        }
+        Vector256<byte> canonicalBytes = Vector256.Create(canonical);
+        Vector256<byte> littleEndianBytes = Vector256.Reverse(canonicalBytes);
+        Vector256<uint> limbs32 = littleEndianBytes.AsUInt32();
+
+        low = Vector256.WidenLower(limbs32);
+        high = Vector256.WidenUpper(limbs32);
     }
 
 
-    private static void StoreCanonicalFrom32Limbs(ReadOnlySpan<uint> limbs, Span<byte> canonical)
+    /// <summary>Writes one scalar's eight 32-bit limbs, held zero-extended across <paramref name="low"/> and <paramref name="high"/>, as its 32 canonical big-endian bytes; the inverse of <see cref="LoadScalarLowHighLimbs"/>.</summary>
+    /// <param name="low">Limbs 0-3, one per 64-bit lane.</param>
+    /// <param name="high">Limbs 4-7, one per 64-bit lane.</param>
+    /// <param name="canonical">Receives the 32 canonical big-endian scalar bytes.</param>
+    private static void StoreScalarLowHighLimbs(Vector256<ulong> low, Vector256<ulong> high, Span<byte> canonical)
     {
-        for(int i = 0; i < Limb32Count; i++)
-        {
-            BinaryPrimitives.WriteUInt32BigEndian(canonical.Slice((Limb32Count - 1 - i) * sizeof(uint), sizeof(uint)), limbs[i]);
-        }
+        Vector256<uint> limbs32 = Vector256.Narrow(low, high);
+        Vector256<byte> littleEndianBytes = limbs32.AsByte();
+        Vector256<byte> canonicalBytes = Vector256.Reverse(littleEndianBytes);
+
+        canonicalBytes.CopyTo(canonical);
     }
 
+
+    /// <summary>
+    /// Transposes four <see cref="Vector256{T}"/> of <see cref="ulong"/>, each holding one source's
+    /// four values, into four vectors each holding one position with lane <c>i</c> carrying source
+    /// <c>i</c>'s value at that position.
+    /// </summary>
+    /// <remarks>
+    /// A matrix transpose is its own inverse, so running this method on its own output recovers its
+    /// inputs and one implementation serves both load and store. The pairing stage zips sources
+    /// <c>(0, 1)</c> and <c>(2, 3)</c> with <c>ZipLower</c> and <c>ZipUpper</c>; the assembly stage
+    /// selects the matching half of each pair with <c>ConcatLowerLower</c> and <c>ConcatUpperUpper</c>.
+    /// </remarks>
+    private static void TransposeQuartetLanes(
+        Vector256<ulong> v0,
+        Vector256<ulong> v1,
+        Vector256<ulong> v2,
+        Vector256<ulong> v3,
+        out Vector256<ulong> w0,
+        out Vector256<ulong> w1,
+        out Vector256<ulong> w2,
+        out Vector256<ulong> w3)
+    {
+        Vector256<ulong> lo01 = Vector256.ZipLower(v0, v1);
+        Vector256<ulong> hi01 = Vector256.ZipUpper(v0, v1);
+        Vector256<ulong> lo23 = Vector256.ZipLower(v2, v3);
+        Vector256<ulong> hi23 = Vector256.ZipUpper(v2, v3);
+
+        w0 = Vector256.ConcatLowerLower(lo01, lo23);
+        w1 = Vector256.ConcatUpperUpper(lo01, lo23);
+        w2 = Vector256.ConcatLowerLower(hi01, hi23);
+        w3 = Vector256.ConcatUpperUpper(hi01, hi23);
+    }
 
     private static void ValidateBatchedLengths(
         ReadOnlySpan<byte> first,
