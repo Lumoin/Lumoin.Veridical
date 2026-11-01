@@ -1,0 +1,125 @@
+name: WebAssembly tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Test filter overriding the default WebAssembly test selection"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 5 * * 1"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "test/Lumoin.Veridical.Tests/**"
+      - "test/Lumoin.Veridical.Tests.Wasm/**"
+      - "Directory.Build.props"
+      - "Directory.Build.targets"
+      - "Directory.Packages.props"
+      - "global.json"
+      - "NuGet.config"
+      - ".github/workflows/wasm-tests.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "test/Lumoin.Veridical.Tests/**"
+      - "test/Lumoin.Veridical.Tests.Wasm/**"
+      - "Directory.Build.props"
+      - "Directory.Build.targets"
+      - "Directory.Packages.props"
+      - "global.json"
+      - "NuGet.config"
+      - ".github/workflows/wasm-tests.yml"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+  NUGET_XMLDOC_MODE: skip
+
+  # The host project is outside Lumoin.Veridical.slnx; every dotnet invocation below names it.
+  HOST_PROJECT: test/Lumoin.Veridical.Tests.Wasm/Lumoin.Veridical.Tests.Wasm.csproj
+
+  # The classes whose subject is the WebAssembly backends. The broad suite is not run under
+  # the single-threaded WebAssembly runtime.
+  DEFAULT_TEST_FILTER: >-
+    FullyQualifiedName~Bn254WasmScalarBackendAgreementTests|FullyQualifiedName~Bls12Curve381WasmScalarBackendAgreementTests|FullyQualifiedName~Blake3CrossBackendAgreementTests|FullyQualifiedName~SimdScalarBackendDispatchTests
+
+jobs:
+  wasm-tests:
+    name: Tests in dotnet.wasm under Node (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        # The interpreter runs the libraries as IL; ahead-of-time compilation runs them as
+        # WebAssembly machine code, the form an AOT-publishing consumer gets. Both are tested.
+        - mode: interpreter
+          aot: false
+        - mode: aot
+          aot: true
+    steps:
+    - name: Harden Runner
+      uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43
+      with:
+        disable-sudo: true
+        # Audit rather than block: the wasm-tools workload installs from endpoint sets that
+        # shift between SDK releases.
+        egress-policy: audit
+
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+    # The SDK and the workload are installed into a runner-writable directory because the
+    # default install location needs sudo, which the hardened runner disables.
+    - name: Point the .NET install at a runner-writable directory
+      run: |
+        echo "DOTNET_INSTALL_DIR=$RUNNER_TEMP/dotnet" >> "$GITHUB_ENV"
+        echo "DOTNET_ROOT=$RUNNER_TEMP/dotnet" >> "$GITHUB_ENV"
+
+    - name: Set up .NET SDK
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+      with:
+        global-json-file: global.json
+
+    # The workload manifests of a release-candidate SDK are prerelease packages themselves.
+    - name: Install the wasm-tools workload
+      run: dotnet workload install wasm-tools --include-previews
+
+    - name: Publish the test host
+      run: dotnet publish "$HOST_PROJECT" -c Release -p:RunAOTCompilation=${{ matrix.aot }}
+
+    - name: Run the tests under the workload's Node
+      env:
+        FILTER_OVERRIDE: ${{ inputs.test-filter }}
+      run: |
+        set -euo pipefail
+        publish_dir="$(dotnet msbuild "$HOST_PROJECT" -getProperty:PublishDir -p:Configuration=Release -p:RunAOTCompilation=${{ matrix.aot }})"
+        app="${publish_dir%/}/wwwroot/main.mjs"
+        if [ ! -f "$app" ]; then
+          echo "published app not found at $app"
+          exit 1
+        fi
+        node="$(ls -d "$DOTNET_ROOT"/packs/Microsoft.NET.Runtime.Emscripten.*.Node.linux-x64/*/tools/bin/node | head -n 1)"
+        "$node" --version
+        filter="${FILTER_OVERRIDE:-$DEFAULT_TEST_FILTER}"
+        # .NET 11's wasm runtime uses the exnref exception-handling proposal; the workload's
+        # Node needs the flag until exnref is on by default in its V8.
+        # The run copies its TRX report out of the runtime's virtual file system to the path
+        # given by --trx-out; the step fails when the exit code is non-zero.
+        "$node" --experimental-wasm-exnref "$app" --output Detailed --filter "$filter" --trx-out "$RUNNER_TEMP/wasm-trx/wasm-${{ matrix.mode }}.trx"
+
+    - name: Upload the TRX report
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: wasm-trx-${{ matrix.mode }}
+        path: ${{ runner.temp }}/wasm-trx/wasm-${{ matrix.mode }}.trx
+        if-no-files-found: warn
