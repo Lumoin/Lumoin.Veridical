@@ -18,11 +18,17 @@ Write-Output "NuGet global packages folder: $globalPackagesFolder"
 
 $pairs = [System.Collections.Generic.List[string]]::new()
 
-$lockFiles = Get-ChildItem -Path '.' -Filter 'packages.lock.json' -Recurse -File |
-    Where-Object -FilterScript { $_.FullName -notmatch '\\(bin|obj)\\' }
+#Only the lock files git tracks are part of the dependency graph; untracked ones
+#(scratch projects, build leftovers) must not influence the result.
+$lockFiles = @(& git ls-files -- 'packages.lock.json' '**/packages.lock.json')
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Output 'git ls-files failed; run this script from inside the repository.'
+    exit 1
+}
 
 foreach ($lockFile in $lockFiles) {
-    $lockDocument = ConvertFrom-Json -InputObject (Get-Content -Path $lockFile.FullName -Raw)
+    $lockDocument = ConvertFrom-Json -InputObject (Get-Content -Path $lockFile -Raw)
 
     foreach ($frameworkProperty in $lockDocument.dependencies.PSObject.Properties) {
         foreach ($packageProperty in $frameworkProperty.Value.PSObject.Properties) {
