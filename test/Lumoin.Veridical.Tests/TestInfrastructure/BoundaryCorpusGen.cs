@@ -61,7 +61,7 @@ internal static class BoundaryCorpusGen
     public static Gen<byte[]> CanonicalDomain(BigInteger modulus) =>
         Gen.Frequency<byte[]>(
             (UniformDrawWeight, Gen.Byte.Array[ElementSizeBytes]),
-            (BoundaryDrawWeight, Gen.OneOfConst(CanonicalCorpus(modulus))));
+            (BoundaryDrawWeight, Gen.OneOf(CanonicalCorpus(modulus))));
 
 
     /// <summary>
@@ -75,7 +75,7 @@ internal static class BoundaryCorpusGen
     public static Gen<byte[]> RawReduction(BigInteger modulus) =>
         Gen.Frequency<byte[]>(
             (UniformDrawWeight, Gen.Byte.Array[ElementSizeBytes]),
-            (BoundaryDrawWeight, Gen.OneOfConst(RawCorpus(modulus))));
+            (BoundaryDrawWeight, Gen.OneOf(RawCorpus(modulus))));
 
 
     private static byte[][] CanonicalCorpus(BigInteger modulus)
