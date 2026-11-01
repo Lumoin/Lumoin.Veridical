@@ -52,7 +52,7 @@ jobs:
         # audit log from the first run, then switch to block + an allowed-endpoints
         # list (mirror COMMON_ALLOWED_ENDPOINTS in main.yml, plus the SharpFuzz
         # source host raw.githubusercontent.com:443).
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43
         with:
           egress-policy: audit
 
@@ -124,7 +124,7 @@ jobs:
 
       - name: Upload findings
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: fuzz-findings-${{ matrix.target }}
           path: findings/${{ matrix.target }}
