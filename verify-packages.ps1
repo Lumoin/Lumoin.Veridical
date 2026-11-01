@@ -18,8 +18,8 @@ Write-Output "NuGet global packages folder: $globalPackagesFolder"
 
 $pairs = [System.Collections.Generic.List[string]]::new()
 
-#Only the lock files git tracks are part of the dependency graph; untracked ones
-#(scratch projects, build leftovers) must not influence the result.
+#Only the lock files that git tracks are part of the dependency graph; stray copies
+#elsewhere in the working directory must not influence the result.
 $lockFiles = @(& git ls-files -- 'packages.lock.json' '**/packages.lock.json')
 
 if ($LASTEXITCODE -ne 0) {
