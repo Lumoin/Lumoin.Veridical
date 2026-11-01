@@ -42,6 +42,35 @@ internal sealed class Bls12Curve381WasmScalarBackendAgreementTests
     /// <summary>The seed of the negate sweep's random operand stream.</summary>
     private const ulong NegateSeed = 0xB12B12B12B12B104UL;
 
+    /// <summary>The seed of the delegate batch add sweep's random operand stream.</summary>
+    private const ulong DelegateBatchAddSeed = 0xB12B12B12B12B105UL;
+
+    /// <summary>The seed of the delegate batch subtract sweep's random operand stream.</summary>
+    private const ulong DelegateBatchSubtractSeed = 0xB12B12B12B12B106UL;
+
+    /// <summary>The seed of the delegate add sweep's random operand stream.</summary>
+    private const ulong DelegateAddSeed = 0xB12B12B12B12B107UL;
+
+    /// <summary>The seed of the delegate subtract sweep's random operand stream.</summary>
+    private const ulong DelegateSubtractSeed = 0xB12B12B12B12B108UL;
+
+    /// <summary>The seed of the delegate multiply sweep's random operand stream.</summary>
+    private const ulong DelegateMultiplySeed = 0xB12B12B12B12B109UL;
+
+    /// <summary>The seed of the delegate negate sweep's random operand stream.</summary>
+    private const ulong DelegateNegateSeed = 0xB12B12B12B12B10AUL;
+
+    /// <summary>The seed of the delegate invert sweep's random operand stream.</summary>
+    private const ulong DelegateInvertSeed = 0xB12B12B12B12B10BUL;
+
+    /// <summary>
+    /// The number of random operands in the invert sweep. Each inversion is a 254-step
+    /// square-and-multiply ladder, so the sweep is shorter than the others to keep an interpreted
+    /// WebAssembly run affordable; the boundary pass still covers every edge value.
+    /// </summary>
+    private const long InvertIterationCount = 40;
+
+
     /// <summary>The batch width: two full SIMD pairs plus a serial tail element.</summary>
     private const int BatchCount = 5;
 
@@ -192,5 +221,192 @@ internal sealed class Bls12Curve381WasmScalarBackendAgreementTests
         }
 
         Assert.IsTrue(batched.SequenceEqual(expected), "The WASM delegate batch multiply must agree with the BigInteger reference.");
+    }
+
+
+    /// <summary>
+    /// The BLS12-381 batch add delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateBatchAddAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarAddDelegate bigIntegerAdd = Bls12Curve381BigIntegerScalarReference.GetAdd();
+        ScalarBatchAddDelegate wasmBatchAdd = Bls12Curve381WasmScalarBackend.GetBatchAdd();
+        CurveParameterSet curve = CurveParameterSet.Bls12Curve381;
+
+        WasmScalarAgreementSweep.RunBatch(
+            "Bls12Curve381WasmScalarBackend.GetBatchAdd",
+            DelegateBatchAddSeed,
+            IterationCount,
+            BatchCount,
+            Bls12Curve381BigIntegerScalarReference.FieldOrder,
+            curve,
+            ReduceDelegate,
+            (left, right, result, count) => wasmBatchAdd(left, right, result, count, curve),
+            bigIntegerAdd.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BLS12-381 batch subtract delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateBatchSubtractAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarSubtractDelegate bigIntegerSubtract = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+        ScalarBatchSubtractDelegate wasmBatchSubtract = Bls12Curve381WasmScalarBackend.GetBatchSubtract();
+        CurveParameterSet curve = CurveParameterSet.Bls12Curve381;
+
+        WasmScalarAgreementSweep.RunBatch(
+            "Bls12Curve381WasmScalarBackend.GetBatchSubtract",
+            DelegateBatchSubtractSeed,
+            IterationCount,
+            BatchCount,
+            Bls12Curve381BigIntegerScalarReference.FieldOrder,
+            curve,
+            ReduceDelegate,
+            (left, right, result, count) => wasmBatchSubtract(left, right, result, count, curve),
+            bigIntegerSubtract.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BLS12-381 single add delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateAddAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarAddDelegate bigIntegerAdd = Bls12Curve381BigIntegerScalarReference.GetAdd();
+        ScalarAddDelegate wasmAdd = Bls12Curve381WasmScalarBackend.GetAdd();
+
+        WasmScalarAgreementSweep.RunBinary(
+            "Bls12Curve381WasmScalarBackend.GetAdd",
+            DelegateAddSeed,
+            IterationCount,
+            BatchCount,
+            Bls12Curve381BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bls12Curve381,
+            ReduceDelegate,
+            wasmAdd.Invoke,
+            bigIntegerAdd.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BLS12-381 single subtract delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateSubtractAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarSubtractDelegate bigIntegerSubtract = Bls12Curve381BigIntegerScalarReference.GetSubtract();
+        ScalarSubtractDelegate wasmSubtract = Bls12Curve381WasmScalarBackend.GetSubtract();
+
+        WasmScalarAgreementSweep.RunBinary(
+            "Bls12Curve381WasmScalarBackend.GetSubtract",
+            DelegateSubtractSeed,
+            IterationCount,
+            BatchCount,
+            Bls12Curve381BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bls12Curve381,
+            ReduceDelegate,
+            wasmSubtract.Invoke,
+            bigIntegerSubtract.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BLS12-381 single multiply delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateMultiplyAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarMultiplyDelegate bigIntegerMultiply = Bls12Curve381BigIntegerScalarReference.GetMultiply();
+        ScalarMultiplyDelegate wasmMultiply = Bls12Curve381WasmScalarBackend.GetMultiply();
+
+        WasmScalarAgreementSweep.RunBinary(
+            "Bls12Curve381WasmScalarBackend.GetMultiply",
+            DelegateMultiplySeed,
+            IterationCount,
+            BatchCount,
+            Bls12Curve381BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bls12Curve381,
+            ReduceDelegate,
+            wasmMultiply.Invoke,
+            bigIntegerMultiply.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BLS12-381 negate delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateNegateAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarNegateDelegate bigIntegerNegate = Bls12Curve381BigIntegerScalarReference.GetNegate();
+        ScalarNegateDelegate wasmNegate = Bls12Curve381WasmScalarBackend.GetNegate();
+
+        WasmScalarAgreementSweep.RunUnaryDelegate(
+            "Bls12Curve381WasmScalarBackend.GetNegate",
+            DelegateNegateSeed,
+            IterationCount,
+            Bls12Curve381BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bls12Curve381,
+            ReduceDelegate,
+            wasmNegate.Invoke,
+            bigIntegerNegate.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BLS12-381 invert delegate agrees with the BigInteger reference on every invertible operand
+    /// and refuses zero as the reference does, under PackedSimd; inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateInvertAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarInvertDelegate bigIntegerInvert = Bls12Curve381BigIntegerScalarReference.GetInvert();
+        ScalarInvertDelegate wasmInvert = Bls12Curve381WasmScalarBackend.GetInvert();
+
+        //Zero has no inverse and both sides throw there, so the sweep runs through wrappers that map
+        //zero to zero; the refusal itself is asserted separately below.
+        WasmScalarAgreementSweep.RunUnaryDelegate(
+            "Bls12Curve381WasmScalarBackend.GetInvert",
+            DelegateInvertSeed,
+            InvertIterationCount,
+            Bls12Curve381BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bls12Curve381,
+            ReduceDelegate,
+            WasmScalarAgreementSweep.ZeroToZero(wasmInvert.Invoke),
+            WasmScalarAgreementSweep.ZeroToZero(bigIntegerInvert.Invoke));
+
+        int size = Scalar.SizeBytes;
+        using System.Buffers.IMemoryOwner<byte> zeroOwner = BaseMemoryPool.Shared.Rent(size);
+        using System.Buffers.IMemoryOwner<byte> resultOwner = BaseMemoryPool.Shared.Rent(size);
+        Memory<byte> zero = zeroOwner.Memory[..size];
+        zero.Span.Clear();
+        Memory<byte> result = resultOwner.Memory[..size];
+
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => wasmInvert(zero.Span, result.Span, CurveParameterSet.Bls12Curve381));
     }
 }

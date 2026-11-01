@@ -155,6 +155,107 @@ internal static class WasmScalarAgreementSweep
     }
 
 
+
+    /// <summary>
+    /// Compares a single-element binary delegate with its reference by applying both to every
+    /// element of the same batches that <see cref="RunBatch"/> draws.
+    /// </summary>
+    /// <param name="operation">The operation name used in failure messages.</param>
+    /// <param name="seed">The seed of the random operand stream.</param>
+    /// <param name="iterations">The number of random batches.</param>
+    /// <param name="batchCount">The number of elements per batch.</param>
+    /// <param name="fieldOrder">The scalar field order the boundary values are computed against.</param>
+    /// <param name="curve">The curve whose scalar field is under test.</param>
+    /// <param name="reduce">The reference reduce delegate.</param>
+    /// <param name="operationUnderTest">The single-element delegate under test.</param>
+    /// <param name="reference">The per-element reference.</param>
+    public static void RunBinary(
+        string operation,
+        ulong seed,
+        long iterations,
+        int batchCount,
+        BigInteger fieldOrder,
+        CurveParameterSet curve,
+        ScalarReduceDelegate reduce,
+        BinaryScalarReferenceDelegate operationUnderTest,
+        BinaryScalarReferenceDelegate reference)
+    {
+        int size = Scalar.SizeBytes;
+        RunBatch(
+            operation,
+            seed,
+            iterations,
+            batchCount,
+            fieldOrder,
+            curve,
+            reduce,
+            (left, right, result, count) =>
+            {
+                for(int i = 0; i < count; i++)
+                {
+                    int offset = i * size;
+                    operationUnderTest(left.Slice(offset, size), right.Slice(offset, size), result.Slice(offset, size), curve);
+                }
+            },
+            reference);
+    }
+
+
+    /// <summary>
+    /// Compares a single-element unary delegate that takes the curve with its reference.
+    /// </summary>
+    /// <param name="operation">The operation name used in failure messages.</param>
+    /// <param name="seed">The seed of the random operand stream.</param>
+    /// <param name="iterations">The number of random operands.</param>
+    /// <param name="fieldOrder">The scalar field order the boundary values are computed against.</param>
+    /// <param name="curve">The curve whose scalar field is under test.</param>
+    /// <param name="reduce">The reference reduce delegate.</param>
+    /// <param name="operationUnderTest">The delegate under test.</param>
+    /// <param name="reference">The reference.</param>
+    public static void RunUnaryDelegate(
+        string operation,
+        ulong seed,
+        long iterations,
+        BigInteger fieldOrder,
+        CurveParameterSet curve,
+        ScalarReduceDelegate reduce,
+        UnaryScalarReferenceDelegate operationUnderTest,
+        UnaryScalarReferenceDelegate reference)
+    {
+        RunUnary(
+            operation,
+            seed,
+            iterations,
+            fieldOrder,
+            curve,
+            reduce,
+            (operand, result) => operationUnderTest(operand, result, curve),
+            reference);
+    }
+
+
+    /// <summary>
+    /// Wraps an inversion so that a zero operand yields zero instead of throwing, which lets the
+    /// boundary pass, whose corpus contains zero, drive an operation that has no inverse there.
+    /// </summary>
+    /// <param name="invert">The inversion to wrap.</param>
+    /// <returns>An inversion that maps zero to zero and defers to <paramref name="invert"/> otherwise.</returns>
+    public static UnaryScalarReferenceDelegate ZeroToZero(UnaryScalarReferenceDelegate invert)
+    {
+        return (operand, result, curve) =>
+        {
+            if(operand.IndexOfAnyExcept((byte)0) < 0)
+            {
+                result.Clear();
+
+                return;
+            }
+
+            invert(operand, result, curve);
+        };
+    }
+
+
     /// <summary>Reduces the raw operands, runs the batch kernel and the reference, and fails on a difference.</summary>
     private static void CheckBatch(
         string operation,

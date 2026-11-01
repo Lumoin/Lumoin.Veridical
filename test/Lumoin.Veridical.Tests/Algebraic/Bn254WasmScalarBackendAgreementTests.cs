@@ -42,6 +42,35 @@ internal sealed class Bn254WasmScalarBackendAgreementTests
     /// <summary>The seed of the negate sweep's random operand stream.</summary>
     private const ulong NegateSeed = 0xB254B254B2540004UL;
 
+    /// <summary>The seed of the delegate batch add sweep's random operand stream.</summary>
+    private const ulong DelegateBatchAddSeed = 0xB254B254B2540005UL;
+
+    /// <summary>The seed of the delegate batch subtract sweep's random operand stream.</summary>
+    private const ulong DelegateBatchSubtractSeed = 0xB254B254B2540006UL;
+
+    /// <summary>The seed of the delegate add sweep's random operand stream.</summary>
+    private const ulong DelegateAddSeed = 0xB254B254B2540007UL;
+
+    /// <summary>The seed of the delegate subtract sweep's random operand stream.</summary>
+    private const ulong DelegateSubtractSeed = 0xB254B254B2540008UL;
+
+    /// <summary>The seed of the delegate multiply sweep's random operand stream.</summary>
+    private const ulong DelegateMultiplySeed = 0xB254B254B2540009UL;
+
+    /// <summary>The seed of the delegate negate sweep's random operand stream.</summary>
+    private const ulong DelegateNegateSeed = 0xB254B254B254000AUL;
+
+    /// <summary>The seed of the delegate invert sweep's random operand stream.</summary>
+    private const ulong DelegateInvertSeed = 0xB254B254B254000BUL;
+
+    /// <summary>
+    /// The number of random operands in the invert sweep. Each inversion is a 254-step
+    /// square-and-multiply ladder, so the sweep is shorter than the others to keep an interpreted
+    /// WebAssembly run affordable; the boundary pass still covers every edge value.
+    /// </summary>
+    private const long InvertIterationCount = 40;
+
+
     /// <summary>The batch width: two full SIMD pairs plus a serial tail element.</summary>
     private const int BatchCount = 5;
 
@@ -192,5 +221,192 @@ internal sealed class Bn254WasmScalarBackendAgreementTests
         }
 
         Assert.IsTrue(batched.SequenceEqual(expected), "The WASM delegate batch multiply must agree with the BigInteger reference.");
+    }
+
+
+    /// <summary>
+    /// The BN254 batch add delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateBatchAddAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarAddDelegate bigIntegerAdd = Bn254BigIntegerScalarReference.GetAdd();
+        ScalarBatchAddDelegate wasmBatchAdd = Bn254WasmScalarBackend.GetBatchAdd();
+        CurveParameterSet curve = CurveParameterSet.Bn254;
+
+        WasmScalarAgreementSweep.RunBatch(
+            "Bn254WasmScalarBackend.GetBatchAdd",
+            DelegateBatchAddSeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            curve,
+            ReduceDelegate,
+            (left, right, result, count) => wasmBatchAdd(left, right, result, count, curve),
+            bigIntegerAdd.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BN254 batch subtract delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateBatchSubtractAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarSubtractDelegate bigIntegerSubtract = Bn254BigIntegerScalarReference.GetSubtract();
+        ScalarBatchSubtractDelegate wasmBatchSubtract = Bn254WasmScalarBackend.GetBatchSubtract();
+        CurveParameterSet curve = CurveParameterSet.Bn254;
+
+        WasmScalarAgreementSweep.RunBatch(
+            "Bn254WasmScalarBackend.GetBatchSubtract",
+            DelegateBatchSubtractSeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            curve,
+            ReduceDelegate,
+            (left, right, result, count) => wasmBatchSubtract(left, right, result, count, curve),
+            bigIntegerSubtract.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BN254 single add delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateAddAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarAddDelegate bigIntegerAdd = Bn254BigIntegerScalarReference.GetAdd();
+        ScalarAddDelegate wasmAdd = Bn254WasmScalarBackend.GetAdd();
+
+        WasmScalarAgreementSweep.RunBinary(
+            "Bn254WasmScalarBackend.GetAdd",
+            DelegateAddSeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            wasmAdd.Invoke,
+            bigIntegerAdd.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BN254 single subtract delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateSubtractAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarSubtractDelegate bigIntegerSubtract = Bn254BigIntegerScalarReference.GetSubtract();
+        ScalarSubtractDelegate wasmSubtract = Bn254WasmScalarBackend.GetSubtract();
+
+        WasmScalarAgreementSweep.RunBinary(
+            "Bn254WasmScalarBackend.GetSubtract",
+            DelegateSubtractSeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            wasmSubtract.Invoke,
+            bigIntegerSubtract.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BN254 single multiply delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateMultiplyAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarMultiplyDelegate bigIntegerMultiply = Bn254BigIntegerScalarReference.GetMultiply();
+        ScalarMultiplyDelegate wasmMultiply = Bn254WasmScalarBackend.GetMultiply();
+
+        WasmScalarAgreementSweep.RunBinary(
+            "Bn254WasmScalarBackend.GetMultiply",
+            DelegateMultiplySeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            wasmMultiply.Invoke,
+            bigIntegerMultiply.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BN254 negate delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateNegateAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarNegateDelegate bigIntegerNegate = Bn254BigIntegerScalarReference.GetNegate();
+        ScalarNegateDelegate wasmNegate = Bn254WasmScalarBackend.GetNegate();
+
+        WasmScalarAgreementSweep.RunUnaryDelegate(
+            "Bn254WasmScalarBackend.GetNegate",
+            DelegateNegateSeed,
+            IterationCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            wasmNegate.Invoke,
+            bigIntegerNegate.Invoke);
+    }
+
+
+    /// <summary>
+    /// The BN254 invert delegate agrees with the BigInteger reference on every invertible operand
+    /// and refuses zero as the reference does, under PackedSimd; inconclusive on hosts without it.
+    /// </summary>
+    [TestMethod]
+    public void WasmDelegateInvertAgreesUnderPackedSimd()
+    {
+        InstructionSetRequirements.RequirePackedSimd();
+
+        ScalarInvertDelegate bigIntegerInvert = Bn254BigIntegerScalarReference.GetInvert();
+        ScalarInvertDelegate wasmInvert = Bn254WasmScalarBackend.GetInvert();
+
+        //Zero has no inverse and both sides throw there, so the sweep runs through wrappers that map
+        //zero to zero; the refusal itself is asserted separately below.
+        WasmScalarAgreementSweep.RunUnaryDelegate(
+            "Bn254WasmScalarBackend.GetInvert",
+            DelegateInvertSeed,
+            InvertIterationCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            WasmScalarAgreementSweep.ZeroToZero(wasmInvert.Invoke),
+            WasmScalarAgreementSweep.ZeroToZero(bigIntegerInvert.Invoke));
+
+        int size = Scalar.SizeBytes;
+        using System.Buffers.IMemoryOwner<byte> zeroOwner = BaseMemoryPool.Shared.Rent(size);
+        using System.Buffers.IMemoryOwner<byte> resultOwner = BaseMemoryPool.Shared.Rent(size);
+        Memory<byte> zero = zeroOwner.Memory[..size];
+        zero.Span.Clear();
+        Memory<byte> result = resultOwner.Memory[..size];
+
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => wasmInvert(zero.Span, result.Span, CurveParameterSet.Bn254));
     }
 }
