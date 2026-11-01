@@ -1,4 +1,3 @@
-using CsCheck;
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
@@ -8,7 +7,7 @@ using System;
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// Property-based agreement tests for the WASM PackedSimd scalar backend.
+/// Seeded differential agreement tests for the WASM PackedSimd scalar backend.
 /// Unlike the per-ISA x64/ARM backends, the WASM backend's body is written
 /// entirely in cross-platform <see cref="System.Runtime.Intrinsics.Vector128"/>
 /// operations, so its internal counter-free cores execute correctly on
@@ -21,144 +20,118 @@ namespace Lumoin.Veridical.Tests.Algebraic;
 [TestClass]
 internal sealed class Bn254WasmScalarBackendAgreementTests
 {
+    /// <summary>The reference reduce delegate that canonicalizes raw operands.</summary>
     private static ScalarReduceDelegate ReduceDelegate { get; } =
         Bn254BigIntegerScalarReference.GetReduce();
 
+    /// <summary>The number of random batches per sweep, run after the boundary pass.</summary>
     private const long IterationCount = 200;
 
-    //Five elements exercise two full SIMD pairs plus a one-element serial
-    //tail in one call on the 2-wide backend.
+    /// <summary>
+    /// The seed of the multiply sweep's random operand stream. Each test draws from its own
+    /// SplitMix64 stream so a failure message's seed regenerates that test's inputs alone.
+    /// </summary>
+    private const ulong MultiplySeed = 0xB254B254B2540001UL;
+
+    /// <summary>The seed of the add sweep's random operand stream.</summary>
+    private const ulong AddSeed = 0xB254B254B2540002UL;
+
+    /// <summary>The seed of the subtract sweep's random operand stream.</summary>
+    private const ulong SubtractSeed = 0xB254B254B2540003UL;
+
+    /// <summary>The seed of the negate sweep's random operand stream.</summary>
+    private const ulong NegateSeed = 0xB254B254B2540004UL;
+
+    /// <summary>The batch width: two full SIMD pairs plus a serial tail element.</summary>
     private const int BatchCount = 5;
 
 
+    /// <summary>
+    /// Batch multiply core agrees with the BigInteger reference on the boundary pass and the seeded random pass.
+    /// </summary>
     [TestMethod]
     public void WasmCoreBatchMultiplyAgreesWithBigIntegerMultiply()
     {
         ScalarMultiplyDelegate bigIntegerMultiply = Bn254BigIntegerScalarReference.GetMultiply();
 
-        int size = Scalar.SizeBytes;
-        Gen<byte[]> batchGen = Gen.Byte.Array[BatchCount * size];
-        Gen.Select(batchGen, batchGen)
-            .Sample((leftRaw, rightRaw) =>
-            {
-                Span<byte> left = stackalloc byte[BatchCount * size];
-                Span<byte> right = stackalloc byte[BatchCount * size];
-                Span<byte> batched = stackalloc byte[BatchCount * size];
-                Span<byte> expected = stackalloc byte[BatchCount * size];
-
-                for(int i = 0; i < BatchCount; i++)
-                {
-                    int offset = i * size;
-                    ReduceDelegate(leftRaw.AsSpan(offset, size), left.Slice(offset, size), CurveParameterSet.Bn254);
-                    ReduceDelegate(rightRaw.AsSpan(offset, size), right.Slice(offset, size), CurveParameterSet.Bn254);
-                }
-
-                Bn254WasmScalarBackend.BatchMultiplyCore(left, right, batched, BatchCount);
-
-                for(int i = 0; i < BatchCount; i++)
-                {
-                    int offset = i * size;
-                    bigIntegerMultiply(left.Slice(offset, size), right.Slice(offset, size), expected.Slice(offset, size), CurveParameterSet.Bn254);
-                }
-
-                return batched.SequenceEqual(expected);
-            }, iter: IterationCount);
+        WasmScalarAgreementSweep.RunBatch(
+            "Bn254WasmScalarBackend.BatchMultiplyCore",
+            MultiplySeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            Bn254WasmScalarBackend.BatchMultiplyCore,
+            bigIntegerMultiply.Invoke);
     }
 
 
+    /// <summary>
+    /// Batch add core agrees with the BigInteger reference on the boundary pass and the seeded random pass.
+    /// </summary>
     [TestMethod]
     public void WasmCoreBatchAddAgreesWithBigIntegerAdd()
     {
         ScalarAddDelegate bigIntegerAdd = Bn254BigIntegerScalarReference.GetAdd();
 
-        int size = Scalar.SizeBytes;
-        Gen<byte[]> batchGen = Gen.Byte.Array[BatchCount * size];
-        Gen.Select(batchGen, batchGen)
-            .Sample((leftRaw, rightRaw) =>
-            {
-                Span<byte> left = stackalloc byte[BatchCount * size];
-                Span<byte> right = stackalloc byte[BatchCount * size];
-                Span<byte> batched = stackalloc byte[BatchCount * size];
-                Span<byte> expected = stackalloc byte[BatchCount * size];
-
-                for(int i = 0; i < BatchCount; i++)
-                {
-                    int offset = i * size;
-                    ReduceDelegate(leftRaw.AsSpan(offset, size), left.Slice(offset, size), CurveParameterSet.Bn254);
-                    ReduceDelegate(rightRaw.AsSpan(offset, size), right.Slice(offset, size), CurveParameterSet.Bn254);
-                }
-
-                Bn254WasmScalarBackend.BatchAddCore(left, right, batched, BatchCount);
-
-                for(int i = 0; i < BatchCount; i++)
-                {
-                    int offset = i * size;
-                    bigIntegerAdd(left.Slice(offset, size), right.Slice(offset, size), expected.Slice(offset, size), CurveParameterSet.Bn254);
-                }
-
-                return batched.SequenceEqual(expected);
-            }, iter: IterationCount);
+        WasmScalarAgreementSweep.RunBatch(
+            "Bn254WasmScalarBackend.BatchAddCore",
+            AddSeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            Bn254WasmScalarBackend.BatchAddCore,
+            bigIntegerAdd.Invoke);
     }
 
 
+    /// <summary>
+    /// Batch subtract core agrees with the BigInteger reference on the boundary pass and the seeded random pass.
+    /// </summary>
     [TestMethod]
     public void WasmCoreBatchSubtractAgreesWithBigIntegerSubtract()
     {
         ScalarSubtractDelegate bigIntegerSubtract = Bn254BigIntegerScalarReference.GetSubtract();
 
-        int size = Scalar.SizeBytes;
-        Gen<byte[]> batchGen = Gen.Byte.Array[BatchCount * size];
-        Gen.Select(batchGen, batchGen)
-            .Sample((leftRaw, rightRaw) =>
-            {
-                Span<byte> left = stackalloc byte[BatchCount * size];
-                Span<byte> right = stackalloc byte[BatchCount * size];
-                Span<byte> batched = stackalloc byte[BatchCount * size];
-                Span<byte> expected = stackalloc byte[BatchCount * size];
-
-                for(int i = 0; i < BatchCount; i++)
-                {
-                    int offset = i * size;
-                    ReduceDelegate(leftRaw.AsSpan(offset, size), left.Slice(offset, size), CurveParameterSet.Bn254);
-                    ReduceDelegate(rightRaw.AsSpan(offset, size), right.Slice(offset, size), CurveParameterSet.Bn254);
-                }
-
-                Bn254WasmScalarBackend.BatchSubtractCore(left, right, batched, BatchCount);
-
-                for(int i = 0; i < BatchCount; i++)
-                {
-                    int offset = i * size;
-                    bigIntegerSubtract(left.Slice(offset, size), right.Slice(offset, size), expected.Slice(offset, size), CurveParameterSet.Bn254);
-                }
-
-                return batched.SequenceEqual(expected);
-            }, iter: IterationCount);
+        WasmScalarAgreementSweep.RunBatch(
+            "Bn254WasmScalarBackend.BatchSubtractCore",
+            SubtractSeed,
+            IterationCount,
+            BatchCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            Bn254WasmScalarBackend.BatchSubtractCore,
+            bigIntegerSubtract.Invoke);
     }
 
 
+    /// <summary>
+    /// Negate core agrees with the BigInteger reference on the boundary pass and the seeded random pass.
+    /// </summary>
     [TestMethod]
     public void WasmCoreNegateAgreesWithBigIntegerNegate()
     {
         ScalarNegateDelegate bigIntegerNegate = Bn254BigIntegerScalarReference.GetNegate();
 
-        int size = Scalar.SizeBytes;
-        Gen.Byte.Array[size]
-            .Sample(aRaw =>
-            {
-                Span<byte> a = stackalloc byte[size];
-                Span<byte> actual = stackalloc byte[size];
-                Span<byte> expected = stackalloc byte[size];
-
-                ReduceDelegate(aRaw, a, CurveParameterSet.Bn254);
-
-                Bn254WasmScalarBackend.NegateCore(a, actual);
-                bigIntegerNegate(a, expected, CurveParameterSet.Bn254);
-
-                return actual.SequenceEqual(expected);
-            }, iter: IterationCount);
+        WasmScalarAgreementSweep.RunUnary(
+            "Bn254WasmScalarBackend.NegateCore",
+            NegateSeed,
+            IterationCount,
+            Bn254BigIntegerScalarReference.FieldOrder,
+            CurveParameterSet.Bn254,
+            ReduceDelegate,
+            Bn254WasmScalarBackend.NegateCore,
+            bigIntegerNegate.Invoke);
     }
 
 
+    /// <summary>
+    /// Off WebAssembly the BN254 delegates throw instead of computing, mirroring the per-ISA backends.
+    /// </summary>
     [TestMethod]
     public void WasmDelegatesRefuseLoudlyOffWasm()
     {
@@ -179,6 +152,10 @@ internal sealed class Bn254WasmScalarBackendAgreementTests
     }
 
 
+    /// <summary>
+    /// The BN254 batch multiply delegate agrees with the BigInteger reference under PackedSimd;
+    /// inconclusive on hosts without it.
+    /// </summary>
     [TestMethod]
     public void WasmDelegateBatchMultiplyAgreesUnderPackedSimd()
     {
