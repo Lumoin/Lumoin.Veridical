@@ -55,6 +55,8 @@ jobs:
   wasm-tests:
     name: Tests in dotnet.wasm under Node (${{ matrix.mode }})
     runs-on: ubuntu-latest
+    # A stalled run holds a runner until the platform limit; the bound makes a stall fail fast.
+    timeout-minutes: 45
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
@@ -108,6 +110,8 @@ jobs:
       run: dotnet publish "$HOST_PROJECT" -c Release ${{ matrix.publish-properties }}
 
     - name: Run the tests under the workload's Node
+      # A healthy run finishes in seconds; the bound turns a stall into a failure with logs.
+      timeout-minutes: 15
       env:
         FILTER_OVERRIDE: ${{ inputs.test-filter }}
         VERIDICAL_TEST_SEED: ${{ github.run_id }}
@@ -126,7 +130,9 @@ jobs:
         # Node needs the flag until exnref is on by default in its V8.
         # The run copies its TRX report out of the runtime's virtual file system to the path
         # given by --trx-out; the step fails when the exit code is non-zero.
-        "$node" --experimental-wasm-exnref "$app" --output Detailed --filter "$filter" --trx-out "$RUNNER_TEMP/wasm-trx/wasm-${{ matrix.mode }}.trx"
+        # --diag-out writes the Microsoft Testing Platform diagnostic log and the runtime's loader
+        # trace to the given directory as the run proceeds, so they survive a stalled run.
+        "$node" --experimental-wasm-exnref "$app" --output Detailed --filter "$filter" --trx-out "$RUNNER_TEMP/wasm-trx/wasm-${{ matrix.mode }}.trx" --diag-out "$RUNNER_TEMP/wasm-diag/${{ matrix.mode }}"
 
     - name: Upload the TRX report
       if: ${{ !cancelled() }}
@@ -134,4 +140,14 @@ jobs:
       with:
         name: wasm-trx-${{ matrix.mode }}
         path: ${{ runner.temp }}/wasm-trx/wasm-${{ matrix.mode }}.trx
+        if-no-files-found: warn
+
+    # always() rather than !cancelled(): the diagnostic log is most needed when the job is stopped
+    # by its time limit, and always() also runs the step in that cancellation.
+    - name: Upload the diagnostic log
+      if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: wasm-diag-${{ matrix.mode }}
+        path: ${{ runner.temp }}/wasm-diag/${{ matrix.mode }}
         if-no-files-found: warn
