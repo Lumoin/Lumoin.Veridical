@@ -50,7 +50,7 @@ internal delegate void UnaryScalarReferenceDelegate(ReadOnlySpan<byte> a, Span<b
 /// Each sweep first runs a boundary pass that places every canonical and raw boundary value
 /// of the field in every batch position, then a pass of uniformly random operands drawn from
 /// a <see cref="SeededByteStream"/>. Raw operands are reduced through the reference reduce
-/// delegate before both sides see them, and a mismatch names the seed, the pass and the
+/// delegate before both sides see them, and a mismatch names the effective seed, how to reproduce it, the pass and the
 /// iteration so the exact inputs regenerate.
 /// </summary>
 internal static class WasmScalarAgreementSweep
@@ -59,7 +59,7 @@ internal static class WasmScalarAgreementSweep
     /// Compares a batch kernel with a per-element reference.
     /// </summary>
     /// <param name="operation">The operation name used in failure messages.</param>
-    /// <param name="seed">The seed of the random operand stream.</param>
+    /// <param name="seed">The fixed seed of the random operand stream, varied by <see cref="TestSeed"/>.</param>
     /// <param name="iterations">The number of random batches.</param>
     /// <param name="batchCount">The number of elements per batch.</param>
     /// <param name="fieldOrder">The scalar field order the boundary values are computed against.</param>
@@ -81,6 +81,7 @@ internal static class WasmScalarAgreementSweep
         int size = Scalar.SizeBytes;
         int total = batchCount * size;
         IReadOnlyList<byte[]> boundaries = BoundaryCorpus.AllValues(fieldOrder);
+        seed = TestSeed.Resolve(seed);
         SeededByteStream stream = new(seed);
         Span<byte> leftRaw = stackalloc byte[total];
         Span<byte> rightRaw = stackalloc byte[total];
@@ -117,7 +118,7 @@ internal static class WasmScalarAgreementSweep
     /// Compares a unary kernel with its reference.
     /// </summary>
     /// <param name="operation">The operation name used in failure messages.</param>
-    /// <param name="seed">The seed of the random operand stream.</param>
+    /// <param name="seed">The fixed seed of the random operand stream, varied by <see cref="TestSeed"/>.</param>
     /// <param name="iterations">The number of random operands.</param>
     /// <param name="fieldOrder">The scalar field order the boundary values are computed against.</param>
     /// <param name="curve">The curve whose scalar field is under test.</param>
@@ -136,6 +137,7 @@ internal static class WasmScalarAgreementSweep
     {
         int size = Scalar.SizeBytes;
         IReadOnlyList<byte[]> boundaries = BoundaryCorpus.AllValues(fieldOrder);
+        seed = TestSeed.Resolve(seed);
         SeededByteStream stream = new(seed);
         Span<byte> raw = stackalloc byte[size];
 
@@ -161,7 +163,7 @@ internal static class WasmScalarAgreementSweep
     /// element of the same batches that <see cref="RunBatch"/> draws.
     /// </summary>
     /// <param name="operation">The operation name used in failure messages.</param>
-    /// <param name="seed">The seed of the random operand stream.</param>
+    /// <param name="seed">The fixed seed of the random operand stream, varied by <see cref="TestSeed"/>.</param>
     /// <param name="iterations">The number of random batches.</param>
     /// <param name="batchCount">The number of elements per batch.</param>
     /// <param name="fieldOrder">The scalar field order the boundary values are computed against.</param>
@@ -205,7 +207,7 @@ internal static class WasmScalarAgreementSweep
     /// Compares a single-element unary delegate that takes the curve with its reference.
     /// </summary>
     /// <param name="operation">The operation name used in failure messages.</param>
-    /// <param name="seed">The seed of the random operand stream.</param>
+    /// <param name="seed">The fixed seed of the random operand stream, varied by <see cref="TestSeed"/>.</param>
     /// <param name="iterations">The number of random operands.</param>
     /// <param name="fieldOrder">The scalar field order the boundary values are computed against.</param>
     /// <param name="curve">The curve whose scalar field is under test.</param>
@@ -295,7 +297,7 @@ internal static class WasmScalarAgreementSweep
         {
             Assert.Fail(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{operation} disagreed with the BigInteger reference at {where} (seed 0x{seed:X16})."));
+                $"{operation} disagreed with the BigInteger reference at {where} ({TestSeed.Describe(seed)})."));
         }
     }
 
@@ -324,7 +326,7 @@ internal static class WasmScalarAgreementSweep
         {
             Assert.Fail(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{operation} disagreed with the BigInteger reference at {where} (seed 0x{seed:X16})."));
+                $"{operation} disagreed with the BigInteger reference at {where} ({TestSeed.Describe(seed)})."));
         }
     }
 }

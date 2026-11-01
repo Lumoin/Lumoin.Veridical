@@ -33,7 +33,7 @@ internal sealed class Blake3CrossBackendAgreementTests
     /// </summary>
     private const int MaximumSweepSizeBytes = 32768;
 
-    /// <summary>The seed of the size and content stream of the sweep; a failure message repeats it.</summary>
+    /// <summary>The fixed seed of the size and content stream of the sweep, varied by <see cref="TestSeed"/>; a failure message repeats the effective seed.</summary>
     private const ulong SweepSeed = 0xB1AC3B1AC3B1AC3UL;
 
     /// <summary>
@@ -332,29 +332,30 @@ internal sealed class Blake3CrossBackendAgreementTests
     /// </summary>
     private static void SweepAgreement(Blake3Backend backend)
     {
-        SeededByteStream stream = new(SweepSeed);
+        ulong seed = TestSeed.Resolve(SweepSeed);
+        SeededByteStream stream = new(seed);
         using IMemoryOwner<byte> inputOwner = BaseMemoryPool.Shared.Rent(MaximumSweepSizeBytes);
 
         foreach(int size in StructuralSizes)
         {
-            AssertAgreement(backend, stream, inputOwner.Memory.Span[..size], $"structural size {size}");
+            AssertAgreement(backend, stream, seed, inputOwner.Memory.Span[..size], $"structural size {size}");
         }
 
         for(long iteration = 0; iteration < RandomSweepIterations; iteration++)
         {
             int size = stream.NextInt(0, MaximumSweepSizeBytes);
-            AssertAgreement(backend, stream, inputOwner.Memory.Span[..size], $"random iteration {iteration}, size {size}");
+            AssertAgreement(backend, stream, seed, inputOwner.Memory.Span[..size], $"random iteration {iteration}, size {size}");
         }
     }
 
 
-    /// <summary>Fills the input from the stream and fails with the seed and case when the digests differ.</summary>
-    private static void AssertAgreement(Blake3Backend backend, SeededByteStream stream, Span<byte> input, string where)
+    /// <summary>Fills the input from the stream and fails with the effective seed and case when the digests differ.</summary>
+    private static void AssertAgreement(Blake3Backend backend, SeededByteStream stream, ulong seed, Span<byte> input, string where)
     {
         stream.Fill(input);
         if(!HashesAgree(backend, input))
         {
-            Assert.Fail($"The backend digest differed from the portable digest at {where} (seed 0x{SweepSeed:X16}).");
+            Assert.Fail($"The backend digest differed from the portable digest at {where} ({TestSeed.Describe(seed)}).");
         }
     }
 

@@ -29,7 +29,15 @@ if (trxOut !== null) {
     forwarded.push('--report-trx', '--report-trx-filename', virtualTrxName, '--results-directory', virtualResultsDirectory);
 }
 
-const runtime = await dotnet.withApplicationArguments(...forwarded).create();
+// The runtime's environment is separate from Node's, so the variable that varies the seeds of the
+// agreement sweeps is copied across when it is set.
+const seedVariable = 'VERIDICAL_TEST_SEED';
+let builder = dotnet.withApplicationArguments(...forwarded);
+if (process.env[seedVariable] !== undefined) {
+    builder = builder.withEnvironmentVariable(seedVariable, process.env[seedVariable]);
+}
+
+const runtime = await builder.create();
 let exitCode = await runtime.runMain(runtime.getConfig().mainAssemblyName, forwarded);
 
 if (trxOut !== null) {

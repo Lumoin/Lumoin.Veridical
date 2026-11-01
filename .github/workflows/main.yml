@@ -199,6 +199,8 @@ jobs:
     # The test executable's folder comes from MSBuild's TargetDir, read
     # by the step above.
     - name: Test
+      env:
+        VERIDICAL_TEST_SEED: ${{ github.run_id }}
       run: dotnet tool run dotnet-coverage collect --output '${{ github.workspace }}/reports/coverage.cobertura.xml' --output-format cobertura '${{ env.TESTS_TARGET_DIR }}${{ env.VERIDICAL_TESTS }}' --filter "TestCategory!=Slow" --report-trx --report-trx-filename testresults.trx --results-directory '${{ github.workspace }}/reports'
       timeout-minutes: 20
 

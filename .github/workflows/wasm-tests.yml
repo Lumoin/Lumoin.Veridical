@@ -110,6 +110,7 @@ jobs:
     - name: Run the tests under the workload's Node
       env:
         FILTER_OVERRIDE: ${{ inputs.test-filter }}
+        VERIDICAL_TEST_SEED: ${{ github.run_id }}
       run: |
         set -euo pipefail
         publish_dir="$(dotnet msbuild "$HOST_PROJECT" -getProperty:PublishDir -p:Configuration=Release ${{ matrix.publish-properties }})"
