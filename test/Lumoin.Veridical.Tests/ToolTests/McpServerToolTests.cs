@@ -18,30 +18,35 @@ namespace Lumoin.Veridical.Tests.ToolTests;
 [TestClass]
 internal sealed class McpServerToolTests
 {
-    //The MCP server runs as a spawned child process reached over stdio. On a loaded CI
-    //runner the process can intermittently drop during the handshake before it is ready,
-    //surfacing as ClientTransportClosedException ("MCP server process exited
-    //unexpectedly"). The connect-and-run sequence is retried a few times so a transient
-    //spawn race does not fail the suite; assertion failures inside the body are not retried.
+    /// <summary>
+    /// The MCP server runs as a spawned child process reached over stdio. On a loaded CI runner the process
+    /// can intermittently drop during the handshake before it is ready, surfacing as
+    /// ClientTransportClosedException ("MCP server process exited unexpectedly"). The connect-and-run
+    /// sequence is retried a few times so a transient spawn race does not fail the suite; assertion failures
+    /// inside the body are not retried.
+    /// </summary>
     private const int McpConnectAttempts = 4;
 
 
-    //The single legitimate deadline: a hang-guard, not a readiness timeout. A correctly
-    //behaving server answers in seconds, but a cold start contending with the all-cores
-    //parallel run can take a couple of minutes; this only fires when the server never
-    //answers at all, which is a real, deterministic failure rather than a load-sensitive
-    //flake. Pass/fail otherwise depends only on the server's responses, never on timing.
+    /// <summary>
+    /// The single legitimate deadline: a hang-guard, not a readiness timeout. A correctly behaving server
+    /// answers in seconds, but a cold start contending with the all-cores parallel run can take a couple of
+    /// minutes; this only fires when the server never answers at all, which is a real, deterministic failure
+    /// rather than a load-sensitive flake. Pass/fail otherwise depends only on the server's responses, never
+    /// on timing.
+    /// </summary>
     private const int McpHangGuardMilliseconds = 300_000;
 
 
-    //The SDK's initialization handshake carries its own 60-second deadline by default. A
-    //test's correctness must never depend on a wall-clock deadline, so it is disabled here:
-    //the cold-started server is waited for indefinitely, leaving the per-test [Timeout]
-    //hang-guard above (surfaced through TestContext.CancellationToken) as the only clock.
-    //The client also bounds its server/discover probe (five seconds by default) and, when
-    //that elapses, sends initialize on the same connection. A server that is merely slow
-    //to start still answers the probe afterwards and then holds the connection to the
-    //2026-07-28 revision, which has no initialize, so the probe deadline is disabled too.
+    /// <summary>
+    /// The SDK's initialization handshake carries its own 60-second deadline by default. A test's correctness
+    /// must never depend on a wall-clock deadline, so it is disabled here: the cold-started server is waited
+    /// for indefinitely, leaving the per-test [Timeout] hang-guard above (surfaced through
+    /// TestContext.CancellationToken) as the only clock. The client also bounds its server/discover probe
+    /// (five seconds by default) and, when that elapses, sends initialize on the same connection. A server
+    /// that is merely slow to start still answers the probe afterwards and then holds the connection to the
+    /// 2026-07-28 revision, which has no initialize, so the probe deadline is disabled too.
+    /// </summary>
     private static McpClientOptions NoInitializationTimeout { get; } = new()
     {
         InitializationTimeout = Timeout.InfiniteTimeSpan,
@@ -49,9 +54,17 @@ internal sealed class McpServerToolTests
     };
 
 
+    /// <summary>
+    /// The context MSTest injects, whose cancellation token is observed by every awaited call so the
+    /// hang-guard timeout cancels a stuck server.
+    /// </summary>
     public TestContext TestContext { get; set; } = null!;
 
 
+    /// <summary>
+    /// Connects an MCP client to the server, confirms the info, hash and self-test tools are listed, and runs
+    /// the self-test tool to a passing result.
+    /// </summary>
     [TestMethod]
     [TestCategory("McpClient")]
     [Timeout(McpHangGuardMilliseconds, CooperativeCancellation = true)]
@@ -77,6 +90,7 @@ internal sealed class McpServerToolTests
     }
 
 
+    /// <summary>Calls the hash tool on the text <c>hello</c> and confirms the reply carries the known BLAKE3-256 digest.</summary>
     [TestMethod]
     [TestCategory("McpClient")]
     [Timeout(McpHangGuardMilliseconds, CooperativeCancellation = true)]
@@ -97,10 +111,11 @@ internal sealed class McpServerToolTests
     }
 
 
-    //Spawns the MCP server, runs the body against a connected client, and disposes the
-    //client. Retries the whole connect-and-run sequence on a transient transport drop
-    //(the spawned server process exiting before it is ready); assertion failures and any
-    //other error propagate on the first occurrence.
+    /// <summary>
+    /// Spawns the MCP server, runs the body against a connected client, and disposes the client. Retries the
+    /// whole connect-and-run sequence on a transient transport drop (the spawned server process exiting
+    /// before it is ready); assertion failures and any other error propagate on the first occurrence.
+    /// </summary>
     private async Task WithMcpClientAsync(Func<McpClient, Task> body)
     {
         string? executable = VeridicalCliTestHelpers.GetExecutablePath();
@@ -132,10 +147,12 @@ internal sealed class McpServerToolTests
     }
 
 
-    //A dropped stdio transport or a server process that exited before the handshake
-    //completed; both are transient spawn races on a loaded runner, not a protocol fault.
-    //An initialization timeout is deliberately NOT transient: the SDK's init deadline is
-    //disabled, so a timeout here would be a real fault to surface rather than retry.
+    /// <summary>
+    /// A dropped stdio transport or a server process that exited before the handshake completed; both are
+    /// transient spawn races on a loaded runner, not a protocol fault. An initialization timeout is
+    /// deliberately NOT transient: the SDK's init deadline is disabled, so a timeout here would be a real
+    /// fault to surface rather than retry.
+    /// </summary>
     private static bool IsTransientTransport(Exception exception)
     {
         return exception is ClientTransportClosedException
@@ -144,6 +161,7 @@ internal sealed class McpServerToolTests
     }
 
 
+    /// <summary>Creates the stdio transport that spawns the Veridical executable in MCP server mode.</summary>
     private static StdioClientTransport CreateTransport(string executable)
     {
         return new StdioClientTransport(new StdioClientTransportOptions
@@ -155,7 +173,7 @@ internal sealed class McpServerToolTests
     }
 
 
-    //Concatenates the text content blocks of a tool-call result.
+    /// <summary>Concatenates the text content blocks of a tool-call result.</summary>
     private static string TextOf(CallToolResult result)
     {
         return string.Concat(result.Content.OfType<TextContentBlock>().Select(block => block.Text));

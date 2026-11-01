@@ -65,11 +65,13 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     /// <summary>The number of accumulator limbs in the CIOS window: <see cref="Limb32Count"/> plus two headroom limbs.</summary>
     private const int AccumulatorLimbCount = Limb32Count + 2;
 
-    //Signed-sparse limb offsets of p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1 in 32-bit limbs: subtract r at {0, 7},
-    //add r at {3, 6, 8}. These are r·p = r·2²⁵⁶ − r·2²²⁴ + r·2¹⁹² + r·2⁹⁶ − r expressed in 2³²-radix limb
-    //positions (2²⁵⁶ → limb 8, 2²²⁴ → limb 7, 2¹⁹² → limb 6, 2⁹⁶ → limb 3, 2⁰ → limb 0).
-
     /// <summary>The limb where the specialized reduction subtracts <c>r</c> for the <c>−2⁰</c> term.</summary>
+    /// <remarks>
+    /// The five sparse-limb constants are the signed-sparse limb offsets of p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1 in
+    /// 32-bit limbs: subtract <c>r</c> at limbs {0, 7} and add it at limbs {3, 6, 8}. They express
+    /// r·p = r·2²⁵⁶ − r·2²²⁴ + r·2¹⁹² + r·2⁹⁶ − r in 2³²-radix limb positions (2²⁵⁶ at limb 8, 2²²⁴ at limb 7,
+    /// 2¹⁹² at limb 6, 2⁹⁶ at limb 3, 2⁰ at limb 0).
+    /// </remarks>
     private const int SparseSubtractLimbLow = 0;
 
     /// <summary>The limb where the specialized reduction subtracts <c>r</c> for the <c>−2²²⁴</c> term.</summary>
@@ -85,8 +87,11 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     private const int SparseAddLimbHigh = 8;
 
 
+    /// <summary>The mask that keeps the low 32 bits of every 64-bit lane, isolating one limb from its carry.</summary>
     private static Vector512<ulong> Low32Mask { get; } = Vector512.Create(0xFFFFFFFFUL);
+    /// <summary>The 32-bit Montgomery constant <c>n'</c> (−p⁻¹ mod 2³²) broadcast to every lane.</summary>
     private static Vector512<ulong> NPrime32Broadcast { get; } = Vector512.Create((ulong)Fp256MontgomeryParameters.NPrime32);
+    /// <summary>The eight 32-bit limbs of the P-256 base-field modulus, each broadcast to every lane.</summary>
     private static Vector512<ulong>[] Modulus32Broadcast { get; } = BuildBroadcast(Fp256MontgomeryParameters.Modulus32Limbs);
 
 
@@ -109,6 +114,9 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     internal static ScalarBatchMultiplyDelegate GetBatchMultiplyMontgomerySpecializedReduce() => BatchMultiplyMontgomerySpecializedReduce;
 
 
+    /// <summary>Broadcasts each of the eight 32-bit limbs to a full vector of 64-bit lanes.</summary>
+    /// <param name="limbs32">The eight 32-bit limbs, least significant first.</param>
+    /// <returns>One vector per limb with the limb replicated in every lane.</returns>
     private static Vector512<ulong>[] BuildBroadcast(ReadOnlySpan<uint> limbs32)
     {
         var vectors = new Vector512<ulong>[Limb32Count];
@@ -121,6 +129,12 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     }
 
 
+    /// <summary>The batched Montgomery multiply that reduces with the generic <c>m·Modulus32</c> step.</summary>
+    /// <param name="leftOperandsConcatenated">The left operands, concatenated.</param>
+    /// <param name="rightOperandsConcatenated">The right operands, concatenated.</param>
+    /// <param name="resultsConcatenated">The destination for the products, concatenated.</param>
+    /// <param name="count">The number of elements in each concatenation.</param>
+    /// <param name="curve">The curve the operation is attributed to.</param>
     private static void BatchMultiplyMontgomery(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -132,6 +146,12 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     }
 
 
+    /// <summary>The batched Montgomery multiply that reduces with the P-256 signed-sparse step.</summary>
+    /// <param name="leftOperandsConcatenated">The left operands, concatenated.</param>
+    /// <param name="rightOperandsConcatenated">The right operands, concatenated.</param>
+    /// <param name="resultsConcatenated">The destination for the products, concatenated.</param>
+    /// <param name="count">The number of elements in each concatenation.</param>
+    /// <param name="curve">The curve the operation is attributed to.</param>
     private static void BatchMultiplyMontgomerySpecializedReduce(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -143,6 +163,15 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     }
 
 
+    /// <summary>
+    /// Multiplies the concatenated operands octet by octet, then finishes the trailing elements with the scalar core.
+    /// </summary>
+    /// <param name="leftOperandsConcatenated">The left operands, concatenated.</param>
+    /// <param name="rightOperandsConcatenated">The right operands, concatenated.</param>
+    /// <param name="resultsConcatenated">The destination for the products, concatenated.</param>
+    /// <param name="count">The number of elements in each concatenation.</param>
+    /// <param name="curve">The curve the operation is attributed to.</param>
+    /// <param name="useSpecializedReduce">Whether the reduction step is the P-256 signed-sparse one rather than the generic one.</param>
     private static void BatchMultiply(
         ReadOnlySpan<byte> leftOperandsConcatenated,
         ReadOnlySpan<byte> rightOperandsConcatenated,
@@ -367,6 +396,12 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
     }
 
 
+    /// <summary>
+    /// Subtracts the modulus from an octet's accumulator when it is at least the modulus, without branching on
+    /// lane values, so every lane ends in the canonical range.
+    /// </summary>
+    /// <param name="t">The nine-limb accumulator of the octet.</param>
+    /// <param name="result">The eight reduced result limbs.</param>
     private static void ConditionalSubtractModulusOctet(ReadOnlySpan<Vector512<ulong>> t, Span<Vector512<ulong>> result)
     {
         Vector512<ulong> mask = Low32Mask;
@@ -523,6 +558,13 @@ internal static class P256BaseFieldMontgomeryBatchBackendAvx512
         w3 = Vector256.ConcatUpperUpper(hi01, hi23);
     }
 
+    /// <summary>Throws unless all three buffers hold exactly <paramref name="count"/> elements of <paramref name="stride"/> bytes.</summary>
+    /// <param name="first">The first buffer.</param>
+    /// <param name="second">The second buffer.</param>
+    /// <param name="third">The third buffer.</param>
+    /// <param name="count">The element count.</param>
+    /// <param name="stride">The bytes per element.</param>
+    /// <exception cref="ArgumentException">When any buffer has a different length.</exception>
     private static void ValidateBatchedLengths(
         ReadOnlySpan<byte> first,
         ReadOnlySpan<byte> second,

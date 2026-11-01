@@ -20,13 +20,22 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 /// </summary>
 internal static class Fp256ReductionTimingDriver
 {
+    /// <summary>The width in bytes of one Fp256 element.</summary>
     private const int ScalarSize = 32;
+    /// <summary>The curve tag passed to the scalar delegates; the P-256 base-field kernels do not depend on it.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
+    /// <summary>The number of Montgomery-domain operand pairs in the pools the timed loops draw from.</summary>
     private const int Operands = 1024;
+    /// <summary>The number of single multiplies in one timed sample of the scalar paths.</summary>
     private const int InnerMultiplies = 256;
+    /// <summary>The number of interleaved timing rounds; the best sample of each path is reported.</summary>
     private const int Rounds = 60;
 
 
+    /// <summary>
+    /// Times the generic and the specialized reduction back to back over the same operands and prints the
+    /// per-multiply cost of each and their ratio.
+    /// </summary>
     public static void Run()
     {
         ScalarReduceDelegate reduce = P256BaseFieldReference.GetReduce();
@@ -109,6 +118,7 @@ internal static class Fp256ReductionTimingDriver
     }
 
 
+    /// <summary>Times one batched multiply over the whole operand pool and returns the cost per multiply in nanoseconds.</summary>
     private static double TimeBatch(ScalarBatchMultiplyDelegate batch, byte[] left, byte[] right, byte[] result)
     {
         Stopwatch watch = Stopwatch.StartNew();
@@ -119,6 +129,7 @@ internal static class Fp256ReductionTimingDriver
     }
 
 
+    /// <summary>Times the generic reduction over the operand pool and returns the cost per multiply in nanoseconds.</summary>
     private static double TimeGeneric(ScalarMultiplyDelegate live, byte[] left, byte[] right, byte[] scratch)
     {
         Stopwatch watch = Stopwatch.StartNew();
@@ -134,6 +145,7 @@ internal static class Fp256ReductionTimingDriver
     }
 
 
+    /// <summary>Times the P-256-specialized reduction over the operand pool and returns the cost per multiply in nanoseconds.</summary>
     private static double TimeSpecial(byte[] left, byte[] right, byte[] scratch)
     {
         Stopwatch watch = Stopwatch.StartNew();

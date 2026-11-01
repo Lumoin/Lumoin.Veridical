@@ -40,21 +40,28 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 /// </remarks>
 internal static class Fp256BindQuadTimingDriver
 {
+    /// <summary>The width in bytes of one Fp256 element.</summary>
     private const int ScalarSize = 32;
+    /// <summary>The curve tag passed to the scalar delegates; the P-256 base-field kernels do not depend on it.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
-    //The deduped coefficient table size: the real circuit reuses a small constant table across many terms.
+    /// <summary>The deduped coefficient table size: the real circuit reuses a small constant table across many terms.</summary>
     private const int CoefficientDistinct = 256;
 
-    //The fraction of terms whose coefficient is zero (so the term selects beta), mirroring the sparse circuit.
+    /// <summary>The fraction of terms whose coefficient is zero (so the term selects beta), mirroring the sparse circuit.</summary>
     private const double ZeroFraction = 0.10;
 
-    //Chunked scratch keeps the gathered operands and the two intermediates resident in cache: 5 buffers of
-    //ChunkSize * 32 bytes (left, right, qv, term, prod). 1024 -> 160 KB, comfortably L2-resident on Zen 3.
+    /// <summary>
+    /// Chunked scratch keeps the gathered operands and the two intermediates resident in cache: 5 buffers of
+    /// ChunkSize * 32 bytes (left, right, qv, term, prod). 1024 -&gt; 160 KB, comfortably L2-resident on Zen
+    /// 3.
+    /// </summary>
     private const int ChunkSize = 1024;
 
+    /// <summary>The number of interleaved timing rounds per shape; the best round of each path is reported.</summary>
     private const int Rounds = 30;
 
+    /// <summary>A sink that consumes the first byte of every result so the timed calls cannot be discarded as dead code.</summary>
     private static int sink;
 
 
@@ -64,22 +71,40 @@ internal static class Fp256BindQuadTimingDriver
     /// </summary>
     private sealed class Workload
     {
+        /// <summary>The number of entries in the gate-indexed table <see cref="Eqg"/>.</summary>
         public int Nv { get; init; }
+        /// <summary>The number of entries in each of the tables <see cref="Eqh0"/> and <see cref="Eqh1"/>.</summary>
         public int Nw { get; init; }
+        /// <summary>The number of terms in the reduction.</summary>
         public int Count { get; init; }
+        /// <summary>The gate-indexed table, one Montgomery-domain element per entry.</summary>
         public byte[] Eqg { get; init; } = Array.Empty<byte>();
+        /// <summary>The left-indexed table, one Montgomery-domain element per entry.</summary>
         public byte[] Eqh0 { get; init; } = Array.Empty<byte>();
+        /// <summary>The right-indexed table, one Montgomery-domain element per entry.</summary>
         public byte[] Eqh1 { get; init; } = Array.Empty<byte>();
+        /// <summary>The deduplicated coefficient table, one Montgomery-domain element per entry.</summary>
         public byte[] CoefficientTable { get; init; } = Array.Empty<byte>();
+        /// <summary>The element selected in place of the coefficient for terms flagged in <see cref="IsZero"/>.</summary>
         public byte[] Beta { get; init; } = Array.Empty<byte>();
+        /// <summary>For each term, the index into <see cref="Eqg"/>.</summary>
         public int[] GateIndex { get; init; } = Array.Empty<int>();
+        /// <summary>For each term, the index into <see cref="Eqh0"/>.</summary>
         public int[] LeftIndex { get; init; } = Array.Empty<int>();
+        /// <summary>For each term, the index into <see cref="Eqh1"/>.</summary>
         public int[] RightIndex { get; init; } = Array.Empty<int>();
+        /// <summary>For each term, the index into <see cref="CoefficientTable"/>.</summary>
         public int[] CoefficientIndex { get; init; } = Array.Empty<int>();
+        /// <summary>For each term, whether its coefficient is zero so that <see cref="Beta"/> is used instead.</summary>
         public bool[] IsZero { get; init; } = Array.Empty<bool>();
     }
 
 
+    /// <summary>
+    /// Times the scalar reduction against the gather-and-batch reduction over several workload shapes and
+    /// prints the per-term cost, the ratio and whether the two accumulators are byte-identical; does nothing
+    /// on hosts without AVX2.
+    /// </summary>
     public static void Run()
     {
         if(!Avx2.IsSupported)
@@ -151,8 +176,10 @@ internal static class Fp256BindQuadTimingDriver
     }
 
 
-    //The scalar reduction: the byte-for-byte mirror of LongfellowZkConstraintBuilder.ReduceRange, three
-    //sequential single-CIOS Montgomery multiplies plus a field-add accumulate per term.
+    /// <summary>
+    /// The scalar reduction: the byte-for-byte mirror of LongfellowZkConstraintBuilder.ReduceRange, three
+    /// sequential single-CIOS Montgomery multiplies plus a field-add accumulate per term.
+    /// </summary>
     private static void ScalarBindQuad(Workload workload, ScalarMultiplyDelegate mul, ScalarAddDelegate add, Span<byte> result)
     {
         Span<byte> accumulator = stackalloc byte[ScalarSize];
@@ -180,8 +207,11 @@ internal static class Fp256BindQuadTimingDriver
     }
 
 
-    //The candidate: gather each chunk's scattered operands into contiguous scratch, three batched multiply
-    //passes (scaled.eqg -> .eqh0 -> .eqh1), then a field-add accumulate. Reuses the validated batch multiply.
+    /// <summary>
+    /// The candidate: gather each chunk's scattered operands into contiguous scratch, three batched multiply
+    /// passes (scaled.eqg -&gt; .eqh0 -&gt; .eqh1), then a field-add accumulate. Reuses the validated batch
+    /// multiply.
+    /// </summary>
     private static void GatherBatchBindQuad(
         Workload workload,
         ScalarBatchMultiplyDelegate batch,
@@ -246,6 +276,7 @@ internal static class Fp256BindQuadTimingDriver
     }
 
 
+    /// <summary>Runs the scalar reduction repeatedly and returns the cost per term in nanoseconds.</summary>
     private static double TimeScalar(Workload workload, ScalarMultiplyDelegate mul, ScalarAddDelegate add, byte[] outBuffer, int iterations)
     {
         Stopwatch watch = Stopwatch.StartNew();
@@ -261,6 +292,7 @@ internal static class Fp256BindQuadTimingDriver
     }
 
 
+    /// <summary>Runs the gather-and-batch reduction repeatedly and returns the cost per term in nanoseconds.</summary>
     private static double TimeBatch(
         Workload workload,
         ScalarBatchMultiplyDelegate batch,
@@ -286,6 +318,10 @@ internal static class Fp256BindQuadTimingDriver
     }
 
 
+    /// <summary>
+    /// Builds a workload of the given table sizes and term count from a fixed-seed generator, so every run
+    /// measures the same inputs.
+    /// </summary>
     private static Workload BuildWorkload(int nv, int nw, int count)
     {
         var random = new Random(0x5EED5EED);
@@ -321,6 +357,7 @@ internal static class Fp256BindQuadTimingDriver
     }
 
 
+    /// <summary>Fills an array with reduced random elements converted to the Montgomery domain.</summary>
     private static byte[] MakeMontgomeryArray(int count, Random random, ScalarReduceDelegate reduce)
     {
         byte[] array = new byte[count * ScalarSize];

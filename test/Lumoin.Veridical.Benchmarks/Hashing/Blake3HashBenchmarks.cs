@@ -34,7 +34,9 @@ public class Blake3HashBenchmarks
     public int InputSize { get; set; }
 
 
+    /// <summary>The input buffer, filled for the current input size.</summary>
     private byte[] input = null!;
+    /// <summary>The destination of the 32-byte digest.</summary>
     private readonly byte[] output = new byte[32];
 
 
