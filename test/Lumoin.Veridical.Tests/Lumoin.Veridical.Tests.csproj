@@ -15,11 +15,11 @@
     <IsTestApplication>true</IsTestApplication>
     <MSTestAnalysisMode>Recommended</MSTestAnalysisMode>
     <!--
-      MSTest.Sdk 4.4.1 only assigns its own default versions to these two testing-platform
+      MSTest.Sdk 4.5.2 only assigns its own default versions to these two testing-platform
       extensions when the properties are still unset, so pinning them here takes their newer
       patch releases without waiting on a new MSTest.Sdk version.
       -->
-    <MicrosoftTestingExtensionsCodeCoverageVersion>18.11.2</MicrosoftTestingExtensionsCodeCoverageVersion>
+    <MicrosoftTestingExtensionsCodeCoverageVersion>18.12.0</MicrosoftTestingExtensionsCodeCoverageVersion>
     <MicrosoftTestingExtensionsFakesVersion>18.10.0</MicrosoftTestingExtensionsFakesVersion>
     <!--
       The tests mimic an application consuming real credentials and artifacts, so they read

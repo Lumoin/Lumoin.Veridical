@@ -73,7 +73,7 @@ internal sealed class Gf2k128FieldLawTests
     //narrower blend rather than force-fitting the shared helper.
     private static Gen<byte[]> BoundaryElementBytesGen { get; } = Gen.Frequency<byte[]>(
         (UniformDrawWeight, Gen.Byte.Array[ElementSizeBytes]),
-        (BoundaryDrawWeight, Gen.OneOfConst(BoundaryCorpus)));
+        (BoundaryDrawWeight, Gen.OneOf(BoundaryCorpus)));
 
 
     [TestMethod]

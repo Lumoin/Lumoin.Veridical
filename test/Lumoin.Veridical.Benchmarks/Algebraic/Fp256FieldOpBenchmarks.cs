@@ -22,27 +22,45 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 [SimpleJob(RunStrategy.Throughput)]
 public class Fp256FieldOpBenchmarks
 {
+    /// <summary>The width in bytes of one Fp256 element.</summary>
     private const int ScalarBytes = 32;
+    /// <summary>The seed of the generator that draws the operands, fixed so every run measures the same inputs.</summary>
     private const int BenchmarkSeed = 0x5EED5EED;
+    /// <summary>The curve tag passed to the scalar delegates; the P-256 base-field kernels do not depend on it.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
+    /// <summary>The left operand, a reduced field element.</summary>
     private byte[] a = null!;
+    /// <summary>The right operand, a reduced field element.</summary>
     private byte[] b = null!;
+    /// <summary>The destination of every operation.</summary>
     private byte[] result = null!;
 
+    /// <summary>The BigInteger reference multiply.</summary>
     private ScalarMultiplyDelegate bigIntegerMultiply = null!;
+    /// <summary>The BigInteger reference inversion.</summary>
     private ScalarInvertDelegate bigIntegerInvert = null!;
+    /// <summary>The BigInteger reference addition.</summary>
     private ScalarAddDelegate bigIntegerAdd = null!;
+    /// <summary>The BigInteger reference subtraction.</summary>
     private ScalarSubtractDelegate bigIntegerSubtract = null!;
 
+    /// <summary>The Montgomery-domain multiply.</summary>
     private ScalarMultiplyDelegate montgomeryMultiply = null!;
+    /// <summary>The Montgomery-domain inversion.</summary>
     private ScalarInvertDelegate montgomeryInvert = null!;
+    /// <summary>The Montgomery-domain addition.</summary>
     private ScalarAddDelegate montgomeryAdd = null!;
+    /// <summary>The Montgomery-domain subtraction.</summary>
     private ScalarSubtractDelegate montgomerySubtract = null!;
 
+    /// <summary>The Solinas-reduction multiply.</summary>
     private ScalarMultiplyDelegate solinasMultiply = null!;
+    /// <summary>The Solinas-reduction inversion.</summary>
     private ScalarInvertDelegate solinasInvert = null!;
+    /// <summary>The Solinas-reduction addition.</summary>
     private ScalarAddDelegate solinasAdd = null!;
+    /// <summary>The Solinas-reduction subtraction.</summary>
     private ScalarSubtractDelegate solinasSubtract = null!;
 
 
@@ -76,6 +94,7 @@ public class Fp256FieldOpBenchmarks
     }
 
 
+    /// <summary>Draws a wide random value from a generator seeded by the salt and reduces it into a canonical field element.</summary>
     private static byte[] ReducedScalar(ScalarReduceDelegate reduce, int salt)
     {
         byte[] value = new byte[ScalarBytes];

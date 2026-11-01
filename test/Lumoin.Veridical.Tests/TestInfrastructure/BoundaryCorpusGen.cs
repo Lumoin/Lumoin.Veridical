@@ -1,6 +1,4 @@
 using CsCheck;
-using System;
-using System.Collections.Generic;
 using System.Numerics;
 
 namespace Lumoin.Veridical.Tests.TestInfrastructure;
@@ -36,16 +34,18 @@ namespace Lumoin.Veridical.Tests.TestInfrastructure;
 /// </remarks>
 internal static class BoundaryCorpusGen
 {
+    /// <summary>The width in bytes of one canonical big-endian field element.</summary>
     private const int ElementSizeBytes = 32;
-    private const int LimbSizeBytes = 8;
-    private const int LimbCount = ElementSizeBytes / LimbSizeBytes;
-    private const int BitsPerLimb = LimbSizeBytes * 8;
 
-    //Roughly one boundary draw per six uniform draws: frequent enough that a
-    //typical iteration count of a few hundred hits every corpus entry many
-    //times over, sparse enough that CsCheck's shrinker still has uniform
-    //noise around each failure to work with.
+    /// <summary>
+    /// The frequency weight of a uniform draw. Roughly one boundary draw per six uniform draws
+    /// is frequent enough that a typical iteration count of a few hundred hits every corpus
+    /// entry many times over, and sparse enough that CsCheck's shrinker still has uniform noise
+    /// around each failure to work with.
+    /// </summary>
     private const int UniformDrawWeight = 6;
+
+    /// <summary>The frequency weight of a boundary draw relative to <see cref="UniformDrawWeight"/>.</summary>
     private const int BoundaryDrawWeight = 1;
 
 
@@ -61,7 +61,7 @@ internal static class BoundaryCorpusGen
     public static Gen<byte[]> CanonicalDomain(BigInteger modulus) =>
         Gen.Frequency<byte[]>(
             (UniformDrawWeight, Gen.Byte.Array[ElementSizeBytes]),
-            (BoundaryDrawWeight, Gen.OneOfConst(CanonicalCorpus(modulus))));
+            (BoundaryDrawWeight, Gen.OneOf(BoundaryCorpus.CanonicalValues(modulus))));
 
 
     /// <summary>
@@ -75,124 +75,5 @@ internal static class BoundaryCorpusGen
     public static Gen<byte[]> RawReduction(BigInteger modulus) =>
         Gen.Frequency<byte[]>(
             (UniformDrawWeight, Gen.Byte.Array[ElementSizeBytes]),
-            (BoundaryDrawWeight, Gen.OneOfConst(RawCorpus(modulus))));
-
-
-    private static byte[][] CanonicalCorpus(BigInteger modulus)
-    {
-        var values = new List<BigInteger>
-        {
-            BigInteger.Zero,
-            BigInteger.One,
-            2,
-            (modulus - 1) / 2,
-            modulus - 2,
-            modulus - 1,
-            AllOnesPattern() % modulus,
-            AlternatingBytePattern(0xAA) % modulus,
-            AlternatingBytePattern(0x55) % modulus,
-        };
-
-        for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
-        {
-            values.Add(SingleLimbHighBit(limbIndex) % modulus);
-        }
-
-        return EncodeDistinct(values);
-    }
-
-
-    private static byte[][] RawCorpus(BigInteger modulus)
-    {
-        var values = new List<BigInteger>
-        {
-            modulus - 1,
-            modulus,
-            modulus + 1,
-            AllOnesPattern(),
-        };
-
-        BigInteger twiceModulusLessOne = (2 * modulus) - 1;
-        if(Fits(twiceModulusLessOne))
-        {
-            values.Add(twiceModulusLessOne);
-        }
-
-        for(int limbIndex = 0; limbIndex < LimbCount; limbIndex++)
-        {
-            values.Add(SingleLimbHighBit(limbIndex));
-        }
-
-        return EncodeDistinct(values);
-    }
-
-
-    private static BigInteger AllOnesPattern() => (BigInteger.One << (ElementSizeBytes * 8)) - 1;
-
-
-    private static BigInteger AlternatingBytePattern(byte fillByte)
-    {
-        Span<byte> bytes = stackalloc byte[ElementSizeBytes];
-        bytes.Fill(fillByte);
-
-        return new BigInteger(bytes, isUnsigned: true, isBigEndian: true);
-    }
-
-
-    //The value with only bit 63 of the given big-endian limb set (limbIndex 0
-    //is the most significant 8-byte limb), i.e. the top bit of that 64-bit
-    //word — the classic carry-out boundary within a limb-wise adder.
-    private static BigInteger SingleLimbHighBit(int limbIndex)
-    {
-        int limbIndexFromLeast = LimbCount - 1 - limbIndex;
-
-        return BigInteger.One << ((limbIndexFromLeast * BitsPerLimb) + (BitsPerLimb - 1));
-    }
-
-
-    private static bool Fits(BigInteger value) =>
-        value >= BigInteger.Zero && value < (BigInteger.One << (ElementSizeBytes * 8));
-
-
-    private static byte[][] EncodeDistinct(List<BigInteger> values)
-    {
-        var distinct = new List<BigInteger>();
-        foreach(BigInteger value in values)
-        {
-            if(!distinct.Contains(value))
-            {
-                distinct.Add(value);
-            }
-        }
-
-        var encoded = new byte[distinct.Count][];
-        for(int i = 0; i < distinct.Count; i++)
-        {
-            encoded[i] = Encode(distinct[i]);
-        }
-
-        return encoded;
-    }
-
-
-    //Mirrors the Bytes()/WriteCanonicalBytes() helpers the sibling agreement
-    //tests already use to turn a hand-picked BigInteger edge value into a
-    //right-aligned canonical big-endian element.
-    private static byte[] Encode(BigInteger value)
-    {
-        var destination = new byte[ElementSizeBytes];
-        if(!value.TryWriteBytes(destination, out int written, isUnsigned: true, isBigEndian: true))
-        {
-            throw new InvalidOperationException("A boundary corpus value did not fit in the canonical element width.");
-        }
-
-        if(written < destination.Length)
-        {
-            int shift = destination.Length - written;
-            destination.AsSpan(0, written).CopyTo(destination.AsSpan(shift));
-            destination.AsSpan(0, shift).Clear();
-        }
-
-        return destination;
-    }
+            (BoundaryDrawWeight, Gen.OneOf(BoundaryCorpus.RawValues(modulus))));
 }

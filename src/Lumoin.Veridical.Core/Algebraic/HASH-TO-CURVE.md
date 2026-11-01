@@ -81,7 +81,7 @@ layer manifests as a divergence in every signature byte downstream,
 and a wire-incompatible implementation that nonetheless looks correct
 to its own internal test surface.
 
-The general lesson: when adding a new RFC-bound primitive, both
+In general, when adding a new RFC-bound primitive, both
 algebraic-invariant tests *and* byte-faithful tests against published
 vectors should be added together. The
 algebraic tests are cheap and run on random inputs, catching a wide

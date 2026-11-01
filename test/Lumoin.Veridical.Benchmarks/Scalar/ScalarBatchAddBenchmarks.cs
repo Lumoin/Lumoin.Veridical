@@ -13,7 +13,11 @@ namespace Lumoin.Veridical.Benchmarks.Scalar;
 /// Throughput of batched <see cref="ScalarBatchAddDelegate"/> and
 /// <see cref="ScalarBatchSubtractDelegate"/> across the BigInteger
 /// reference (loop over single-element) and the SIMD backends
-/// (lane-interleaved real batching). Parameterised by batch size so the
+/// (lane-interleaved real batching), for both the BLS12-381 and the BN254
+/// scalar fields. The BLS12-381 rows go through
+/// <see cref="Bls12Curve381SimdScalarBackend"/> and the BN254 rows through
+/// <see cref="Bn254SimdScalarBackend"/>, each falling back to its BigInteger
+/// reference when the host has no SIMD tier. Parameterised by batch size so the
 /// crossover between "single-element is fine" and "batching pays off"
 /// is visible in one results table.
 /// </summary>
@@ -41,7 +45,9 @@ public class ScalarBatchAddBenchmarks
     private const int ScalarBytes = 32;
     private const int BenchmarkSeed = 0x5EED5EED;
     private const int MaxBatchSize = 1024;
+    private const int Bn254SeedOffset = 1;
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    private static CurveParameterSet Bn254Curve { get; } = CurveParameterSet.Bn254;
 
 
     /// <summary>
@@ -63,8 +69,17 @@ public class ScalarBatchAddBenchmarks
     private ScalarBatchAddDelegate simdBatchAdd = null!;
     private ScalarBatchSubtractDelegate simdBatchSubtract = null!;
 
+    private byte[] bnABatch = null!;
+    private byte[] bnBBatch = null!;
+    private byte[] bnResultBatch = null!;
 
-    /// <summary>Resolves the BigInteger and SIMD batch add/subtract delegates and fills the operand buffers with reduced scalars.</summary>
+    private ScalarBatchAddDelegate bnBigIntegerBatchAdd = null!;
+    private ScalarBatchSubtractDelegate bnBigIntegerBatchSubtract = null!;
+    private ScalarBatchAddDelegate bnSimdBatchAdd = null!;
+    private ScalarBatchSubtractDelegate bnSimdBatchSubtract = null!;
+
+
+    /// <summary>Resolves the BigInteger and SIMD batch add/subtract delegates for both curves and fills the operand buffers with reduced scalars.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -103,6 +118,46 @@ public class ScalarBatchAddBenchmarks
             reduce(raw, aBatch.AsSpan(offset, ScalarBytes), Curve);
             rng.NextBytes(raw);
             reduce(raw, bBatch.AsSpan(offset, ScalarBytes), Curve);
+        }
+
+        SetupBn254();
+    }
+
+
+    /// <summary>
+    /// Resolves the BN254 BigInteger and SIMD batch add/subtract delegates and fills the BN254 operand
+    /// buffers with reduced scalars from a seed distinct from the BLS12-381 one.
+    /// </summary>
+    private void SetupBn254()
+    {
+        bnBigIntegerBatchAdd = Bn254BigIntegerScalarReference.GetBatchAdd();
+        bnBigIntegerBatchSubtract = Bn254BigIntegerScalarReference.GetBatchSubtract();
+
+        if(Bn254SimdScalarBackend.IsSupported)
+        {
+            bnSimdBatchAdd = Bn254SimdScalarBackend.GetBatchAdd();
+            bnSimdBatchSubtract = Bn254SimdScalarBackend.GetBatchSubtract();
+        }
+        else
+        {
+            bnSimdBatchAdd = bnBigIntegerBatchAdd;
+            bnSimdBatchSubtract = bnBigIntegerBatchSubtract;
+        }
+
+        bnABatch = new byte[MaxBatchSize * ScalarBytes];
+        bnBBatch = new byte[MaxBatchSize * ScalarBytes];
+        bnResultBatch = new byte[MaxBatchSize * ScalarBytes];
+
+        ScalarReduceDelegate reduce = Bn254BigIntegerScalarReference.GetReduce();
+        Random rng = new(BenchmarkSeed + Bn254SeedOffset);
+        Span<byte> raw = stackalloc byte[64];
+        for(int i = 0; i < MaxBatchSize; i++)
+        {
+            int offset = i * ScalarBytes;
+            rng.NextBytes(raw);
+            reduce(raw, bnABatch.AsSpan(offset, ScalarBytes), Bn254Curve);
+            rng.NextBytes(raw);
+            reduce(raw, bnBBatch.AsSpan(offset, ScalarBytes), Bn254Curve);
         }
     }
 
@@ -160,5 +215,57 @@ public class ScalarBatchAddBenchmarks
             resultBatch.AsSpan(0, total),
             BatchSize,
             Curve);
+    }
+
+    /// <summary>Benchmarks BigInteger batched addition over the BN254 scalar field.</summary>
+    [Benchmark(Description = "BN254 BigInteger BatchAdd")]
+    public void BN254BigIntegerBatchAdd()
+    {
+        int total = BatchSize * ScalarBytes;
+        bnBigIntegerBatchAdd(
+            bnABatch.AsSpan(0, total),
+            bnBBatch.AsSpan(0, total),
+            bnResultBatch.AsSpan(0, total),
+            BatchSize,
+            Bn254Curve);
+    }
+
+    /// <summary>Benchmarks SIMD lane-interleaved batched addition over the BN254 scalar field.</summary>
+    [Benchmark(Description = "BN254 SIMD BatchAdd")]
+    public void BN254SIMDBatchAdd()
+    {
+        int total = BatchSize * ScalarBytes;
+        bnSimdBatchAdd(
+            bnABatch.AsSpan(0, total),
+            bnBBatch.AsSpan(0, total),
+            bnResultBatch.AsSpan(0, total),
+            BatchSize,
+            Bn254Curve);
+    }
+
+    /// <summary>Benchmarks BigInteger batched subtraction over the BN254 scalar field.</summary>
+    [Benchmark(Description = "BN254 BigInteger BatchSubtract")]
+    public void BN254BigIntegerBatchSubtract()
+    {
+        int total = BatchSize * ScalarBytes;
+        bnBigIntegerBatchSubtract(
+            bnABatch.AsSpan(0, total),
+            bnBBatch.AsSpan(0, total),
+            bnResultBatch.AsSpan(0, total),
+            BatchSize,
+            Bn254Curve);
+    }
+
+    /// <summary>Benchmarks SIMD lane-interleaved batched subtraction over the BN254 scalar field.</summary>
+    [Benchmark(Description = "BN254 SIMD BatchSubtract")]
+    public void BN254SIMDBatchSubtract()
+    {
+        int total = BatchSize * ScalarBytes;
+        bnSimdBatchSubtract(
+            bnABatch.AsSpan(0, total),
+            bnBBatch.AsSpan(0, total),
+            bnResultBatch.AsSpan(0, total),
+            BatchSize,
+            Bn254Curve);
     }
 }

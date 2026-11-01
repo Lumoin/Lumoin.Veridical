@@ -119,7 +119,7 @@ jobs:
     steps:
     - name: Harden Runner
       if: ${{ matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-24.04-arm' }}
-      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43
       with:
         disable-sudo: true
         egress-policy: block
@@ -199,6 +199,8 @@ jobs:
     # The test executable's folder comes from MSBuild's TargetDir, read
     # by the step above.
     - name: Test
+      env:
+        VERIDICAL_TEST_SEED: ${{ github.run_id }}
       run: dotnet tool run dotnet-coverage collect --output '${{ github.workspace }}/reports/coverage.cobertura.xml' --output-format cobertura '${{ env.TESTS_TARGET_DIR }}${{ env.VERIDICAL_TESTS }}' --filter "TestCategory!=Slow" --report-trx --report-trx-filename testresults.trx --results-directory '${{ github.workspace }}/reports'
       timeout-minutes: 20
 
@@ -225,7 +227,7 @@ jobs:
 
     - name: Create test summary
       if: ${{ matrix.os == 'ubuntu-24.04' && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
-      uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3
+      uses: EnricoMi/publish-unit-test-result-action@7622c5bf3d112a72ab4fa3951c2aa5723d8ab92d
       with:
         trx_files: '${{ github.workspace }}/reports/**/*.trx'
 
@@ -326,7 +328,7 @@ jobs:
 
     - name: Upload library NuGet packages
       if: ${{ matrix.os == 'ubuntu-24.04' && github.repository_owner == 'lumoin' && github.actor != 'dependabot[bot]' }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: nupkg-libraries
         path: ./nupkgs/*.*
@@ -386,7 +388,7 @@ jobs:
       # apt-get + sudo. clang is NOT pre-present on the runner image, so apt fetches it
       # from the Ubuntu mirrors (azure.archive/ports.ubuntu.com, security.ubuntu.com) —
       # those are allow-listed in COMMON_ALLOWED_ENDPOINTS so the egress block permits them.
-      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43
       with:
         egress-policy: block
         allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
@@ -476,7 +478,7 @@ jobs:
         rm -rf toolcheck toolcheck-src toolcheck-nuget.config
 
     - name: Upload native tool package (${{ matrix.rid }})
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: nupkg-tool-${{ matrix.rid }}
         path: ./nupkgs/*.nupkg
@@ -495,14 +497,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
 
       - name: Download NuGet packages
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: nupkg-*
           merge-multiple: true
@@ -535,14 +537,14 @@ jobs:
     environment: Release
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: ${{ env.COMMON_ALLOWED_ENDPOINTS }}
 
       - name: Download NuGet packages
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: nupkg-*
           merge-multiple: true
