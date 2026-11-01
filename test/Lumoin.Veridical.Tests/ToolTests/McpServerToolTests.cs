@@ -38,9 +38,14 @@ internal sealed class McpServerToolTests
     //test's correctness must never depend on a wall-clock deadline, so it is disabled here:
     //the cold-started server is waited for indefinitely, leaving the per-test [Timeout]
     //hang-guard above (surfaced through TestContext.CancellationToken) as the only clock.
+    //The client also bounds its server/discover probe (five seconds by default) and, when
+    //that elapses, sends initialize on the same connection. A server that is merely slow
+    //to start still answers the probe afterwards and then holds the connection to the
+    //2026-07-28 revision, which has no initialize, so the probe deadline is disabled too.
     private static McpClientOptions NoInitializationTimeout { get; } = new()
     {
-        InitializationTimeout = Timeout.InfiniteTimeSpan
+        InitializationTimeout = Timeout.InfiniteTimeSpan,
+        DiscoverProbeTimeout = Timeout.InfiniteTimeSpan
     };
 
 
