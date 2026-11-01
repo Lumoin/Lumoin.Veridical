@@ -55,16 +55,27 @@ jobs:
   wasm-tests:
     name: Tests in dotnet.wasm under Node (${{ matrix.mode }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
         # The interpreter runs the libraries as IL; ahead-of-time compilation runs them as
         # WebAssembly machine code, the form an AOT-publishing consumer gets. Both are tested.
+        # Each leg carries the publish properties that select it; they are passed to the publish
+        # and to the property query that locates its output.
         - mode: interpreter
-          aot: false
+          publish-properties: -p:RunAOTCompilation=false
+          experimental: false
         - mode: aot
-          aot: true
+          publish-properties: -p:RunAOTCompilation=true
+          experimental: false
+        # CoreCLR on WebAssembly is experimental in .NET 11; Mono is the runtime .NET 11 browser
+        # apps use. This leg reports how far the experimental runtime gets and does not gate the
+        # workflow. A trimmed CoreCLR publish of this host fails while generating the native interop tables.
+        - mode: coreclr
+          publish-properties: -p:UseMonoRuntime=false -p:RunAOTCompilation=false -p:PublishTrimmed=false
+          experimental: true
     steps:
     - name: Harden Runner
       uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43
@@ -94,14 +105,14 @@ jobs:
       run: dotnet workload install wasm-tools --include-previews
 
     - name: Publish the test host
-      run: dotnet publish "$HOST_PROJECT" -c Release -p:RunAOTCompilation=${{ matrix.aot }}
+      run: dotnet publish "$HOST_PROJECT" -c Release ${{ matrix.publish-properties }}
 
     - name: Run the tests under the workload's Node
       env:
         FILTER_OVERRIDE: ${{ inputs.test-filter }}
       run: |
         set -euo pipefail
-        publish_dir="$(dotnet msbuild "$HOST_PROJECT" -getProperty:PublishDir -p:Configuration=Release -p:RunAOTCompilation=${{ matrix.aot }})"
+        publish_dir="$(dotnet msbuild "$HOST_PROJECT" -getProperty:PublishDir -p:Configuration=Release ${{ matrix.publish-properties }})"
         app="${publish_dir%/}/wwwroot/main.mjs"
         if [ ! -f "$app" ]; then
           echo "published app not found at $app"

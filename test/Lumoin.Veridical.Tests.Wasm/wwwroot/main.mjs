@@ -30,7 +30,7 @@ if (trxOut !== null) {
 }
 
 const runtime = await dotnet.withApplicationArguments(...forwarded).create();
-let exitCode = await runtime.runMain();
+let exitCode = await runtime.runMain(runtime.getConfig().mainAssemblyName, forwarded);
 
 if (trxOut !== null) {
     try {

@@ -45,3 +45,19 @@ MSTest filter expressions over `FullyQualifiedName`; `--list-tests` does not enu
 use `--filter` to select them. The full suite is not intended to run here, because the runtime is single threaded.
 Test data that the selected classes need is compiled into the test assembly; fixture files that other
 classes read from disk are not staged into the virtual file system.
+
+## CoreCLR on WebAssembly
+
+.NET 11 browser apps run on Mono. CoreCLR on WebAssembly is experimental in .NET 11, and the host can be
+published for it to see how far it gets:
+
+```
+dotnet publish test/Lumoin.Veridical.Tests.Wasm -c Release -p:UseMonoRuntime=false -p:RunAOTCompilation=false -p:PublishTrimmed=false
+```
+
+The trimming step is switched off because a trimmed CoreCLR publish of this host fails while generating the
+native interop tables, which cannot map by-value `System.Guid` and `ComVariant` parameters. The published bundle is
+run the same way as the Mono bundle. On this runtime `PackedSimd.IsSupported` is false, so the WebAssembly
+backend tests report as not executed and only the portable paths are exercised. Libraries that cannot
+initialise under Mono's eager type-initializer ordering, such as CsCheck, run under CoreCLR, which initialises
+types lazily. The `coreclr` leg of the workflow is allowed to fail.
