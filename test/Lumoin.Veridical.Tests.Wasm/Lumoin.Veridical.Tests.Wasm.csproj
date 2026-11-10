@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      The MSTest runner is the entry point of the test project; this host supplies its own Main
+      that registers the test assembly with the Microsoft.Testing.Platform builder, so the
+      generated entry point is switched off.
+      -->
+    <EnableMSTestRunner>true</EnableMSTestRunner>
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
+    <!--
+      The test project and the command-line project it references are executables that are
+      consumed here purely as libraries, so the self-contained executable check does not apply.
+      -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+
+    <!--
+      Ahead-of-time compilation requires the trimming step. Only assemblies marked trimmable are
+      trimmed (partial mode), so the test framework and the test assemblies, which are located
+      and invoked through reflection, stay whole. Their trim warnings are reported as warnings:
+      the host is a test runner, not a trim-compatible library.
+      -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+    <TrimmerSingleWarn>true</TrimmerSingleWarn>
+
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+
+    <!--
+      Not part of the locked-restore solution build: the implicit browser-wasm package graph
+      moves with every SDK release, so a committed lock file would churn without adding integrity.
+      -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+
+    <!--
+      The publish location is stated explicitly: the WebAssembly SDK reports a publish directory
+      that includes the runtime identifier at evaluation time but writes the bundle without it.
+      The value is absolute and normalized for the host operating system because the workflow
+      reads it from the repository root, where a project-relative path would name the wrong
+      directory.
+      -->
+    <PublishDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', 'bin', '$(Configuration)', '$(TargetFramework)', 'publish'))</PublishDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The test assembly is loaded by name at run time, so nothing in the host references it
+      statically; rooting it keeps it and everything it uses through the trimming step.
+      -->
+    <TrimmerRootAssembly Include="Lumoin.Veridical.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lumoin.Veridical.Tests\Lumoin.Veridical.Tests.csproj" />
+  </ItemGroup>
+
+</Project>

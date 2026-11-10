@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Benchmarks.Commitments.Longfellow;
 
 /// <summary>
 /// Deterministic, noise-immune op-count attribution of the de-recursed <see cref="LongfellowEq.RawEq2"/>.
-/// The dev box is noisy, so wall-clock deltas are unreliable; the win of removing the
+/// Wall-clock deltas on a loaded machine are unreliable; the win of removing the
 /// <c>fill_recursive</c> recursion is a CALL-COUNT and frame-elimination story, which is identical every run.
 /// For a range of sizes this counts the field-delegate calls the OLD recursion made (a local copy) versus the
 /// NEW GF(2^128) batched path: the per-term scalar multiplies collapse from ~2n individual delegate calls

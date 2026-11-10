@@ -21,16 +21,25 @@ namespace Lumoin.Veridical.Benchmarks.Algebraic;
 [SimpleJob(RunStrategy.Throughput)]
 public class G1MultiScalarMultiplyBenchmarks
 {
+    /// <summary>The width in bytes of one compressed G1 point.</summary>
     private const int PointSize = WellKnownCurves.Bls12Curve381G1CompressedSizeBytes;
+    /// <summary>The width in bytes of one scalar.</summary>
     private const int ScalarSize = 32;
-    //One salt selects both deterministic streams (the hash-to-curve messages
-    //and the scalar fill); any small value works, it only has to be fixed.
+    /// <summary>
+    /// One salt selects both deterministic streams (the hash-to-curve messages and the scalar fill); any
+    /// small value works, it only has to be fixed.
+    /// </summary>
     private const int PointStreamSalt = 7;
+    /// <summary>The curve whose G1 group is measured.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.Bls12Curve381;
+    /// <summary>The domain separation tag of the hash-to-curve that produces the benchmark points.</summary>
     private static byte[] DomainSeparationTag { get; } = Encoding.UTF8.GetBytes("VERIDICAL-PIPPENGER-BENCH-V1");
 
+    /// <summary>The BigInteger reference multi-scalar multiplication.</summary>
     private static G1MultiScalarMultiplyDelegate ReferenceMsm { get; } = Bls12Curve381BigIntegerG1Reference.GetMultiScalarMultiply();
+    /// <summary>The Pippenger multi-scalar multiplication that decodes the points on every call.</summary>
     private static G1MultiScalarMultiplyDelegate PippengerMsm { get; } = Bls12Curve381PippengerG1Backend.GetMultiScalarMultiply();
+    /// <summary>The Pippenger multi-scalar multiplication that caches the decoded points between calls.</summary>
     private static G1MultiScalarMultiplyDelegate CachingMsm { get; } = Bls12Curve381PippengerG1Backend.CreateCachingMultiScalarMultiply();
 
 
@@ -39,8 +48,11 @@ public class G1MultiScalarMultiplyBenchmarks
     public int Count { get; set; }
 
 
+    /// <summary>The concatenated compressed points.</summary>
     private byte[] points = null!;
+    /// <summary>The concatenated scalars.</summary>
     private byte[] scalars = null!;
+    /// <summary>The destination of the multi-scalar multiplication.</summary>
     private byte[] result = null!;
 
 

@@ -24,14 +24,23 @@ namespace Lumoin.Veridical.Benchmarks.Commitments.Ligero;
 /// </summary>
 internal static class LigeroAttributionDriver
 {
+    /// <summary>The width in bytes of one Fp256 element.</summary>
     private const int ScalarSize = 32;
+    /// <summary>The curve tag passed to the scalar delegates; the P-256 base-field kernels do not depend on it.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
+    /// <summary>The pool the proof buffers are rented from.</summary>
     private static BaseMemoryPool Pool { get; } = BaseMemoryPool.Shared;
 
+    /// <summary>The bit width of the witnessed scalar-multiply ladder.</summary>
     private const int LadderWidth = 5;
+    /// <summary>The scalar the ladder multiplies by.</summary>
     private const int LadderScalar = 13;
 
 
+    /// <summary>
+    /// Times the raw field operations, counts the field calls of a full proof and of its encoder, and
+    /// compares the predicted field time with the measured prove time; prints the attribution.
+    /// </summary>
     public static void Run()
     {
         ScalarAddDelegate add = P256BaseFieldReference.GetAdd();
@@ -137,6 +146,10 @@ internal static class LigeroAttributionDriver
     }
 
 
+    /// <summary>
+    /// Proves and verifies the ladder circuit with the given field delegates after a warm-up pass and returns
+    /// the two wall times in milliseconds.
+    /// </summary>
     private static (double ProveMs, double VerifyMs) TimeProveAndVerify(
         LigeroConstraintSystemBuilder builder, ScalarAddDelegate add, ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, ScalarReduceDelegate reduce)
@@ -158,6 +171,10 @@ internal static class LigeroAttributionDriver
     }
 
 
+    /// <summary>
+    /// Encodes one random message through the Reed-Solomon encoder and returns how many field calls of each
+    /// kind the encoding made.
+    /// </summary>
     private static (long Mul, long Inv, long Add, long Sub) EncodeOps(
         int messageLength, int codewordLength, ScalarAddDelegate add, ScalarSubtractDelegate subtract,
         ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert, ScalarReduceDelegate reduce)
@@ -180,11 +197,15 @@ internal static class LigeroAttributionDriver
     }
 
 
+    /// <summary>The first operand of the raw per-operation timings.</summary>
     private static byte[] OperandA { get; } = MakeOperand(1);
+    /// <summary>The second operand of the raw per-operation timings.</summary>
     private static byte[] OperandB { get; } = MakeOperand(2);
+    /// <summary>The destination of the raw per-operation timings.</summary>
     private static byte[] Scratch { get; } = new byte[ScalarSize];
 
 
+    /// <summary>Builds a reduced random field element from a generator seeded by the salt.</summary>
     private static byte[] MakeOperand(int salt)
     {
         byte[] value = new byte[ScalarSize];
@@ -196,6 +217,7 @@ internal static class LigeroAttributionDriver
     }
 
 
+    /// <summary>Runs the operation repeatedly after a short warm-up and returns the cost of one call in nanoseconds.</summary>
     private static double TimePerOp(Action operation, int iterations)
     {
         for(int i = 0; i < Math.Min(iterations, 1000); i++)
@@ -215,19 +237,28 @@ internal static class LigeroAttributionDriver
     }
 
 
-    //Field delegates that count their calls by kind, forwarding to the raw backend.
+    /// <summary>Field delegates that count their calls by kind, forwarding to the raw backend.</summary>
     private sealed class CountingField
     {
+        /// <summary>The wrapped addition.</summary>
         private readonly ScalarAddDelegate rawAdd;
+        /// <summary>The wrapped subtraction.</summary>
         private readonly ScalarSubtractDelegate rawSubtract;
+        /// <summary>The wrapped multiplication.</summary>
         private readonly ScalarMultiplyDelegate rawMultiply;
+        /// <summary>The wrapped inversion.</summary>
         private readonly ScalarInvertDelegate rawInvert;
 
+        /// <summary>The number of multiplications made.</summary>
         public long Mul;
+        /// <summary>The number of inversions made.</summary>
         public long Inv;
+        /// <summary>The number of additions made.</summary>
         public long Add_;
+        /// <summary>The number of subtractions made.</summary>
         public long Sub;
 
+        /// <summary>Wraps the four raw field delegates.</summary>
         public CountingField(ScalarAddDelegate add, ScalarSubtractDelegate subtract, ScalarMultiplyDelegate multiply, ScalarInvertDelegate invert)
         {
             rawAdd = add;
@@ -236,26 +267,31 @@ internal static class LigeroAttributionDriver
             rawInvert = invert;
         }
 
+        /// <summary>The number of field calls of every kind.</summary>
         public long Total => Mul + Inv + Add_ + Sub;
 
+        /// <summary>Counts an addition and forwards it.</summary>
         public void Add(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
         {
             Add_++;
             rawAdd(a, b, result, curve);
         }
 
+        /// <summary>Counts a subtraction and forwards it.</summary>
         public void Subtract(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
         {
             Sub++;
             rawSubtract(a, b, result, curve);
         }
 
+        /// <summary>Counts a multiplication and forwards it.</summary>
         public void Multiply(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> result, CurveParameterSet curve)
         {
             Mul++;
             rawMultiply(a, b, result, curve);
         }
 
+        /// <summary>Counts an inversion and forwards it.</summary>
         public void Invert(ReadOnlySpan<byte> a, Span<byte> result, CurveParameterSet curve)
         {
             Inv++;

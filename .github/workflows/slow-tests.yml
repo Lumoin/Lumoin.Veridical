@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - name: Harden Runner
-      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a
       with:
         disable-sudo: true
         egress-policy: block
@@ -57,7 +57,7 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
     - name: Set up .NET SDK
-      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+      uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
       with:
         cache: true
         cache-dependency-path: '**/packages.lock.json'
