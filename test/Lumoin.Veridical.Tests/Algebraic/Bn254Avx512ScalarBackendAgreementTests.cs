@@ -83,6 +83,75 @@ internal sealed class Bn254Avx512ScalarBackendAgreementTests
     }
 
 
+    /// <summary>Checks direct AVX-512 batch addition against the scalar-field BigInteger reference.</summary>
+    [TestMethod]
+    public void Avx512BatchAddAgreesWithBigIntegerBatchAdd()
+    {
+        ScalarBatchAddDelegate bigIntegerBatchAdd = Bn254BigIntegerScalarReference.GetBatchAdd();
+        ScalarBatchAddDelegate avx512BatchAdd = Bn254Avx512ScalarBackend.GetBatchAdd();
+
+        //Two complete SIMD groups and three trailing scalars exercise the octet load and store plus the serial tail.
+        const int Count = 19;
+        int size = Scalar.SizeBytes;
+
+        Gen<byte[]> batchGen = Gen.Byte.Array[Count * size];
+        Gen.Select(batchGen, batchGen)
+            .Sample((leftRaw, rightRaw) =>
+            {
+                Span<byte> left = stackalloc byte[Count * size];
+                Span<byte> right = stackalloc byte[Count * size];
+                Span<byte> batched = stackalloc byte[Count * size];
+                Span<byte> expected = stackalloc byte[Count * size];
+
+                for(int i = FirstIndex; i < Count; i++)
+                {
+                    int offset = i * size;
+                    ReduceDelegate(leftRaw.AsSpan(offset, size), left.Slice(offset, size), CurveParameterSet.Bn254);
+                    ReduceDelegate(rightRaw.AsSpan(offset, size), right.Slice(offset, size), CurveParameterSet.Bn254);
+                }
+
+                avx512BatchAdd(left, right, batched, Count, CurveParameterSet.Bn254);
+                bigIntegerBatchAdd(left, right, expected, Count, CurveParameterSet.Bn254);
+
+                return batched.SequenceEqual(expected);
+            }, iter: IterationCount);
+    }
+
+
+    /// <summary>Checks direct AVX-512 batch subtraction against the scalar-field BigInteger reference.</summary>
+    [TestMethod]
+    public void Avx512BatchSubtractAgreesWithBigIntegerBatchSubtract()
+    {
+        ScalarBatchSubtractDelegate bigIntegerBatchSubtract = Bn254BigIntegerScalarReference.GetBatchSubtract();
+        ScalarBatchSubtractDelegate avx512BatchSubtract = Bn254Avx512ScalarBackend.GetBatchSubtract();
+
+        //Two complete SIMD groups and three trailing scalars exercise the octet load and store plus the serial tail.
+        const int Count = 19;
+        int size = Scalar.SizeBytes;
+
+        Gen<byte[]> batchGen = Gen.Byte.Array[Count * size];
+        Gen.Select(batchGen, batchGen)
+            .Sample((minuendRaw, subtrahendRaw) =>
+            {
+                Span<byte> minuend = stackalloc byte[Count * size];
+                Span<byte> subtrahend = stackalloc byte[Count * size];
+                Span<byte> batched = stackalloc byte[Count * size];
+                Span<byte> expected = stackalloc byte[Count * size];
+
+                for(int i = FirstIndex; i < Count; i++)
+                {
+                    int offset = i * size;
+                    ReduceDelegate(minuendRaw.AsSpan(offset, size), minuend.Slice(offset, size), CurveParameterSet.Bn254);
+                    ReduceDelegate(subtrahendRaw.AsSpan(offset, size), subtrahend.Slice(offset, size), CurveParameterSet.Bn254);
+                }
+
+                avx512BatchSubtract(minuend, subtrahend, batched, Count, CurveParameterSet.Bn254);
+                bigIntegerBatchSubtract(minuend, subtrahend, expected, Count, CurveParameterSet.Bn254);
+
+                return batched.SequenceEqual(expected);
+            }, iter: IterationCount);
+    }
+
     /// <summary>Checks direct AVX-512 add against the scalar-field BigInteger reference.</summary>
     [TestMethod]
     public void Avx512AddAgreesWithBigIntegerAdd()

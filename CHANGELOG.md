@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-11-11
+
+### Changed
+
+- Built with the .NET 11 SDK 11.0.100; dependency updates, including `Lumoin.Base` 0.0.15.
+- The BLS12-381, BN254 and P-256 AVX-512 field kernels transpose limbs in vector registers.
+
+### Security
+
+- The native AOT tool packages are built on the .NET 11.0.0 runtime, which fixes CVE-2026-111497.
+
 ## [0.0.7] - 2026-09-21
 
 ### Added

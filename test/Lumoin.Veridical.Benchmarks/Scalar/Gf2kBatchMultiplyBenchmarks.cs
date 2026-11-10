@@ -35,19 +35,27 @@ namespace Lumoin.Veridical.Benchmarks.Scalar;
 [SimpleJob(RunStrategy.Throughput, warmupCount: 3, iterationCount: 5)]
 public class Gf2kBatchMultiplyBenchmarks
 {
-    //BDN's default build timeout (2 min) is exhausted by this solution's cold build;
-    //10 min covers the first-run compile without affecting subsequent cached builds.
+    /// <summary>
+    /// BDN's default build timeout (2 min) is exhausted by this solution's cold build; 10 min covers the
+    /// first-run compile without affecting subsequent cached builds.
+    /// </summary>
     private sealed class Config : ManualConfig
     {
+        /// <summary>Raises the benchmark build timeout.</summary>
         public Config() => BuildTimeout = TimeSpan.FromMinutes(10);
     }
 
 
 
+    /// <summary>The width in bytes of one scalar slot.</summary>
     private const int ScalarBytes = 32;
+    /// <summary>The offset of the 16-byte GF(2^128) element within a scalar slot; the bytes before it stay zero.</summary>
     private const int ElementOffset = 16;
+    /// <summary>The seed of the generator that draws the operands, fixed so every run measures the same inputs.</summary>
     private const int BenchmarkSeed = 0x6F2C0128;
+    /// <summary>The largest batch size, which the operand buffers are sized for.</summary>
     private const int MaxBatchSize = 16384;
+    /// <summary>The curve tag passed to the scalar delegates; the GF(2^128) kernels do not depend on it.</summary>
     private static CurveParameterSet Curve { get; } = CurveParameterSet.None;
 
 
@@ -56,12 +64,18 @@ public class Gf2kBatchMultiplyBenchmarks
     public int BatchSize { get; set; }
 
 
+    /// <summary>The concatenated left operands.</summary>
     private byte[] left = null!;
+    /// <summary>The concatenated right operands.</summary>
     private byte[] right = null!;
+    /// <summary>The concatenated results.</summary>
     private byte[] result = null!;
 
+    /// <summary>The single-element multiply the scalar-loop baseline calls per element.</summary>
     private ScalarMultiplyDelegate scalarMultiply = null!;
+    /// <summary>The batched multiply.</summary>
     private ScalarBatchMultiplyDelegate batchMultiply = null!;
+    /// <summary>The fused batched multiply-accumulate.</summary>
     private ScalarBatchMultiplyAccumulateDelegate batchMultiplyAccumulate = null!;
 
 

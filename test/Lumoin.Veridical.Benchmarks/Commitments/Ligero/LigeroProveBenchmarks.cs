@@ -21,16 +21,22 @@ namespace Lumoin.Veridical.Benchmarks.Commitments.Ligero;
 [SimpleJob(RunStrategy.Monitoring, launchCount: 1, warmupCount: 1, iterationCount: 5)]
 public class LigeroProveBenchmarks
 {
-    //Number of chained complete additions; each is ~30 wires + a dozen
-    //quadratics, so this sweeps the prover's row count.
-    /// <summary>Lengths of the chained complete-addition circuit the benchmark sweeps.</summary>
+    /// <summary>
+    /// Lengths of the chained complete-addition circuit the benchmark sweeps: the number of chained complete
+    /// additions; each is about 30 wires plus a dozen quadratics, so this sweeps the prover's row count.
+    /// </summary>
     [Params(1, 4)]
     public int Additions { get; set; }
 
+    /// <summary>The field addition.</summary>
     private ScalarAddDelegate add = null!;
+    /// <summary>The field subtraction.</summary>
     private ScalarSubtractDelegate subtract = null!;
+    /// <summary>The field multiplication.</summary>
     private ScalarMultiplyDelegate multiply = null!;
+    /// <summary>The field inversion.</summary>
     private ScalarInvertDelegate invert = null!;
+    /// <summary>The reduction of wide values into canonical field elements.</summary>
     private ScalarReduceDelegate reduce = null!;
 
 
