@@ -100,7 +100,7 @@ internal sealed class LongfellowMdocFacadeTests
         ReadOnlyMemory<byte> signatureTemplate = new ReadOnlyMemory<byte>(signatureColumn, 0, LongfellowMdocStatement.SignatureTemplateElementCount * ScalarSize);
         LongfellowMdocStatement statement = LongfellowMdocStatement.FromComponents(spec, hashTemplate, signatureTemplate);
 
-        using LongfellowMdocProof proof = LongfellowMdoc.Prove(witness, circuits, spec, SessionSeed, pool, TestLongfellowPrimitives.MdocSuite);
+        using LongfellowMdocProof proof = LongfellowMdoc.Prove(witness, circuits, spec, SessionSeed, pool, TestLongfellowPrimitives.MdocSuite, TestLongfellowPrimitives.NewProverRandomness());
         LongfellowMdocVerdict verdict = LongfellowMdoc.Verify(proof, statement, circuits, SessionSeed, pool, TestLongfellowPrimitives.MdocSuite);
 
         Assert.AreEqual(LongfellowMdocVerdict.Accepted, verdict, "The facade must accept its own prove over the real credential.");

@@ -6,10 +6,10 @@ namespace Lumoin.Veridical.Longfellow;
 
 /// <summary>
 /// The swappable cryptographic-primitive bundle the dual-field mdoc facade drives: the Merkle and leaf hashes,
-/// the Fiat-Shamir transcript's incremental hash and block cipher, and the two prover entropy sources. The
+/// the Fiat-Shamir transcript's incremental hash and block cipher. The
 /// delegate-per-primitive shape is the backend-swap seam, and the library chooses none of them: the caller
-/// supplies every primitive, so the hash, the block cipher and the entropy source are always the caller's
-/// decision.
+/// supplies every primitive, so the hash and the block cipher are always the caller's decision, and the
+/// prover's random bytes arrive separately in a <see cref="LongfellowProverRandomness"/>.
 /// </summary>
 public sealed class LongfellowMdocCryptoSuite
 {
@@ -17,16 +17,12 @@ public sealed class LongfellowMdocCryptoSuite
         MerkleHashDelegate merkleHash,
         FiatShamirHashDelegate leafHash,
         LongfellowIncrementalHashFactory incrementalHashFactory,
-        LongfellowBlockCipherDelegate blockCipher,
-        LongfellowEntropyDelegate hashRandom,
-        LongfellowEntropyDelegate signatureRandom)
+        LongfellowBlockCipherDelegate blockCipher)
     {
         MerkleHash = merkleHash;
         LeafHash = leafHash;
         IncrementalHashFactory = incrementalHashFactory;
         BlockCipher = blockCipher;
-        HashRandom = hashRandom;
-        SignatureRandom = signatureRandom;
     }
 
 
@@ -42,12 +38,6 @@ public sealed class LongfellowMdocCryptoSuite
     /// <summary>The transcript's single-block AES-256-ECB pseudo-random permutation.</summary>
     public LongfellowBlockCipherDelegate BlockCipher { get; }
 
-    /// <summary>The GF(2^128) hash-side prover entropy source.</summary>
-    public LongfellowEntropyDelegate HashRandom { get; }
-
-    /// <summary>The P-256 signature-side prover entropy source (a full-width draw is rejection-sampled below the base-field prime).</summary>
-    public LongfellowEntropyDelegate SignatureRandom { get; }
-
 
 
     /// <summary>
@@ -57,26 +47,20 @@ public sealed class LongfellowMdocCryptoSuite
     /// <param name="leafHash">The one-shot leaf hash.</param>
     /// <param name="incrementalHashFactory">The transcript's incremental-hash factory.</param>
     /// <param name="blockCipher">The transcript's single-block cipher.</param>
-    /// <param name="hashRandom">The hash-side prover entropy source.</param>
-    /// <param name="signatureRandom">The signature-side prover entropy source.</param>
     /// <returns>A primitive bundle over the supplied delegates.</returns>
     /// <exception cref="ArgumentNullException">When any delegate is <see langword="null"/>.</exception>
     public static LongfellowMdocCryptoSuite Create(
         MerkleHashDelegate merkleHash,
         FiatShamirHashDelegate leafHash,
         LongfellowIncrementalHashFactory incrementalHashFactory,
-        LongfellowBlockCipherDelegate blockCipher,
-        LongfellowEntropyDelegate hashRandom,
-        LongfellowEntropyDelegate signatureRandom)
+        LongfellowBlockCipherDelegate blockCipher)
     {
         ArgumentNullException.ThrowIfNull(merkleHash);
         ArgumentNullException.ThrowIfNull(leafHash);
         ArgumentNullException.ThrowIfNull(incrementalHashFactory);
         ArgumentNullException.ThrowIfNull(blockCipher);
-        ArgumentNullException.ThrowIfNull(hashRandom);
-        ArgumentNullException.ThrowIfNull(signatureRandom);
 
-        return new LongfellowMdocCryptoSuite(merkleHash, leafHash, incrementalHashFactory, blockCipher, hashRandom, signatureRandom);
+        return new LongfellowMdocCryptoSuite(merkleHash, leafHash, incrementalHashFactory, blockCipher);
     }
 
 }

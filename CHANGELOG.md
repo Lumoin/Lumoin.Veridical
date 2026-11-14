@@ -16,13 +16,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `LongfellowProverRandomness`: the prover's plain random bytes for one proof, single use, with a draw count. The prover does the field mapping and the below-prime rejection itself.
+- `LongfellowRandomnessChecks`: `IsBelowP256BaseFieldPrime`, `IsNotAllZero` and `ProducesDistinctNonZeroDraws`, for suppliers to test their own randomness.
+
 ### Changed
+
+- `LongfellowMdoc.Prove` and `LongfellowJwt.Prove` take a `LongfellowProverRandomness` after the suite.
+- `LongfellowEntropyDelegate` fills plain random bytes with no field constraint.
 
 - `LongfellowMdoc.Prove`/`Verify` and `LongfellowJwt.Prove`/`Verify` require the crypto suite; the `suite` parameter is no longer optional and a `null` suite throws.
 - `Lumoin.Veridical.Longfellow` targets the browser platform; no platform cryptography remains in the facade.
 
 ### Removed
 
+- The entropy delegates on `LongfellowMdocCryptoSuite` (`HashRandom`, `SignatureRandom`) and `LongfellowJwtCryptoSuite` (`ProverRandom`), and the matching `Create` parameters.
 - `LongfellowMdocCryptoSuite.Default` and `LongfellowJwtCryptoSuite.Default`; the library no longer selects a hash, block cipher or entropy source for the caller.
 
 ## [0.0.8] - 2026-11-11

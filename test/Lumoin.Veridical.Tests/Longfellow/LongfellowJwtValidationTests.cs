@@ -148,20 +148,17 @@ internal sealed class LongfellowJwtValidationTests
     public void CryptoSuiteCreateRequiresEveryDelegate()
     {
         Assert.ThrowsExactly<ArgumentNullException>(() => LongfellowJwtCryptoSuite.Create(
-            null!, TestLongfellowPrimitives.LeafHash, TestLongfellowPrimitives.IncrementalHashFactory, TestLongfellowPrimitives.BlockCipher, TestLongfellowPrimitives.SignatureEntropy),
+            null!, TestLongfellowPrimitives.LeafHash, TestLongfellowPrimitives.IncrementalHashFactory, TestLongfellowPrimitives.BlockCipher),
             "A null Merkle hash must reject.");
         Assert.ThrowsExactly<ArgumentNullException>(() => LongfellowJwtCryptoSuite.Create(
-            TestLongfellowPrimitives.MerkleHash, null!, TestLongfellowPrimitives.IncrementalHashFactory, TestLongfellowPrimitives.BlockCipher, TestLongfellowPrimitives.SignatureEntropy),
+            TestLongfellowPrimitives.MerkleHash, null!, TestLongfellowPrimitives.IncrementalHashFactory, TestLongfellowPrimitives.BlockCipher),
             "A null leaf hash must reject.");
         Assert.ThrowsExactly<ArgumentNullException>(() => LongfellowJwtCryptoSuite.Create(
-            TestLongfellowPrimitives.MerkleHash, TestLongfellowPrimitives.LeafHash, null!, TestLongfellowPrimitives.BlockCipher, TestLongfellowPrimitives.SignatureEntropy),
+            TestLongfellowPrimitives.MerkleHash, TestLongfellowPrimitives.LeafHash, null!, TestLongfellowPrimitives.BlockCipher),
             "A null incremental hash factory must reject.");
         Assert.ThrowsExactly<ArgumentNullException>(() => LongfellowJwtCryptoSuite.Create(
-            TestLongfellowPrimitives.MerkleHash, TestLongfellowPrimitives.LeafHash, TestLongfellowPrimitives.IncrementalHashFactory, null!, TestLongfellowPrimitives.SignatureEntropy),
+            TestLongfellowPrimitives.MerkleHash, TestLongfellowPrimitives.LeafHash, TestLongfellowPrimitives.IncrementalHashFactory, null!),
             "A null block cipher must reject.");
-        Assert.ThrowsExactly<ArgumentNullException>(() => LongfellowJwtCryptoSuite.Create(
-            TestLongfellowPrimitives.MerkleHash, TestLongfellowPrimitives.LeafHash, TestLongfellowPrimitives.IncrementalHashFactory, TestLongfellowPrimitives.BlockCipher, null!),
-            "A null prover-random source must reject.");
     }
 
 
@@ -177,10 +174,10 @@ internal sealed class LongfellowJwtValidationTests
         byte[] transcriptSeed = Encoding.ASCII.GetBytes("facade-null-contract-seed");
 
         Assert.ThrowsExactly<ArgumentNullException>(
-            () => LongfellowJwt.Prove(placeholderBytes, null!, transcriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
+            () => LongfellowJwt.Prove(placeholderBytes, null!, transcriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite, TestLongfellowPrimitives.NewProverRandomness()),
             "A null statement must reject before any witness or circuit work.");
         Assert.ThrowsExactly<ArgumentNullException>(
-            () => LongfellowJwt.Prove(placeholderBytes, NewPlaceholderStatement(), transcriptSeed, null!, TestLongfellowPrimitives.JwtSuite),
+            () => LongfellowJwt.Prove(placeholderBytes, NewPlaceholderStatement(), transcriptSeed, null!, TestLongfellowPrimitives.JwtSuite, TestLongfellowPrimitives.NewProverRandomness()),
             "A null pool must reject before any witness or circuit work.");
 
         Span<byte> zeroEnvelope = stackalloc byte[LongfellowJwtProof.MinimumSizeBytes];
@@ -196,8 +193,11 @@ internal sealed class LongfellowJwtValidationTests
             () => LongfellowJwt.Verify(proof, placeholderBytes, NewPlaceholderStatement(), transcriptSeed, null!, TestLongfellowPrimitives.JwtSuite),
             "A null pool must reject before any work.");
         Assert.ThrowsExactly<ArgumentNullException>(
-            () => LongfellowJwt.Prove(placeholderBytes, NewPlaceholderStatement(), transcriptSeed, BaseMemoryPool.Shared, null!),
+            () => LongfellowJwt.Prove(placeholderBytes, NewPlaceholderStatement(), transcriptSeed, BaseMemoryPool.Shared, null!, TestLongfellowPrimitives.NewProverRandomness()),
             "A null suite must reject before any witness or circuit work.");
+        Assert.ThrowsExactly<ArgumentNullException>(
+            () => LongfellowJwt.Prove(placeholderBytes, NewPlaceholderStatement(), transcriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite, null!),
+            "A null randomness must reject before any witness or circuit work.");
         Assert.ThrowsExactly<ArgumentNullException>(
             () => LongfellowJwt.Verify(proof, placeholderBytes, NewPlaceholderStatement(), transcriptSeed, BaseMemoryPool.Shared, null!),
             "A null suite must reject before any work.");

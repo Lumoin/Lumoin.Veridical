@@ -110,7 +110,7 @@ internal sealed class LongfellowJwtFacadeTests
 
         byte[] token = Encoding.ASCII.GetBytes(vector.Token);
         Assert.ThrowsExactly<ArgumentException>(
-            () => LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite).Dispose(),
+            () => LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite, TestLongfellowPrimitives.NewProverRandomness()).Dispose(),
             "A token lacking the required attribute value must not produce a witness.");
     }
 
@@ -128,7 +128,7 @@ internal sealed class LongfellowJwtFacadeTests
             + "~aa.bb." + new string('A', RawSignatureCharacterCount);
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => LongfellowJwt.Prove(Encoding.ASCII.GetBytes(oversized), NewErikaStatement(), FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite).Dispose(),
+            () => LongfellowJwt.Prove(Encoding.ASCII.GetBytes(oversized), NewErikaStatement(), FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite, TestLongfellowPrimitives.NewProverRandomness()).Dispose(),
             "A token whose signing input exceeds the block capacity must reject at the witness gate.");
     }
 
@@ -170,7 +170,7 @@ internal sealed class LongfellowJwtFacadeTests
         Assert.IsTrue(LongfellowJwsCompact.TrySplitPresentation(token, out _, out Range keyBindingRange), "The reference token must split.");
         byte[] keyBinding = token.AsSpan()[keyBindingRange].ToArray();
 
-        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite);
+        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite, TestLongfellowPrimitives.NewProverRandomness());
         Assert.AreEqual(
             LongfellowJwtVerdict.Accepted,
             LongfellowJwt.Verify(proof, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
@@ -244,7 +244,7 @@ internal sealed class LongfellowJwtFacadeTests
             [LongfellowJwtAttribute.FromStrings(ErikaAttributeId, "Testi")],
             LongfellowJwtZkSpec.SevenBlocks);
 
-        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite);
+        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite, TestLongfellowPrimitives.NewProverRandomness());
         Assert.AreEqual(
             LongfellowJwtVerdict.Accepted,
             LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes(keyBindingJws), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),

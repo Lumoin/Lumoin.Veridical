@@ -18,8 +18,9 @@ namespace Lumoin.Veridical.Longfellow;
 /// the device-authentication hash stay caller-side per the serialization-ban architecture); the facade owns
 /// the circuit provisioning, the field bundles, the canonical-to-Montgomery lift of the signature material,
 /// the shared transcript, and the proof envelope. The swappable primitives — the Merkle and leaf hashes, the
-/// transcript block cipher and incremental hash, and the prover entropy — ride in the
-/// <see cref="LongfellowMdocCryptoSuite"/>, which the caller always supplies; the library selects none. Circuits are
+/// transcript block cipher and incremental hash — ride in the
+/// <see cref="LongfellowMdocCryptoSuite"/>, which the caller always supplies; the library selects none. The prover's random bytes ride in a
+/// <see cref="LongfellowProverRandomness"/> that serves a single proof. Circuits are
 /// re-parsed and bundles rebuilt per call; caching them across calls is a later
 /// performance refinement behind the <see cref="LongfellowMdocCircuitSource"/> seam.
 /// </remarks>
@@ -34,22 +35,26 @@ public static class LongfellowMdoc
     /// <param name="transcriptSeed">The session seed the transcript is constructed from.</param>
     /// <param name="pool">The pool the working buffers and the returned proof rent from.</param>
     /// <param name="suite">The cryptographic-primitive bundle; required, never <see langword="null"/>.</param>
+    /// <param name="randomness">The secure random byte stream for this proof alone; it is spent by the call and cannot serve another proof.</param>
     /// <returns>A pooled proof wrapping the <c>[6 macs] ‖ [hash ZkProof] ‖ [sig ZkProof]</c> envelope.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the circuit bytes do not parse, do not match the specification, or a witness region length does not match the circuit.</exception>
+    /// <exception cref="InvalidOperationException">When <paramref name="randomness"/> has already served a proof.</exception>
     public static LongfellowMdocProof Prove(
         LongfellowMdocWitness witness,
         LongfellowMdocCircuitSource circuits,
         LongfellowMdocZkSpec spec,
         ReadOnlySpan<byte> transcriptSeed,
         BaseMemoryPool pool,
-        LongfellowMdocCryptoSuite suite)
+        LongfellowMdocCryptoSuite suite,
+        LongfellowProverRandomness randomness)
     {
         ArgumentNullException.ThrowIfNull(witness);
         ArgumentNullException.ThrowIfNull(circuits);
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentNullException.ThrowIfNull(suite);
+        ArgumentNullException.ThrowIfNull(randomness);
 
         ParseCircuits(circuits, spec, pool, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
         using LongfellowSumcheckCircuit signatureOwner = signatureCircuit;
@@ -80,8 +85,9 @@ public static class LongfellowMdoc
         //A fresh transcript from the session seed (the ctor absorbs it immediately). The crypto suite's public
         //primitive delegates are wrapped to the driver's internal seam delegates here.
         LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => suite.BlockCipher(key, input, output);
-        LongfellowRandomByteSource hashRandom = destination => suite.HashRandom(destination);
-        LongfellowRandomByteSource signatureRandom = destination => suite.SignatureRandom(destination);
+        //One secure byte stream serves both fields: the hash side draws first, then the signature side, each
+        //mapping the plain bytes to its own field elements.
+        LongfellowRandomByteSource random = randomness.Take();
 
         using LongfellowTranscript transcript = new(
             transcriptSeed, spec.ProofSpecVersion, LongfellowMdocBundles.TranscriptElementBytes,
@@ -89,7 +95,7 @@ public static class LongfellowMdoc
 
         using LongfellowZkProofEnvelope envelope = LongfellowMdocProver.Prove(
             hashBundle, signatureBundle, witness.HashColumn.Span, montgomerySignatureColumn,
-            hashRandom, signatureRandom, witness.CommonValues.Span, witness.ApKeys.Span,
+            random, random, witness.CommonValues.Span, witness.ApKeys.Span,
             spec.HashMacIndex, LongfellowMdocZkSpec.SignatureMacIndex, transcript,
             suite.MerkleHash, suite.LeafHash, WellKnownHashAlgorithms.Sha256, pool);
 

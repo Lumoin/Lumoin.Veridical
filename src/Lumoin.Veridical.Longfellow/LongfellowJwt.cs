@@ -26,8 +26,9 @@ namespace Lumoin.Veridical.Longfellow;
 /// </para>
 /// <para>
 /// The swappable primitives — the Merkle and leaf hashes, the transcript block cipher and
-/// incremental hash, and the prover entropy — ride in the <see cref="LongfellowJwtCryptoSuite"/>;
-/// the caller always supplies the suite and the library selects none. The circuit is
+/// incremental hash — ride in the <see cref="LongfellowJwtCryptoSuite"/>;
+/// the caller always supplies the suite and the library selects none. The prover's random bytes ride in a
+/// <see cref="LongfellowProverRandomness"/> that serves a single proof. The circuit is
 /// kernel-compiled per call; caching it across calls is a later performance refinement.
 /// </para>
 /// </remarks>
@@ -41,19 +42,23 @@ public static class LongfellowJwt
     /// <param name="transcriptSeed">The session seed the transcript is constructed from.</param>
     /// <param name="pool">The pool the working buffers and the returned proof rent from.</param>
     /// <param name="suite">The cryptographic-primitive bundle; required, never <see langword="null"/>.</param>
+    /// <param name="randomness">The secure random byte stream for this proof alone; it is spent by the call and cannot serve another proof.</param>
     /// <returns>A pooled proof wrapping the <c>[commitment root ‖ sumcheck ‖ Ligero]</c> envelope.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the token does not produce a witness for the statement: it is malformed, oversized for the block capacity, fails a signature, or lacks a required attribute or the device key.</exception>
+    /// <exception cref="InvalidOperationException">When <paramref name="randomness"/> has already served a proof.</exception>
     public static LongfellowJwtProof Prove(
         ReadOnlySpan<byte> token,
         LongfellowJwtStatement statement,
         ReadOnlySpan<byte> transcriptSeed,
         BaseMemoryPool pool,
-        LongfellowJwtCryptoSuite suite)
+        LongfellowJwtCryptoSuite suite,
+        LongfellowProverRandomness randomness)
     {
         ArgumentNullException.ThrowIfNull(statement);
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentNullException.ThrowIfNull(suite);
+        ArgumentNullException.ThrowIfNull(randomness);
 
         //The witness computation is the cheap gate: a token the statement cannot prove is
         //rejected before the expensive circuit compilation.
@@ -96,7 +101,7 @@ public static class LongfellowJwt
             using LongfellowSubfieldRunCodec codec = LongfellowJwtBundles.NewCodec(profile);
 
             LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => suite.BlockCipher(key, input, output);
-            LongfellowRandomByteSource random = destination => suite.ProverRandom(destination);
+            LongfellowRandomByteSource random = randomness.Take();
             using LongfellowTranscript transcript = new(
                 transcriptSeed, LongfellowJwtBundles.TranscriptVersion, LongfellowJwtBundles.Fp256ElementBytes,
                 blockCipher, pool, suite.IncrementalHashFactory);
