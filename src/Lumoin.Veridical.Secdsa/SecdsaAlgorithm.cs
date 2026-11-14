@@ -151,11 +151,13 @@ public static class SecdsaAlgorithm
     /// <c>(u, e')</c>. <c>P·u</c> is never formed.
     /// </summary>
     /// <remarks>
-    /// This also realizes Verheul's Algorithm 11 (split-key / key-share sign): it is algebraically identical with
-    /// the key share <c>zU</c> passed as <paramref name="pinKey"/> and the base key <c>bU</c> as
-    /// <paramref name="hardwareKey"/>, signing under <c>Y = (zU·bU)·G</c>. No separate key-share entry point is
-    /// needed — the two algorithms differ only in which factor is the long-lived hardware key and which is the
-    /// per-operation share, and the split sign treats both as injected scalars.
+    /// This also realizes Verheul's Algorithm 11 (split-key signature generation), which equals Algorithm 2 with
+    /// <c>P = zU·zW</c> as the PIN-key and the base key <c>bU</c> as the hardware key: the signature is under
+    /// <c>Y = (zU·zW·bU)·G</c>. Algorithm 11 applies the shares one after the other, the wallet's <c>zU</c> and then
+    /// the WSCA's <c>zW</c>, so the product is never formed in one place; a caller that holds both shares supplies
+    /// their product as <paramref name="pinKey"/>. With the key share kept only in the wallet application (the
+    /// paper's Option I) <c>zW = 1</c> and <paramref name="pinKey"/> is <c>zU</c> alone. No separate key-share entry
+    /// point is needed.
     /// </remarks>
     /// <param name="pinKey">The PIN-key scalar <c>P</c>, 32-byte big-endian, in <c>[1, n−1]</c>.</param>
     /// <param name="hardwareKey">The hardware-key scalar <c>u</c>, 32-byte big-endian, in <c>[1, n−1]</c>.</param>
@@ -415,11 +417,11 @@ public static class SecdsaAlgorithm
 
 
     /// <summary>
-    /// Recovers the full nonce point <c>R = k·G</c> from a standard ECDSA signature <c>(r, s)</c> — Verheul's
-    /// "full-format" conversion (ToFullFormat). A plain signature carries only <c>r = R.x mod n</c>; blind SECDSA
-    /// (and any flow that re-randomises the signature) needs the full point <c>R</c>. Recovery uses the
-    /// verification relation <c>R = (e·s⁻¹)·G + (r·s⁻¹)·Y</c>, which reconstructs the same <c>R</c> the signer
-    /// formed from its nonce <c>k</c>.
+    /// Recovers the full nonce point <c>R = k·G</c> from a standard ECDSA signature <c>(r, s)</c> — the
+    /// conversion to the full representation <c>(R, s)</c> of Verheul's Annex A.2 (Algorithm 3 Step 4). A plain
+    /// signature carries only <c>r = R.x mod n</c>; blind SECDSA (and any flow that re-randomises the signature)
+    /// needs the full point <c>R</c>. Recovery uses <c>R = (e·s⁻¹)·G + (r·s⁻¹)·Y</c>, as in Step 5 of
+    /// Algorithm 14, which reconstructs the same <c>R</c> the signer formed from its nonce <c>k</c>.
     /// </summary>
     /// <param name="publicKeyCompressed">The public key <c>Y</c>, SEC1 compressed (33 bytes).</param>
     /// <param name="messageHash">The message representative, 32-byte big-endian.</param>
@@ -479,7 +481,7 @@ public static class SecdsaAlgorithm
 
     /// <summary>
     /// Verifies a "full-format" SECDSA signature <c>(R, s)</c> that carries the full nonce point — Verheul's
-    /// VerifyFull. Equivalent to standard <see cref="Verify"/> with <c>r = R.x mod n</c>: it derives <c>r</c> from
+    /// Algorithm 15 (alternative ECDSA signature verification). Equivalent to standard <see cref="Verify"/> with <c>r = R.x mod n</c>: it derives <c>r</c> from
     /// the supplied point and runs the ordinary ECDSA check (which re-recovers <c>R</c> and confirms <c>R.x ≡ r</c>).
     /// </summary>
     /// <param name="publicKeyCompressed">The public key <c>Y</c>, SEC1 compressed (33 bytes).</param>

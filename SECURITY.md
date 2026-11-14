@@ -201,15 +201,15 @@ where each path stands against a quantum adversary; none of it changes the class
   in the library because they are what the deployed EUDI and W3C ecosystems require today; their presence
   is a statement about current interoperability, not about long-term quantum resistance.
 - **The SECDSA post-quantum transition is an application-layer and future-primitive concern, not new
-  library crypto.** The SECDSA paper's Annex C describes a two-step PQC roadmap (no quantum-vulnerable
-  data stored or exchanged, then none processed outside HSMs) with a modified blinding protocol, modified
-  signing and evidence algorithms over the plain generator, and ICAO Chip-Authentication secure messaging
-  with the certified Diffie-Hellman key replaced by **ML-KEM** (FIPS 203). The proof-of-knowledge shapes
-  those variants use are the same discrete-log-equality statements `DlEqualityNizk` already proves and
-  verifies over generic generator/target pairs, so the PQC variant needs **no new library crypto**; the
-  genuinely new surfaces — an ML-KEM key encapsulation, the Chip-Authentication secure channel, and the
-  seeded-hash internal-certificate records — are application-layer wiring or future primitives outside
-  this repository's WSCA-side scope.
+  library crypto.** The SECDSA paper's Annex C keeps data that would reveal the user public key `Y` out of
+  the wallet, the wallet provider's non-QC-resistant storage, and their exchanges, with four changes: a
+  post-quantum hardware-bound key (for example **ML-DSA**, FIPS 204) in the internal certificate, removal of
+  the pair `H, H'` from the internal certificate, replacement of the ECIES encryption between wallet and
+  wallet provider by a post-quantum variant (for example **ML-KEM**, FIPS 203), and seeded hashes in place
+  of quantum-vulnerable transaction-record values. The discrete-log-equality statements `DlEqualityNizk`
+  proves and verifies over generic generator/target pairs are unchanged by this; the genuinely new
+  surfaces — the ML-DSA and ML-KEM operations and the seeded-hash records — are application-layer wiring
+  or future primitives beyond the WSCA-side scope of this library.
 
 ## Scope
 
@@ -294,20 +294,20 @@ changes the semantics; a mismatch is a hard verification failure.
 SECDSA has no IETF/ISO specification; the specification is Verheul's paper *An HSM-based EUDI wallet using
 Split-ECDSA (SECDSA) providing verifiable "sole control"* at https://wellet.nl/SECDSA-EUDI-wallet-latest.pdf —
 a **rolling URL** whose content changes without the link changing. The implemented surfaces (`SecdsaAlgorithm`,
-`DlEqualityNizk`, `SecdsaEvidence`, `EcdhMacAlgorithm`) are pinned to the revision **"Version 21 June 2026"** (verified 2026-07-09;
+`DlEqualityNizk`, `SecdsaEvidence`, `EcdhMacAlgorithm`) are pinned to the revision **"Version 11 October 2026"** (verified 2026-11-14;
 upstream keeps frozen copies only up to `…walletV6.pdf` of Sep 2025, so 2026 revisions exist solely under the
 rolling URL). Within that revision the implemented algorithm map is: Algorithms 1/2 with Propositions 3.1/3.2
 (key generation and split sign), Algorithms 14/15 with Proposition A.1 (verification and the full
-representation), Algorithms 19/20 over statement (9) (the discrete-log-equality NIZK), the blinding relation of
-Algorithm 3 step 7 / Algorithm 4 step 11, and the control relation of Equation (7) / Algorithms 9/10; the §4
-split-key Algorithm 11 is realized by composing the two `SplitSign` entry points; Algorithms 16/17 with the §4
+representation), Algorithms 20/21 over statement (9) (the discrete-log-equality NIZK), the blinding relation of
+Algorithm 3 steps 6–7 / Algorithm 4 step 10, and the control relation of Equation (7) / Algorithms 9/10; the §4
+split-key Algorithm 11 is realized by `SplitSign` with `P = zU·zW`; Algorithms 16/17 with the §4
 split variant Algorithm 12 (ECDH-MAC and Split-ECDH-MAC, `EcdhMacAlgorithm` over HKDF-SHA256 per RFC 5869).
 Three standing caveats:
 
 - **The paper pins no wire encoding for the NIZK transcript.** "Convert point to byte array" is left to the
   implementation, so no cross-implementation byte fixture is possible; this library's documented choice is
   33-byte SEC1 compressed points throughout the Fiat–Shamir transcript, with the challenge `r` carried
-  full-width (never reduced) exactly as Algorithm 20's range check `r ∈ {1, 2^(8·|q|)−1}` requires. Nonce
+  full-width (never reduced) exactly as Algorithm 21's range check `r ∈ {1, 2^(8·|q|)−1}` requires. Nonce
   determinism (RFC 6979 for signing; a domain-separated statement digest for the NIZK commitment nonce) is a
   documented implementation choice the paper's "select random k" permits — wire bytes are unaffected.
 - **ECDH-MAC has no published test vectors.** ISO/IEC 18013-5 §9.1.3.5 defines the primitive only implicitly

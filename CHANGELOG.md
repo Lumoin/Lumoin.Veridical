@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - `LongfellowMdoc.Prove`/`Verify` and `LongfellowJwt.Prove`/`Verify` require the crypto suite; the `suite` parameter is no longer optional and a `null` suite throws.
 - `Lumoin.Veridical.Longfellow` targets the browser platform; no platform cryptography remains in the facade.
+- `SecdsaEvidence.ProveBlindingRelation`/`VerifyBlindingRelation` take the standard base point `g` first (was `gPrime`), matching `ZKP[(G,G''),(Y',Y'')]`.
+- `SecdsaEvidence.ProveControlRelation`/`VerifyControlRelation` take `h`, `w`, `hPrime`, `wPrime` (were `generator`, `noncePoint`, `blindedGenerator`, `blindedNoncePoint`), matching `ZKP[(H,H'),(W,W'),H(T_I)]` of Equation (7).
 
 ### Removed
 

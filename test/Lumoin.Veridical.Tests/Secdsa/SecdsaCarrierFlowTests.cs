@@ -21,7 +21,7 @@ namespace Lumoin.Veridical.Tests.Secdsa;
 /// <remarks>
 /// <para>
 /// This gate carries the full EUDI Wallet SECDSA flow narrative (Verheul, "An HSM-based EUDI wallet using
-/// Split-ECDSA (SECDSA) providing verifiable sole control", version 21 June 2026 — the paper-map numbering below
+/// Split-ECDSA (SECDSA) providing verifiable sole control", version 11 October 2026 — the paper-map numbering below
 /// follows that revision; the underlying construction is Verheul's "SECDSA: Mobile signing and authentication
 /// under classical sole control", eprint 2021/910), so the cryptographic steps below read against the protocol
 /// they implement. Every value crosses the WSCA surface as a tagged broad carrier; the mod-<c>n</c> scalar and group
@@ -96,23 +96,25 @@ namespace Lumoin.Veridical.Tests.Secdsa;
 ///
 ///   SETUP step 1  PID issuance (state to wallet, one-time): NCH generates (u, U=u*G); wallet sends U plus a key
 ///                 attestation; the state signs { name, dob, nationality, holderPublicKey: U }. Wallet stores it.
-///   SETUP step 2  WSCA activation (Protocol 4): wallet derives P and Y = P*U = P*u*G, blinds it (Ybl=t*Y), the
+///   SETUP step 2  WSCA activation (Protocol 1): wallet derives P and Y = P*U = P*u*G, blinds it (Ybl=t*Y), the
 ///                 WSCD blinds with aU (Y'bl=aU*Ybl), the wallet removes t (Y'=t^-1*Y'bl=aU*Y). The WSCA issues
-///                 the Internal Certificate { AliceId, U, G'=aU*G, Y'=aU*Y }. The raw Y is never stored.
+///                 the Internal Certificate { AliceId, U, H, H'=aU*H, Y'=aU*Y } with H a wallet-specific base point.
+///                 The raw Y is never stored.
 ///   SIGNING       (Algorithm 2) e=H(I); e'=P^-1*e; NCH raw-signs e' with u -> (r,s0); s=P*s0. The result (r,s)
 ///                 is ordinary ECDSA under Y though the NCH never saw P (Proposition 3.1). Recover R=k*G; from the
-///                 certificate G''=s^-1*G', Y''=s^-1*Y'; a DL-equality proof shows they share s^-1 (Alg 3/4).
-///   WSCA VERIFY   R' = e*G'' + r*Y'' = e*s^-1*aU*G + r*s^-1*aU*Y = aU*(e*s^-1*G + r*s^-1*Y) = aU*R
-///                 (Proposition 3.3). Equality holds exactly when the correct PIN was used: the AES-GCM key is
-///                 derived from R', so a wrong PIN gives a wrong R', a wrong key, a failed tag, and the
-///                 instruction is rejected without the WSCA ever learning the PIN.
-///   CONTROL       A control DL-equality proof binds G'=aU*G and R'=aU*R to the transaction-record context
-///                 N=H(T_I) (Equation 7, Algorithms 9/10): the irrefutable evidence of sole control.
-///   TRANSCRIPT    The WSCA returns a signed InstructionTranscript (Algorithm 37) whose sequence number matches
-///                 the originating BlindedSecdsaInstruction (Algorithm 36; challenge Chal(SN) per Algorithm 21).
+///                 certificate G''=s^-1*G, Y''=s^-1*Y'; a DL-equality proof shows they share s^-1 (Alg 3 Steps 6-7).
+///   WSCA VERIFY   W = R - e*G'' and W' = r*Y'' = r*s^-1*aU*Y = aU*W (Algorithm 3 Step 8, Proposition 3.3). Equality holds
+///                 exactly when the correct PIN was used: the AES-GCM key is derived from W', so a wrong PIN gives
+///                 a wrong W', a wrong key, a failed tag, and the instruction is rejected without the WSCA ever
+///                 learning the PIN.
+///   CONTROL       A control DL-equality proof ZKP[(H,H'),(W,W'),H(T_I)] binds H'=aU*H and W'=aU*W to the
+///                 transaction-record context N=H(T_I) (Equation 7, Algorithms 9/10): the irrefutable evidence of
+///                 sole control.
+///   TRANSCRIPT    The WSCA returns the signed transaction record carrying the instruction, R, G'', Y'' and the
+///                 proofs; the transfer of such records to third parties is the application layer.
 ///
 ///   WHAT THE TRANSCRIPT PROVES: anyone holding the transcript and the Internal Certificate can verify, without
-///   WSCD access, the WSCA signature, the ZKP that G''/Y'' are honest, and R'=e*G''+r*Y''=aU*R -- establishing
+///   WSCD access, the WSCA signature, the ZKP that G''/Y'' are well formed, and W'=aU*W with W=R-e*G'' -- establishing
 ///   sole control and non-repudiation at eIDAS High.
 ///
 ///  -- TRANSACTION-LOG INTEGRITY (pluggable, beyond this gate) ----------------
@@ -127,13 +129,12 @@ namespace Lumoin.Veridical.Tests.Secdsa;
 ///
 ///   Algorithm 1             Y = (P*u)*G                        DeriveSplitPublicKey
 ///   Algorithm 2 / Prop 3.1  split-sign is valid ECDSA under Y  SplitSign + Verify
-///   Protocol 4              Internal Certificate issuance       activation (G', Y')
+///   Protocol 1              Internal Certificate issuance       activation (H', Y')
 ///   Algorithms 3 / 4        blind-signing relation ZKP          ProveBlindingRelation
-///   Proposition 3.3         R' = e*G'' + r*Y'' = aU*R           ComputeVerificationPoint
+///   Alg 3 Step 8 / Prop 3.3 W' = r*Y'' = aU*W, W = R - e*G''    ComputeBlindedPoint
 ///   Equation 7 / Alg 9-10   control relation evidence           ProveControlRelation
-///   Algorithm 36 / 37       instruction / signed transcript     carriers (application layer)
-///   Algorithm 21            trusted-party challenge Chal(SN)    instruction authenticity
-///                           (ECDH-MAC transferable proof)
+///   Algorithms 20 / 21      DL-equality NIZK on Statement (9)   DlEqualityNizk
+///   Algorithms 22-24        transferable Protocol 2 proof       application layer
 ///   Section 4 / Alg 11      split-key architecture              separate gate (SplitKey...)
 ///
 ///   Scalars:  P = PIN-key,  u = NCH hardware key,  t = wallet one-time blinding,  aU = HSM/WSCD blinding key.
@@ -164,9 +165,8 @@ internal sealed class SecdsaCarrierFlowTests
     {
         using var pool = new BaseMemoryPool();
 
-        //-- ACTIVATION: mint the keys as tagged P-256 scalars from the entropy boundary factory --
-        //
-        //FromRandom is the factory that first surfaced the missing P-256 tag entry. P is the PIN-key,
+        //Activation: mint the keys as tagged P-256 scalars from the entropy boundary factory.
+        //        //FromRandom is the factory that first surfaced the missing P-256 tag entry. P is the PIN-key,
         //u the NCH hardware key, t the wallet's one-time blinding scalar, aU the HSM-bound blinding key.
         using Scalar pinKey = Scalar.FromRandom(ScalarRandom, Curve, pool);
         using Scalar hardwareKey = Scalar.FromRandom(ScalarRandom, Curve, pool);
@@ -181,8 +181,11 @@ internal sealed class SecdsaCarrierFlowTests
         using G1Point publicKey = DeriveSplitPublicKey(pinKey, hardwareKey, pool);
         Assert.AreEqual(Curve, publicKey.Curve, "The derived public key must carry the P-256 curve tag.");
 
-        //Blinding round-trip: Ybl = t*Y, G' = aU*G, Y'bl = aU*Ybl, Y' = t^-1*Y'bl. The result must equal aU*Y.
-        using G1Point blindingPublicKey = Mul(generator, walletProviderKey, pool);   //G' = aU*G
+        //Internal certificate: H is a wallet-specific base point, H' = aU*H. Blinding round-trip: Ybl = t*Y,
+        //Y'bl = aU*Ybl, Y' = t^-1*Y'bl. The result must equal aU*Y.
+        using Scalar baseScalar = Scalar.FromRandom(ScalarRandom, Curve, pool);
+        using G1Point walletBase = Mul(generator, baseScalar, pool);                       //H
+        using G1Point blindedWalletBase = Mul(walletBase, walletProviderKey, pool);        //H' = aU*H
         using G1Point blindSecdsaPublicKey = BlindRoundTrip(publicKey, blinding, walletProviderKey, pool);
         using(G1Point expected = Mul(publicKey, walletProviderKey, pool))
         {
@@ -190,7 +193,7 @@ internal sealed class SecdsaCarrierFlowTests
                 "Y' = t^-1*aU*t*Y must equal aU*Y after the blinding round-trip.");
         }
 
-        //-- SIGNING: the pool overload returns a tagged SecdsaSignature carrier (Algorithm 2) --
+        //Signing: the pool overload returns a tagged SecdsaSignature carrier (Algorithm 2).
         byte[] messageHash = Digest("present-pid-attributes SN=1");
         using SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
             pinKey.AsReadOnlySpan(), hardwareKey.AsReadOnlySpan(), messageHash, NonceSource,
@@ -211,45 +214,45 @@ internal sealed class SecdsaCarrierFlowTests
             "The signature must yield a finite nonce point R.");
         using G1Point noncePoint = G1Point.FromCanonical(noncePointBytes, Curve, pool);
 
-        //G'' = s^-1*G', Y'' = s^-1*Y' as tagged points; the blinding ZKP shares the witness s^-1 (Algorithm 3/4).
+        //G'' = s^-1*G, Y'' = s^-1*Y' as tagged points; the blinding ZKP shares the witness s^-1 (Algorithm 3 Steps 6-7).
         using Scalar signatureScalar = Scalar.FromCanonical(signature.GetSBytes(), Curve, pool);
         using Scalar signatureInverse = Invert(signatureScalar, pool);
-        using G1Point gDoublePrime = Mul(blindingPublicKey, signatureInverse, pool);
+        using G1Point gDoublePrime = Mul(generator, signatureInverse, pool);
         using G1Point yDoublePrime = Mul(blindSecdsaPublicKey, signatureInverse, pool);
 
         using DlEqualityProof blindingProof = SecdsaEvidence.ProveBlindingRelation(
-            blindingPublicKey.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(),
+            generator.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(),
             blindSecdsaPublicKey.AsReadOnlySpan(), yDoublePrime.AsReadOnlySpan(),
             signatureInverse.AsReadOnlySpan(), NonceSource, Hash, ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, pool);
 
         Assert.IsTrue(
             SecdsaEvidence.VerifyBlindingRelation(
-                blindingPublicKey.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(),
+                generator.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(),
                 blindSecdsaPublicKey.AsReadOnlySpan(), yDoublePrime.AsReadOnlySpan(),
                 blindingProof.GetRBytes(), blindingProof.GetSBytes(), Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "The blind-signing relation proof must verify.");
 
-        //-- WSCA VERIFICATION: R' = e*G'' + r*Y'' must equal aU*R (Proposition 3.3) --
-        //
+        //WSCA verification: W = R - e*G'' and W' = r*Y'' must satisfy W' = aU*W (Algorithm 3 Step 8, Proposition 3.3).
         //e is reduced from the message hash through FromBytesReduced; r is the signature component as a scalar.
         using Scalar e = Scalar.FromBytesReduced(messageHash, ScalarReduce, Curve, pool);
         using Scalar r = Scalar.FromCanonical(signature.GetRBytes(), Curve, pool);
-        using G1Point verificationPoint = ComputeVerificationPoint(e, gDoublePrime, r, yDoublePrime, pool);
-        using(G1Point expectedVerificationPoint = Mul(noncePoint, walletProviderKey, pool))
+        using G1Point w = ComputeInstructionPoint(noncePoint, e, gDoublePrime, pool);
+        using G1Point wPrime = Mul(yDoublePrime, r, pool);
+        using(G1Point expectedWPrime = Mul(w, walletProviderKey, pool))
         {
-            Assert.IsTrue(PointsEqual(expectedVerificationPoint, verificationPoint),
-                "R' = e*G'' + r*Y'' must equal aU*R — the invariant proving the correct PIN was used.");
+            Assert.IsTrue(PointsEqual(expectedWPrime, wPrime),
+                "W' = r*Y'' must equal aU*W — the invariant proving the correct PIN was used.");
         }
 
-        //-- CONTROL EVIDENCE: G' = aU*G and R' = aU*R share aU, bound to N = H(T_I) (Equation 7, Algorithm 9/10) --
+        //Control evidence: H' = aU*H and W' = aU*W share aU, bound to N = H(T_I) (Equation 7, Algorithm 9 Step 6, Algorithm 10 Step 6).
         byte[] recordContext = Digest("transaction-record T_I for instruction #1");
         using DlEqualityProof controlProof = SecdsaEvidence.ProveControlRelation(
-            generator.AsReadOnlySpan(), noncePoint.AsReadOnlySpan(), blindingPublicKey.AsReadOnlySpan(), verificationPoint.AsReadOnlySpan(),
+            walletBase.AsReadOnlySpan(), w.AsReadOnlySpan(), blindedWalletBase.AsReadOnlySpan(), wPrime.AsReadOnlySpan(),
             walletProviderKey.AsReadOnlySpan(), recordContext, NonceSource, Hash, ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, pool);
 
         Assert.IsTrue(
             SecdsaEvidence.VerifyControlRelation(
-                generator.AsReadOnlySpan(), noncePoint.AsReadOnlySpan(), blindingPublicKey.AsReadOnlySpan(), verificationPoint.AsReadOnlySpan(),
+                walletBase.AsReadOnlySpan(), w.AsReadOnlySpan(), blindedWalletBase.AsReadOnlySpan(), wPrime.AsReadOnlySpan(),
                 recordContext, controlProof.GetRBytes(), controlProof.GetSBytes(), Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "A third party must accept the wallet-provider control evidence bound to the transaction record.");
     }
@@ -277,13 +280,23 @@ internal sealed class SecdsaCarrierFlowTests
     }
 
 
-    /// <summary>Computes the WSCA verification point <c>R' = e·G'' + r·Y''</c> (Proposition 3.3).</summary>
-    private static G1Point ComputeVerificationPoint(Scalar e, G1Point gDoublePrime, Scalar r, G1Point yDoublePrime, BaseMemoryPool pool)
+    /// <summary>Computes <c>W = R − e·G''</c> (Algorithm 3 Step 8) as a fresh tagged compressed point.</summary>
+    private static G1Point ComputeInstructionPoint(G1Point noncePoint, Scalar e, G1Point gDoublePrime, BaseMemoryPool pool)
     {
-        using G1Point left = Mul(gDoublePrime, e, pool);
-        using G1Point right = Mul(yDoublePrime, r, pool);
+        using G1Point scaled = Mul(gDoublePrime, e, pool);
+        using G1Point negated = Negate(scaled, pool);
 
-        return Add(left, right, pool);
+        return Add(noncePoint, negated, pool);
+    }
+
+
+    /// <summary>Computes <c>−point</c> as a fresh tagged compressed point.</summary>
+    private static G1Point Negate(G1Point point, BaseMemoryPool pool)
+    {
+        Span<byte> result = stackalloc byte[CompressedSize];
+        G1Negate(point.AsReadOnlySpan(), result, Curve);
+
+        return G1Point.FromCanonical(result, Curve, pool);
     }
 
 
