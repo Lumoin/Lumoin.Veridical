@@ -30,6 +30,12 @@
     <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
     <TrimmerSingleWarn>true</TrimmerSingleWarn>
 
+    <!--
+      The tests deserialize their JSON fixtures reflectively; a trimmed publish switches
+      reflection-based serialization off unless it is switched back on here.
+      -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+
     <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
     <EnableAotAnalyzer>false</EnableAotAnalyzer>
 
@@ -56,6 +62,50 @@
       -->
     <TrimmerRootAssembly Include="Lumoin.Veridical.Tests" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <TestProjectDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '..', 'Lumoin.Veridical.Tests'))</TestProjectDirectory>
+    <FixtureStagingDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', 'wwwroot', 'fixtures'))</FixtureStagingDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The tests read fixture files from disk at the relative paths the native test project
+      copies them to, and the files are not part of the test assembly. VfsPath is the path each
+      file takes inside the runtime's in-memory file system. The folders are the ones the test
+      project copies to its output directory, which tests resolve against the application base
+      directory, plus the sample credentials and anchor outputs under TestMaterial, which tests
+      resolve against the working directory; both resolve to the root of the virtual file system.
+      -->
+    <WasmFixtureSource Include="$(TestProjectDirectory)Spartan\Fixtures\**\*" VfsPath="Spartan/Fixtures/%(RecursiveDir)%(Filename)%(Extension)" />
+    <WasmFixtureSource Include="$(TestProjectDirectory)ConstraintSystems\Interop\Circom\Fixtures\**\*" VfsPath="ConstraintSystems/Interop/Circom/Fixtures/%(RecursiveDir)%(Filename)%(Extension)" />
+    <WasmFixtureSource Include="$(TestProjectDirectory)ConstraintSystems\Interop\ZkInterface\Fixtures\**\*" VfsPath="ConstraintSystems/Interop/ZkInterface/Fixtures/%(RecursiveDir)%(Filename)%(Extension)" />
+    <WasmFixtureSource Include="$(TestProjectDirectory)Cryptography\Wycheproof\Fixtures\**\*" VfsPath="Cryptography/Wycheproof/Fixtures/%(RecursiveDir)%(Filename)%(Extension)" />
+    <WasmFixtureSource Include="$(TestProjectDirectory)TestMaterial\**\*" VfsPath="TestMaterial/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="StageWasmFixtures" BeforeTargets="ResolveProjectStaticWebAssets">
+    <!--
+      The virtual file system item only accepts files that are static web assets, and the
+      discovered ones are the files under wwwroot, so the fixtures are copied into the
+      generated wwwroot/fixtures folder first. The copy happens before the assets are
+      resolved, so the files are picked up as content in the same build.
+      -->
+    <Copy SourceFiles="@(WasmFixtureSource)" DestinationFiles="@(WasmFixtureSource->'$(FixtureStagingDirectory)%(VfsPath)')" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <Content Include="$(FixtureStagingDirectory)**\*" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="IncludeFixturesInFileSystem" BeforeTargets="ComputeWasmVfs">
+    <!--
+      The item names each file by its path relative to wwwroot, which is how the static web
+      asset for it is identified, and TargetPath gives the path inside the virtual file system.
+      -->
+    <ItemGroup>
+      <WasmFilesToIncludeInFileSystem Include="fixtures/$([System.String]::Copy('%(WasmFixtureSource.VfsPath)').Replace('\', '/'))" TargetPath="/$([System.String]::Copy('%(WasmFixtureSource.VfsPath)').Replace('\', '/'))" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\Lumoin.Veridical.Tests\Lumoin.Veridical.Tests.csproj" />
