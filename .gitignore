@@ -380,3 +380,4 @@ refs/
 
 # Fixtures staged by the WebAssembly test host at build time
 test/Lumoin.Veridical.Tests.Wasm/wwwroot/fixtures/
+test/Lumoin.Veridical.Tests.Wasm/shard-results/

@@ -42,9 +42,29 @@ Everything after the script name is passed to Microsoft.Testing.Platform, except
 `main.mjs` consumes: it makes the run write a TRX report inside the runtime's in-memory file system and, after
 the run, copies that report to `<path>` on the host disk so per-test outcomes can be read. `--filter` takes
 MSTest filter expressions over `FullyQualifiedName`; `--list-tests` does not enumerate tests in this runtime, so
-use `--filter` to select them. The full suite is not intended to run here, because the runtime is single threaded.
-Test data that the selected classes need is compiled into the test assembly; fixture files that other
-classes read from disk are not staged into the virtual file system.
+use `--filter` to select them, and `--timeout` is not honoured because the runtime is single threaded.
+
+## Fixture files
+
+The tests read fixture files from disk at the relative paths the native test project copies them to. The host
+stages the same files into the runtime's in-memory file system at the same relative paths: the project copies the
+fixture folders into the generated `wwwroot/fixtures` folder at build time, and the WebAssembly SDK's
+`WasmFilesToIncludeInFileSystem` item places each of them at its `TargetPath` in the file system. The application base
+directory and the working directory both resolve to the root of that file system.
+
+## Running the whole suite
+
+`run-shards.ps1` runs the non-Slow suite as several Node processes, each with a filter over the fully qualified test
+name, after a publish of the host:
+
+```
+pwsh test/Lumoin.Veridical.Tests.Wasm/run-shards.ps1 -MaxParallel 4
+```
+
+A test that produces no output for `-TestStallMinutes`, or a process that ends without a run summary, is recorded
+as stalled and the shard is run again without it; the stalled tests are listed in the summary. Tests that cannot
+run under WebAssembly are gated in their own source with the helpers in `RuntimeRequirements` and
+`InstructionSetRequirements`, and are reported as not executed.
 
 ## CoreCLR on WebAssembly
 
