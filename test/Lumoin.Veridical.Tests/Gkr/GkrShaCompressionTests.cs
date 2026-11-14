@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Gkr;
 using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -148,6 +149,8 @@ internal sealed class GkrShaCompressionTests
     [TestMethod]
     public void ANonBitCarryDigitIsUnprovable()
     {
+        RuntimeRequirements.RequireProofThroughput();
+
         GkrCircuit circuit = GkrShaRoundSupport.BuildRoundCircuit();
         using IMemoryOwner<byte> inputsOwner = BaseMemoryPool.Shared.Rent(WitnessBytes);
         Memory<byte> inputs = inputsOwner.Memory[..WitnessBytes];

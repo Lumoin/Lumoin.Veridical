@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.ConstraintSystems;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Core.Spartan;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -107,6 +108,8 @@ internal sealed class MaskedSpartanIndistinguishabilityTests
     [TestMethod]
     public void MaskedProofsForDifferentWitnessesUnderUniformSeedHaveSimilarDistributionsOnBlindedSections()
     {
+        RuntimeRequirements.RequireStatisticalSampleBudget();
+
         byte[][] proofs1 = new byte[ScopedChiSquaredSampleCount][];
         byte[][] proofs2 = new byte[ScopedChiSquaredSampleCount][];
 

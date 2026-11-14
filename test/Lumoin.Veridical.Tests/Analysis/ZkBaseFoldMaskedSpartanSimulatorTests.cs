@@ -135,6 +135,8 @@ internal sealed class ZkBaseFoldMaskedSpartanSimulatorTests
     [TestMethod]
     public void RealAndSimulatedMaskedSpartanProofsCompareInTwoSampleTests()
     {
+        RuntimeRequirements.RequireStatisticalSampleBudget();
+
         //Real proofs of the satisfying witness versus witness-free simulated
         //proofs: mean proof byte under Kolmogorov-Smirnov, per-proof byte
         //histograms under the label-permutation null (the analytic chi-squared

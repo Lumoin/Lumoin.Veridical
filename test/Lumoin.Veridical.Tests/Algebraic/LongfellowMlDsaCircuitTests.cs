@@ -1,6 +1,7 @@
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -350,6 +351,8 @@ internal sealed class LongfellowMlDsaCircuitTests: IDisposable
     [TestMethod]
     public void TheValidSignatureAssertionAcceptsTheFirstExampleInEvaluation()
     {
+        RuntimeRequirements.RequireProofThroughput();
+
         AssertValidSignatureEvaluation(LongfellowMlDsaParameters.MlDsa44, LongfellowMlDsa44ExampleVectors.SignatureExamples, 0, 1, "ml_dsa_44");
         AssertValidSignatureEvaluation(LongfellowMlDsaParameters.MlDsa65, LongfellowMlDsa65ExampleVectors.SignatureExamples, 0, 1, "ml_dsa_65");
     }
