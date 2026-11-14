@@ -1,3 +1,4 @@
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Runtime;
@@ -71,6 +72,8 @@ internal sealed class PinnedSlabResidencyTests
     [TestMethod]
     public void PinnedRentalKeepsItsAddressAcrossACompactingCollection()
     {
+        RuntimeRequirements.RequireLargeObjectHeapCompaction();
+
         using BaseMemoryPool pool = new();
         using IMemoryOwner<byte> owner = pool.Rent(SegmentBytes, AllocationKind.Pinned);
 

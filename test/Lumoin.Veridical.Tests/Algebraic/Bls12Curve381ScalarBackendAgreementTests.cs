@@ -85,8 +85,10 @@ internal sealed class Bls12Curve381ScalarBackendAgreementTests
         //otherwise. Catches a wiring error where the facade silently disagrees
         //with the backends it is supposed to expose.
         bool anyBackendSupported =
-            Bls12Curve381Avx2ScalarBackend.IsSupported
-            || Bls12Curve381NeonScalarBackend.IsSupported;
+            Bls12Curve381Avx512ScalarBackend.IsSupported
+            || Bls12Curve381Avx2ScalarBackend.IsSupported
+            || Bls12Curve381NeonScalarBackend.IsSupported
+            || Bls12Curve381WasmScalarBackend.IsSupported;
 
         Assert.AreEqual(
             anyBackendSupported,

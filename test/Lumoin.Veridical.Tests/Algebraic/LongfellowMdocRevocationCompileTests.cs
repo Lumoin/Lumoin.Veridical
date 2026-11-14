@@ -5,6 +5,7 @@ using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Compiler;
 using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Globalization;
@@ -243,6 +244,8 @@ internal sealed class LongfellowMdocRevocationCompileTests: IDisposable
     [TestMethod]
     public void TheSpanStatementProvesAndVerifiesEndToEnd()
     {
+        RuntimeRequirements.RequireProofThroughput();
+
         LongfellowLogicFieldOperations field = NewFastFp256Bundle();
         LongfellowSumcheckCircuit circuit = CompileSpanCircuit(field, out _);
         LongfellowLigeroParameters parameters = LongfellowZkVerifier.DeriveParameters(

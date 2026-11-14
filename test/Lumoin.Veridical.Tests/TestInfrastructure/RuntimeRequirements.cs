@@ -20,6 +20,20 @@ internal static class RuntimeRequirements
 
 
     /// <summary>
+    /// Throws <see cref="AssertInconclusiveException"/> under WebAssembly, whose garbage collector does not
+    /// support <see cref="System.Runtime.GCSettings.LargeObjectHeapCompactionMode"/>, so a test that forces a
+    /// compacting collection of the large object heap cannot run there.
+    /// </summary>
+    public static void RequireLargeObjectHeapCompaction()
+    {
+        if(OperatingSystem.IsBrowser())
+        {
+            Assert.Inconclusive("The browser-wasm garbage collector does not support large-object-heap compaction; skipping the compaction test.");
+        }
+    }
+
+
+    /// <summary>
     /// Throws <see cref="AssertInconclusiveException"/> under WebAssembly for tests that generate hundreds
     /// of proofs to compare byte distributions statistically. The runtime is single threaded and interprets
     /// the library, so the sampling takes far longer than on a native host, and long runs of it

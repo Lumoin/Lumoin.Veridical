@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <!--
       The MSTest runner is the entry point of the test project; this host supplies its own Main
@@ -35,6 +36,20 @@
       reflection-based serialization off unless it is switched back on here.
       -->
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+
+    <!--
+      A trimmed WebAssembly publish switches the metrics feature off, which leaves every
+      MeterListener without measurements. The tests that count a pool's rentals and returns
+      through its meter need the measurements, so the feature stays on.
+      -->
+    <MetricsSupport>true</MetricsSupport>
+
+    <!--
+      The default heap ceiling of the WebAssembly runtime is 2 GiB. The wire tables of the
+      larger Longfellow circuits are rented from one pool, and a shard that has already run
+      many of them can no longer find a contiguous slab below that ceiling.
+      -->
+    <EmccMaximumHeapSize>4294967296</EmccMaximumHeapSize>
 
     <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
     <EnableAotAnalyzer>false</EnableAotAnalyzer>
