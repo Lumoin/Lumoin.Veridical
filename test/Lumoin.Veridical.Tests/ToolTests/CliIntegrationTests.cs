@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 
 namespace Lumoin.Veridical.Tests.ToolTests;
 
@@ -12,6 +13,13 @@ namespace Lumoin.Veridical.Tests.ToolTests;
 internal sealed class CliIntegrationTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+
+    /// <summary>
+    /// Skips every test of the class under WebAssembly, where the runtime cannot start the executable as a child process.
+    /// </summary>
+    [TestInitialize]
+    public void RequireSubprocessSupport() => RuntimeRequirements.RequireProcessSpawning();
 
 
     [TestMethod]
