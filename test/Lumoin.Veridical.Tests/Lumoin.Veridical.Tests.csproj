@@ -60,6 +60,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      The WebAssembly host registers browser-backed providers for the platform cryptography
+      seam in TestInfrastructure, whose members are internal.
+      -->
+    <InternalsVisibleTo Include="Lumoin.Veridical.Tests.Wasm" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Core\Lumoin.Veridical.Core.csproj" />
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Bbs\Lumoin.Veridical.Bbs.csproj" />
     <ProjectReference Include="..\..\src\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />

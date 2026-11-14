@@ -1,9 +1,9 @@
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -38,12 +38,12 @@ internal sealed class RealCredentialCoseTests
         //The signature is ES256 (r‖s, 64 bytes), and the signed bytes are the COSE Sig_structure.
         Assert.HasCount(64, issuerAuth.Signature, "An ES256 COSE_Sign1 signature is r‖s, 64 bytes.");
 
-        using X509Certificate2 issuerCertificate = X509CertificateLoader.LoadCertificate(issuerAuth.IssuerCertificate);
-        using ECDsa? issuerKey = issuerCertificate.GetECDsaPublicKey();
-        Assert.IsNotNull(issuerKey, "The issuer DS certificate must carry an EC public key.");
+        byte[] issuerX = new byte[PlatformP256Key.ComponentSize];
+        byte[] issuerY = new byte[PlatformP256Key.ComponentSize];
+        Assert.IsTrue(TestPlatformCrypto.ReadCertificatePublicKey(issuerAuth.IssuerCertificate, issuerX, issuerY), "The issuer DS certificate must carry a P-256 public key.");
 
         byte[] signedStructure = issuerAuth.SignatureStructure();
-        bool verified = issuerKey.VerifyData(signedStructure, issuerAuth.Signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        bool verified = TestPlatformCrypto.VerifyP256(issuerX, issuerY, signedStructure, issuerAuth.Signature);
         Assert.IsTrue(verified, "The genuine issuer COSE_Sign1 signature over the MSO must verify with the x5chain key.");
     }
 
@@ -84,14 +84,14 @@ internal sealed class RealCredentialCoseTests
             byte[] credential = await File.ReadAllBytesAsync($"../../../TestMaterial/Mdoc/{name}", cancellationToken).ConfigureAwait(false);
             CoseSign1 issuerAuth = CoseSign1.Extract(credential);
 
-            using X509Certificate2 issuerCertificate = X509CertificateLoader.LoadCertificate(issuerAuth.IssuerCertificate);
-            using ECDsa? issuerKey = issuerCertificate.GetECDsaPublicKey();
-            if(issuerKey is null)
+            byte[] issuerX = new byte[PlatformP256Key.ComponentSize];
+            byte[] issuerY = new byte[PlatformP256Key.ComponentSize];
+            if(!TestPlatformCrypto.ReadCertificatePublicKey(issuerAuth.IssuerCertificate, issuerX, issuerY))
             {
-                return $"{name}: the issuer certificate carries no EC public key";
+                return $"{name}: the issuer certificate carries no P-256 public key";
             }
 
-            bool verified = issuerKey.VerifyData(issuerAuth.SignatureStructure(), issuerAuth.Signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+            bool verified = TestPlatformCrypto.VerifyP256(issuerX, issuerY, issuerAuth.SignatureStructure(), issuerAuth.Signature);
 
             return verified ? string.Empty : $"{name}: the issuer signature did not verify";
         }

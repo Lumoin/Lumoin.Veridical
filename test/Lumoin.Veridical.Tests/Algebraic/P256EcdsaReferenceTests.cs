@@ -1,16 +1,17 @@
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Tests.Algebraic;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Security.Cryptography;
 
 namespace Lumoin.Veridical.Tests.Algebraic;
 
 /// <summary>
-/// Gates the P-256 ECDSA reference against .NET's built-in P-256
-/// (<see cref="ECDsa"/> over <see cref="ECCurve.NamedCurves.nistP256"/>) as an
-/// independent oracle, in both directions: a signature .NET produces must
-/// verify here, and a signature produced here must verify in .NET. Round-trip
+/// Gates the P-256 ECDSA reference against the platform's P-256 ECDSA
+/// (through the platform cryptography seam) as an
+/// independent oracle, in both directions: a signature the platform produces must
+/// verify here, and a signature produced here must verify on the platform. Round-trip
 /// and rejection cases pin the in-range checks and the tamper response. This
 /// is the cleartext spec the in-circuit proof is gated against.
 /// </summary>
@@ -37,14 +38,13 @@ internal sealed class P256EcdsaReferenceTests
     [TestMethod]
     public void VerifiesADotNetProducedSignature()
     {
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
 
-        Span<byte> signature = stackalloc byte[2 * ScalarSize];
-        int written = ecdsa.SignData(Message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
-        Assert.AreEqual(signature.Length, written, "P-256 IEEE-P1363 signatures are r‖s, 64 bytes.");
+        Span<byte> signature = stackalloc byte[PlatformP256Key.SignatureSize];
+        TestPlatformCrypto.SignP256(key, Message, signature);
 
         Span<byte> publicKey = stackalloc byte[CompressedSize];
-        ExportPublicKeyCompressed(ecdsa, publicKey);
+        key.ExportCompressedPublicKey(publicKey);
 
         Span<byte> digest = stackalloc byte[ScalarSize];
         SHA256.HashData(Message, digest);
@@ -65,11 +65,10 @@ internal sealed class P256EcdsaReferenceTests
     [TestMethod]
     public void ReferenceSignatureVerifiesInDotNet()
     {
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: true);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
 
         Span<byte> privateKey = stackalloc byte[ScalarSize];
-        LeftPad(parameters.D, privateKey);
+        key.PrivateKey.CopyTo(privateKey);
 
         Span<byte> digest = stackalloc byte[ScalarSize];
         SHA256.HashData(Message, digest);
@@ -85,7 +84,7 @@ internal sealed class P256EcdsaReferenceTests
         r.CopyTo(signature[..ScalarSize]);
         s.CopyTo(signature[ScalarSize..]);
 
-        bool valid = ecdsa.VerifyData(Message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        bool valid = TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, Message, signature);
         Assert.IsTrue(valid, "A signature the reference produced must verify in .NET.");
     }
 
@@ -94,13 +93,12 @@ internal sealed class P256EcdsaReferenceTests
     [TestMethod]
     public void SignAndVerifyRoundTrip()
     {
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: true);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
 
         Span<byte> privateKey = stackalloc byte[ScalarSize];
-        LeftPad(parameters.D, privateKey);
+        key.PrivateKey.CopyTo(privateKey);
         Span<byte> publicKey = stackalloc byte[CompressedSize];
-        ExportPublicKeyCompressed(ecdsa, publicKey);
+        key.ExportCompressedPublicKey(publicKey);
 
         Span<byte> digest = stackalloc byte[ScalarSize];
         SHA256.HashData(Message, digest);
@@ -119,9 +117,9 @@ internal sealed class P256EcdsaReferenceTests
     [TestMethod]
     public void RejectsOutOfRangeComponents()
     {
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
         Span<byte> publicKey = stackalloc byte[CompressedSize];
-        ExportPublicKeyCompressed(ecdsa, publicKey);
+        key.ExportCompressedPublicKey(publicKey);
         Span<byte> digest = stackalloc byte[ScalarSize];
         SHA256.HashData(Message, digest);
 
@@ -136,29 +134,5 @@ internal sealed class P256EcdsaReferenceTests
         Span<byte> order = stackalloc byte[ScalarSize];
         WellKnownCurves.GetScalarFieldOrder(Curve).TryWriteBytes(order, out _, isUnsigned: true, isBigEndian: true);
         Assert.IsFalse(P256EcdsaReference.Verify(publicKey, digest, order, one), "r = n must reject.");
-    }
-
-
-    /// <summary>Exports a .NET ECDSA key's public point as a SEC1-compressed P-256 point: a parity tag byte followed by the big-endian x-coordinate.</summary>
-    private static void ExportPublicKeyCompressed(ECDsa ecdsa, Span<byte> destination)
-    {
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        Span<byte> x = stackalloc byte[ScalarSize];
-        Span<byte> y = stackalloc byte[ScalarSize];
-        LeftPad(parameters.Q.X, x);
-        LeftPad(parameters.Q.Y, y);
-
-        //SEC1 compressed: 0x02 if y is even, 0x03 if odd, then x big-endian.
-        destination[0] = (byte)(0x02 | (y[^1] & 0x01));
-        x.CopyTo(destination[1..]);
-    }
-
-
-    /// <summary>Copies a .NET big-endian coordinate byte array into a fixed-width destination, zero-padding the leading bytes; throws if the source is <see langword="null"/>.</summary>
-    private static void LeftPad(byte[]? source, Span<byte> destination)
-    {
-        destination.Clear();
-        ArgumentNullException.ThrowIfNull(source);
-        source.CopyTo(destination[(destination.Length - source.Length)..]);
     }
 }

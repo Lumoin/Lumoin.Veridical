@@ -126,7 +126,7 @@ internal sealed class LigeroAgeThresholdCredentialProofTests
     [TestMethod]
     public void IssuerSignatureBindsTheCredential()
     {
-        using ECDsa issuer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        PlatformP256Key issuer = TestPlatformCrypto.GenerateP256Key();
         MdocCredential credential = SampleCredential(ageYears: 34);
 
         Span<byte> publicKey = stackalloc byte[33];
@@ -349,13 +349,12 @@ internal sealed class LigeroAgeThresholdCredentialProofTests
     /// <param name="publicKeyCompressed">The buffer receiving the issuer's compressed public key.</param>
     /// <param name="r">The buffer receiving the ECDSA signature's <c>r</c> component.</param>
     /// <param name="s">The buffer receiving the ECDSA signature's <c>s</c> component.</param>
-    private static void Mint(ECDsa issuer, MdocCredential credential, Span<byte> publicKeyCompressed, Span<byte> r, Span<byte> s)
+    private static void Mint(PlatformP256Key issuer, MdocCredential credential, Span<byte> publicKeyCompressed, Span<byte> r, Span<byte> s)
     {
-        ExportPublicKeyCompressed(issuer, publicKeyCompressed);
-        ECParameters parameters = issuer.ExportParameters(includePrivateParameters: true);
+        issuer.ExportCompressedPublicKey(publicKeyCompressed);
 
         Span<byte> privateKey = stackalloc byte[ScalarSize];
-        LeftPad(parameters.D, privateKey);
+        issuer.PrivateKey.CopyTo(privateKey);
 
         Span<byte> digest = stackalloc byte[ScalarSize];
         HashCanonical(credential, digest);
@@ -429,33 +428,6 @@ internal sealed class LigeroAgeThresholdCredentialProofTests
         System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(destination, (ushort)written);
 
         return sizeof(ushort) + written;
-    }
-
-
-    /// <summary>Exports an ECDSA key's public point in SEC1 compressed form.</summary>
-    /// <param name="ecdsa">The key whose public point is exported.</param>
-    /// <param name="destination">The 33-byte buffer receiving the compressed point.</param>
-    private static void ExportPublicKeyCompressed(ECDsa ecdsa, Span<byte> destination)
-    {
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        Span<byte> x = stackalloc byte[ScalarSize];
-        Span<byte> y = stackalloc byte[ScalarSize];
-        LeftPad(parameters.Q.X, x);
-        LeftPad(parameters.Q.Y, y);
-
-        destination[0] = (byte)(0x02 | (y[^1] & 0x01));
-        x.CopyTo(destination[1..]);
-    }
-
-
-    /// <summary>Right-aligns a big-endian byte array into a wider fixed-size buffer, zero-filling the leading bytes.</summary>
-    /// <param name="source">The source bytes to right-align; must not be <see langword="null"/>.</param>
-    /// <param name="destination">The buffer receiving the zero-padded, right-aligned bytes.</param>
-    private static void LeftPad(byte[]? source, Span<byte> destination)
-    {
-        destination.Clear();
-        ArgumentNullException.ThrowIfNull(source);
-        source.CopyTo(destination[(destination.Length - source.Length)..]);
     }
 
 

@@ -8,6 +8,7 @@ using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Tests.Mdoc;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -195,6 +196,7 @@ internal sealed class EcdsaVerificationGadgetTests
         //the public (Q, e, r, s) alone, exactly as a real prover would. Several fresh
         //keys/messages give breadth (including the occasional R.x ≥ n branch); checked
         //fast with the constraint evaluator.
+        Span<byte> signature = stackalloc byte[PlatformP256Key.SignatureSize];
         foreach(ReadOnlyMemory<byte> message in new[]
         {
             (ReadOnlyMemory<byte>)"over-18 age assertion"u8.ToArray(),
@@ -203,17 +205,16 @@ internal sealed class EcdsaVerificationGadgetTests
             "third-party ECDSA P-256"u8.ToArray(),
         })
         {
-            using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            byte[] signature = ecdsa.SignData(message.Span, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+            PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
+            TestPlatformCrypto.SignP256(key, message.Span, signature);
             Assert.IsTrue(
-                ecdsa.VerifyData(message.Span, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation),
-                ".NET must accept its own signature (gate).");
+                TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, message.Span, signature),
+                "The platform must accept its own signature (gate).");
 
-            ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-            BigInteger qx = ToInteger(parameters.Q.X);
-            BigInteger qy = ToInteger(parameters.Q.Y);
-            BigInteger r = ToInteger(signature.AsSpan(0, ScalarSize));
-            BigInteger s = ToInteger(signature.AsSpan(ScalarSize, ScalarSize));
+            BigInteger qx = ToInteger(key.PublicX);
+            BigInteger qy = ToInteger(key.PublicY);
+            BigInteger r = ToInteger(signature[..ScalarSize]);
+            BigInteger s = ToInteger(signature[ScalarSize..]);
             BigInteger e = ModN(ToInteger(SHA256.HashData(message.Span)));
             (BigInteger rx, BigInteger ry) = RecoverNoncePoint(qx, qy, e, r, s);
 
@@ -238,17 +239,17 @@ internal sealed class EcdsaVerificationGadgetTests
         //hardware-dependent; the fast evaluator gates cover the logic, so this gate adds
         //the end-to-end proving.
         byte[] message = "Veridical proves a real ECDSA signature in zero knowledge."u8.ToArray();
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        byte[] signature = ecdsa.SignData(message, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
+        Span<byte> signature = stackalloc byte[PlatformP256Key.SignatureSize];
+        TestPlatformCrypto.SignP256(key, message, signature);
         Assert.IsTrue(
-            ecdsa.VerifyData(message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation),
-            ".NET must accept its own signature (gate).");
+            TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, message, signature),
+            "The platform must accept its own signature (gate).");
 
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        BigInteger qx = ToInteger(parameters.Q.X);
-        BigInteger qy = ToInteger(parameters.Q.Y);
-        BigInteger r = ToInteger(signature.AsSpan(0, ScalarSize));
-        BigInteger s = ToInteger(signature.AsSpan(ScalarSize, ScalarSize));
+        BigInteger qx = ToInteger(key.PublicX);
+        BigInteger qy = ToInteger(key.PublicY);
+        BigInteger r = ToInteger(signature[..ScalarSize]);
+        BigInteger s = ToInteger(signature[ScalarSize..]);
         BigInteger e = ModN(ToInteger(SHA256.HashData(message)));
         (BigInteger rx, BigInteger ry) = RecoverNoncePoint(qx, qy, e, r, s);
 
@@ -377,17 +378,17 @@ internal sealed class EcdsaVerificationGadgetTests
         //the signed bytes — not a supplied e. .NET signs SHA-256(message); the circuit hashes
         //the witnessed message and feeds the 256-bit digest as the e·G scalar (D·G = e·G).
         byte[] message = "mdoc: age_over_18 = true"u8.ToArray();
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        byte[] signature = ecdsa.SignData(message, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
+        Span<byte> signature = stackalloc byte[PlatformP256Key.SignatureSize];
+        TestPlatformCrypto.SignP256(key, message, signature);
         Assert.IsTrue(
-            ecdsa.VerifyData(message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation),
-            ".NET must accept its own signature (gate).");
+            TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, message, signature),
+            "The platform must accept its own signature (gate).");
 
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        BigInteger qx = ToInteger(parameters.Q.X);
-        BigInteger qy = ToInteger(parameters.Q.Y);
-        BigInteger r = ToInteger(signature.AsSpan(0, ScalarSize));
-        BigInteger s = ToInteger(signature.AsSpan(ScalarSize, ScalarSize));
+        BigInteger qx = ToInteger(key.PublicX);
+        BigInteger qy = ToInteger(key.PublicY);
+        BigInteger r = ToInteger(signature[..ScalarSize]);
+        BigInteger s = ToInteger(signature[ScalarSize..]);
         BigInteger e = ToInteger(SHA256.HashData(message));
         (BigInteger rx, BigInteger ry) = RecoverNoncePoint(qx, qy, e, r, s);
 
@@ -422,17 +423,17 @@ internal sealed class EcdsaVerificationGadgetTests
         byte[] message = [.. prefix, .. attribute, .. suffix];
         int offset = prefix.Length;
 
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        byte[] signature = ecdsa.SignData(message, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
+        Span<byte> signature = stackalloc byte[PlatformP256Key.SignatureSize];
+        TestPlatformCrypto.SignP256(key, message, signature);
         Assert.IsTrue(
-            ecdsa.VerifyData(message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation),
-            ".NET must accept its own signature (gate).");
+            TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, message, signature),
+            "The platform must accept its own signature (gate).");
 
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        BigInteger qx = ToInteger(parameters.Q.X);
-        BigInteger qy = ToInteger(parameters.Q.Y);
-        BigInteger r = ToInteger(signature.AsSpan(0, ScalarSize));
-        BigInteger s = ToInteger(signature.AsSpan(ScalarSize, ScalarSize));
+        BigInteger qx = ToInteger(key.PublicX);
+        BigInteger qy = ToInteger(key.PublicY);
+        BigInteger r = ToInteger(signature[..ScalarSize]);
+        BigInteger s = ToInteger(signature[ScalarSize..]);
         BigInteger e = ToInteger(SHA256.HashData(message));
         (BigInteger rx, BigInteger ry) = RecoverNoncePoint(qx, qy, e, r, s);
 
@@ -470,17 +471,17 @@ internal sealed class EcdsaVerificationGadgetTests
         byte[] mso = [.. msoPrefix, .. itemDigest, 0xFF];
         int itemDigestOffset = msoPrefix.Length;
 
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        byte[] signature = ecdsa.SignData(mso, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        PlatformP256Key key = TestPlatformCrypto.GenerateP256Key();
+        Span<byte> signature = stackalloc byte[PlatformP256Key.SignatureSize];
+        TestPlatformCrypto.SignP256(key, mso, signature);
         Assert.IsTrue(
-            ecdsa.VerifyData(mso, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation),
-            ".NET must accept its own signature (gate).");
+            TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, mso, signature),
+            "The platform must accept its own signature (gate).");
 
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        BigInteger qx = ToInteger(parameters.Q.X);
-        BigInteger qy = ToInteger(parameters.Q.Y);
-        BigInteger r = ToInteger(signature.AsSpan(0, ScalarSize));
-        BigInteger s = ToInteger(signature.AsSpan(ScalarSize, ScalarSize));
+        BigInteger qx = ToInteger(key.PublicX);
+        BigInteger qy = ToInteger(key.PublicY);
+        BigInteger r = ToInteger(signature[..ScalarSize]);
+        BigInteger s = ToInteger(signature[ScalarSize..]);
         BigInteger e = ToInteger(SHA256.HashData(mso));
         (BigInteger rx, BigInteger ry) = RecoverNoncePoint(qx, qy, e, r, s);
 

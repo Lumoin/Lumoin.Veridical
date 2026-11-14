@@ -7,7 +7,6 @@ using System;
 using System.Buffers;
 using System.Globalization;
 using System.Numerics;
-using System.Security.Cryptography;
 using System.Text;
 using static Lumoin.Veridical.Tests.Algebraic.LongfellowKernelZkTestHarness;
 
@@ -223,13 +222,11 @@ internal sealed class LongfellowJwtFacadeTests
     [TestCategory("Slow")]
     public void TheFacadeProvesAndVerifiesAGeneratedToken()
     {
-        using ECDsa issuerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        using ECDsa deviceKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        ECParameters issuerParameters = issuerKey.ExportParameters(includePrivateParameters: false);
-        ECParameters deviceParameters = deviceKey.ExportParameters(includePrivateParameters: false);
+        PlatformP256Key issuerKey = TestPlatformCrypto.GenerateP256Key();
+        PlatformP256Key deviceKey = TestPlatformCrypto.GenerateP256Key();
 
-        string deviceX = LongfellowJwsTestCodecs.Encoder(deviceParameters.Q.X);
-        string deviceY = LongfellowJwsTestCodecs.Encoder(deviceParameters.Q.Y);
+        string deviceX = LongfellowJwsTestCodecs.Encoder(deviceKey.PublicX);
+        string deviceY = LongfellowJwsTestCodecs.Encoder(deviceKey.PublicY);
         //Plain concatenation keeps the cnf prefix byte-identical to the pattern the witness
         //generator's device-key extraction searches for.
         string payloadJson = "{\"iss\":\"https://issuer.example\",\"given_name\":\"Testi\",\"age_over_18\":true,"
@@ -239,8 +236,8 @@ internal sealed class LongfellowJwtFacadeTests
 
         byte[] token = Encoding.ASCII.GetBytes(issuerJws + "~" + keyBindingJws);
         LongfellowJwtStatement statement = LongfellowJwtStatement.Create(
-            issuerParameters.Q.X,
-            issuerParameters.Q.Y,
+            issuerKey.PublicX,
+            issuerKey.PublicY,
             [LongfellowJwtAttribute.FromStrings(ErikaAttributeId, "Testi")],
             LongfellowJwtZkSpec.SevenBlocks);
 
@@ -271,12 +268,13 @@ internal sealed class LongfellowJwtFacadeTests
     /// <param name="headerJson">The header JSON.</param>
     /// <param name="payloadJson">The payload JSON.</param>
     /// <returns>The compact JWS.</returns>
-    private static string SignCompactJws(ECDsa key, string headerJson, string payloadJson)
+    private static string SignCompactJws(PlatformP256Key key, string headerJson, string payloadJson)
     {
         string signingInput = LongfellowJwsTestCodecs.Encoder(Encoding.UTF8.GetBytes(headerJson))
             + "."
             + LongfellowJwsTestCodecs.Encoder(Encoding.UTF8.GetBytes(payloadJson));
-        byte[] signature = key.SignData(Encoding.ASCII.GetBytes(signingInput), HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        byte[] signature = new byte[PlatformP256Key.SignatureSize];
+        TestPlatformCrypto.SignP256(key, Encoding.ASCII.GetBytes(signingInput), signature);
 
         return signingInput + "." + LongfellowJwsTestCodecs.Encoder(signature);
     }

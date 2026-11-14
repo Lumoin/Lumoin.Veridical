@@ -18,6 +18,7 @@
 import { dotnet } from './_framework/dotnet.js'
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import * as platformCrypto from './platform-crypto.mjs'
 
 const trxOutOption = '--trx-out';
 const virtualResultsDirectory = '/trx';
@@ -74,6 +75,10 @@ if (diagOut !== null) {
         return written;
     };
 }
+
+// The platform cryptography the tests use is Node's, exposed to the C# side as the import
+// 'platform-crypto' before any test runs.
+runtime.setModuleImports('platform-crypto', platformCrypto);
 
 let exitCode = await runtime.runMain(runtime.getConfig().mainAssemblyName, forwarded);
 

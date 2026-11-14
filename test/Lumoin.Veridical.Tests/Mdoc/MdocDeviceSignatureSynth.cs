@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Tests.Algebraic;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Numerics;
 using System.Security.Cryptography;
@@ -26,7 +27,7 @@ namespace Lumoin.Veridical.Tests.Mdoc;
 /// random nonce made the synthesized signature (and therefore the witness column and the whole proof envelope)
 /// vary run-to-run. A fixed <c>k</c> is sound for this fixture (one fixed message under one fixed key, so no
 /// nonce reuse across messages). The tuple is a genuine ECDSA verification (<c>R2.x mod n == r2</c>), confirmed
-/// by <see cref="Verify"/> through .NET's own <see cref="ECDsa.VerifyData(byte[], byte[], HashAlgorithmName)"/>.
+/// by <see cref="Verify"/> through the platform's own ECDSA verifier (<see cref="ECDsa.VerifyData(byte[], byte[], HashAlgorithmName)"/> on native hosts).
 /// </para>
 /// <para>
 /// The fixed device message stands in for the ISO/IEC 18013-5 device-authentication construction that
@@ -119,32 +120,22 @@ internal sealed class MdocDeviceSignatureSynth
     /// </summary>
     public bool Verify()
     {
-        using ECDsa ecdsa = CreateKey();
+        PlatformP256Key key = CreateKey();
         Span<byte> signature = stackalloc byte[2 * ScalarSize];
         EcdsaNonceRecovery.Bytes(SignatureR).CopyTo(signature[..ScalarSize]);
         EcdsaNonceRecovery.Bytes(SignatureS).CopyTo(signature[ScalarSize..]);
 
-        return ecdsa.VerifyData(Message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        return TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, Message, signature);
     }
 
 
     /// <summary>Imports the device key from the fixed scalar d2, deriving Q2 = d2·G through the reference so the imported key is complete and deterministic (the established EcdsaSignatureWitnessTests.CreateKey pattern).</summary>
-    private static ECDsa CreateKey()
+    private static PlatformP256Key CreateKey()
     {
         byte[] d = Convert.FromHexString(DevicePrivateKeyHex);
         (BigInteger X, BigInteger Y) q = EcdsaNonceRecovery.ScalarMultiply(EcdsaNonceRecovery.ToInteger(d), EcdsaNonceRecovery.G);
-        ECParameters parameters = new()
-        {
-            Curve = ECCurve.NamedCurves.nistP256,
-            D = d,
-            Q = new ECPoint
-            {
-                X = EcdsaNonceRecovery.Bytes(q.X),
-                Y = EcdsaNonceRecovery.Bytes(q.Y),
-            },
-        };
 
-        return ECDsa.Create(parameters);
+        return new PlatformP256Key(d, EcdsaNonceRecovery.Bytes(q.X), EcdsaNonceRecovery.Bytes(q.Y));
     }
 
 

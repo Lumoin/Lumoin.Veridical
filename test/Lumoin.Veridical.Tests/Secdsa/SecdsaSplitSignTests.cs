@@ -2,6 +2,7 @@ using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Cryptography;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Secdsa;
@@ -439,30 +440,18 @@ internal sealed class SecdsaSplitSignTests
     }
 
 
-    //Independent oracle: import Y from the compressed point and verify the IEEE-P1363 r||s signature with the
+    //Independent oracle: decode the public point from the compressed form and verify the IEEE-P1363 r||s signature with the
     //platform ECDSA. Decompression reuses the reference group code so a parity slip cannot masquerade as a
     //signing bug.
     private static bool VerifyWithDotNet(byte[] publicKeyCompressed, byte[] messageHash, byte[] r, byte[] s)
     {
         P256BigIntegerG1Reference.AffinePoint point = P256BigIntegerG1Reference.Decode(publicKeyCompressed);
 
-        var parameters = new ECParameters
-        {
-            Curve = ECCurve.NamedCurves.nistP256,
-            Q = new ECPoint
-            {
-                X = To32(point.X),
-                Y = To32(point.Y)
-            }
-        };
-
-        using ECDsa ecdsa = ECDsa.Create(parameters);
-
         byte[] signature = new byte[2 * ScalarSize];
         r.CopyTo(signature, 0);
         s.CopyTo(signature, ScalarSize);
 
-        return ecdsa.VerifyHash(messageHash, signature, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        return TestPlatformCrypto.VerifyP256Digest(To32(point.X), To32(point.Y), messageHash, signature);
     }
 
 

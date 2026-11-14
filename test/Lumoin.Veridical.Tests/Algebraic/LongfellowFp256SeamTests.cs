@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Memory;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Numerics;
@@ -564,9 +565,7 @@ internal sealed class LongfellowFp256SeamTests: IDisposable
     /// <summary>Encrypts one AES-256 ECB block under <paramref name="key"/>, the transcript's Fiat-Shamir expansion primitive.</summary>
     private static void Aes256Ecb(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
-        using Aes aes = Aes.Create();
-        aes.Key = key.ToArray();
-        aes.EncryptEcb(input, output, PaddingMode.None);
+        TestPlatformCrypto.AesEncryptBlock(key, input, output);
     }
 
 

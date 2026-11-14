@@ -55,9 +55,7 @@ internal static class TestLongfellowPrimitives
 
     private static void EncryptBlock(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
-        using Aes aes = Aes.Create();
-        aes.SetKey(key);
-        aes.EncryptEcb(input, output, PaddingMode.None);
+        TestPlatformCrypto.AesEncryptBlock(key, input, output);
     }
 
 

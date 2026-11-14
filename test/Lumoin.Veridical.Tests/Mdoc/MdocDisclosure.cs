@@ -1,8 +1,8 @@
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using Lumoin.Veritas.Cbor;
 using System;
 using System.Buffers;
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 
 namespace Lumoin.Veridical.Tests.Mdoc;
 
@@ -59,9 +59,12 @@ internal sealed record MdocDisclosure(
 
         (byte[] attribute, int attributeOffset) = LocateDisclosure(taggedItem, elementIdentifier);
 
-        using X509Certificate2 certificate = X509CertificateLoader.LoadCertificate(issuerAuth.IssuerCertificate);
-        using ECDsa issuerKey = certificate.GetECDsaPublicKey() ?? throw new InvalidOperationException("The issuer certificate has no EC public key.");
-        ECParameters parameters = issuerKey.ExportParameters(includePrivateParameters: false);
+        byte[] issuerX = new byte[PlatformP256Key.ComponentSize];
+        byte[] issuerY = new byte[PlatformP256Key.ComponentSize];
+        if(!TestPlatformCrypto.ReadCertificatePublicKey(issuerAuth.IssuerCertificate, issuerX, issuerY))
+        {
+            throw new InvalidOperationException("The issuer certificate has no P-256 public key.");
+        }
 
         return new MdocDisclosure(
             signedStructure,
@@ -69,8 +72,8 @@ internal sealed record MdocDisclosure(
             itemDigestOffset,
             attribute,
             attributeOffset,
-            parameters.Q.X!,
-            parameters.Q.Y!,
+            issuerX,
+            issuerY,
             issuerAuth.Signature[..SignatureComponentSize],
             issuerAuth.Signature[SignatureComponentSize..]);
     }

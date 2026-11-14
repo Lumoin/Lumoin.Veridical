@@ -1,4 +1,5 @@
 using Lumoin.Veridical.Backends.Managed;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Numerics;
 using System.Security.Cryptography;
@@ -39,7 +40,7 @@ internal sealed class EcdsaSignatureWitnessTests
     /// <summary>A fixed message so the gate is deterministic given a key; the key itself is fixed by <see cref="PrivateKeyHex"/>.</summary>
     private static ReadOnlySpan<byte> Message => "EcdsaSignatureWitness region byte-oracle gate."u8;
 
-    /// <summary>A deterministic P-256 private key (a fixed in-range scalar <c>d</c>), so the whole column is reproducible: no <see cref="ECDsa.Create()"/>-generated key, no <see cref="Random"/>, no time. <c>d</c> is well below the curve order.</summary>
+    /// <summary>A deterministic P-256 private key (a fixed in-range scalar <c>d</c>), so the whole column is reproducible: no generated key, no <see cref="Random"/>, no time. <c>d</c> is well below the curve order.</summary>
     private const string PrivateKeyHex = "00112233445566778899aabbccddeeff0123456789abcdef0011223344556677";
 
 
@@ -226,15 +227,15 @@ internal sealed class EcdsaSignatureWitnessTests
     {
         //An independent oracle: the .NET-produced signature verifies, so the R our filler recovers is the
         //genuine nonce point. (.NET's verifier recomputes R = (e/s)G + (r/s)Q and checks R.x == r mod n.)
-        using ECDsa ecdsa = CreateKey();
-        Triple triple = SampleTriple(ecdsa);
+        PlatformP256Key key = CreateKey();
+        Triple triple = SampleTriple(key);
 
         Span<byte> signature = stackalloc byte[2 * ScalarSize];
         EcdsaNonceRecovery.Bytes(triple.R).CopyTo(signature[..ScalarSize]);
         EcdsaNonceRecovery.Bytes(triple.S).CopyTo(signature[ScalarSize..]);
 
         Assert.IsTrue(
-            ecdsa.VerifyData(Message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation),
+            TestPlatformCrypto.VerifyP256(key.PublicX, key.PublicY, Message, signature),
             "The sampled triple must be a valid .NET ECDSA signature, so the recovered nonce point is genuine.");
     }
 
@@ -269,23 +270,20 @@ internal sealed class EcdsaSignatureWitnessTests
     /// <returns>The sampled triple.</returns>
     private static Triple SampleTriple()
     {
-        using ECDsa ecdsa = CreateKey();
-
-        return SampleTriple(ecdsa);
+        return SampleTriple(CreateKey());
     }
 
 
     /// <summary>Builds a valid P-256 ECDSA triple <c>(pkX, pkY, e, r, s)</c> by signing the fixed message with the given key.</summary>
-    /// <param name="ecdsa">The key to sign with and read the public point from.</param>
+    /// <param name="key">The key to sign with and read the public point from.</param>
     /// <returns>The sampled triple.</returns>
-    private static Triple SampleTriple(ECDsa ecdsa)
+    private static Triple SampleTriple(PlatformP256Key key)
     {
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-        BigInteger pkX = ToInteger(parameters.Q.X!);
-        BigInteger pkY = ToInteger(parameters.Q.Y!);
+        BigInteger pkX = ToInteger(key.PublicX);
+        BigInteger pkY = ToInteger(key.PublicY);
 
         Span<byte> signature = stackalloc byte[2 * ScalarSize];
-        ecdsa.SignData(Message, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        TestPlatformCrypto.SignP256(key, Message, signature);
         BigInteger r = EcdsaNonceRecovery.ToInteger(signature[..ScalarSize]);
         BigInteger s = EcdsaNonceRecovery.ToInteger(signature[ScalarSize..]);
 
@@ -297,26 +295,16 @@ internal sealed class EcdsaSignatureWitnessTests
     }
 
 
-    /// <summary>Imports the fixed deterministic P-256 private key and derives its public point through the reference scalar multiplication.</summary>
-    /// <returns>A key ready to sign or verify with; the caller disposes it.</returns>
-    private static ECDsa CreateKey()
+    /// <summary>Builds the fixed deterministic P-256 key and derives its public point through the reference scalar multiplication.</summary>
+    /// <returns>A key ready to sign with.</returns>
+    private static PlatformP256Key CreateKey()
     {
         byte[] d = Convert.FromHexString(PrivateKeyHex);
-        ECParameters parameters = new()
-        {
-            Curve = ECCurve.NamedCurves.nistP256,
-            D = d,
-        };
 
-        //Derive the public point Q = d·G via the reference, so the imported key is complete and deterministic.
+        //Derive the public point Q = d·G via the reference, so the key is complete and deterministic.
         (BigInteger X, BigInteger Y) q = EcdsaNonceRecovery.ScalarMultiply(EcdsaNonceRecovery.ToInteger(d), EcdsaNonceRecovery.G);
-        parameters.Q = new ECPoint
-        {
-            X = EcdsaNonceRecovery.Bytes(q.X),
-            Y = EcdsaNonceRecovery.Bytes(q.Y),
-        };
 
-        return ECDsa.Create(parameters);
+        return new PlatformP256Key(d, EcdsaNonceRecovery.Bytes(q.X), EcdsaNonceRecovery.Bytes(q.Y));
     }
 
 

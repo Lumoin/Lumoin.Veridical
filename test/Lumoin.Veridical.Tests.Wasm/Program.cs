@@ -27,6 +27,11 @@ internal static class Program
     /// <returns>The platform exit code; zero when every selected test passed.</returns>
     public static async Task<int> Main(string[] args)
     {
+        if(OperatingSystem.IsBrowser())
+        {
+            NodeCryptoProviders.Register();
+        }
+
         Assembly testAssembly = Assembly.Load(TestAssemblyName);
         ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
         builder.AddMSTest(() => [testAssembly]);

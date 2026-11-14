@@ -6,6 +6,7 @@ using Lumoin.Veridical.Core.Commitments.Ligero;
 using Lumoin.Veridical.Core.Commitments.Ligero.Gadgets;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Hashing;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -449,11 +450,10 @@ internal sealed class Fp256EcGadgetTests
         //key, and r = R.x mod n. This avoids the mod-n inverse the textbook verify
         //(R = (e/s)·G + (r/s)·Q) needs — multiply that through by s. Checked at full
         //256-bit scale: e, r, s are all full-size, gated against the reference.
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        ECParameters parameters = ecdsa.ExportParameters(includePrivateParameters: true);
+        PlatformP256Key platformKey = TestPlatformCrypto.GenerateP256Key();
 
         Span<byte> privateKey = stackalloc byte[ScalarSize];
-        LeftPad(parameters.D, privateKey);
+        platformKey.PrivateKey.CopyTo(privateKey);
         BigInteger d = new(privateKey, isUnsigned: true, isBigEndian: true);
 
         ReadOnlySpan<byte> message = "Longfellow Alg.4 identity over a real P-256 signature."u8;
@@ -582,15 +582,6 @@ internal sealed class Fp256EcGadgetTests
         Array.Reverse(leastSignificantFirst);
         int recomposed = builder.AddRecomposedScalar(leastSignificantFirst);
         Assert.AreEqual(expected, Val(builder, recomposed), "Recomposed scalar must equal its value.");
-    }
-
-
-    /// <summary>Right-aligns a byte source into a zero-padded destination span.</summary>
-    private static void LeftPad(byte[]? source, Span<byte> destination)
-    {
-        destination.Clear();
-        ArgumentNullException.ThrowIfNull(source);
-        source.CopyTo(destination[(destination.Length - source.Length)..]);
     }
 
 

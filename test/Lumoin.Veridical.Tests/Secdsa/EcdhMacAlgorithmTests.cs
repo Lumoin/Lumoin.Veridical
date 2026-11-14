@@ -4,6 +4,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Cryptography;
 using Lumoin.Veridical.Hashing;
 using Lumoin.Veridical.Secdsa;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Numerics;
 using System.Security.Cryptography;
@@ -145,10 +146,11 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] salt = Encoding.ASCII.GetBytes("session-transcript-hash");
         byte[] sharedInfo = Encoding.ASCII.GetBytes("EMacKey");
 
-        using ECDiffieHellman proverEcdh = CreatePlatformEcdhKey(proverPrivateKey, proverPublicKey);
-        using ECDiffieHellman verifierEcdh = CreatePlatformEcdhKey(verifierEphemeralPrivateKey, verifierEphemeralPublicKey);
+        PlatformP256Key proverKey = CreatePlatformKey(proverPrivateKey, proverPublicKey);
+        P256BigIntegerG1Reference.AffinePoint verifierPoint = P256BigIntegerG1Reference.Decode(verifierEphemeralPublicKey);
 
-        byte[] sharedSecret = proverEcdh.DeriveRawSecretAgreement(verifierEcdh.PublicKey);
+        byte[] sharedSecret = new byte[ScalarSize];
+        TestPlatformCrypto.AgreeP256(proverKey, To32(verifierPoint.X), To32(verifierPoint.Y), sharedSecret);
         byte[] macKeyBytes = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, MacSize, salt, sharedInfo);
         byte[] expectedMac = HMACSHA256.HashData(macKeyBytes, message);
 
@@ -171,9 +173,10 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] salt = Encoding.ASCII.GetBytes("ecdhmac-mac-key-length-salt");
         byte[] sharedInfo = Encoding.ASCII.GetBytes("ecdhmac-mac-key-length-info");
 
-        using ECDiffieHellman proverEcdh = CreatePlatformEcdhKey(privateKey, publicKey);
-        using ECDiffieHellman peerEcdh = CreatePlatformEcdhKey(peerPrivateKey, peerPublicKey);
-        byte[] sharedSecret = proverEcdh.DeriveRawSecretAgreement(peerEcdh.PublicKey);
+        PlatformP256Key proverKey = CreatePlatformKey(privateKey, publicKey);
+        P256BigIntegerG1Reference.AffinePoint peerPoint = P256BigIntegerG1Reference.Decode(peerPublicKey);
+        byte[] sharedSecret = new byte[ScalarSize];
+        TestPlatformCrypto.AgreeP256(proverKey, To32(peerPoint.X), To32(peerPoint.Y), sharedSecret);
 
         ReadOnlySpan<int> macKeyLengths = [16, MacSize];
         foreach(int length in macKeyLengths)
@@ -464,25 +467,14 @@ internal sealed class EcdhMacAlgorithmTests
     }
 
 
-    //Builds a platform ECDiffieHellman key from our scalar/point representation, for the independent-oracle
-    //tests. Windows CNG requires the public point when importing a private key, so Q is filled from the same
+    //Builds a platform P-256 key from our scalar/point representation, for the independent-oracle
+    //tests. Windows CNG requires the public point when importing a private key, so the coordinates are filled from the same
     //compressed point via the reference decoder (reachable through InternalsVisibleTo, as in SecdsaSplitSignTests).
-    private static ECDiffieHellman CreatePlatformEcdhKey(byte[] privateKeyScalar, byte[] publicKeyCompressed)
+    private static PlatformP256Key CreatePlatformKey(byte[] privateKeyScalar, byte[] publicKeyCompressed)
     {
         P256BigIntegerG1Reference.AffinePoint point = P256BigIntegerG1Reference.Decode(publicKeyCompressed);
 
-        var parameters = new ECParameters
-        {
-            Curve = ECCurve.NamedCurves.nistP256,
-            D = privateKeyScalar,
-            Q = new ECPoint
-            {
-                X = To32(point.X),
-                Y = To32(point.Y)
-            }
-        };
-
-        return ECDiffieHellman.Create(parameters);
+        return new PlatformP256Key(privateKeyScalar, To32(point.X), To32(point.Y));
     }
 
 

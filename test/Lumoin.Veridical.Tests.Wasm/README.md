@@ -52,6 +52,16 @@ fixture folders into the generated `wwwroot/fixtures` folder at build time, and 
 `WasmFilesToIncludeInFileSystem` item places each of them at its `TargetPath` in the file system. The application base
 directory and the working directory both resolve to the root of that file system.
 
+## Platform cryptography
+
+The browser-wasm runtime has no implementation of AES, ECDSA, ECDH or X.509 parsing, so tests that use them as
+oracles or as a signing source go through `TestPlatformCrypto` in `Lumoin.Veridical.Tests/TestInfrastructure`: a set
+of named delegates whose defaults call the .NET classes. `Program.cs` replaces them at startup with the providers in
+`NodeCryptoProviders`, which call the synchronous functions of `wwwroot/platform-crypto.mjs` (Node's `node:crypto`)
+through the `JSImport` bindings in `NodeCryptoInterop`. `main.mjs` imports that module and registers it as
+`platform-crypto` before the tests start. The bindings live in this host rather than in the test assembly so the native
+test project carries no browser-only code, no interop source generation and no platform-compatibility attributes.
+
 ## Running the whole suite
 
 `run-shards.ps1` runs the non-Slow suite as several Node processes, each with a filter over the fully qualified test
