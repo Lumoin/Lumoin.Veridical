@@ -1,25 +1,18 @@
-using Lumoin.Veridical.Backends.Managed;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.BaseFold;
 using System;
-using System.Numerics;
-using System.Security.Cryptography;
 
 namespace Lumoin.Veridical.Longfellow;
 
 /// <summary>
 /// The swappable cryptographic-primitive bundle the dual-field mdoc facade drives: the Merkle and leaf hashes,
 /// the Fiat-Shamir transcript's incremental hash and block cipher, and the two prover entropy sources. The
-/// delegate-per-primitive shape is the backend-swap seam; <see cref="Default"/> is the production
-/// instantiation (SHA-256, AES-256-ECB, a system CSPRNG).
+/// delegate-per-primitive shape is the backend-swap seam, and the library chooses none of them: the caller
+/// supplies every primitive, so the hash, the block cipher and the entropy source are always the caller's
+/// decision.
 /// </summary>
 public sealed class LongfellowMdocCryptoSuite
 {
-    //A P-256 base-field element is 32 big-endian bytes; a full-width signature-side draw is rejection-sampled
-    //below the base-field prime so the prover pad stays canonical.
-    private const int FieldElementBytes = 32;
-
-
     private LongfellowMdocCryptoSuite(
         MerkleHashDelegate merkleHash,
         FiatShamirHashDelegate leafHash,
@@ -56,15 +49,6 @@ public sealed class LongfellowMdocCryptoSuite
     public LongfellowEntropyDelegate SignatureRandom { get; }
 
 
-    /// <summary>The production primitive bundle: SHA-256, AES-256-ECB, a system CSPRNG.</summary>
-    public static LongfellowMdocCryptoSuite Default { get; } = new(
-        ComputeMerkleHash,
-        Sha256FiatShamirBackend.GetHash(),
-        Sha256FiatShamirBackend.GetIncrementalFactory(),
-        EncryptBlock,
-        FillRandom,
-        FillSignatureRandom);
-
 
     /// <summary>
     /// Assembles a custom primitive bundle; every primitive is required.
@@ -95,53 +79,4 @@ public sealed class LongfellowMdocCryptoSuite
         return new LongfellowMdocCryptoSuite(merkleHash, leafHash, incrementalHashFactory, blockCipher, hashRandom, signatureRandom);
     }
 
-
-    //SHA-256(left ‖ right): the two-to-one Merkle compression the dual-field commit uses.
-    private static void ComputeMerkleHash(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> output)
-    {
-        Span<byte> concatenated = stackalloc byte[left.Length + right.Length];
-        left.CopyTo(concatenated);
-        right.CopyTo(concatenated[left.Length..]);
-        SHA256.HashData(concatenated, output);
-    }
-
-
-    //AES-256-ECB, single block, no padding: the transcript's pseudo-random permutation.
-    private static void EncryptBlock(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
-    {
-        using Aes aes = Aes.Create();
-        aes.Key = key.ToArray();
-        aes.EncryptEcb(input, output, PaddingMode.None);
-    }
-
-
-    //System CSPRNG fill for the hash-side entropy.
-    private static void FillRandom(Span<byte> destination)
-    {
-        RandomNumberGenerator.Fill(destination);
-    }
-
-
-    //Signature-side entropy: a full-width draw is rejection-sampled below the P-256 base-field prime so the
-    //prover pad never exceeds the field; a shorter draw carries no field constraint and is filled directly.
-    private static void FillSignatureRandom(Span<byte> destination)
-    {
-        if(destination.Length != FieldElementBytes)
-        {
-            RandomNumberGenerator.Fill(destination);
-
-            return;
-        }
-
-        BigInteger prime = P256BigIntegerG1Reference.BaseFieldPrime;
-        while(true)
-        {
-            RandomNumberGenerator.Fill(destination);
-            BigInteger candidate = new(destination, isUnsigned: true, isBigEndian: true);
-            if(candidate < prime)
-            {
-                return;
-            }
-        }
-    }
 }

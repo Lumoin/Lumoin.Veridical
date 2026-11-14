@@ -1,6 +1,7 @@
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Longfellow;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Globalization;
@@ -173,7 +174,7 @@ internal sealed class LongfellowCircuitConstantRangeTests: IDisposable
             templateOwner.Memory.Slice(hashTemplateBytes, signatureTemplateBytes));
 
         ArgumentException ex = Assert.ThrowsExactly<ArgumentException>(() =>
-            _ = LongfellowMdoc.Verify(proof, statement, circuits, ReadOnlySpan<byte>.Empty, BaseMemoryPool.Shared));
+            _ = LongfellowMdoc.Verify(proof, statement, circuits, ReadOnlySpan<byte>.Empty, BaseMemoryPool.Shared, TestLongfellowPrimitives.MdocSuite));
         Assert.Contains("signature circuit could not be parsed", ex.Message, StringComparison.Ordinal);
     }
 

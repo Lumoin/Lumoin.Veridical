@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `LongfellowMdoc.Prove`/`Verify` and `LongfellowJwt.Prove`/`Verify` require the crypto suite; the `suite` parameter is no longer optional and a `null` suite throws.
+- `Lumoin.Veridical.Longfellow` targets the browser platform; no platform cryptography remains in the facade.
+
+### Removed
+
+- `LongfellowMdocCryptoSuite.Default` and `LongfellowJwtCryptoSuite.Default`; the library no longer selects a hash, block cipher or entropy source for the caller.
+
 ## [0.0.8] - 2026-11-11
 
 ### Changed

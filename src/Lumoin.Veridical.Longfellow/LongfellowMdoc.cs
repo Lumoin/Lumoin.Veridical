@@ -3,7 +3,6 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using System;
 using System.Buffers;
-using System.Security.Cryptography;
 
 namespace Lumoin.Veridical.Longfellow;
 
@@ -20,8 +19,8 @@ namespace Lumoin.Veridical.Longfellow;
 /// the circuit provisioning, the field bundles, the canonical-to-Montgomery lift of the signature material,
 /// the shared transcript, and the proof envelope. The swappable primitives — the Merkle and leaf hashes, the
 /// transcript block cipher and incremental hash, and the prover entropy — ride in the
-/// <see cref="LongfellowMdocCryptoSuite"/>; <see cref="LongfellowMdocCryptoSuite.Default"/> is the production
-/// bundle. Circuits are re-parsed and bundles rebuilt per call; caching them across calls is a later
+/// <see cref="LongfellowMdocCryptoSuite"/>, which the caller always supplies; the library selects none. Circuits are
+/// re-parsed and bundles rebuilt per call; caching them across calls is a later
 /// performance refinement behind the <see cref="LongfellowMdocCircuitSource"/> seam.
 /// </remarks>
 public static class LongfellowMdoc
@@ -34,7 +33,7 @@ public static class LongfellowMdoc
     /// <param name="spec">The proof specification the circuits were generated for.</param>
     /// <param name="transcriptSeed">The session seed the transcript is constructed from.</param>
     /// <param name="pool">The pool the working buffers and the returned proof rent from.</param>
-    /// <param name="suite">The cryptographic-primitive bundle; <see langword="null"/> selects <see cref="LongfellowMdocCryptoSuite.Default"/>.</param>
+    /// <param name="suite">The cryptographic-primitive bundle; required, never <see langword="null"/>.</param>
     /// <returns>A pooled proof wrapping the <c>[6 macs] ‖ [hash ZkProof] ‖ [sig ZkProof]</c> envelope.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the circuit bytes do not parse, do not match the specification, or a witness region length does not match the circuit.</exception>
@@ -44,13 +43,13 @@ public static class LongfellowMdoc
         LongfellowMdocZkSpec spec,
         ReadOnlySpan<byte> transcriptSeed,
         BaseMemoryPool pool,
-        LongfellowMdocCryptoSuite? suite = null)
+        LongfellowMdocCryptoSuite suite)
     {
         ArgumentNullException.ThrowIfNull(witness);
         ArgumentNullException.ThrowIfNull(circuits);
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(pool);
-        LongfellowMdocCryptoSuite cryptoSuite = suite ?? LongfellowMdocCryptoSuite.Default;
+        ArgumentNullException.ThrowIfNull(suite);
 
         ParseCircuits(circuits, spec, pool, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
         using LongfellowSumcheckCircuit signatureOwner = signatureCircuit;
@@ -80,19 +79,19 @@ public static class LongfellowMdoc
 
         //A fresh transcript from the session seed (the ctor absorbs it immediately). The crypto suite's public
         //primitive delegates are wrapped to the driver's internal seam delegates here.
-        LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => cryptoSuite.BlockCipher(key, input, output);
-        LongfellowRandomByteSource hashRandom = destination => cryptoSuite.HashRandom(destination);
-        LongfellowRandomByteSource signatureRandom = destination => cryptoSuite.SignatureRandom(destination);
+        LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => suite.BlockCipher(key, input, output);
+        LongfellowRandomByteSource hashRandom = destination => suite.HashRandom(destination);
+        LongfellowRandomByteSource signatureRandom = destination => suite.SignatureRandom(destination);
 
         using LongfellowTranscript transcript = new(
             transcriptSeed, spec.ProofSpecVersion, LongfellowMdocBundles.TranscriptElementBytes,
-            blockCipher, pool, cryptoSuite.IncrementalHashFactory);
+            blockCipher, pool, suite.IncrementalHashFactory);
 
         using LongfellowZkProofEnvelope envelope = LongfellowMdocProver.Prove(
             hashBundle, signatureBundle, witness.HashColumn.Span, montgomerySignatureColumn,
             hashRandom, signatureRandom, witness.CommonValues.Span, witness.ApKeys.Span,
             spec.HashMacIndex, LongfellowMdocZkSpec.SignatureMacIndex, transcript,
-            cryptoSuite.MerkleHash, cryptoSuite.LeafHash, WellKnownHashAlgorithms.Sha256, pool);
+            suite.MerkleHash, suite.LeafHash, WellKnownHashAlgorithms.Sha256, pool);
 
         LongfellowMdocProof proof = LongfellowMdocProof.FromCanonical(envelope.Bytes, pool);
 
@@ -111,7 +110,7 @@ public static class LongfellowMdoc
     /// <param name="circuits">The concatenated signature-then-hash circuit-definition bytes.</param>
     /// <param name="transcriptSeed">The session seed the prover used.</param>
     /// <param name="pool">The pool the working buffers rent from.</param>
-    /// <param name="suite">The cryptographic-primitive bundle; <see langword="null"/> selects <see cref="LongfellowMdocCryptoSuite.Default"/>.</param>
+    /// <param name="suite">The cryptographic-primitive bundle; required, never <see langword="null"/>.</param>
     /// <returns>The verdict; <see cref="LongfellowMdocVerdict.Accepted"/> when both proofs verify.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the circuit bytes do not parse or do not match the statement's specification.</exception>
@@ -121,13 +120,13 @@ public static class LongfellowMdoc
         LongfellowMdocCircuitSource circuits,
         ReadOnlySpan<byte> transcriptSeed,
         BaseMemoryPool pool,
-        LongfellowMdocCryptoSuite? suite = null)
+        LongfellowMdocCryptoSuite suite)
     {
         ArgumentNullException.ThrowIfNull(proof);
         ArgumentNullException.ThrowIfNull(statement);
         ArgumentNullException.ThrowIfNull(circuits);
         ArgumentNullException.ThrowIfNull(pool);
-        LongfellowMdocCryptoSuite cryptoSuite = suite ?? LongfellowMdocCryptoSuite.Default;
+        ArgumentNullException.ThrowIfNull(suite);
         LongfellowMdocZkSpec spec = statement.Spec;
 
         ParseCircuits(circuits, spec, pool, out LongfellowSumcheckCircuit signatureCircuit, out LongfellowSumcheckCircuit hashCircuit);
@@ -152,14 +151,14 @@ public static class LongfellowMdoc
         Span<byte> framedSignatureTemplate = signatureTemplateOwner.Memory.Span[..signatureTemplateBytes];
         LongfellowMdocBundles.FrameSigTemplateMontgomery(signatureProfile, statement.SignatureTemplateCanonical.Span, framedSignatureTemplate);
 
-        LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => cryptoSuite.BlockCipher(key, input, output);
+        LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => suite.BlockCipher(key, input, output);
         using LongfellowTranscript transcript = new(
             transcriptSeed, spec.ProofSpecVersion, LongfellowMdocBundles.TranscriptElementBytes,
-            blockCipher, pool, cryptoSuite.IncrementalHashFactory);
+            blockCipher, pool, suite.IncrementalHashFactory);
 
         LongfellowMdocVerifier.Verify(
             proof.AsReadOnlySpan(), hashBundle, signatureBundle, statement.HashTemplate.Span, framedSignatureTemplate,
-            transcript, cryptoSuite.MerkleHash, cryptoSuite.LeafHash, WellKnownHashAlgorithms.Sha256, pool,
+            transcript, suite.MerkleHash, suite.LeafHash, WellKnownHashAlgorithms.Sha256, pool,
             out LongfellowMdocVerificationResult result);
 
         framedSignatureTemplate.Clear();

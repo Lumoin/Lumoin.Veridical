@@ -1,6 +1,7 @@
 using Lumoin.Veridical.Core.Commitments.Longfellow;
 using Lumoin.Veridical.Core.Commitments.Longfellow.Circuits;
 using Lumoin.Veridical.Longfellow;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using Lumoin.Veridical.Tests.Algebraic;
 using System;
 using System.Buffers;
@@ -109,7 +110,7 @@ internal sealed class LongfellowJwtFacadeTests
 
         byte[] token = Encoding.ASCII.GetBytes(vector.Token);
         Assert.ThrowsExactly<ArgumentException>(
-            () => LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared).Dispose(),
+            () => LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite).Dispose(),
             "A token lacking the required attribute value must not produce a witness.");
     }
 
@@ -127,7 +128,7 @@ internal sealed class LongfellowJwtFacadeTests
             + "~aa.bb." + new string('A', RawSignatureCharacterCount);
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => LongfellowJwt.Prove(Encoding.ASCII.GetBytes(oversized), NewErikaStatement(), FacadeTranscriptSeed, BaseMemoryPool.Shared).Dispose(),
+            () => LongfellowJwt.Prove(Encoding.ASCII.GetBytes(oversized), NewErikaStatement(), FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite).Dispose(),
             "A token whose signing input exceeds the block capacity must reject at the witness gate.");
     }
 
@@ -142,15 +143,15 @@ internal sealed class LongfellowJwtFacadeTests
 
         Assert.AreEqual(
             LongfellowJwtVerdict.MalformedKeyBinding,
-            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes("nodots"), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes("nodots"), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "A structurally unparseable key-binding JWS answers a malformed verdict.");
         Assert.AreEqual(
             LongfellowJwtVerdict.MalformedKeyBinding,
-            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes("a.b.cc"), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes("a.b.cc"), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "A signature segment decoding below the fixed-width pair answers a malformed verdict.");
         Assert.AreEqual(
             LongfellowJwtVerdict.MalformedKeyBinding,
-            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes("a.b.ccccc"), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes("a.b.ccccc"), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "A signature segment with an invalid unpadded length answers a malformed verdict.");
     }
 
@@ -169,10 +170,10 @@ internal sealed class LongfellowJwtFacadeTests
         Assert.IsTrue(LongfellowJwsCompact.TrySplitPresentation(token, out _, out Range keyBindingRange), "The reference token must split.");
         byte[] keyBinding = token.AsSpan()[keyBindingRange].ToArray();
 
-        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared);
+        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite);
         Assert.AreEqual(
             LongfellowJwtVerdict.Accepted,
-            LongfellowJwt.Verify(proof, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(proof, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "The reference token's proof must verify.");
 
         //A flipped byte inside the sumcheck segment diverges the challenge stream.
@@ -184,14 +185,14 @@ internal sealed class LongfellowJwtFacadeTests
         using LongfellowJwtProof tampered = LongfellowJwtProof.FromCanonical(tamperedBytes, BaseMemoryPool.Shared);
         Assert.AreEqual(
             LongfellowJwtVerdict.Rejected,
-            LongfellowJwt.Verify(tampered, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(tampered, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "A tampered proof must reject.");
 
         //An envelope cut inside the sumcheck segment cannot parse.
         using LongfellowJwtProof truncated = LongfellowJwtProof.FromCanonical(proofBytes[..TruncatedProofBytes], BaseMemoryPool.Shared);
         Assert.AreEqual(
             LongfellowJwtVerdict.MalformedProof,
-            LongfellowJwt.Verify(truncated, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(truncated, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "A truncated envelope answers a malformed verdict.");
 
         //An envelope cut inside the Ligero segment's tail leaves the sumcheck parse intact and
@@ -199,7 +200,7 @@ internal sealed class LongfellowJwtFacadeTests
         using LongfellowJwtProof ligeroTruncated = LongfellowJwtProof.FromCanonical(proofBytes[..^LigeroTailTruncationBytes], BaseMemoryPool.Shared);
         Assert.AreEqual(
             LongfellowJwtVerdict.MalformedProof,
-            LongfellowJwt.Verify(ligeroTruncated, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(ligeroTruncated, keyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "An envelope truncated inside the Ligero segment answers a malformed verdict.");
 
         //A key-binding payload flip changes the recomputed digest, so the proof no longer binds it.
@@ -208,7 +209,7 @@ internal sealed class LongfellowJwtFacadeTests
         alteredKeyBinding[segments.PayloadIndex] = alteredKeyBinding[segments.PayloadIndex] == (byte)'A' ? (byte)'B' : (byte)'A';
         Assert.AreEqual(
             LongfellowJwtVerdict.Rejected,
-            LongfellowJwt.Verify(proof, alteredKeyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(proof, alteredKeyBinding, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "A key-binding presentation with a different recomputed digest must reject.");
     }
 
@@ -243,10 +244,10 @@ internal sealed class LongfellowJwtFacadeTests
             [LongfellowJwtAttribute.FromStrings(ErikaAttributeId, "Testi")],
             LongfellowJwtZkSpec.SevenBlocks);
 
-        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared);
+        using LongfellowJwtProof proof = LongfellowJwt.Prove(token, statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite);
         Assert.AreEqual(
             LongfellowJwtVerdict.Accepted,
-            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes(keyBindingJws), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared),
+            LongfellowJwt.Verify(proof, Encoding.ASCII.GetBytes(keyBindingJws), statement, FacadeTranscriptSeed, BaseMemoryPool.Shared, TestLongfellowPrimitives.JwtSuite),
             "The generated token's proof must verify.");
     }
 

@@ -1,5 +1,6 @@
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Longfellow;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -143,7 +144,7 @@ internal sealed class LongfellowMdocFourAttributeGateTests
         byte[] transcriptSeed = Convert.FromHexString(AnchorFixture["transcript"]);
 
         using LongfellowMdocProof proof = LongfellowMdocProof.FromCanonical(envelope, pool);
-        LongfellowMdocVerdict verdict = LongfellowMdoc.Verify(proof, statement, circuits, transcriptSeed, pool);
+        LongfellowMdocVerdict verdict = LongfellowMdoc.Verify(proof, statement, circuits, transcriptSeed, pool, TestLongfellowPrimitives.MdocSuite);
 
         Assert.AreEqual(LongfellowMdocVerdict.Accepted, verdict, "The facade must accept the reference four-attribute envelope.");
 
@@ -154,7 +155,7 @@ internal sealed class LongfellowMdocFourAttributeGateTests
         tamperedEnvelope[LongfellowMdocProof.MacRegionBytes + EnvelopeTamperOffset] ^= 0x01;
 
         using LongfellowMdocProof tamperedProof = LongfellowMdocProof.FromCanonical(tamperedEnvelope, pool);
-        LongfellowMdocVerdict tamperedVerdict = LongfellowMdoc.Verify(tamperedProof, statement, circuits, transcriptSeed, pool);
+        LongfellowMdocVerdict tamperedVerdict = LongfellowMdoc.Verify(tamperedProof, statement, circuits, transcriptSeed, pool, TestLongfellowPrimitives.MdocSuite);
 
         //The flip lands inside the hash ZkProof's fixed-length sumcheck segment, so the specific expected
         //verdict is a hash-circuit rejection — not merely "not accepted" — matching the crown-gate pins.
@@ -164,7 +165,7 @@ internal sealed class LongfellowMdocFourAttributeGateTests
         //against the genuine envelope.
         hashTemplate[TemplateTamperOffset] ^= 0x01;
         LongfellowMdocStatement tamperedStatement = LongfellowMdocStatement.FromComponents(spec, hashTemplate, signatureTemplateCanonical);
-        LongfellowMdocVerdict tamperedStatementVerdict = LongfellowMdoc.Verify(proof, tamperedStatement, circuits, transcriptSeed, pool);
+        LongfellowMdocVerdict tamperedStatementVerdict = LongfellowMdoc.Verify(proof, tamperedStatement, circuits, transcriptSeed, pool, TestLongfellowPrimitives.MdocSuite);
 
         //The tampered element sits in the hash template, so the hash side rejects the spliced public inputs.
         Assert.AreEqual(LongfellowMdocVerdict.HashRejected, tamperedStatementVerdict, "A flipped public-template byte must fail the hash-circuit verify.");

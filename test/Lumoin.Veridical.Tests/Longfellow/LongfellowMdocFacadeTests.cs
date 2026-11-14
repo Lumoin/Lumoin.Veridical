@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Memory;
 using Lumoin.Veridical.Longfellow;
+using Lumoin.Veridical.Tests.TestInfrastructure;
 using Lumoin.Veridical.Tests.Mdoc;
 using System;
 using System.Buffers;
@@ -99,8 +100,8 @@ internal sealed class LongfellowMdocFacadeTests
         ReadOnlyMemory<byte> signatureTemplate = new ReadOnlyMemory<byte>(signatureColumn, 0, LongfellowMdocStatement.SignatureTemplateElementCount * ScalarSize);
         LongfellowMdocStatement statement = LongfellowMdocStatement.FromComponents(spec, hashTemplate, signatureTemplate);
 
-        using LongfellowMdocProof proof = LongfellowMdoc.Prove(witness, circuits, spec, SessionSeed, pool);
-        LongfellowMdocVerdict verdict = LongfellowMdoc.Verify(proof, statement, circuits, SessionSeed, pool);
+        using LongfellowMdocProof proof = LongfellowMdoc.Prove(witness, circuits, spec, SessionSeed, pool, TestLongfellowPrimitives.MdocSuite);
+        LongfellowMdocVerdict verdict = LongfellowMdoc.Verify(proof, statement, circuits, SessionSeed, pool, TestLongfellowPrimitives.MdocSuite);
 
         Assert.AreEqual(LongfellowMdocVerdict.Accepted, verdict, "The facade must accept its own prove over the real credential.");
 
@@ -112,7 +113,7 @@ internal sealed class LongfellowMdocFacadeTests
         tampered[LongfellowMdocProof.MacRegionBytes + TamperOffset] ^= 0x01;
 
         using LongfellowMdocProof tamperedProof = LongfellowMdocProof.FromCanonical(tampered, pool);
-        LongfellowMdocVerdict tamperedVerdict = LongfellowMdoc.Verify(tamperedProof, statement, circuits, SessionSeed, pool);
+        LongfellowMdocVerdict tamperedVerdict = LongfellowMdoc.Verify(tamperedProof, statement, circuits, SessionSeed, pool, TestLongfellowPrimitives.MdocSuite);
 
         Assert.AreNotEqual(LongfellowMdocVerdict.Accepted, tamperedVerdict, "A flipped envelope byte must break verification.");
     }

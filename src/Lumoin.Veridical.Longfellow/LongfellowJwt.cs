@@ -27,7 +27,7 @@ namespace Lumoin.Veridical.Longfellow;
 /// <para>
 /// The swappable primitives — the Merkle and leaf hashes, the transcript block cipher and
 /// incremental hash, and the prover entropy — ride in the <see cref="LongfellowJwtCryptoSuite"/>;
-/// <see cref="LongfellowJwtCryptoSuite.Default"/> is the production bundle. The circuit is
+/// the caller always supplies the suite and the library selects none. The circuit is
 /// kernel-compiled per call; caching it across calls is a later performance refinement.
 /// </para>
 /// </remarks>
@@ -40,7 +40,7 @@ public static class LongfellowJwt
     /// <param name="statement">The statement: the issuer key trust anchor, the disclosed attributes, and the block-capacity specification.</param>
     /// <param name="transcriptSeed">The session seed the transcript is constructed from.</param>
     /// <param name="pool">The pool the working buffers and the returned proof rent from.</param>
-    /// <param name="suite">The cryptographic-primitive bundle; <see langword="null"/> selects <see cref="LongfellowJwtCryptoSuite.Default"/>.</param>
+    /// <param name="suite">The cryptographic-primitive bundle; required, never <see langword="null"/>.</param>
     /// <returns>A pooled proof wrapping the <c>[commitment root ‖ sumcheck ‖ Ligero]</c> envelope.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When the token does not produce a witness for the statement: it is malformed, oversized for the block capacity, fails a signature, or lacks a required attribute or the device key.</exception>
@@ -49,11 +49,11 @@ public static class LongfellowJwt
         LongfellowJwtStatement statement,
         ReadOnlySpan<byte> transcriptSeed,
         BaseMemoryPool pool,
-        LongfellowJwtCryptoSuite? suite = null)
+        LongfellowJwtCryptoSuite suite)
     {
         ArgumentNullException.ThrowIfNull(statement);
         ArgumentNullException.ThrowIfNull(pool);
-        LongfellowJwtCryptoSuite cryptoSuite = suite ?? LongfellowJwtCryptoSuite.Default;
+        ArgumentNullException.ThrowIfNull(suite);
 
         //The witness computation is the cheap gate: a token the statement cannot prove is
         //rejected before the expensive circuit compilation.
@@ -95,15 +95,15 @@ public static class LongfellowJwt
             using LongfellowFieldProfile profile = LongfellowJwtBundles.NewProfile(pool);
             using LongfellowSubfieldRunCodec codec = LongfellowJwtBundles.NewCodec(profile);
 
-            LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => cryptoSuite.BlockCipher(key, input, output);
-            LongfellowRandomByteSource random = destination => cryptoSuite.ProverRandom(destination);
+            LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => suite.BlockCipher(key, input, output);
+            LongfellowRandomByteSource random = destination => suite.ProverRandom(destination);
             using LongfellowTranscript transcript = new(
                 transcriptSeed, LongfellowJwtBundles.TranscriptVersion, LongfellowJwtBundles.Fp256ElementBytes,
-                blockCipher, pool, cryptoSuite.IncrementalHashFactory);
+                blockCipher, pool, suite.IncrementalHashFactory);
 
             using LongfellowZkProofEnvelope envelope = LongfellowJwtBundles.Prove(
                 circuit, parameters, column, random, transcript, encoderFactory, profile, codec,
-                cryptoSuite.MerkleHash, cryptoSuite.LeafHash, pool);
+                suite.MerkleHash, suite.LeafHash, pool);
 
             return LongfellowJwtProof.FromCanonical(envelope.Bytes, pool);
         }
@@ -122,7 +122,7 @@ public static class LongfellowJwt
     /// <param name="statement">The statement the proof claims.</param>
     /// <param name="transcriptSeed">The session seed the prover used.</param>
     /// <param name="pool">The pool the working buffers rent from.</param>
-    /// <param name="suite">The cryptographic-primitive bundle; <see langword="null"/> selects <see cref="LongfellowJwtCryptoSuite.Default"/>.</param>
+    /// <param name="suite">The cryptographic-primitive bundle; required, never <see langword="null"/>.</param>
     /// <returns>The verdict; <see cref="LongfellowJwtVerdict.Accepted"/> only when the proof verifies against the recomputed digest.</returns>
     /// <exception cref="ArgumentNullException">When a required argument is <see langword="null"/>.</exception>
     /// <remarks>
@@ -141,12 +141,12 @@ public static class LongfellowJwt
         LongfellowJwtStatement statement,
         ReadOnlySpan<byte> transcriptSeed,
         BaseMemoryPool pool,
-        LongfellowJwtCryptoSuite? suite = null)
+        LongfellowJwtCryptoSuite suite)
     {
         ArgumentNullException.ThrowIfNull(proof);
         ArgumentNullException.ThrowIfNull(statement);
         ArgumentNullException.ThrowIfNull(pool);
-        LongfellowJwtCryptoSuite cryptoSuite = suite ?? LongfellowJwtCryptoSuite.Default;
+        ArgumentNullException.ThrowIfNull(suite);
 
         if(!LongfellowJwsCompact.TryParse(keyBindingJws, out LongfellowJwsCompactSegments segments))
         {
@@ -187,14 +187,14 @@ public static class LongfellowJwt
             using LongfellowFieldProfile profile = LongfellowJwtBundles.NewProfile(pool);
             using LongfellowSubfieldRunCodec codec = LongfellowJwtBundles.NewCodec(profile);
 
-            LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => cryptoSuite.BlockCipher(key, input, output);
+            LongfellowTranscriptBlockCipher blockCipher = (key, input, output) => suite.BlockCipher(key, input, output);
             using LongfellowTranscript transcript = new(
                 transcriptSeed, LongfellowJwtBundles.TranscriptVersion, LongfellowJwtBundles.Fp256ElementBytes,
-                blockCipher, pool, cryptoSuite.IncrementalHashFactory);
+                blockCipher, pool, suite.IncrementalHashFactory);
 
             return LongfellowJwtBundles.Verify(
                 circuit, parameters, proof.AsReadOnlySpan(), publicInputs, transcript, encoderFactory, profile, codec,
-                cryptoSuite.MerkleHash, cryptoSuite.LeafHash, pool);
+                suite.MerkleHash, suite.LeafHash, pool);
         }
         finally
         {

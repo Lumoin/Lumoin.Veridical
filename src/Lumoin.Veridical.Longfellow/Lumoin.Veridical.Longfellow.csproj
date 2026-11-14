@@ -15,11 +15,4 @@
     <InternalsVisibleTo Include="Lumoin.Veridical.Tests" />
   </ItemGroup>
 
-  <!-- The production crypto suite drives the Fiat-Shamir transcript through a single-block AES-256-ECB
-       permutation (System.Security.Cryptography.Aes), which the WASM runtime does not provide. The high-level
-       mdoc facade is not a browser target; a browser consumer supplies its own block-cipher seam. -->
-  <ItemGroup>
-    <SupportedPlatform Remove="browser" />
-  </ItemGroup>
-
 </Project>
