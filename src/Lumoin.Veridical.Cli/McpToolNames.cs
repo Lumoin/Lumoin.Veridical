@@ -22,6 +22,12 @@ internal static class McpToolNames
     /// <summary>Verify a supply-chain predicate proof artifact.</summary>
     public const string Verify = "Verify";
 
+    /// <summary>Prove a Longfellow JWT presentation token.</summary>
+    public const string LongfellowJwtProve = "LongfellowJwtProve";
+
+    /// <summary>Verify a Longfellow JWT proof.</summary>
+    public const string LongfellowJwtVerify = "LongfellowJwtVerify";
+
     /// <summary>All exposed tool names.</summary>
     public static string[] All { get; } =
     [
@@ -29,6 +35,8 @@ internal static class McpToolNames
         Hash,
         SelfTest,
         Prove,
-        Verify
+        Verify,
+        LongfellowJwtProve,
+        LongfellowJwtVerify
     ];
 }

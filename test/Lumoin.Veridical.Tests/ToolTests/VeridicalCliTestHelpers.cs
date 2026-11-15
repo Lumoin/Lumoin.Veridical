@@ -73,6 +73,21 @@ internal static class VeridicalCliTestHelpers
     }
 
 
+    /// <summary>
+    /// Writes <paramref name="content"/> to a new file in the system temporary directory and returns its path.
+    /// The caller deletes the file when the test ends.
+    /// </summary>
+    public static string WriteTemporaryFile(string content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        string path = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(path, content);
+
+        return path;
+    }
+
+
     /// <summary>Ensures an MCP server subprocess is terminated.</summary>
     public static async Task EnsureProcessTerminatedAsync(Process process, CancellationToken cancellationToken = default)
     {

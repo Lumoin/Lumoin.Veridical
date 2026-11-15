@@ -61,6 +61,7 @@
     <ProjectReference Include="..\Lumoin.Veridical.Hashing\Lumoin.Veridical.Hashing.csproj" />
     <ProjectReference Include="..\Lumoin.Veridical.Backends.Managed\Lumoin.Veridical.Backends.Managed.csproj" />
     <ProjectReference Include="..\Lumoin.Veridical.Json\Lumoin.Veridical.Json.csproj" />
+    <ProjectReference Include="..\Lumoin.Veridical.Longfellow\Lumoin.Veridical.Longfellow.csproj" />
   </ItemGroup>
 
 </Project>

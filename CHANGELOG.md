@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `veridical longfellow-jwt-prove` and `longfellow-jwt-verify`, with the MCP tools `LongfellowJwtProve` and `LongfellowJwtVerify`: Longfellow JWT proofs from the command line, with the crypto suite and prover randomness composed from the platform.
 - `LongfellowProverRandomness`: the prover's plain random bytes for one proof, single use, with a draw count. The prover does the field mapping and the below-prime rejection itself.
 - `LongfellowRandomnessChecks`: `IsBelowP256BaseFieldPrime`, `IsNotAllZero` and `ProducesDistinctNonZeroDraws`, for suppliers to test their own randomness.
 

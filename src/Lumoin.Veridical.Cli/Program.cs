@@ -61,6 +61,8 @@ internal static class Program
         rootCommand.Subcommands.Add(BuildSelfTestCommand());
         rootCommand.Subcommands.Add(BuildProveCommand());
         rootCommand.Subcommands.Add(BuildVerifyCommand());
+        rootCommand.Subcommands.Add(LongfellowCliCommands.BuildJwtProveCommand());
+        rootCommand.Subcommands.Add(LongfellowCliCommands.BuildJwtVerifyCommand());
 
         return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
     }
@@ -220,20 +222,15 @@ internal static class Program
 
     //Reads the whole input from a file path, or from standard input when the path is
     //"-". Reports a read failure to standard error and returns false.
-    private static bool TryReadInput(string path, string what, out string content)
+    internal static bool TryReadInput(string path, string what, out string content)
     {
-        try
+        if(CliFiles.TryRead(path, what, out content, out string error))
         {
-            content = path == "-" ? Console.In.ReadToEnd() : File.ReadAllText(path);
-
             return true;
         }
-        catch(Exception error) when(error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
-        {
-            Console.Error.WriteLine($"Error: could not read the {what} ({error.Message}).");
-            content = string.Empty;
 
-            return false;
-        }
+        Console.Error.WriteLine($"Error: {error}");
+
+        return false;
     }
 }

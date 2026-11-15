@@ -69,4 +69,61 @@ internal sealed class VeridicalMcpServer
     {
         return PredicateProofOperations.VerifyFromJson(artifact, BaseMemoryPool.Shared).ToReport();
     }
+
+    [McpServerTool(Name = McpToolNames.LongfellowJwtProve), Description("Prove a Longfellow JWT presentation token (issuerJws~keyBindingJws, restricted format) against the issuer public key and the disclosed attributes. The token is the private witness, so it is read from a file and never passes through the conversation; the proof (lowercase hex, carrying no witness) is written to a file. Returns a confirmation, or an error message when the inputs do not describe a provable statement.")]
+    public static string LongfellowJwtProve(
+        [Description("Path to the file holding the presentation token: issuerJws~keyBindingJws.")] string tokenFile,
+        [Description("The issuer public key x coordinate, 32 bytes as hex.")] string issuerKeyX,
+        [Description("The issuer public key y coordinate, 32 bytes as hex.")] string issuerKeyY,
+        [Description("The disclosed attributes, one id=value per line.")] string attributes,
+        [Description("The session seed text; the verifier must use the same value.")] string seed,
+        [Description("Path the proof (hex) is written to.")] string proofFile,
+        [Description("The SHA-256 block capacity of the issuer signing input, 7 or 9.")] int blocks = LongfellowJwtOperations.DefaultBlockCapacity)
+    {
+        if(!CliFiles.TryRead(tokenFile, "token", out string token, out string readFailure))
+        {
+            return $"Error: {readFailure}";
+        }
+
+        string proofHex;
+        try
+        {
+            proofHex = LongfellowJwtOperations.Prove(token, issuerKeyX, issuerKeyY, LongfellowJwtOperations.SplitAttributeLines(attributes), blocks, seed, BaseMemoryPool.Shared);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+
+        if(!CliFiles.TryWrite(proofFile, proofHex, "proof file", out string writeFailure))
+        {
+            return $"Error: {writeFailure}";
+        }
+
+        return $"Wrote the proof ({proofHex.Length / 2} bytes) to {proofFile}.";
+    }
+
+
+    [McpServerTool(Name = McpToolNames.LongfellowJwtVerify), Description("Verify a Longfellow JWT proof against the issuer public key, the disclosed attributes and the key-binding JWS of the presentation, and return a one-line report of the statement it proves or the reason it does not verify.")]
+    public static string LongfellowJwtVerify(
+        [Description("Path to the file holding the proof as hex.")] string proofFile,
+        [Description("Path to the file holding the presentation token, or just its key-binding JWS (the part after the last ~).")] string presentationFile,
+        [Description("The issuer public key x coordinate, 32 bytes as hex.")] string issuerKeyX,
+        [Description("The issuer public key y coordinate, 32 bytes as hex.")] string issuerKeyY,
+        [Description("The disclosed attributes, one id=value per line.")] string attributes,
+        [Description("The session seed text the prover used.")] string seed,
+        [Description("The SHA-256 block capacity of the issuer signing input, 7 or 9.")] int blocks = LongfellowJwtOperations.DefaultBlockCapacity)
+    {
+        if(!CliFiles.TryRead(proofFile, "proof", out string proofHex, out string proofFailure))
+        {
+            return $"Error: {proofFailure}";
+        }
+
+        if(!CliFiles.TryRead(presentationFile, "presentation", out string presentation, out string presentationFailure))
+        {
+            return $"Error: {presentationFailure}";
+        }
+
+        return LongfellowJwtOperations.Verify(proofHex, presentation, issuerKeyX, issuerKeyY, LongfellowJwtOperations.SplitAttributeLines(attributes), blocks, seed, BaseMemoryPool.Shared).ToReport();
+    }
 }

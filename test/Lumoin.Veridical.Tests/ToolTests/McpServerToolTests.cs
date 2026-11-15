@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Lumoin.Veridical.Tests.Algebraic;
 using Lumoin.Veridical.Tests.TestInfrastructure;
 
 namespace Lumoin.Veridical.Tests.ToolTests;
@@ -37,6 +38,13 @@ internal sealed class McpServerToolTests
     /// on timing.
     /// </summary>
     private const int McpHangGuardMilliseconds = 300_000;
+
+
+    /// <summary>
+    /// The hang-guard of the tests that run a full Longfellow proof through the server. A Release proof of the
+    /// reference token takes minutes of CPU, and the guard only has to catch a server that never answers.
+    /// </summary>
+    private const int McpProofHangGuardMilliseconds = 1_800_000;
 
 
     /// <summary>
@@ -116,6 +124,130 @@ internal sealed class McpServerToolTests
 
             Assert.Contains(HelloHash, TextOf(result), StringComparison.Ordinal);
         }).ConfigureAwait(false);
+    }
+
+
+    /// <summary>Confirms the Longfellow JWT tools are listed and that malformed requests are answered with an error or a malformed report, not a transport fault.</summary>
+    [TestMethod]
+    [TestCategory("McpClient")]
+    [Timeout(McpHangGuardMilliseconds, CooperativeCancellation = true)]
+    public async Task McpLongfellowJwtToolsAreListedAndReportMalformedInput()
+    {
+        string tokenPath = VeridicalCliTestHelpers.WriteTemporaryFile("aaaa.bbbb.cccc~dddd.eeee.ffff");
+        string proofPath = VeridicalCliTestHelpers.WriteTemporaryFile("not-hex!");
+        string presentationPath = VeridicalCliTestHelpers.WriteTemporaryFile("a.b.cc");
+        string missingPath = Path.Combine(Path.GetTempPath(), $"veridical-missing-{Guid.NewGuid():N}.txt");
+        try
+        {
+            await WithMcpClientAsync(async client =>
+            {
+                var tools = await client.ListToolsAsync(cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                var toolNames = tools.Select(tool => tool.Name).ToList();
+
+                Assert.Contains(McpToolNames.LongfellowJwtProve, toolNames);
+                Assert.Contains(McpToolNames.LongfellowJwtVerify, toolNames);
+
+                var unprovable = await client.CallToolAsync(
+                    McpToolNames.LongfellowJwtProve,
+                    JwtProveArguments(tokenPath, missingPath),
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Error:", TextOf(unprovable), StringComparison.Ordinal);
+                Assert.DoesNotContain("aaaa.bbbb", TextOf(unprovable), StringComparison.Ordinal);
+
+                var unreadable = await client.CallToolAsync(
+                    McpToolNames.LongfellowJwtProve,
+                    JwtProveArguments(missingPath, missingPath),
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Error: could not read the token", TextOf(unreadable), StringComparison.Ordinal);
+
+                var malformed = await client.CallToolAsync(
+                    McpToolNames.LongfellowJwtVerify,
+                    JwtVerifyArguments(proofPath, presentationPath, "given_name=Erika"),
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("MALFORMED:", TextOf(malformed), StringComparison.Ordinal);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(tokenPath);
+            File.Delete(proofPath);
+            File.Delete(presentationPath);
+        }
+    }
+
+
+    /// <summary>Proves the reference token through the MCP prove tool and verifies the proof file through the verify tool, then confirms a different attribute value is rejected.</summary>
+    [TestMethod]
+    [TestCategory("McpClient")]
+    [TestCategory(TestCategories.Slow)]
+    [Timeout(McpProofHangGuardMilliseconds, CooperativeCancellation = true)]
+    public async Task McpLongfellowJwtProveThenVerifyRoundTrips()
+    {
+        string tokenPath = VeridicalCliTestHelpers.WriteTemporaryFile(LongfellowJwtTestVectors.ErikaToken.Token);
+        string proofPath = Path.Combine(Path.GetTempPath(), $"veridical-proof-{Guid.NewGuid():N}.txt");
+        try
+        {
+            await WithMcpClientAsync(async client =>
+            {
+                var prove = await client.CallToolAsync(
+                    McpToolNames.LongfellowJwtProve,
+                    JwtProveArguments(tokenPath, proofPath),
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Wrote the proof", TextOf(prove), StringComparison.Ordinal);
+
+                var valid = await client.CallToolAsync(
+                    McpToolNames.LongfellowJwtVerify,
+                    JwtVerifyArguments(proofPath, tokenPath, "given_name=Erika"),
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID: proves given_name = Erika", TextOf(valid), StringComparison.Ordinal);
+
+                var wrong = await client.CallToolAsync(
+                    McpToolNames.LongfellowJwtVerify,
+                    JwtVerifyArguments(proofPath, tokenPath, "given_name=Wrong"),
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("REJECTED:", TextOf(wrong), StringComparison.Ordinal);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(tokenPath);
+            File.Delete(proofPath);
+        }
+    }
+
+
+    private const string JwtSeed = "mcp-jwt";
+
+
+    private static Dictionary<string, object?> JwtProveArguments(string tokenPath, string proofPath)
+    {
+        LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
+
+        return new Dictionary<string, object?>
+        {
+            ["tokenFile"] = tokenPath,
+            ["issuerKeyX"] = vector.PkX,
+            ["issuerKeyY"] = vector.PkY,
+            ["attributes"] = "given_name=Erika",
+            ["seed"] = JwtSeed,
+            ["proofFile"] = proofPath
+        };
+    }
+
+
+    private static Dictionary<string, object?> JwtVerifyArguments(string proofPath, string presentationPath, string attributes)
+    {
+        LongfellowJwtTestVectors.TokenVector vector = LongfellowJwtTestVectors.ErikaToken;
+
+        return new Dictionary<string, object?>
+        {
+            ["proofFile"] = proofPath,
+            ["presentationFile"] = presentationPath,
+            ["issuerKeyX"] = vector.PkX,
+            ["issuerKeyY"] = vector.PkY,
+            ["attributes"] = attributes,
+            ["seed"] = JwtSeed
+        };
     }
 
 

@@ -244,6 +244,13 @@
       "lumoin.veridical.json": {
         "type": "Project"
       },
+      "lumoin.veridical.longfellow": {
+        "type": "Project",
+        "dependencies": {
+          "Lumoin.Veridical.Backends.Managed": "[0.0.0, )",
+          "Lumoin.Veridical.Core": "[0.0.0, )"
+        }
+      },
       "Lumoin.Base": {
         "type": "CentralTransitive",
         "requested": "[0.0.15, )",

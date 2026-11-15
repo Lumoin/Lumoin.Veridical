@@ -18,9 +18,13 @@ veridical hash <hex> --hex     BLAKE3-256 hash of a hex-encoded byte string.
 veridical selftest             Run known-answer conformance vectors; exit non-zero on failure.
 veridical prove <request>      Prove a supply-chain predicate bundle from local data; artifact JSON to stdout.
 veridical verify <artifact>    Verify a proof artifact and report the statement it proves; exit non-zero if it does not.
+veridical longfellow-jwt-prove <token> --issuer-key-x <hex> --issuer-key-y <hex> --attribute id=value --seed <text> [--blocks 7|9]
+                               Prove a presentation token (issuerJws~keyBindingJws) against the issuer key; proof as hex to stdout.
+veridical longfellow-jwt-verify <proof> --presentation <file> --issuer-key-x <hex> --issuer-key-y <hex> --attribute id=value --seed <text> [--blocks 7|9]
+                               Verify a Longfellow JWT proof and report the statement it proves; exit non-zero if it does not.
 ```
 
-For `prove` and `verify`, the file argument may be `-` to read from standard input.
+For `prove`, `verify`, `longfellow-jwt-prove` and `longfellow-jwt-verify`, the file argument may be `-` to read from standard input.
 
 `selftest` runs deterministic known-answer vectors — a BLAKE3 test vector, field
 arithmetic (multiply, invert), and the batch multiply checked against the
@@ -103,6 +107,24 @@ veridical verify artifact.json
 The artifact and request JSON are serialized by `Lumoin.Veridical.Json`, an AOT-safe
 (source-generated) reference serializer that consumers can reuse.
 
+## Longfellow JWT proofs
+
+`longfellow-jwt-prove` and `longfellow-jwt-verify` drive the Longfellow zero-knowledge proof of a
+restricted `issuerJws~keyBindingJws` presentation token (JWT+KB, ECDSA P-256): the proof shows the
+issuer signed a token that discloses the stated `id=value` attributes and that the key-binding
+signature is valid, without revealing the rest of the token. The issuer key is the verifier's
+out-of-band trust anchor, given as the 32-byte `--issuer-key-x` and `--issuer-key-y` hex
+coordinates. Repeat `--attribute` for each disclosed attribute; `--seed` is the public session
+text both parties must use; `--blocks` is the SHA-256 block capacity of the issuer signing input
+(7 or 9). The token is the prover's private witness: it is read only from the named file or
+standard input, never from an argument, and never echoed. The proof is lowercase hex and carries
+no witness. `longfellow-jwt-verify` needs only the proof and the presentation's key-binding JWS
+(a whole token is accepted; the part after the last `~` is used).
+
+The tool is the composition root for the cryptography: SHA-256 for the Merkle, leaf and
+transcript hashes, single-block AES-256 for the transcript permutation, and the operating
+system random generator for the prover's randomness. The library selects none of them.
+
 ## MCP server
 
 Run as an MCP stdio server:
@@ -111,5 +133,5 @@ Run as an MCP stdio server:
 veridical -mcp
 ```
 
-Exposed tools: `Info`, `Hash`, `SelfTest`, `Prove`, `Verify`. The packaged
+Exposed tools: `Info`, `Hash`, `SelfTest`, `Prove`, `Verify`, `LongfellowJwtProve`, `LongfellowJwtVerify`. The packaged
 `.mcp/server.json` lets MCP-aware clients discover and launch the server.
