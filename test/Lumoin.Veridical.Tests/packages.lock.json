@@ -506,6 +506,7 @@
       "lumoin.veridical.cli": {
         "type": "Project",
         "dependencies": {
+          "Lumoin.Veridical.Analysis": "[0.0.0, )",
           "Lumoin.Veridical.Backends.Managed": "[0.0.0, )",
           "Lumoin.Veridical.Bbs": "[0.0.0, )",
           "Lumoin.Veridical.Core": "[0.0.0, )",

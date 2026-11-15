@@ -88,6 +88,18 @@ internal static class McpToolNames
     /// <summary>The SecdsaEcdhMacSplitSign tool.</summary>
     public const string SecdsaEcdhMacSplitSign = "SecdsaEcdhMacSplitSign";
 
+    /// <summary>The AnalysisBaseFoldLeakage tool.</summary>
+    public const string AnalysisBaseFoldLeakage = "AnalysisBaseFoldLeakage";
+
+    /// <summary>The AnalysisWelchT tool.</summary>
+    public const string AnalysisWelchT = "AnalysisWelchT";
+
+    /// <summary>The AnalysisKolmogorovSmirnov tool.</summary>
+    public const string AnalysisKolmogorovSmirnov = "AnalysisKolmogorovSmirnov";
+
+    /// <summary>The AnalysisChiSquared tool.</summary>
+    public const string AnalysisChiSquared = "AnalysisChiSquared";
+
     /// <summary>All exposed tool names.</summary>
     public static string[] All { get; } =
     [
@@ -117,6 +129,10 @@ internal static class McpToolNames
         SecdsaEcdhMacDeriveKey,
         SecdsaEcdhMacSign,
         SecdsaEcdhMacVerify,
-        SecdsaEcdhMacSplitSign
+        SecdsaEcdhMacSplitSign,
+        AnalysisBaseFoldLeakage,
+        AnalysisWelchT,
+        AnalysisKolmogorovSmirnov,
+        AnalysisChiSquared
     ];
 }

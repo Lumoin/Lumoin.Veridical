@@ -222,6 +222,12 @@
         "resolved": "11.0.0",
         "contentHash": "lKore9DXE1q8o6ss6/M7++xBpn2FMS0axaAypBspYLqY5OT1ZRPLzFGwF18l61aXfXTPpwkx5tYh4zMUHoAv/g=="
       },
+      "lumoin.veridical.analysis": {
+        "type": "Project",
+        "dependencies": {
+          "Lumoin.Veridical.Core": "[0.0.0, )"
+        }
+      },
       "lumoin.veridical.backends.managed": {
         "type": "Project",
         "dependencies": {

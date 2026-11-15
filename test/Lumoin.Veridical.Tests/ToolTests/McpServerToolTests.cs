@@ -393,6 +393,53 @@ internal sealed class McpServerToolTests
     }
 
 
+    /// <summary>
+    /// Runs the Analysis tools through the MCP server: the statistical tests over small sample sets, the leakage
+    /// experiment at small scale, and an invalid significance level reported as an error message.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("McpClient")]
+    [Timeout(McpHangGuardMilliseconds, CooperativeCancellation = true)]
+    public async Task McpAnalysisToolsReportStatisticsAndLeakageExperiments()
+    {
+        const string Low = "1.0\n1.1\n0.9\n1.2\n0.8\n1.0\n1.1\n0.9";
+        const string High = "5.0\n5.1\n4.9\n5.2\n4.8\n5.0\n5.1\n4.9";
+        const string Even = "50\n50";
+
+        await WithMcpClientAsync(async client =>
+        {
+            var tools = await client.ListToolsAsync(cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            var toolNames = tools.Select(tool => tool.Name).ToList();
+            Assert.Contains(McpToolNames.AnalysisBaseFoldLeakage, toolNames);
+            Assert.Contains(McpToolNames.AnalysisChiSquared, toolNames);
+
+            var welch = await client.CallToolAsync(
+                McpToolNames.AnalysisWelchT,
+                new Dictionary<string, object?> { ["first"] = Low, ["second"] = High },
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("Welch two-sample t-test: Reject", TextOf(welch), StringComparison.Ordinal);
+
+            var chi = await client.CallToolAsync(
+                McpToolNames.AnalysisChiSquared,
+                new Dictionary<string, object?> { ["observed"] = Even, ["comparison"] = Even },
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("chi-squared homogeneity test: FailToReject", TextOf(chi), StringComparison.Ordinal);
+
+            var leakage = await client.CallToolAsync(
+                McpToolNames.AnalysisBaseFoldLeakage,
+                new Dictionary<string, object?> { ["variables"] = 2, ["samples"] = 40 },
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("[classifier]", TextOf(leakage), StringComparison.Ordinal);
+
+            var invalid = await client.CallToolAsync(
+                McpToolNames.AnalysisKolmogorovSmirnov,
+                new Dictionary<string, object?> { ["first"] = Low, ["second"] = High, ["significance"] = 2.0 },
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.StartsWith("Error:", TextOf(invalid), StringComparison.Ordinal);
+        }).ConfigureAwait(false);
+    }
+
+
     private const string JwtSeed = "mcp-jwt";
 
 

@@ -48,6 +48,12 @@ veridical secdsa-control-prove / secdsa-control-verify
                                Prove and verify the control evidence relation bound to a record context.
 veridical secdsa-ecdh-mac-derive-key / -sign / -verify / -split-sign
                                ECDH-MAC: derive the MAC key to a file, sign, verify, and sign from three key shares.
+veridical analysis-basefold-leakage [--variables n] [--samples n] [--significance p] [--hiding]
+                               Run the BaseFold leakage experiments against the plain or hiding commitment provider.
+veridical analysis-welch-t <first> <second> [--significance p]
+veridical analysis-ks <first> <second> [--significance p]
+veridical analysis-chi-squared <observed> <comparison> [--expected] [--significance p]
+                               Statistical tests over files of numbers, one per line.
 ```
 
 For `prove`, `verify`, `longfellow-jwt-prove` and `longfellow-jwt-verify`, the file argument may be `-` to read from standard input.
@@ -175,6 +181,17 @@ is never echoed; `secdsa-ecdh-mac-derive-key` writes the derived MAC key to the 
 split signature as a single synchronous operation and does not expose separate prepare and
 complete phases for an external HSM or KMS, so the commands do not either.
 
+## Analysis
+
+The `analysis-*` commands run the library's analysis experiments and print a plain-text report.
+`analysis-basefold-leakage` runs the byte-statistics, classifier and commitment-recoverability
+experiments against the plain BaseFold commitment provider, or with `--hiding` the salted one; a
+detected leak is a finding in the report, not a failure, so the command exits zero whenever the
+experiments ran. `analysis-welch-t`, `analysis-ks` and `analysis-chi-squared` apply Welch's t-test,
+the two-sample Kolmogorov-Smirnov test and the chi-squared homogeneity (or, with `--expected`,
+goodness-of-fit) test to files of numbers. The timing-leakage harness takes delegates to the
+operation under test and has no file-driven form, so it has no command.
+
 ## MCP server
 
 Run as an MCP stdio server:
@@ -184,6 +201,7 @@ veridical -mcp
 ```
 
 Exposed tools: `Info`, `Hash`, `SelfTest`, `Prove`, `Verify`, `LongfellowJwtProve`, `LongfellowJwtVerify`, `BbsKeyGenerate`, `BbsSign`,
-`BbsVerify`, `BbsProofGenerate`, `BbsProofVerify`, and one `Secdsa...` tool per `secdsa-*` command. Secrets and bulk inputs go through file paths, not
+`BbsVerify`, `BbsProofGenerate`, `BbsProofVerify`, and one `Secdsa...` tool per `secdsa-*` command, and `AnalysisBaseFoldLeakage`, `AnalysisWelchT`,
+`AnalysisKolmogorovSmirnov` and `AnalysisChiSquared`. Secrets and bulk inputs go through file paths, not
 tool arguments. The packaged
 `.mcp/server.json` lets MCP-aware clients discover and launch the server.

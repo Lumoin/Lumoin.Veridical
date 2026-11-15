@@ -458,4 +458,74 @@ internal sealed class VeridicalMcpServer
             return $"Error: {error.Message}";
         }
     }
+
+
+    [McpServerTool(Name = McpToolNames.AnalysisBaseFoldLeakage), Description("Run the BaseFold leakage experiments (byte statistics, classifier, commitment recoverability) against the plain or the hiding commitment provider and return one report line per experiment. A finding is a result, not an error.")]
+    public static string AnalysisBaseFoldLeakage(
+        [Description("The number of committed-polynomial variables.")] int variables = AnalysisOperations.DefaultVariableCount,
+        [Description("The number of samples each experiment draws.")] int samples = AnalysisOperations.DefaultSampleCount,
+        [Description("The significance level, strictly between 0 and 1.")] double significance = AnalysisOperations.DefaultSignificanceLevel,
+        [Description("Run against the hiding (salted) commitment provider instead of the plain one.")] bool hiding = false)
+    {
+        try
+        {
+            return AnalysisOperations.BaseFoldLeakage(variables, samples, significance, hiding, BaseMemoryPool.Shared);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+    }
+
+
+    [McpServerTool(Name = McpToolNames.AnalysisWelchT), Description("Run Welch's two-sample t-test over two sample sets and return a report line with the statistic, degrees of freedom and p-value.")]
+    public static string AnalysisWelchT(
+        [Description("The first sample set, one number per line.")] string first,
+        [Description("The second sample set, one number per line.")] string second,
+        [Description("The significance level, strictly between 0 and 1.")] double significance = AnalysisOperations.DefaultSignificanceLevel)
+    {
+        try
+        {
+            return AnalysisOperations.WelchT(first, second, significance);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+    }
+
+
+    [McpServerTool(Name = McpToolNames.AnalysisKolmogorovSmirnov), Description("Run the two-sample Kolmogorov-Smirnov test over two sample sets and return a report line with the statistic and p-value.")]
+    public static string AnalysisKolmogorovSmirnov(
+        [Description("The first sample set, one number per line.")] string first,
+        [Description("The second sample set, one number per line.")] string second,
+        [Description("The significance level, strictly between 0 and 1.")] double significance = AnalysisOperations.DefaultSignificanceLevel)
+    {
+        try
+        {
+            return AnalysisOperations.KolmogorovSmirnov(first, second, significance);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+    }
+
+
+    [McpServerTool(Name = McpToolNames.AnalysisChiSquared), Description("Run the chi-squared homogeneity test of two observed count sets, or with expected set the goodness-of-fit test of observed against expected counts, and return a report line.")]
+    public static string AnalysisChiSquared(
+        [Description("The observed counts, one integer per line.")] string observed,
+        [Description("A second observed count set (homogeneity), or with expected the expected counts (goodness of fit), one number per line.")] string comparison,
+        [Description("Treat the comparison as expected counts and test goodness of fit.")] bool expected = false,
+        [Description("The significance level, strictly between 0 and 1.")] double significance = AnalysisOperations.DefaultSignificanceLevel)
+    {
+        try
+        {
+            return AnalysisOperations.ChiSquared(observed, comparison, expected, significance);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+    }
 }

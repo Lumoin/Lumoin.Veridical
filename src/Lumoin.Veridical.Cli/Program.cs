@@ -83,6 +83,10 @@ internal static class Program
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacSignCommand());
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacVerifyCommand());
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacSplitSignCommand());
+        rootCommand.Subcommands.Add(AnalysisCliCommands.BuildBaseFoldLeakageCommand());
+        rootCommand.Subcommands.Add(AnalysisCliCommands.BuildWelchTCommand());
+        rootCommand.Subcommands.Add(AnalysisCliCommands.BuildKolmogorovSmirnovCommand());
+        rootCommand.Subcommands.Add(AnalysisCliCommands.BuildChiSquaredCommand());
 
         return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
     }
