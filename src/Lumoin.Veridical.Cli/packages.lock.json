@@ -257,6 +257,12 @@
           "Lumoin.Veridical.Core": "[0.0.0, )"
         }
       },
+      "lumoin.veridical.secdsa": {
+        "type": "Project",
+        "dependencies": {
+          "Lumoin.Veridical.Core": "[0.0.0, )"
+        }
+      },
       "Lumoin.Base": {
         "type": "CentralTransitive",
         "requested": "[0.0.15, )",

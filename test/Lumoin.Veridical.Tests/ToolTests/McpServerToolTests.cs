@@ -293,6 +293,106 @@ internal sealed class McpServerToolTests
     }
 
 
+    /// <summary>
+    /// Runs the SECDSA split signature, its verification and an ECDH-MAC round trip through the MCP tools with the
+    /// secret scalars supplied only as files, and confirms a changed message hash and a missing key file are reported
+    /// as failures.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("McpClient")]
+    [Timeout(McpHangGuardMilliseconds, CooperativeCancellation = true)]
+    public async Task McpSecdsaToolsSignVerifyAndAuthenticateWithFileSecrets()
+    {
+        const string MessageHash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        const string OtherHash = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1";
+        const string PinScalar = "0000000000000000000000000000000000000000000000000000000000000007";
+        const string HardwareScalar = "000000000000000000000000000000000000000000000000000000000000000b";
+        const string VerifierScalar = "0000000000000000000000000000000000000000000000000000000000000013";
+        const string MacMessage = "6d657373616765";
+        string pinPath = VeridicalCliTestHelpers.WriteTemporaryFile(PinScalar);
+        string hardwarePath = VeridicalCliTestHelpers.WriteTemporaryFile(HardwareScalar);
+        string verifierPath = VeridicalCliTestHelpers.WriteTemporaryFile(VerifierScalar);
+        string unitPath = VeridicalCliTestHelpers.WriteTemporaryFile("0000000000000000000000000000000000000000000000000000000000000001");
+        try
+        {
+            await WithMcpClientAsync(async client =>
+            {
+                var tools = await client.ListToolsAsync(cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                var toolNames = tools.Select(tool => tool.Name).ToList();
+                Assert.Contains(McpToolNames.SecdsaSplitSign, toolNames);
+                Assert.Contains(McpToolNames.SecdsaEcdhMacSplitSign, toolNames);
+
+                var publicKeyResult = await client.CallToolAsync(
+                    McpToolNames.SecdsaPublicKey,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["hardwareKeyFile"] = hardwarePath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string publicKey = TextOf(publicKeyResult).Trim();
+                Assert.AreEqual(66, publicKey.Length);
+
+                var signResult = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSign,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["hardwareKeyFile"] = hardwarePath, ["messageHash"] = MessageHash },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string signature = TextOf(signResult).Trim();
+                Assert.AreEqual(128, signature.Length);
+                Assert.DoesNotContain(PinScalar, signature, StringComparison.Ordinal);
+
+                var valid = await client.CallToolAsync(
+                    McpToolNames.SecdsaVerify,
+                    new Dictionary<string, object?> { ["publicKey"] = publicKey, ["messageHash"] = MessageHash, ["signature"] = signature },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID", TextOf(valid), StringComparison.Ordinal);
+
+                var wrongHash = await client.CallToolAsync(
+                    McpToolNames.SecdsaVerify,
+                    new Dictionary<string, object?> { ["publicKey"] = publicKey, ["messageHash"] = OtherHash, ["signature"] = signature },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("REJECTED", TextOf(wrongHash), StringComparison.Ordinal);
+
+                var proverPublic = await client.CallToolAsync(
+                    McpToolNames.SecdsaPublicKey,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = unitPath, ["hardwareKeyFile"] = pinPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                var verifierPublic = await client.CallToolAsync(
+                    McpToolNames.SecdsaPublicKey,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = unitPath, ["hardwareKeyFile"] = verifierPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+
+                var mac = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacSign,
+                    new Dictionary<string, object?> { ["privateKeyFile"] = pinPath, ["verifierEphemeralPublicKey"] = TextOf(verifierPublic).Trim(), ["message"] = MacMessage },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string macHex = TextOf(mac).Trim();
+
+                var macValid = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacVerify,
+                    new Dictionary<string, object?> { ["proverPublicKey"] = TextOf(proverPublic).Trim(), ["verifierEphemeralPrivateKeyFile"] = verifierPath, ["mac"] = macHex, ["message"] = MacMessage },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID", TextOf(macValid), StringComparison.Ordinal);
+
+                var macChanged = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacVerify,
+                    new Dictionary<string, object?> { ["proverPublicKey"] = TextOf(proverPublic).Trim(), ["verifierEphemeralPrivateKeyFile"] = verifierPath, ["mac"] = macHex, ["message"] = "00" },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("REJECTED", TextOf(macChanged), StringComparison.Ordinal);
+
+                var missing = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSign,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath + ".missing", ["hardwareKeyFile"] = hardwarePath, ["messageHash"] = MessageHash },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Error: could not read", TextOf(missing), StringComparison.Ordinal);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(pinPath);
+            File.Delete(hardwarePath);
+            File.Delete(verifierPath);
+            File.Delete(unitPath);
+        }
+    }
+
+
     private const string JwtSeed = "mcp-jwt";
 
 

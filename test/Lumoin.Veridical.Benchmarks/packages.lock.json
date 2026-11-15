@@ -616,6 +616,7 @@
           "Lumoin.Veridical.Hashing": "[0.0.0, )",
           "Lumoin.Veridical.Json": "[0.0.0, )",
           "Lumoin.Veridical.Longfellow": "[0.0.0, )",
+          "Lumoin.Veridical.Secdsa": "[0.0.0, )",
           "Microsoft.Extensions.Hosting": "[11.0.0, )",
           "ModelContextProtocol": "[2.4.0, )",
           "System.CommandLine": "[3.0.0, )"

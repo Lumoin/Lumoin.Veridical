@@ -43,6 +43,51 @@ internal static class McpToolNames
     /// <summary>Verify a BBS selective-disclosure proof.</summary>
     public const string BbsProofVerify = "BbsProofVerify";
 
+    /// <summary>The SecdsaSplitSign tool.</summary>
+    public const string SecdsaSplitSign = "SecdsaSplitSign";
+
+    /// <summary>The SecdsaPublicKey tool.</summary>
+    public const string SecdsaPublicKey = "SecdsaPublicKey";
+
+    /// <summary>The SecdsaVerify tool.</summary>
+    public const string SecdsaVerify = "SecdsaVerify";
+
+    /// <summary>The SecdsaRecoverNoncePoint tool.</summary>
+    public const string SecdsaRecoverNoncePoint = "SecdsaRecoverNoncePoint";
+
+    /// <summary>The SecdsaVerifyFull tool.</summary>
+    public const string SecdsaVerifyFull = "SecdsaVerifyFull";
+
+    /// <summary>The SecdsaDlProve tool.</summary>
+    public const string SecdsaDlProve = "SecdsaDlProve";
+
+    /// <summary>The SecdsaDlVerify tool.</summary>
+    public const string SecdsaDlVerify = "SecdsaDlVerify";
+
+    /// <summary>The SecdsaBlindingProve tool.</summary>
+    public const string SecdsaBlindingProve = "SecdsaBlindingProve";
+
+    /// <summary>The SecdsaBlindingVerify tool.</summary>
+    public const string SecdsaBlindingVerify = "SecdsaBlindingVerify";
+
+    /// <summary>The SecdsaControlProve tool.</summary>
+    public const string SecdsaControlProve = "SecdsaControlProve";
+
+    /// <summary>The SecdsaControlVerify tool.</summary>
+    public const string SecdsaControlVerify = "SecdsaControlVerify";
+
+    /// <summary>The SecdsaEcdhMacDeriveKey tool.</summary>
+    public const string SecdsaEcdhMacDeriveKey = "SecdsaEcdhMacDeriveKey";
+
+    /// <summary>The SecdsaEcdhMacSign tool.</summary>
+    public const string SecdsaEcdhMacSign = "SecdsaEcdhMacSign";
+
+    /// <summary>The SecdsaEcdhMacVerify tool.</summary>
+    public const string SecdsaEcdhMacVerify = "SecdsaEcdhMacVerify";
+
+    /// <summary>The SecdsaEcdhMacSplitSign tool.</summary>
+    public const string SecdsaEcdhMacSplitSign = "SecdsaEcdhMacSplitSign";
+
     /// <summary>All exposed tool names.</summary>
     public static string[] All { get; } =
     [
@@ -57,6 +102,21 @@ internal static class McpToolNames
         BbsSign,
         BbsVerify,
         BbsProofGenerate,
-        BbsProofVerify
+        BbsProofVerify,
+        SecdsaSplitSign,
+        SecdsaPublicKey,
+        SecdsaVerify,
+        SecdsaRecoverNoncePoint,
+        SecdsaVerifyFull,
+        SecdsaDlProve,
+        SecdsaDlVerify,
+        SecdsaBlindingProve,
+        SecdsaBlindingVerify,
+        SecdsaControlProve,
+        SecdsaControlVerify,
+        SecdsaEcdhMacDeriveKey,
+        SecdsaEcdhMacSign,
+        SecdsaEcdhMacVerify,
+        SecdsaEcdhMacSplitSign
     ];
 }

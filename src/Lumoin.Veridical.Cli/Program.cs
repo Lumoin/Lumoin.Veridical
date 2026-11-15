@@ -68,6 +68,21 @@ internal static class Program
         rootCommand.Subcommands.Add(BbsCliCommands.BuildVerifyCommand());
         rootCommand.Subcommands.Add(BbsCliCommands.BuildProofGenerateCommand());
         rootCommand.Subcommands.Add(BbsCliCommands.BuildProofVerifyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildSplitSignCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildPublicKeyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildVerifyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildRecoverNoncePointCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildVerifyFullCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildDlEqualityProveCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildDlEqualityVerifyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildBlindingProveCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildBlindingVerifyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildControlProveCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildControlVerifyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacDeriveKeyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacSignCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacVerifyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacSplitSignCommand());
 
         return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
     }

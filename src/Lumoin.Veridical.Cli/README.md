@@ -32,6 +32,22 @@ veridical bbs-proof-generate <signature> --messages-file <path> --public-key <he
                                Derive a selective-disclosure proof; proof as hex to stdout.
 veridical bbs-proof-verify <proof> --disclosed-messages-file <path> --public-key <hex> [--header <text>] [--presentation-header <text>]
                                Verify a selective-disclosure proof against the disclosed index=message lines; exit non-zero if it does not.
+veridical secdsa-split-sign --pin-key-file <path> --hardware-key-file <path> --message-hash <hex>
+                               Split-sign a message hash from the two key scalars; r || s as hex.
+veridical secdsa-public-key --pin-key-file <path> --hardware-key-file <path>
+                               Derive the compressed public key of the two key scalars.
+veridical secdsa-verify --public-key <hex> --message-hash <hex> --signature <hex>
+                               Verify a SECDSA signature; exit non-zero if it does not verify.
+veridical secdsa-recover-nonce-point / secdsa-verify-full
+                               Recover the nonce point R from a signature; verify with R and s.
+veridical secdsa-dl-prove / secdsa-dl-verify
+                               Prove and verify discrete-logarithm equality over generator and public-key pairs.
+veridical secdsa-blinding-prove / secdsa-blinding-verify
+                               Prove and verify the blind-signing evidence relation.
+veridical secdsa-control-prove / secdsa-control-verify
+                               Prove and verify the control evidence relation bound to a record context.
+veridical secdsa-ecdh-mac-derive-key / -sign / -verify / -split-sign
+                               ECDH-MAC: derive the MAC key to a file, sign, verify, and sign from three key shares.
 ```
 
 For `prove`, `verify`, `longfellow-jwt-prove` and `longfellow-jwt-verify`, the file argument may be `-` to read from standard input.
@@ -147,6 +163,18 @@ drawing it from the operating system random generator. A proof discloses only th
 `--disclose` indices; the verifier passes them as `index=message` lines with ascending indices.
 Signatures and proofs are lowercase hex.
 
+## SECDSA
+
+The `secdsa-*` commands map one-to-one onto the library's SECDSA primitives over P-256: split
+signing, verification, nonce-point recovery, discrete-logarithm-equality proofs, the blinding and
+control evidence relations, and ECDH-MAC key derivation, signing, verification and split signing.
+Points, hashes, challenges and proofs are hex. Every secret scalar (key shares, witnesses, ephemeral
+private keys) is read only from a file named by a `--...-file` option, never from an argument, and
+is never echoed; `secdsa-ecdh-mac-derive-key` writes the derived MAC key to the file named by
+`--output`, created exclusively. Signing is deterministic (RFC 6979 nonces). The library exposes the
+split signature as a single synchronous operation and does not expose separate prepare and
+complete phases for an external HSM or KMS, so the commands do not either.
+
 ## MCP server
 
 Run as an MCP stdio server:
@@ -156,6 +184,6 @@ veridical -mcp
 ```
 
 Exposed tools: `Info`, `Hash`, `SelfTest`, `Prove`, `Verify`, `LongfellowJwtProve`, `LongfellowJwtVerify`, `BbsKeyGenerate`, `BbsSign`,
-`BbsVerify`, `BbsProofGenerate`, `BbsProofVerify`. Secrets and bulk inputs go through file paths, not
+`BbsVerify`, `BbsProofGenerate`, `BbsProofVerify`, and one `Secdsa...` tool per `secdsa-*` command. Secrets and bulk inputs go through file paths, not
 tool arguments. The packaged
 `.mcp/server.json` lets MCP-aware clients discover and launch the server.

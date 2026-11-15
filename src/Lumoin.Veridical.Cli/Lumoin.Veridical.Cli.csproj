@@ -63,6 +63,7 @@
     <ProjectReference Include="..\Lumoin.Veridical.Json\Lumoin.Veridical.Json.csproj" />
     <ProjectReference Include="..\Lumoin.Veridical.Longfellow\Lumoin.Veridical.Longfellow.csproj" />
     <ProjectReference Include="..\Lumoin.Veridical.Bbs\Lumoin.Veridical.Bbs.csproj" />
+    <ProjectReference Include="..\Lumoin.Veridical.Secdsa\Lumoin.Veridical.Secdsa.csproj" />
   </ItemGroup>
 
 </Project>

@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - `veridical longfellow-jwt-prove` and `longfellow-jwt-verify`, with the MCP tools `LongfellowJwtProve` and `LongfellowJwtVerify`: Longfellow JWT proofs from the command line, with the crypto suite and prover randomness composed from the platform.
 - `veridical bbs-keygen`, `bbs-sign`, `bbs-verify`, `bbs-proof-generate` and `bbs-proof-verify`, with the MCP tools `BbsKeyGenerate`, `BbsSign`, `BbsVerify`, `BbsProofGenerate` and `BbsProofVerify`: BBS key generation, signatures and selective-disclosure proofs; secret keys are read from and written to files only.
+- `veridical secdsa-*` commands (split sign, public key, verify, nonce-point recovery, full verify, DL-equality prove and verify, blinding and control relations, ECDH-MAC derive, sign, verify and split sign) with matching `Secdsa...` MCP tools; secret scalars are read from files only.
 - `LongfellowProverRandomness`: the prover's plain random bytes for one proof, single use, with a draw count. The prover does the field mapping and the below-prime rejection itself.
 - `LongfellowRandomnessChecks`: `IsBelowP256BaseFieldPrime`, `IsNotAllZero` and `ProducesDistinctNonZeroDraws`, for suppliers to test their own randomness.
 
