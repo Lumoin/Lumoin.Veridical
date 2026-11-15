@@ -229,6 +229,12 @@
           "Lumoin.Veridical.Hashing": "[0.0.0, )"
         }
       },
+      "lumoin.veridical.bbs": {
+        "type": "Project",
+        "dependencies": {
+          "Lumoin.Veridical.Core": "[0.0.0, )"
+        }
+      },
       "lumoin.veridical.core": {
         "type": "Project",
         "dependencies": {

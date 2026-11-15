@@ -28,6 +28,21 @@ internal static class McpToolNames
     /// <summary>Verify a Longfellow JWT proof.</summary>
     public const string LongfellowJwtVerify = "LongfellowJwtVerify";
 
+    /// <summary>Generate a BBS key pair.</summary>
+    public const string BbsKeyGenerate = "BbsKeyGenerate";
+
+    /// <summary>Sign messages with a BBS secret key.</summary>
+    public const string BbsSign = "BbsSign";
+
+    /// <summary>Verify a BBS signature.</summary>
+    public const string BbsVerify = "BbsVerify";
+
+    /// <summary>Derive a BBS selective-disclosure proof.</summary>
+    public const string BbsProofGenerate = "BbsProofGenerate";
+
+    /// <summary>Verify a BBS selective-disclosure proof.</summary>
+    public const string BbsProofVerify = "BbsProofVerify";
+
     /// <summary>All exposed tool names.</summary>
     public static string[] All { get; } =
     [
@@ -37,6 +52,11 @@ internal static class McpToolNames
         Prove,
         Verify,
         LongfellowJwtProve,
-        LongfellowJwtVerify
+        LongfellowJwtVerify,
+        BbsKeyGenerate,
+        BbsSign,
+        BbsVerify,
+        BbsProofGenerate,
+        BbsProofVerify
     ];
 }

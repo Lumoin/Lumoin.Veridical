@@ -216,6 +216,83 @@ internal sealed class McpServerToolTests
     }
 
 
+    /// <summary>
+    /// Generates a BBS key pair, signs, verifies, derives a selective-disclosure proof and verifies it through the
+    /// MCP tools, and confirms that a changed message and a missing secret key file are reported as failures.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("McpClient")]
+    [Timeout(McpHangGuardMilliseconds, CooperativeCancellation = true)]
+    public async Task McpBbsToolsSignVerifyAndProveSelectiveDisclosure()
+    {
+        const string Messages = "alpha\nbeta\ngamma";
+        string secretPath = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.key");
+        try
+        {
+            await WithMcpClientAsync(async client =>
+            {
+                var tools = await client.ListToolsAsync(cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                var toolNames = tools.Select(tool => tool.Name).ToList();
+                Assert.Contains(McpToolNames.BbsKeyGenerate, toolNames);
+                Assert.Contains(McpToolNames.BbsProofVerify, toolNames);
+
+                var keyResult = await client.CallToolAsync(
+                    McpToolNames.BbsKeyGenerate,
+                    new Dictionary<string, object?> { ["secretKeyFile"] = secretPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string publicKey = TextOf(keyResult).Trim();
+                Assert.AreEqual(192, publicKey.Length);
+
+                var signResult = await client.CallToolAsync(
+                    McpToolNames.BbsSign,
+                    new Dictionary<string, object?> { ["messages"] = Messages, ["secretKeyFile"] = secretPath, ["publicKey"] = publicKey },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string signature = TextOf(signResult).Trim();
+
+                var verifyResult = await client.CallToolAsync(
+                    McpToolNames.BbsVerify,
+                    new Dictionary<string, object?> { ["signature"] = signature, ["messages"] = Messages, ["publicKey"] = publicKey },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID", TextOf(verifyResult), StringComparison.Ordinal);
+
+                var changedResult = await client.CallToolAsync(
+                    McpToolNames.BbsVerify,
+                    new Dictionary<string, object?> { ["signature"] = signature, ["messages"] = "alpha\nbeta\nchanged", ["publicKey"] = publicKey },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("REJECTED", TextOf(changedResult), StringComparison.Ordinal);
+
+                var proofResult = await client.CallToolAsync(
+                    McpToolNames.BbsProofGenerate,
+                    new Dictionary<string, object?> { ["signature"] = signature, ["messages"] = Messages, ["disclose"] = "0,2", ["publicKey"] = publicKey },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string proof = TextOf(proofResult).Trim();
+
+                var proofVerify = await client.CallToolAsync(
+                    McpToolNames.BbsProofVerify,
+                    new Dictionary<string, object?> { ["proof"] = proof, ["disclosedMessages"] = "0=alpha\n2=gamma", ["publicKey"] = publicKey },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID", TextOf(proofVerify), StringComparison.Ordinal);
+
+                var proofTampered = await client.CallToolAsync(
+                    McpToolNames.BbsProofVerify,
+                    new Dictionary<string, object?> { ["proof"] = proof, ["disclosedMessages"] = "0=alpha\n2=changed", ["publicKey"] = publicKey },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("REJECTED", TextOf(proofTampered), StringComparison.Ordinal);
+
+                var missingKey = await client.CallToolAsync(
+                    McpToolNames.BbsSign,
+                    new Dictionary<string, object?> { ["messages"] = Messages, ["secretKeyFile"] = secretPath + ".missing", ["publicKey"] = publicKey },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Error: could not read the secret key", TextOf(missingKey), StringComparison.Ordinal);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(secretPath);
+        }
+    }
+
+
     private const string JwtSeed = "mcp-jwt";
 
 

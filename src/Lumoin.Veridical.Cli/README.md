@@ -22,6 +22,16 @@ veridical longfellow-jwt-prove <token> --issuer-key-x <hex> --issuer-key-y <hex>
                                Prove a presentation token (issuerJws~keyBindingJws) against the issuer key; proof as hex to stdout.
 veridical longfellow-jwt-verify <proof> --presentation <file> --issuer-key-x <hex> --issuer-key-y <hex> --attribute id=value --seed <text> [--blocks 7|9]
                                Verify a Longfellow JWT proof and report the statement it proves; exit non-zero if it does not.
+veridical bbs-keygen --secret-key-file <path> [--ciphersuite sha256|shake256] [--key-material-file <path>] [--key-info <text>]
+                               Generate a BBS key pair; the secret key goes to the named file, the public key (hex) to stdout.
+veridical bbs-sign <messages> --secret-key-file <path> --public-key <hex> [--header <text>] [--hex]
+                               Sign the messages (one per line); signature as hex to stdout.
+veridical bbs-verify <signature> --messages-file <path> --public-key <hex> [--header <text>] [--hex]
+                               Verify a BBS signature; exit non-zero if it does not verify.
+veridical bbs-proof-generate <signature> --messages-file <path> --public-key <hex> --disclose 0,2 [--header <text>] [--presentation-header <text>]
+                               Derive a selective-disclosure proof; proof as hex to stdout.
+veridical bbs-proof-verify <proof> --disclosed-messages-file <path> --public-key <hex> [--header <text>] [--presentation-header <text>]
+                               Verify a selective-disclosure proof against the disclosed index=message lines; exit non-zero if it does not.
 ```
 
 For `prove`, `verify`, `longfellow-jwt-prove` and `longfellow-jwt-verify`, the file argument may be `-` to read from standard input.
@@ -125,6 +135,18 @@ The tool is the composition root for the cryptography: SHA-256 for the Merkle, l
 transcript hashes, single-block AES-256 for the transcript permutation, and the operating
 system random generator for the prover's randomness. The library selects none of them.
 
+## BBS signatures
+
+The `bbs-*` commands drive BBS signatures over BLS12-381 with the `sha256` or `shake256`
+ciphersuite: key generation, signing, verification, and selective-disclosure proofs. Messages are
+UTF-8 text lines in a file (hex byte strings with `--hex`). The secret key is never taken from an
+argument and never printed: `bbs-keygen` writes it to the file named by `--secret-key-file`
+(created exclusively, readable by its owner only, refusing to overwrite) and prints only the
+public key; `bbs-sign` reads it from a file. `--key-material-file` supplies key material instead of
+drawing it from the operating system random generator. A proof discloses only the messages at the
+`--disclose` indices; the verifier passes them as `index=message` lines with ascending indices.
+Signatures and proofs are lowercase hex.
+
 ## MCP server
 
 Run as an MCP stdio server:
@@ -133,5 +155,7 @@ Run as an MCP stdio server:
 veridical -mcp
 ```
 
-Exposed tools: `Info`, `Hash`, `SelfTest`, `Prove`, `Verify`, `LongfellowJwtProve`, `LongfellowJwtVerify`. The packaged
+Exposed tools: `Info`, `Hash`, `SelfTest`, `Prove`, `Verify`, `LongfellowJwtProve`, `LongfellowJwtVerify`, `BbsKeyGenerate`, `BbsSign`,
+`BbsVerify`, `BbsProofGenerate`, `BbsProofVerify`. Secrets and bulk inputs go through file paths, not
+tool arguments. The packaged
 `.mcp/server.json` lets MCP-aware clients discover and launch the server.

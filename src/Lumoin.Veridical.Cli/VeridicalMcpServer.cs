@@ -126,4 +126,104 @@ internal sealed class VeridicalMcpServer
 
         return LongfellowJwtOperations.Verify(proofHex, presentation, issuerKeyX, issuerKeyY, LongfellowJwtOperations.SplitAttributeLines(attributes), blocks, seed, BaseMemoryPool.Shared).ToReport();
     }
+
+
+    [McpServerTool(Name = McpToolNames.BbsKeyGenerate), Description("Generate a BBS key pair (BLS12-381, sha256 or shake256 ciphersuite). The secret key is written to the named file, which must not exist, and is never returned; the public key is returned as hex.")]
+    public static string BbsKeyGenerate(
+        [Description("Path the secret key (hex) is written to; the file must not exist.")] string secretKeyFile,
+        [Description("The ciphersuite, sha256 or shake256.")] string ciphersuite = BbsPlatformComposition.Sha256Name,
+        [Description("Key info text bound into the derivation.")] string keyInfo = "")
+    {
+        string secretHex;
+        string publicHex;
+        try
+        {
+            (secretHex, publicHex) = BbsOperations.GenerateKey(ciphersuite, null, keyInfo);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+
+        if(!CliFiles.TryWriteSecret(secretKeyFile, secretHex, "secret key file", out string failure))
+        {
+            return $"Error: {failure}";
+        }
+
+        return publicHex;
+    }
+
+
+    [McpServerTool(Name = McpToolNames.BbsSign), Description("Sign messages with a BBS secret key read from a file (it never passes through the conversation). Returns the signature as hex, or an error message.")]
+    public static string BbsSign(
+        [Description("The messages to sign, one per line (hex lines when hex is true).")] string messages,
+        [Description("Path to the file holding the secret key (hex).")] string secretKeyFile,
+        [Description("The public key as hex.")] string publicKey,
+        [Description("The ciphersuite, sha256 or shake256.")] string ciphersuite = BbsPlatformComposition.Sha256Name,
+        [Description("The header text bound into the signature.")] string header = "",
+        [Description("Whether each message line is a hex-encoded byte string.")] bool hex = false)
+    {
+        if(!CliFiles.TryRead(secretKeyFile, "secret key", out string secret, out string failure))
+        {
+            return $"Error: {failure}";
+        }
+
+        try
+        {
+            return BbsOperations.Sign(ciphersuite, secret.Trim(), publicKey, header, BbsOperations.SplitLines(messages), hex);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+    }
+
+
+    [McpServerTool(Name = McpToolNames.BbsVerify), Description("Verify a BBS signature over messages and return a one-line report, or the reason it does not verify.")]
+    public static string BbsVerify(
+        [Description("The signature as hex.")] string signature,
+        [Description("The signed messages, one per line (hex lines when hex is true).")] string messages,
+        [Description("The public key as hex.")] string publicKey,
+        [Description("The ciphersuite, sha256 or shake256.")] string ciphersuite = BbsPlatformComposition.Sha256Name,
+        [Description("The header text the signature was made with.")] string header = "",
+        [Description("Whether each message line is a hex-encoded byte string.")] bool hex = false)
+    {
+        return BbsOperations.Verify(ciphersuite, publicKey, signature, header, BbsOperations.SplitLines(messages), hex).ToReport();
+    }
+
+
+    [McpServerTool(Name = McpToolNames.BbsProofGenerate), Description("Derive a BBS selective-disclosure proof from a signature, disclosing the messages at the named indices. Returns the proof as hex, or an error message. The proof reveals only the disclosed messages.")]
+    public static string BbsProofGenerate(
+        [Description("The signature as hex.")] string signature,
+        [Description("All the signed messages, one per line (hex lines when hex is true).")] string messages,
+        [Description("The zero-based indices to disclose, comma-separated; empty discloses none.")] string disclose,
+        [Description("The public key as hex.")] string publicKey,
+        [Description("The ciphersuite, sha256 or shake256.")] string ciphersuite = BbsPlatformComposition.Sha256Name,
+        [Description("The header text the signature was made with.")] string header = "",
+        [Description("The presentation header text bound into this proof.")] string presentationHeader = "",
+        [Description("Whether each message line is a hex-encoded byte string.")] bool hex = false)
+    {
+        try
+        {
+            return BbsOperations.GenerateProof(ciphersuite, publicKey, signature, header, presentationHeader, BbsOperations.SplitLines(messages), hex, disclose);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+    }
+
+
+    [McpServerTool(Name = McpToolNames.BbsProofVerify), Description("Verify a BBS selective-disclosure proof against the disclosed messages and return a one-line report, or the reason it does not verify.")]
+    public static string BbsProofVerify(
+        [Description("The proof as hex.")] string proof,
+        [Description("The disclosed messages, one per line written index=message with strictly ascending zero-based indices.")] string disclosedMessages,
+        [Description("The public key as hex.")] string publicKey,
+        [Description("The ciphersuite, sha256 or shake256.")] string ciphersuite = BbsPlatformComposition.Sha256Name,
+        [Description("The header text the signature was made with.")] string header = "",
+        [Description("The presentation header text the proof was bound to.")] string presentationHeader = "",
+        [Description("Whether each message is a hex-encoded byte string.")] bool hex = false)
+    {
+        return BbsOperations.VerifyProof(ciphersuite, publicKey, proof, header, presentationHeader, BbsOperations.SplitLines(disclosedMessages), hex).ToReport();
+    }
 }

@@ -63,6 +63,11 @@ internal static class Program
         rootCommand.Subcommands.Add(BuildVerifyCommand());
         rootCommand.Subcommands.Add(LongfellowCliCommands.BuildJwtProveCommand());
         rootCommand.Subcommands.Add(LongfellowCliCommands.BuildJwtVerifyCommand());
+        rootCommand.Subcommands.Add(BbsCliCommands.BuildKeyGenerateCommand());
+        rootCommand.Subcommands.Add(BbsCliCommands.BuildSignCommand());
+        rootCommand.Subcommands.Add(BbsCliCommands.BuildVerifyCommand());
+        rootCommand.Subcommands.Add(BbsCliCommands.BuildProofGenerateCommand());
+        rootCommand.Subcommands.Add(BbsCliCommands.BuildProofVerifyCommand());
 
         return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
     }
