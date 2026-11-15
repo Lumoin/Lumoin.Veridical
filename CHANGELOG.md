@@ -24,9 +24,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `veridical analysis-basefold-leakage`, `analysis-welch-t`, `analysis-ks` and `analysis-chi-squared`, with the MCP tools `AnalysisBaseFoldLeakage`, `AnalysisWelchT`, `AnalysisKolmogorovSmirnov` and `AnalysisChiSquared`: the BaseFold leakage experiments and statistical tests as reports.
 - `LongfellowProverRandomness`: the prover's plain random bytes for one proof, single use, with a draw count. The prover does the field mapping and the below-prime rejection itself.
 - `LongfellowRandomnessChecks`: `IsBelowP256BaseFieldPrime`, `IsNotAllZero` and `ProducesDistinctNonZeroDraws`, for suppliers to test their own randomness.
+- `SecdsaAlgorithm.PrepareSplitSign` and `SecdsaAlgorithm.CompleteSplitSign`: split sign as two pure phases around an external key holder. Prepare returns the blinded representative `e' = P^-1 * e`; complete masks the key holder's `(r, s0)` and releases `s` only after the finished signature verifies under the composite public key, so a faulty or substituted key holder cannot make the caller emit a bad signature. The two-party key-share split is the same two phases applied once per party.
 
 ### Changed
 
+- `SecdsaAlgorithm.SplitSign` verifies the finished signature before returning it, as every split-sign entry point now does. The software overloads take a `G1AddDelegate` and derive the composite public key themselves; the raw-signer overload takes the composite public key, a `G1ScalarMultiplyDelegate` and a `G1AddDelegate`, runs through `PrepareSplitSign` and `CompleteSplitSign`, and clears `r` and `s` when the key holder's answer is rejected.
 - `LongfellowMdoc.Prove` and `LongfellowJwt.Prove` take a `LongfellowProverRandomness` after the suite.
 - `LongfellowEntropyDelegate` fills plain random bytes with no field constraint.
 

@@ -197,7 +197,7 @@ internal sealed class SecdsaCarrierFlowTests
         byte[] messageHash = Digest("present-pid-attributes SN=1");
         using SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
             pinKey.AsReadOnlySpan(), hardwareKey.AsReadOnlySpan(), messageHash, NonceSource,
-            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, pool);
+            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, pool);
 
         Assert.IsTrue(
             SecdsaAlgorithm.Verify(

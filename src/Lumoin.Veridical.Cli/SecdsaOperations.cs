@@ -38,7 +38,7 @@ internal static class SecdsaOperations
             using SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
                 pinKey, hardwareKey, messageHash, composition.NonceSource,
                 composition.ScalarMultiply, composition.ScalarAdd, composition.ScalarInvert, composition.ScalarReduce,
-                composition.G1ScalarMultiply, BaseMemoryPool.Shared);
+                composition.G1ScalarMultiply, composition.G1Add, BaseMemoryPool.Shared);
 
             return Convert.ToHexStringLower(signature.AsReadOnlySpan());
         }

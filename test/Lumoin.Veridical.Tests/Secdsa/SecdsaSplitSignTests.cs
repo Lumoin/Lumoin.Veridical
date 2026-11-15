@@ -102,7 +102,7 @@ internal sealed class SecdsaSplitSignTests
         Span<byte> splitS = stackalloc byte[ScalarSize];
         SecdsaAlgorithm.SplitSign(
             pinKey, hardwareKey, messageHash, fixedNonceSource,
-            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply,
+            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             splitR, splitS);
 
         //Direct ECDSA sign under d = P*u with the same k, via the independent reference.
@@ -256,7 +256,7 @@ internal sealed class SecdsaSplitSignTests
         byte[] signatureBytes;
         using(SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
             pinKey, hardwareKey, messageHash, Rfc6979NonceSource,
-            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, pool))
+            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, pool))
         {
             signatureBytes = signature.AsReadOnlySpan().ToArray();
             Assert.IsTrue(signatureBytes.AsSpan(0, ScalarSize).SequenceEqual(SplitSign(pinKey, hardwareKey, messageHash).Item1), "The pooled signature r must match the span overload.");
@@ -284,7 +284,7 @@ internal sealed class SecdsaSplitSignTests
             hardwareKey, Rfc6979NonceSource, ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply);
         byte[] seamR = new byte[ScalarSize];
         byte[] seamS = new byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(pinKey, messageHash, rawSign, ScalarMultiply, ScalarInvert, ScalarReduce, seamR, seamS);
+        SecdsaAlgorithm.SplitSign(pinKey, messageHash, DerivePublicKey(pinKey, hardwareKey), rawSign, ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, seamR, seamS);
 
         Assert.IsTrue(inlineR.AsSpan().SequenceEqual(seamR), "Seam r must equal the inline path r.");
         Assert.IsTrue(inlineS.AsSpan().SequenceEqual(seamS), "Seam s must equal the inline path s.");
@@ -310,9 +310,9 @@ internal sealed class SecdsaSplitSignTests
 
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(pinKey, messageHash, hardwareLike, ScalarMultiply, ScalarInvert, ScalarReduce, r, s);
-
         byte[] publicKey = DerivePublicKey(pinKey, hardwareKey);
+        SecdsaAlgorithm.SplitSign(pinKey, messageHash, publicKey, hardwareLike, ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, r, s);
+
         Assert.IsTrue(VerifyWithDotNet(publicKey, messageHash, r, s), "The hardware-seam split signature must verify under the platform ECDSA verifier.");
         Assert.IsTrue(P256EcdsaReference.Verify(publicKey, messageHash, r, s), "...and under the reference verifier.");
     }
@@ -335,7 +335,7 @@ internal sealed class SecdsaSplitSignTests
         byte[] s = new byte[ScalarSize];
         SecdsaAlgorithm.SplitSign(
             pinKey, hardwareKey, messageHash, fixedNonceSource,
-            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply,
+            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             r, s);
 
         byte[] publicKey = DerivePublicKey(pinKey, hardwareKey);
@@ -378,7 +378,7 @@ internal sealed class SecdsaSplitSignTests
         byte[] s = new byte[ScalarSize];
         SecdsaAlgorithm.SplitSign(
             pinKey, hardwareKey, messageHash, Rfc6979NonceSource,
-            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply,
+            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             r, s);
 
         return (r, s);
@@ -391,7 +391,7 @@ internal sealed class SecdsaSplitSignTests
         byte[] s = new byte[ScalarSize];
         SecdsaAlgorithm.SplitSign(
             pinKey, hardwareKey, messageHash, Rfc6979NonceSource,
-            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply,
+            ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             r, s);
     }
 

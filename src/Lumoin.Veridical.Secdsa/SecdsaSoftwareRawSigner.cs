@@ -10,7 +10,7 @@ namespace Lumoin.Veridical.Secdsa;
 /// injected nonce source (RFC 6979 in production). A hardware deployment supplies its own
 /// <see cref="SecdsaRawEcdsaSign"/> closing over a TPM key handle instead; this is the code-only fallback,
 /// and the proof that the split-sign seam is implementation-agnostic — the same
-/// <see cref="SecdsaAlgorithm.SplitSign(System.ReadOnlySpan{byte}, System.ReadOnlySpan{byte}, SecdsaRawEcdsaSign, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarReduceDelegate, System.Span{byte}, System.Span{byte})"/>
+/// <see cref="SecdsaAlgorithm.SplitSign(System.ReadOnlySpan{byte}, System.ReadOnlySpan{byte}, System.ReadOnlySpan{byte}, SecdsaRawEcdsaSign, ScalarMultiplyDelegate, ScalarInvertDelegate, ScalarReduceDelegate, G1ScalarMultiplyDelegate, G1AddDelegate, System.Span{byte}, System.Span{byte})"/>
 /// drives both.
 /// </summary>
 public static class SecdsaSoftwareRawSigner
