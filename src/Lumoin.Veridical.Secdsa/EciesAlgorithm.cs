@@ -110,11 +110,8 @@ public static class EciesAlgorithm
         Span<byte> recipient = stackalloc byte[CompressedPointSizeBytes];
         ValidateCanonical(recipientPublicKey.AsReadOnlySpan(), g1ScalarMultiply, recipient, nameof(recipientPublicKey));
 
-        ReadOnlySpan<byte> plain = plaintext.GetBytes();
         Span<byte> ephemeralScalar = stackalloc byte[ScalarSizeBytes];
         Span<byte> ephemeralPublicKey = stackalloc byte[CompressedPointSizeBytes];
-        IMemoryOwner<byte> owner = pool.Rent(CompressedPointSizeBytes + parameters.TagSizeBytes + plain.Length);
-        bool completed = false;
         try
         {
             //Step 1: e random in [1, n-1], E = e·G.
@@ -125,8 +122,49 @@ public static class EciesAlgorithm
 
             //Steps 2 to 4: S = e·D, Z_AB, K = KDF(Z_AB, A), (C, T) = ENC[K, P, A].
             using SharedSecret sharedSecret = ComputeSharedSecret(ephemeralScalar, recipient, g1ScalarMultiply, pool);
-            using DerivedKeyMaterial keyMaterial = DeriveKeyMaterial(sharedSecret, associatedData, parameters, keyDerivation, pool);
 
+            return Seal(ephemeralPublicKey, sharedSecret, plaintext, associatedData, parameters, keyDerivation, aeadEncrypt, pool, tag);
+        }
+        finally
+        {
+            //Step 5: delete e; K is cleared when its owner is disposed in the seal.
+            ephemeralScalar.Clear();
+        }
+    }
+
+
+    /// <summary>
+    /// Algorithm 18 steps 3 and 4 for an ephemeral public key and shared secret that the caller already holds:
+    /// derives <c>K = KDF(Z_AB, A)</c> and forms <c>(C, T) = ENC[K, P, A]</c>. The transferable proof uses it with an
+    /// ephemeral key that is a sum of derived keys instead of one random scalar.
+    /// </summary>
+    /// <param name="ephemeralPublicKey">The compressed ephemeral public key <c>E</c> placed in the ciphertext.</param>
+    /// <param name="sharedSecret">The shared secret <c>Z_AB</c>; secret.</param>
+    /// <param name="plaintext">The plaintext <c>P</c>; secret.</param>
+    /// <param name="associatedData">The additional authenticated data <c>A</c>.</param>
+    /// <param name="parameters">The ECIES parameter set.</param>
+    /// <param name="keyDerivation">The key derivation.</param>
+    /// <param name="aeadEncrypt">The authenticated encryption.</param>
+    /// <param name="pool">The pool the ciphertext and key material are rented from.</param>
+    /// <param name="tag">An optional tag carrying provenance entries for the ciphertext.</param>
+    /// <returns>The ciphertext, owned by the caller.</returns>
+    internal static EciesCiphertext Seal(
+        ReadOnlySpan<byte> ephemeralPublicKey,
+        SharedSecret sharedSecret,
+        EciesPlaintext plaintext,
+        AdditionalData associatedData,
+        EciesParameterSet parameters,
+        EciesKeyDerivationDelegate keyDerivation,
+        AeadEncryptDelegate aeadEncrypt,
+        BaseMemoryPool pool,
+        Tag? tag)
+    {
+        ReadOnlySpan<byte> plain = plaintext.GetBytes();
+        using DerivedKeyMaterial keyMaterial = DeriveKeyMaterial(sharedSecret, associatedData, parameters, keyDerivation, pool);
+        IMemoryOwner<byte> owner = pool.Rent(CompressedPointSizeBytes + parameters.TagSizeBytes + plain.Length);
+        bool completed = false;
+        try
+        {
             Span<byte> destination = owner.Memory.Span;
             ephemeralPublicKey.CopyTo(destination);
             Span<byte> authenticationTag = destination.Slice(EciesCiphertext.TagOffset, parameters.TagSizeBytes);
@@ -136,8 +174,6 @@ public static class EciesAlgorithm
         }
         finally
         {
-            //Step 5: delete e; K is cleared when its owner is disposed above.
-            ephemeralScalar.Clear();
             if(!completed)
             {
                 owner.Dispose();

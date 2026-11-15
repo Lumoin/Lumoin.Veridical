@@ -32,6 +32,15 @@ internal static class P256ScalarValidation
     }
 
 
+    /// <summary>Reports whether a 32-byte scalar is outside <c>[1, n-1]</c>, without an early exit on its bytes.</summary>
+    /// <param name="scalar">The big-endian scalar.</param>
+    /// <returns><see langword="true"/> when the scalar is zero or not below the group order.</returns>
+    internal static bool IsOutOfRange(ReadOnlySpan<byte> scalar)
+    {
+        return IsZero(scalar) || !IsLess(scalar, OrderBytes);
+    }
+
+
     internal static void RequireLength(ReadOnlySpan<byte> span, int expected, string name)
     {
         if(span.Length != expected)

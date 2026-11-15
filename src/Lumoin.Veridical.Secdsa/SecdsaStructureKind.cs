@@ -38,9 +38,6 @@ public readonly record struct SecdsaStructureKind(string Identifier)
     /// <summary>Additional data carried with a transferable challenge: authenticated data <c>AAD</c> or secret data <c>ASD</c>.</summary>
     public static SecdsaStructureKind AdditionalData { get; } = new("secdsa-additional-data");
 
-    /// <summary>A signature over a transferable-proof structure, produced by a signature scheme the caller chose.</summary>
-    public static SecdsaStructureKind StructureSignature { get; } = new("secdsa-structure-signature");
-
     /// <summary>The challenge <c>(E, H2, AAD, Sig)</c> of a transferable proof.</summary>
     public static SecdsaStructureKind TransferableChallenge { get; } = new("secdsa-transferable-challenge");
 
