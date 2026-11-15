@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using System;
 using System.Buffers;
+using System.Formats.Asn1;
 using System.Text;
 using static Lumoin.Veridical.Secdsa.P256PointValidation;
 
@@ -9,7 +10,7 @@ namespace Lumoin.Veridical.Secdsa;
 
 /// <summary>
 /// A <see cref="SecdsaLayoutProfile"/> that writes every structure as ASN.1 DER (ITU-T X.690, distinguished
-/// encoding rules): definite lengths in the minimal form, SEQUENCE for structures and vectors, OCTET STRING for
+/// encoding rules), produced and read by System.Formats.Asn1: definite lengths in the minimal form, SEQUENCE for structures and vectors, OCTET STRING for
 /// points, scalars, digests, seeds, additional data and signatures, and INTEGER for the index and for the structure
 /// discriminator.
 /// </summary>
@@ -104,11 +105,6 @@ public static class SecdsaDerLayout
 
     private const int MaxProfileIdBytes = SecdsaProvisionalLayout.MaxProfileIdBytes;
 
-    private static int PointElementSize { get; } = SecdsaDer.ElementSize(PointSizeBytes);
-
-    private static int ScalarElementSize { get; } = SecdsaDer.ElementSize(ScalarSizeBytes);
-
-
     /// <summary>The profile.</summary>
     public static SecdsaLayoutProfile Profile { get; } = new SecdsaLayoutProfile
     {
@@ -134,9 +130,14 @@ public static class SecdsaDerLayout
     /// <summary>Encodes a point vector as <c>PointVectorStructure</c>.</summary>
     private static void EncodePointVector(P256PointVector vector, LayoutWriter writer)
     {
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, SecdsaDer.IntegerSize(PointVectorKind) + PointsSize(vector));
-        SecdsaDer.WriteInteger(writer, PointVectorKind);
-        WritePoints(writer, vector);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(PointVectorKind);
+            WritePoints(asn, vector);
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
@@ -145,16 +146,16 @@ public static class SecdsaDerLayout
     {
         value = null;
         if(!SecdsaDer.TryOpenStructure(encoded, PointVectorKind, out ReadOnlySpan<byte> content)
-            || !TryReadVector(ref content, PointElementSize, out ReadOnlySpan<byte> elements)
-            || !content.IsEmpty)
+            || !SecdsaDer.TryReadSequence(ref content, out ReadOnlySpan<byte> elements)
+            || !content.IsEmpty
+            || !TryCountElements(elements, PointSizeBytes, out int count))
         {
             return false;
         }
 
-        int count = elements.Length / PointElementSize;
         using IMemoryOwner<byte> points = pool.Rent(count * PointSizeBytes);
         Span<byte> destination = points.Memory.Span[..(count * PointSizeBytes)];
-        if(!TryCollect(elements, PointElementSize, PointSizeBytes, destination) || !AllFinitePoints(destination))
+        if(!TryCollect(elements, PointSizeBytes, destination) || !AllFinitePoints(destination))
         {
             return false;
         }
@@ -168,9 +169,14 @@ public static class SecdsaDerLayout
     /// <summary>Encodes a scalar vector as <c>ScalarVectorStructure</c>.</summary>
     private static void EncodeScalarVector(P256ScalarVector vector, LayoutWriter writer)
     {
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, SecdsaDer.IntegerSize(ScalarVectorKind) + ScalarsSize(vector));
-        SecdsaDer.WriteInteger(writer, ScalarVectorKind);
-        WriteScalars(writer, vector);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(ScalarVectorKind);
+            WriteScalars(asn, vector);
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
@@ -179,18 +185,18 @@ public static class SecdsaDerLayout
     {
         value = null;
         if(!SecdsaDer.TryOpenStructure(encoded, ScalarVectorKind, out ReadOnlySpan<byte> content)
-            || !TryReadVector(ref content, ScalarElementSize, out ReadOnlySpan<byte> elements)
-            || !content.IsEmpty)
+            || !SecdsaDer.TryReadSequence(ref content, out ReadOnlySpan<byte> elements)
+            || !content.IsEmpty
+            || !TryCountElements(elements, ScalarSizeBytes, out int count))
         {
             return false;
         }
 
-        int count = elements.Length / ScalarElementSize;
         using IMemoryOwner<byte> scalars = pool.Rent(count * ScalarSizeBytes);
         Span<byte> destination = scalars.Memory.Span[..(count * ScalarSizeBytes)];
         try
         {
-            if(!TryCollect(elements, ScalarElementSize, ScalarSizeBytes, destination))
+            if(!TryCollect(elements, ScalarSizeBytes, destination))
             {
                 return false;
             }
@@ -218,72 +224,69 @@ public static class SecdsaDerLayout
     private static void EncodeDerivationInput(int index, ProofStatement statement, LayoutWriter writer)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        ReadOnlySpan<byte> aad = statement.AdditionalAuthenticatedData.GetBytes();
-        int content = SecdsaDer.IntegerSize(DerivationKind)
-            + SecdsaDer.IntegerSize((uint)index)
-            + PointsSize(statement.Generators)
-            + PointsSize(statement.PublicKeys)
-            + SecdsaDer.ElementSize(aad.Length);
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, content);
-        SecdsaDer.WriteInteger(writer, DerivationKind);
-        SecdsaDer.WriteInteger(writer, (uint)index);
-        WritePoints(writer, statement.Generators);
-        WritePoints(writer, statement.PublicKeys);
-        SecdsaDer.WriteOctetString(writer, aad);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(DerivationKind);
+            asn.WriteInteger(index);
+            WritePoints(asn, statement.Generators);
+            WritePoints(asn, statement.PublicKeys);
+            asn.WriteOctetString(statement.AdditionalAuthenticatedData.GetBytes());
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
     /// <summary>Encodes <c>ChallengeScope</c>.</summary>
     private static void EncodeChallengeScope(G1Point ephemeralPublicKey, ProofStatement statement, ProofDigest secondaryDigest, LayoutWriter writer)
     {
-        ReadOnlySpan<byte> aad = statement.AdditionalAuthenticatedData.GetBytes();
-        int content = SecdsaDer.IntegerSize(ChallengeScopeKind)
-            + PointElementSize
-            + PointsSize(statement.Generators)
-            + PointsSize(statement.PublicKeys)
-            + SecdsaDer.ElementSize(DigestSizeBytes)
-            + SecdsaDer.ElementSize(aad.Length);
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, content);
-        SecdsaDer.WriteInteger(writer, ChallengeScopeKind);
-        SecdsaDer.WriteOctetString(writer, ephemeralPublicKey.AsReadOnlySpan());
-        WritePoints(writer, statement.Generators);
-        WritePoints(writer, statement.PublicKeys);
-        SecdsaDer.WriteOctetString(writer, secondaryDigest.GetBytes());
-        SecdsaDer.WriteOctetString(writer, aad);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(ChallengeScopeKind);
+            asn.WriteOctetString(ephemeralPublicKey.AsReadOnlySpan());
+            WritePoints(asn, statement.Generators);
+            WritePoints(asn, statement.PublicKeys);
+            asn.WriteOctetString(secondaryDigest.GetBytes());
+            asn.WriteOctetString(statement.AdditionalAuthenticatedData.GetBytes());
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
     /// <summary>Encodes <c>ResponseScope</c>.</summary>
     private static void EncodeResponseScope(G1Point ephemeralPublicKey, ProofStatement statement, ProofDigest secondaryDigest, ProofDigest primaryDigest, LayoutWriter writer)
     {
-        ReadOnlySpan<byte> aad = statement.AdditionalAuthenticatedData.GetBytes();
-        int content = SecdsaDer.IntegerSize(ResponseScopeKind)
-            + PointElementSize
-            + PointsSize(statement.Generators)
-            + PointsSize(statement.PublicKeys)
-            + SecdsaDer.ElementSize(DigestSizeBytes)
-            + SecdsaDer.ElementSize(aad.Length)
-            + SecdsaDer.ElementSize(DigestSizeBytes);
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, content);
-        SecdsaDer.WriteInteger(writer, ResponseScopeKind);
-        SecdsaDer.WriteOctetString(writer, ephemeralPublicKey.AsReadOnlySpan());
-        WritePoints(writer, statement.Generators);
-        WritePoints(writer, statement.PublicKeys);
-        SecdsaDer.WriteOctetString(writer, secondaryDigest.GetBytes());
-        SecdsaDer.WriteOctetString(writer, aad);
-        SecdsaDer.WriteOctetString(writer, primaryDigest.GetBytes());
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(ResponseScopeKind);
+            asn.WriteOctetString(ephemeralPublicKey.AsReadOnlySpan());
+            WritePoints(asn, statement.Generators);
+            WritePoints(asn, statement.PublicKeys);
+            asn.WriteOctetString(secondaryDigest.GetBytes());
+            asn.WriteOctetString(statement.AdditionalAuthenticatedData.GetBytes());
+            asn.WriteOctetString(primaryDigest.GetBytes());
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
     /// <summary>Encodes <c>SeedPayload</c>.</summary>
     private static void EncodeSeedPayload(ProofSeed seed, AdditionalData additionalSecretData, LayoutWriter writer)
     {
-        ReadOnlySpan<byte> asd = additionalSecretData.GetBytes();
-        int content = SecdsaDer.IntegerSize(SeedPayloadKind) + SecdsaDer.ElementSize(ProofSeed.SizeBytes) + SecdsaDer.ElementSize(asd.Length);
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, content);
-        SecdsaDer.WriteInteger(writer, SeedPayloadKind);
-        SecdsaDer.WriteOctetString(writer, seed.GetBytes());
-        SecdsaDer.WriteOctetString(writer, asd);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(SeedPayloadKind);
+            asn.WriteOctetString(seed.GetBytes());
+            asn.WriteOctetString(additionalSecretData.GetBytes());
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
@@ -310,17 +313,16 @@ public static class SecdsaDerLayout
     /// <summary>Encodes <c>Ciphertext</c>.</summary>
     private static void EncodeCiphertext(EciesCiphertext ciphertext, LayoutWriter writer)
     {
-        ReadOnlySpan<byte> tag = ciphertext.GetAuthenticationTagBytes();
-        ReadOnlySpan<byte> encrypted = ciphertext.GetEncryptedBytes();
-        int content = SecdsaDer.IntegerSize(CiphertextKind)
-            + PointElementSize
-            + SecdsaDer.ElementSize(tag.Length)
-            + SecdsaDer.ElementSize(encrypted.Length);
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, content);
-        SecdsaDer.WriteInteger(writer, CiphertextKind);
-        SecdsaDer.WriteOctetString(writer, ciphertext.GetEphemeralPublicKeyBytes());
-        SecdsaDer.WriteOctetString(writer, tag);
-        SecdsaDer.WriteOctetString(writer, encrypted);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(CiphertextKind);
+            asn.WriteOctetString(ciphertext.GetEphemeralPublicKeyBytes());
+            asn.WriteOctetString(ciphertext.GetAuthenticationTagBytes());
+            asn.WriteOctetString(ciphertext.GetEncryptedBytes());
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
@@ -347,23 +349,18 @@ public static class SecdsaDerLayout
     /// <summary>Encodes <c>Challenge</c>.</summary>
     private static void EncodeChallenge(TransferableChallenge challenge, LayoutWriter writer)
     {
-        Span<byte> id = stackalloc byte[MaxProfileIdBytes];
-        ReadOnlySpan<byte> utf8 = ProfileIdBytes(challenge.Profile, id);
-        ReadOnlySpan<byte> aad = challenge.GetAdditionalAuthenticatedDataBytes();
-        ReadOnlySpan<byte> signature = challenge.GetSignatureBytes();
-        int content = SecdsaDer.IntegerSize(ChallengeKind)
-            + SecdsaDer.ElementSize(utf8.Length)
-            + PointElementSize
-            + SecdsaDer.ElementSize(DigestSizeBytes)
-            + SecdsaDer.ElementSize(aad.Length)
-            + SecdsaDer.ElementSize(signature.Length);
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, content);
-        SecdsaDer.WriteInteger(writer, ChallengeKind);
-        SecdsaDer.WriteUtf8String(writer, utf8);
-        SecdsaDer.WriteOctetString(writer, challenge.GetEphemeralPublicKeyBytes());
-        SecdsaDer.WriteOctetString(writer, challenge.GetSecondaryDigestBytes());
-        SecdsaDer.WriteOctetString(writer, aad);
-        SecdsaDer.WriteOctetString(writer, signature);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(ChallengeKind);
+            asn.WriteCharacterString(UniversalTagNumber.UTF8String, CheckedProfileId(challenge.Profile));
+            asn.WriteOctetString(challenge.GetEphemeralPublicKeyBytes());
+            asn.WriteOctetString(challenge.GetSecondaryDigestBytes());
+            asn.WriteOctetString(challenge.GetAdditionalAuthenticatedDataBytes());
+            asn.WriteOctetString(challenge.GetSignatureBytes());
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
@@ -397,18 +394,16 @@ public static class SecdsaDerLayout
     /// <summary>Encodes <c>Response</c>.</summary>
     private static void EncodeResponse(TransferableResponse response, LayoutWriter writer)
     {
-        Span<byte> id = stackalloc byte[MaxProfileIdBytes];
-        ReadOnlySpan<byte> utf8 = ProfileIdBytes(response.Profile, id);
-        ReadOnlySpan<byte> signature = response.GetSignatureBytes();
-        int content = SecdsaDer.IntegerSize(ResponseKind)
-            + SecdsaDer.ElementSize(utf8.Length)
-            + SecdsaDer.ElementSize(DigestSizeBytes)
-            + SecdsaDer.ElementSize(signature.Length);
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, content);
-        SecdsaDer.WriteInteger(writer, ResponseKind);
-        SecdsaDer.WriteUtf8String(writer, utf8);
-        SecdsaDer.WriteOctetString(writer, response.GetPrimaryDigestBytes());
-        SecdsaDer.WriteOctetString(writer, signature);
+        AsnWriter asn = SecdsaDer.CreateWriter();
+        using(asn.PushSequence())
+        {
+            asn.WriteInteger(ResponseKind);
+            asn.WriteCharacterString(UniversalTagNumber.UTF8String, CheckedProfileId(response.Profile));
+            asn.WriteOctetString(response.GetPrimaryDigestBytes());
+            asn.WriteOctetString(response.GetSignatureBytes());
+        }
+
+        SecdsaDer.Emit(asn, writer);
     }
 
 
@@ -434,47 +429,53 @@ public static class SecdsaDerLayout
     }
 
 
-    /// <summary>Returns the size of a point vector as a SEQUENCE OF OCTET STRING, header included.</summary>
-    private static int PointsSize(P256PointVector vector) => SecdsaDer.ElementSize(vector.Count * PointElementSize);
-
-
-    /// <summary>Returns the size of a scalar vector as a SEQUENCE OF OCTET STRING, header included.</summary>
-    private static int ScalarsSize(P256ScalarVector vector) => SecdsaDer.ElementSize(vector.Count * ScalarElementSize);
-
-
-    /// <summary>Appends a point vector as a SEQUENCE OF OCTET STRING.</summary>
-    private static void WritePoints(LayoutWriter writer, P256PointVector vector)
+    /// <summary>Writes a point vector as a SEQUENCE OF OCTET STRING.</summary>
+    private static void WritePoints(AsnWriter asn, P256PointVector vector)
     {
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, vector.Count * PointElementSize);
-        for(int index = 0; index < vector.Count; index++)
+        using(asn.PushSequence())
         {
-            SecdsaDer.WriteOctetString(writer, vector.GetPointBytes(index));
+            for(int index = 0; index < vector.Count; index++)
+            {
+                asn.WriteOctetString(vector.GetPointBytes(index));
+            }
         }
     }
 
 
-    /// <summary>Appends a scalar vector as a SEQUENCE OF OCTET STRING.</summary>
-    private static void WriteScalars(LayoutWriter writer, P256ScalarVector vector)
+    /// <summary>Writes a scalar vector as a SEQUENCE OF OCTET STRING.</summary>
+    private static void WriteScalars(AsnWriter asn, P256ScalarVector vector)
     {
-        SecdsaDer.WriteHeader(writer, SecdsaDer.SequenceTag, vector.Count * ScalarElementSize);
-        for(int index = 0; index < vector.Count; index++)
+        using(asn.PushSequence())
         {
-            SecdsaDer.WriteOctetString(writer, vector.GetScalarBytes(index));
+            for(int index = 0; index < vector.Count; index++)
+            {
+                asn.WriteOctetString(vector.GetScalarBytes(index));
+            }
         }
     }
 
 
-    /// <summary>Reads the SEQUENCE of a vector and requires a non-empty whole number of elements of the given encoded size.</summary>
-    private static bool TryReadVector(ref ReadOnlySpan<byte> content, int elementSize, out ReadOnlySpan<byte> elements)
+    /// <summary>Counts the OCTET STRING elements of a vector body, requiring a non-empty run of elements of the given size and nothing else.</summary>
+    private static bool TryCountElements(ReadOnlySpan<byte> elements, int valueSize, out int count)
     {
-        return SecdsaDer.TryReadElement(ref content, SecdsaDer.SequenceTag, out elements)
-            && !elements.IsEmpty
-            && elements.Length % elementSize == 0;
+        count = 0;
+        ReadOnlySpan<byte> rest = elements;
+        while(!rest.IsEmpty)
+        {
+            if(!SecdsaDer.TryReadOctetString(ref rest, valueSize, out _))
+            {
+                return false;
+            }
+
+            count++;
+        }
+
+        return count > 0;
     }
 
 
-    /// <summary>Strips the OCTET STRING headers of equally sized elements into a contiguous buffer, checking every tag and length.</summary>
-    private static bool TryCollect(ReadOnlySpan<byte> elements, int elementSize, int valueSize, Span<byte> destination)
+    /// <summary>Copies the elements of a counted vector body into a contiguous buffer.</summary>
+    private static bool TryCollect(ReadOnlySpan<byte> elements, int valueSize, Span<byte> destination)
     {
         ReadOnlySpan<byte> rest = elements;
         for(int offset = 0; offset < destination.Length; offset += valueSize)
@@ -487,7 +488,7 @@ public static class SecdsaDerLayout
             value.CopyTo(destination[offset..]);
         }
 
-        return rest.IsEmpty && elements.Length == elementSize * (destination.Length / valueSize);
+        return rest.IsEmpty;
     }
 
 
@@ -506,8 +507,8 @@ public static class SecdsaDerLayout
     }
 
 
-    /// <summary>Encodes a profile identifier as UTF-8 into the buffer, requiring one to <see cref="MaxProfileIdBytes"/> bytes.</summary>
-    private static ReadOnlySpan<byte> ProfileIdBytes(SecdsaLayoutProfileId profile, Span<byte> buffer)
+    /// <summary>Returns the identifier text after requiring one to <see cref="MaxProfileIdBytes"/> UTF-8 bytes.</summary>
+    private static string CheckedProfileId(SecdsaLayoutProfileId profile)
     {
         int length = Encoding.UTF8.GetByteCount(profile.Identifier);
         if(length == 0 || length > MaxProfileIdBytes)
@@ -515,8 +516,6 @@ public static class SecdsaDerLayout
             throw new ArgumentException($"A profile identifier must be between 1 and {MaxProfileIdBytes} UTF-8 bytes.", nameof(profile));
         }
 
-        Encoding.UTF8.GetBytes(profile.Identifier, buffer);
-
-        return buffer[..length];
+        return profile.Identifier;
     }
 }

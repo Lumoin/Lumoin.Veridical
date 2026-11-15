@@ -29,6 +29,10 @@ internal sealed class SecdsaStandardLayoutTests
 
     private const byte DerIndefiniteLength = 0x80;
 
+    private const int DerLongFormFlag = 0x80;
+
+    private const byte FixedDigestByte = 0x11;
+
     private const byte DerEndOfContentsOctet = 0x00;
 
     private const byte CborIndefiniteArray = 0x9F;
@@ -464,7 +468,7 @@ internal sealed class SecdsaStandardLayoutTests
 
 
     [TestMethod]
-    public void CborOutputParsesWithTheIndependentCborReaderToTheSameFields()
+    public void CborOutputReadsBackFieldByFieldInTheDocumentedOrder()
     {
         using TransferableFixture fixture = TransferableFixture.Create("standard layouts cbor cross check");
         using IssuedChallenge issued = fixture.Issue(Cbor);
@@ -553,6 +557,102 @@ internal sealed class SecdsaStandardLayoutTests
             //The array head and the discriminator take two bytes; the index head follows.
             ReadOnlySpan<byte> indexHead = writer.WrittenBytes[2..];
             Assert.AreEqual(headSize, HeadLength(indexHead[0]));
+        }
+    }
+
+
+    [TestMethod]
+    public void ResponseEncodesToTheHandDerivedBytesUnderDerAndCbor()
+    {
+        using TransferableFixture fixture = TransferableFixture.Create("standard layouts fixed vectors");
+        byte[] expectedDer = Convert.FromHexString("302C020107" + "0C0170" + "0420" + new string('1', 64) + "0402AABB");
+        byte[] expectedCbor = Convert.FromHexString("84" + "07" + "6170" + "5820" + new string('1', 64) + "42AABB");
+        SecdsaLayoutProfileId id = new("p");
+        Span<byte> digestBytes = stackalloc byte[ProofDigest.SizeBytes];
+        digestBytes.Fill(FixedDigestByte);
+        ReadOnlySpan<byte> signature = [0xAA, 0xBB];
+        using ProofDigest digest = ProofDigest.FromCanonical(digestBytes, ProofDigestKind.Primary, fixture.Pool);
+        using TransferableResponse response = TransferableResponse.FromParts(digest, signature, id, fixture.Pool);
+
+        using LayoutWriter derBytes = new(fixture.Pool);
+        Der.EncodeResponse(response, derBytes);
+        Assert.AreSequenceEqual(expectedDer, derBytes.WrittenBytes.ToArray());
+        Assert.IsTrue(Der.DecodeResponse(expectedDer, fixture.Pool, out TransferableResponse? fromDer));
+        using(fromDer)
+        {
+            Assert.AreEqual(id, fromDer!.Profile);
+            Assert.IsTrue(fromDer.GetSignatureBytes().SequenceEqual(signature));
+        }
+
+        using LayoutWriter cborBytes = new(fixture.Pool);
+        Cbor.EncodeResponse(response, cborBytes);
+        Assert.AreSequenceEqual(expectedCbor, cborBytes.WrittenBytes.ToArray());
+        Assert.IsTrue(Cbor.DecodeResponse(expectedCbor, fixture.Pool, out TransferableResponse? fromCbor));
+        using(fromCbor)
+        {
+            Assert.AreEqual(id, fromCbor!.Profile);
+            Assert.IsTrue(fromCbor.GetSignatureBytes().SequenceEqual(signature));
+        }
+    }
+
+
+    [TestMethod]
+    public void ScalarVectorEncodesToTheHandDerivedBytesUnderDerAndCbor()
+    {
+        using TransferableFixture fixture = TransferableFixture.Create("standard layouts fixed vectors scalar");
+        string scalarHex = new string('0', 62) + "01";
+        byte[] expectedDer = Convert.FromHexString("3027" + "020109" + "3022" + "0420" + scalarHex);
+        byte[] expectedCbor = Convert.FromHexString("82" + "09" + "81" + "5820" + scalarHex);
+        Span<byte> scalar = stackalloc byte[P256ScalarVector.ScalarSizeBytes];
+        scalar[^1] = 1;
+        using P256ScalarVector vector = P256ScalarVector.FromCanonical(scalar, fixture.Pool);
+
+        using LayoutWriter derBytes = new(fixture.Pool);
+        Der.EncodeScalarVector(vector, derBytes);
+        Assert.AreSequenceEqual(expectedDer, derBytes.WrittenBytes.ToArray());
+        Assert.IsTrue(Der.DecodeScalarVector(expectedDer, fixture.Pool, out P256ScalarVector? fromDer));
+        fromDer!.Dispose();
+
+        using LayoutWriter cborBytes = new(fixture.Pool);
+        Cbor.EncodeScalarVector(vector, cborBytes);
+        Assert.AreSequenceEqual(expectedCbor, cborBytes.WrittenBytes.ToArray());
+        Assert.IsTrue(Cbor.DecodeScalarVector(expectedCbor, fixture.Pool, out P256ScalarVector? fromCbor));
+        fromCbor!.Dispose();
+    }
+
+
+    [TestMethod]
+    public void DerivationIndexEncodesToTheHandDerivedIntegerUnderDerAndCbor()
+    {
+        using TransferableFixture fixture = TransferableFixture.Create("standard layouts fixed index");
+        (int Index, string DerInteger, string CborHead)[] cases =
+        [
+            (0, "020100", "00"),
+            (23, "020117", "17"),
+            (127, "02017F", "187F"),
+            (128, "02020080", "1880"),
+            (255, "020200FF", "18FF"),
+            (256, "02020100", "190100"),
+            (32768, "0203008000", "198000"),
+            (65536, "020301" + "0000", "1A00010000"),
+            (int.MaxValue, "02047FFFFFFF", "1A7FFFFFFF")
+        ];
+
+        foreach((int index, string derInteger, string cborHead) in cases)
+        {
+            using LayoutWriter derBytes = new(fixture.Pool);
+            Der.EncodeDerivationInput(index, fixture.Statement, derBytes);
+
+            //Outer SEQUENCE header, then the discriminator INTEGER 1, then the index.
+            string derHex = Convert.ToHexString(derBytes.WrittenBytes);
+            int headerChars = (derBytes.WrittenBytes[1] < DerLongFormFlag ? 2 : 2 + (derBytes.WrittenBytes[1] & ~DerLongFormFlag)) * 2;
+            Assert.IsTrue(derHex[headerChars..].StartsWith("020101" + derInteger, StringComparison.Ordinal), $"Index {index} under DER.");
+
+            using LayoutWriter cborBytes = new(fixture.Pool);
+            Cbor.EncodeDerivationInput(index, fixture.Statement, cborBytes);
+
+            //Array head 0x85, discriminator 1, then the index head.
+            Assert.IsTrue(Convert.ToHexString(cborBytes.WrittenBytes).StartsWith("8501" + cborHead, StringComparison.Ordinal), $"Index {index} under CBOR.");
         }
     }
 

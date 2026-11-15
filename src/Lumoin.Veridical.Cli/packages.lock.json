@@ -59,6 +59,27 @@
         "resolved": "3.0.0",
         "contentHash": "swNpSTl0iYJeBuvYYfaY+VxzZ5YC8wklwkqDCNOq2aTQqJzjauJfh/O3Zw93nwxspWrxvZTjT45f8VPR0ParEA=="
       },
+      "Lumoin.Veritas.Cid": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "C2GHcW6XUevcayjLLTO2tk/HG0mgRXA2e43111/gr7ewTxM1W35ExIiFyUMMrqKNROpsHRT9h3dks/PWtjHqcw==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
+      "Lumoin.Veritas.Core": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "xgxmAtomuQa5jPmJtKYEtvTGh39mMoksX2uN23U2JbqMmuGUdK1uVQY/PsisXt50iZ/cZs4CTouIgMNOO4EBLQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
       "Microsoft.Extensions.AI.Abstractions": {
         "type": "Transitive",
         "resolved": "10.11.0",
@@ -222,6 +243,16 @@
         "resolved": "11.0.0",
         "contentHash": "lKore9DXE1q8o6ss6/M7++xBpn2FMS0axaAypBspYLqY5OT1ZRPLzFGwF18l61aXfXTPpwkx5tYh4zMUHoAv/g=="
       },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "OzKDcIRkeNJeC8qAsbn8yJXnfTLP1dtkWILe+T56Gf/z+IkAASi7sMqLqJQat08j5z/mRN5xVtoAwbkMNMoBUQ=="
+      },
+      "System.Threading.RateLimiting": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "7+n9cNFpC7VIJzBwSyxs6DHNGLP330dJVeeOSdIJt4TiwwazyEvvRuhWLORT41mRxQVGKhiFIZ+In4JKFWS9Ig=="
+      },
       "lumoin.veridical.analysis": {
         "type": "Project",
         "dependencies": {
@@ -266,7 +297,8 @@
       "lumoin.veridical.secdsa": {
         "type": "Project",
         "dependencies": {
-          "Lumoin.Veridical.Core": "[0.0.0, )"
+          "Lumoin.Veridical.Core": "[0.0.0, )",
+          "Lumoin.Veritas.Cbor": "[0.0.1, )"
         }
       },
       "Lumoin.Base": {
@@ -274,6 +306,19 @@
         "requested": "[0.0.15, )",
         "resolved": "0.0.15",
         "contentHash": "OQyV4xge7DR+EGO0P8k+Qdzk56qhpPlONLny0uYuPGuwDROWNZZguE5Y1j7Ut1gF/cmiIkeJPJLz5lJ+5Kplig=="
+      },
+      "Lumoin.Veritas.Cbor": {
+        "type": "CentralTransitive",
+        "requested": "[0.0.1, )",
+        "resolved": "0.0.1",
+        "contentHash": "8GsdA6sh/k3TJ/4EMz4xoMi8iJ/RXtEOgn6hHk4lz5ddqy4WLdmrexPIC7hBXyUOQZr3wf8IPTcJyD1wWbOqaQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Cid": "0.0.1",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
       }
     }
   }

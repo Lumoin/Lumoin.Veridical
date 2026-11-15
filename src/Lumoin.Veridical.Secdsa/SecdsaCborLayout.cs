@@ -1,7 +1,9 @@
 using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
+using Lumoin.Veritas.Cbor;
 using System;
 using System.Buffers;
+using System.Security.Cryptography;
 using System.Text;
 using static Lumoin.Veridical.Secdsa.P256PointValidation;
 
@@ -9,7 +11,8 @@ namespace Lumoin.Veridical.Secdsa;
 
 /// <summary>
 /// A <see cref="SecdsaLayoutProfile"/> that writes every structure as CBOR (RFC 8949) in the core deterministic
-/// encoding of section 4.2: definite lengths and shortest-form heads, arrays for structures and vectors, byte
+/// encoding of section 4.2, produced and read by Lumoin.Veritas.Cbor in its deterministic conformance mode: definite
+/// lengths and shortest-form heads, arrays for structures and vectors, byte
 /// strings for points, scalars, digests, seeds, additional data and signatures, and unsigned integers for the index
 /// and for the structure discriminator.
 /// </summary>
@@ -54,9 +57,11 @@ namespace Lumoin.Veridical.Secdsa;
 /// <para>
 /// <b>Injective.</b> Every item is self-delimiting with a definite length, so moving a boundary between adjacent
 /// variable-length fields changes a length head; the leading discriminator differs for every structure, so two
-/// different structure kinds never encode to the same bytes. The decoders are strict: they reject a head that is
-/// not the shortest form of its value, an indefinite length, a wrong major type or element count, a length beyond
-/// the input, an invalid point and every trailing byte.
+/// different structure kinds never encode to the same bytes. The decoders are strict: they reject a wrong major type
+/// or element count, a length beyond the input, an invalid point and every trailing byte, and, because the
+/// Lumoin.Veritas.Cbor reader does not itself refuse a head that is not the shortest form of its value, each decoder
+/// re-encodes what it decoded and accepts the input only when the bytes are identical, which rules out every
+/// non-shortest head and every other non-deterministic form.
 /// </para>
 /// <para>
 /// <b>Profile identity.</b> A challenge or response container carries the identifier of the profile its signature
@@ -112,9 +117,11 @@ public static class SecdsaCborLayout
 
     private const int ResponseElements = 4;
 
-    private static int PointItemSize { get; } = SecdsaCbor.HeadSize(PointSizeBytes) + PointSizeBytes;
+    private const int SmallByteStringHeadBytes = 2;
 
-    private static int ScalarItemSize { get; } = SecdsaCbor.HeadSize(ScalarSizeBytes) + ScalarSizeBytes;
+    private const int PointItemBytes = SmallByteStringHeadBytes + PointSizeBytes;
+
+    private const int ScalarItemBytes = SmallByteStringHeadBytes + ScalarSizeBytes;
 
 
     /// <summary>The profile.</summary>
@@ -142,9 +149,11 @@ public static class SecdsaCborLayout
     /// <summary>Encodes a point vector as <c>point-vector-structure</c>.</summary>
     private static void EncodePointVector(P256PointVector vector, LayoutWriter writer)
     {
-        SecdsaCbor.WriteArrayHead(writer, VectorStructureElements);
-        SecdsaCbor.WriteUnsigned(writer, PointVectorKind);
-        WritePoints(writer, vector);
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(VectorStructureElements);
+        cbor.WriteUInt64(PointVectorKind);
+        WritePoints(cbor, vector);
+        cbor.WriteEndArray();
     }
 
 
@@ -152,32 +161,53 @@ public static class SecdsaCborLayout
     private static bool DecodePointVector(ReadOnlySpan<byte> encoded, BaseMemoryPool pool, out P256PointVector? value)
     {
         value = null;
-        ReadOnlySpan<byte> rest = encoded;
-        if(!SecdsaCbor.TryOpenStructure(ref rest, VectorStructureElements, PointVectorKind)
-            || !TryReadVectorHead(ref rest, PointItemSize, out int count))
+        using IMemoryOwner<byte> input = SecdsaCbor.Rent(encoded, pool);
+        try
+        {
+            CborReader reader = SecdsaCbor.CreateReader(input.Memory[..encoded.Length]);
+            if(!SecdsaCbor.TryOpenStructure(reader, VectorStructureElements, PointVectorKind)
+                || !SecdsaCbor.TryReadVectorHead(reader, encoded.Length / PointItemBytes, out int count))
+            {
+                return false;
+            }
+
+            using IMemoryOwner<byte> points = pool.Rent(count * PointSizeBytes);
+            Span<byte> destination = points.Memory.Span[..(count * PointSizeBytes)];
+            if(!TryCollect(reader, PointSizeBytes, destination)
+                || !SecdsaCbor.TryCloseStructure(reader, encoded.Length)
+                || !AllFinitePoints(destination))
+            {
+                return false;
+            }
+
+            value = P256PointVector.FromCanonical(destination, pool);
+            using LayoutWriter canonical = new(pool);
+            EncodePointVector(value, canonical);
+            if(!CryptographicOperations.FixedTimeEquals(canonical.WrittenBytes, encoded))
+            {
+                value.Dispose();
+                value = null;
+
+                return false;
+            }
+
+            return true;
+        }
+        catch(Exception exception) when(SecdsaCbor.IsMalformation(exception))
         {
             return false;
         }
-
-        using IMemoryOwner<byte> points = pool.Rent(count * PointSizeBytes);
-        Span<byte> destination = points.Memory.Span[..(count * PointSizeBytes)];
-        if(!TryCollect(ref rest, PointSizeBytes, destination) || !rest.IsEmpty || !AllFinitePoints(destination))
-        {
-            return false;
-        }
-
-        value = P256PointVector.FromCanonical(destination, pool);
-
-        return true;
     }
 
 
     /// <summary>Encodes a scalar vector as <c>scalar-vector-structure</c>.</summary>
     private static void EncodeScalarVector(P256ScalarVector vector, LayoutWriter writer)
     {
-        SecdsaCbor.WriteArrayHead(writer, VectorStructureElements);
-        SecdsaCbor.WriteUnsigned(writer, ScalarVectorKind);
-        WriteScalars(writer, vector);
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(VectorStructureElements);
+        cbor.WriteUInt64(ScalarVectorKind);
+        WriteScalars(cbor, vector);
+        cbor.WriteEndArray();
     }
 
 
@@ -185,37 +215,58 @@ public static class SecdsaCborLayout
     private static bool DecodeScalarVector(ReadOnlySpan<byte> encoded, BaseMemoryPool pool, out P256ScalarVector? value)
     {
         value = null;
-        ReadOnlySpan<byte> rest = encoded;
-        if(!SecdsaCbor.TryOpenStructure(ref rest, VectorStructureElements, ScalarVectorKind)
-            || !TryReadVectorHead(ref rest, ScalarItemSize, out int count))
-        {
-            return false;
-        }
-
-        using IMemoryOwner<byte> scalars = pool.Rent(count * ScalarSizeBytes);
-        Span<byte> destination = scalars.Memory.Span[..(count * ScalarSizeBytes)];
+        using IMemoryOwner<byte> input = SecdsaCbor.Rent(encoded, pool);
         try
         {
-            if(!TryCollect(ref rest, ScalarSizeBytes, destination) || !rest.IsEmpty)
+            CborReader reader = SecdsaCbor.CreateReader(input.Memory[..encoded.Length]);
+            if(!SecdsaCbor.TryOpenStructure(reader, VectorStructureElements, ScalarVectorKind)
+                || !SecdsaCbor.TryReadVectorHead(reader, encoded.Length / ScalarItemBytes, out int count))
             {
                 return false;
             }
 
-            for(int offset = 0; offset < destination.Length; offset += ScalarSizeBytes)
+            using IMemoryOwner<byte> scalars = pool.Rent(count * ScalarSizeBytes);
+            Span<byte> destination = scalars.Memory.Span[..(count * ScalarSizeBytes)];
+            try
             {
-                if(P256ScalarValidation.IsOutOfRange(destination.Slice(offset, ScalarSizeBytes)))
+                if(!TryCollect(reader, ScalarSizeBytes, destination) || !SecdsaCbor.TryCloseStructure(reader, encoded.Length))
                 {
                     return false;
                 }
+
+                for(int offset = 0; offset < destination.Length; offset += ScalarSizeBytes)
+                {
+                    if(P256ScalarValidation.IsOutOfRange(destination.Slice(offset, ScalarSizeBytes)))
+                    {
+                        return false;
+                    }
+                }
+
+                value = P256ScalarVector.FromCanonical(destination, pool);
+                using LayoutWriter canonical = new(pool);
+                EncodeScalarVector(value, canonical);
+                if(!CryptographicOperations.FixedTimeEquals(canonical.WrittenBytes, encoded))
+                {
+                    value.Dispose();
+                    value = null;
+
+                    return false;
+                }
+
+                return true;
             }
-
-            value = P256ScalarVector.FromCanonical(destination, pool);
-
-            return true;
+            finally
+            {
+                destination.Clear();
+            }
+        }
+        catch(Exception exception) when(SecdsaCbor.IsMalformation(exception))
+        {
+            return false;
         }
         finally
         {
-            destination.Clear();
+            input.Memory.Span.Clear();
         }
     }
 
@@ -224,49 +275,57 @@ public static class SecdsaCborLayout
     private static void EncodeDerivationInput(int index, ProofStatement statement, LayoutWriter writer)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        SecdsaCbor.WriteArrayHead(writer, DerivationElements);
-        SecdsaCbor.WriteUnsigned(writer, DerivationKind);
-        SecdsaCbor.WriteUnsigned(writer, (uint)index);
-        WritePoints(writer, statement.Generators);
-        WritePoints(writer, statement.PublicKeys);
-        SecdsaCbor.WriteByteString(writer, statement.AdditionalAuthenticatedData.GetBytes());
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(DerivationElements);
+        cbor.WriteUInt64(DerivationKind);
+        cbor.WriteUInt64((ulong)index);
+        WritePoints(cbor, statement.Generators);
+        WritePoints(cbor, statement.PublicKeys);
+        cbor.WriteByteString(statement.AdditionalAuthenticatedData.GetBytes());
+        cbor.WriteEndArray();
     }
 
 
     /// <summary>Encodes <c>challenge-scope</c>.</summary>
     private static void EncodeChallengeScope(G1Point ephemeralPublicKey, ProofStatement statement, ProofDigest secondaryDigest, LayoutWriter writer)
     {
-        SecdsaCbor.WriteArrayHead(writer, ChallengeScopeElements);
-        SecdsaCbor.WriteUnsigned(writer, ChallengeScopeKind);
-        SecdsaCbor.WriteByteString(writer, ephemeralPublicKey.AsReadOnlySpan());
-        WritePoints(writer, statement.Generators);
-        WritePoints(writer, statement.PublicKeys);
-        SecdsaCbor.WriteByteString(writer, secondaryDigest.GetBytes());
-        SecdsaCbor.WriteByteString(writer, statement.AdditionalAuthenticatedData.GetBytes());
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(ChallengeScopeElements);
+        cbor.WriteUInt64(ChallengeScopeKind);
+        cbor.WriteByteString(ephemeralPublicKey.AsReadOnlySpan());
+        WritePoints(cbor, statement.Generators);
+        WritePoints(cbor, statement.PublicKeys);
+        cbor.WriteByteString(secondaryDigest.GetBytes());
+        cbor.WriteByteString(statement.AdditionalAuthenticatedData.GetBytes());
+        cbor.WriteEndArray();
     }
 
 
     /// <summary>Encodes <c>response-scope</c>.</summary>
     private static void EncodeResponseScope(G1Point ephemeralPublicKey, ProofStatement statement, ProofDigest secondaryDigest, ProofDigest primaryDigest, LayoutWriter writer)
     {
-        SecdsaCbor.WriteArrayHead(writer, ResponseScopeElements);
-        SecdsaCbor.WriteUnsigned(writer, ResponseScopeKind);
-        SecdsaCbor.WriteByteString(writer, ephemeralPublicKey.AsReadOnlySpan());
-        WritePoints(writer, statement.Generators);
-        WritePoints(writer, statement.PublicKeys);
-        SecdsaCbor.WriteByteString(writer, secondaryDigest.GetBytes());
-        SecdsaCbor.WriteByteString(writer, statement.AdditionalAuthenticatedData.GetBytes());
-        SecdsaCbor.WriteByteString(writer, primaryDigest.GetBytes());
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(ResponseScopeElements);
+        cbor.WriteUInt64(ResponseScopeKind);
+        cbor.WriteByteString(ephemeralPublicKey.AsReadOnlySpan());
+        WritePoints(cbor, statement.Generators);
+        WritePoints(cbor, statement.PublicKeys);
+        cbor.WriteByteString(secondaryDigest.GetBytes());
+        cbor.WriteByteString(statement.AdditionalAuthenticatedData.GetBytes());
+        cbor.WriteByteString(primaryDigest.GetBytes());
+        cbor.WriteEndArray();
     }
 
 
     /// <summary>Encodes <c>seed-payload</c>.</summary>
     private static void EncodeSeedPayload(ProofSeed seed, AdditionalData additionalSecretData, LayoutWriter writer)
     {
-        SecdsaCbor.WriteArrayHead(writer, SeedPayloadElements);
-        SecdsaCbor.WriteUnsigned(writer, SeedPayloadKind);
-        SecdsaCbor.WriteByteString(writer, seed.GetBytes());
-        SecdsaCbor.WriteByteString(writer, additionalSecretData.GetBytes());
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(SeedPayloadElements);
+        cbor.WriteUInt64(SeedPayloadKind);
+        cbor.WriteByteString(seed.GetBytes());
+        cbor.WriteByteString(additionalSecretData.GetBytes());
+        cbor.WriteEndArray();
     }
 
 
@@ -275,30 +334,55 @@ public static class SecdsaCborLayout
     {
         seed = null;
         additionalSecretData = null;
-        ReadOnlySpan<byte> rest = encoded;
-        if(!SecdsaCbor.TryOpenStructure(ref rest, SeedPayloadElements, SeedPayloadKind)
-            || !SecdsaCbor.TryReadByteString(ref rest, ProofSeed.SizeBytes, out ReadOnlySpan<byte> seedBytes)
-            || !SecdsaCbor.TryReadByteString(ref rest, out ReadOnlySpan<byte> asd)
-            || !rest.IsEmpty)
+        using IMemoryOwner<byte> input = SecdsaCbor.Rent(encoded, pool);
+        try
+        {
+            CborReader reader = SecdsaCbor.CreateReader(input.Memory[..encoded.Length]);
+            if(!SecdsaCbor.TryOpenStructure(reader, SeedPayloadElements, SeedPayloadKind)
+                || !SecdsaCbor.TryReadByteString(reader, ProofSeed.SizeBytes, out ReadOnlySpan<byte> seedBytes)
+                || !SecdsaCbor.TryReadByteString(reader, out ReadOnlySpan<byte> asd)
+                || !SecdsaCbor.TryCloseStructure(reader, encoded.Length))
+            {
+                return false;
+            }
+
+            seed = ProofSeed.FromCanonical(seedBytes, pool);
+            additionalSecretData = AdditionalData.FromCanonical(asd, AdditionalDataRole.Secret, pool);
+            using LayoutWriter canonical = new(pool);
+            EncodeSeedPayload(seed, additionalSecretData, canonical);
+            if(!CryptographicOperations.FixedTimeEquals(canonical.WrittenBytes, encoded))
+            {
+                seed.Dispose();
+                additionalSecretData.Dispose();
+                seed = null;
+                additionalSecretData = null;
+
+                return false;
+            }
+
+            return true;
+        }
+        catch(Exception exception) when(SecdsaCbor.IsMalformation(exception))
         {
             return false;
         }
-
-        seed = ProofSeed.FromCanonical(seedBytes, pool);
-        additionalSecretData = AdditionalData.FromCanonical(asd, AdditionalDataRole.Secret, pool);
-
-        return true;
+        finally
+        {
+            input.Memory.Span.Clear();
+        }
     }
 
 
     /// <summary>Encodes <c>ciphertext</c>.</summary>
     private static void EncodeCiphertext(EciesCiphertext ciphertext, LayoutWriter writer)
     {
-        SecdsaCbor.WriteArrayHead(writer, CiphertextElements);
-        SecdsaCbor.WriteUnsigned(writer, CiphertextKind);
-        SecdsaCbor.WriteByteString(writer, ciphertext.GetEphemeralPublicKeyBytes());
-        SecdsaCbor.WriteByteString(writer, ciphertext.GetAuthenticationTagBytes());
-        SecdsaCbor.WriteByteString(writer, ciphertext.GetEncryptedBytes());
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(CiphertextElements);
+        cbor.WriteUInt64(CiphertextKind);
+        cbor.WriteByteString(ciphertext.GetEphemeralPublicKeyBytes());
+        cbor.WriteByteString(ciphertext.GetAuthenticationTagBytes());
+        cbor.WriteByteString(ciphertext.GetEncryptedBytes());
+        cbor.WriteEndArray();
     }
 
 
@@ -306,34 +390,52 @@ public static class SecdsaCborLayout
     private static bool DecodeCiphertext(ReadOnlySpan<byte> encoded, EciesParameterSet parameters, BaseMemoryPool pool, out EciesCiphertext? ciphertext)
     {
         ciphertext = null;
-        ReadOnlySpan<byte> rest = encoded;
-        if(!SecdsaCbor.TryOpenStructure(ref rest, CiphertextElements, CiphertextKind)
-            || !SecdsaCbor.TryReadByteString(ref rest, PointSizeBytes, out ReadOnlySpan<byte> ephemeral)
-            || !HasFinitePointShape(ephemeral)
-            || !SecdsaCbor.TryReadByteString(ref rest, parameters.TagSizeBytes, out ReadOnlySpan<byte> tag)
-            || !SecdsaCbor.TryReadByteString(ref rest, out ReadOnlySpan<byte> encrypted)
-            || !rest.IsEmpty)
+        using IMemoryOwner<byte> input = SecdsaCbor.Rent(encoded, pool);
+        try
+        {
+            CborReader reader = SecdsaCbor.CreateReader(input.Memory[..encoded.Length]);
+            if(!SecdsaCbor.TryOpenStructure(reader, CiphertextElements, CiphertextKind)
+                || !SecdsaCbor.TryReadByteString(reader, PointSizeBytes, out ReadOnlySpan<byte> ephemeral)
+                || !HasFinitePointShape(ephemeral)
+                || !SecdsaCbor.TryReadByteString(reader, parameters.TagSizeBytes, out ReadOnlySpan<byte> tag)
+                || !SecdsaCbor.TryReadByteString(reader, out ReadOnlySpan<byte> encrypted)
+                || !SecdsaCbor.TryCloseStructure(reader, encoded.Length))
+            {
+                return false;
+            }
+
+            ciphertext = EciesCiphertext.FromParts(ephemeral, tag, encrypted, parameters, pool);
+            using LayoutWriter canonical = new(pool);
+            EncodeCiphertext(ciphertext, canonical);
+            if(!CryptographicOperations.FixedTimeEquals(canonical.WrittenBytes, encoded))
+            {
+                ciphertext.Dispose();
+                ciphertext = null;
+
+                return false;
+            }
+
+            return true;
+        }
+        catch(Exception exception) when(SecdsaCbor.IsMalformation(exception))
         {
             return false;
         }
-
-        ciphertext = EciesCiphertext.FromParts(ephemeral, tag, encrypted, parameters, pool);
-
-        return true;
     }
 
 
     /// <summary>Encodes <c>challenge</c>.</summary>
     private static void EncodeChallenge(TransferableChallenge challenge, LayoutWriter writer)
     {
-        Span<byte> id = stackalloc byte[MaxProfileIdBytes];
-        SecdsaCbor.WriteArrayHead(writer, ChallengeElements);
-        SecdsaCbor.WriteUnsigned(writer, ChallengeKind);
-        SecdsaCbor.WriteTextString(writer, ProfileIdBytes(challenge.Profile, id));
-        SecdsaCbor.WriteByteString(writer, challenge.GetEphemeralPublicKeyBytes());
-        SecdsaCbor.WriteByteString(writer, challenge.GetSecondaryDigestBytes());
-        SecdsaCbor.WriteByteString(writer, challenge.GetAdditionalAuthenticatedDataBytes());
-        SecdsaCbor.WriteByteString(writer, challenge.GetSignatureBytes());
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(ChallengeElements);
+        cbor.WriteUInt64(ChallengeKind);
+        cbor.WriteTextString(CheckedProfileId(challenge.Profile));
+        cbor.WriteByteString(challenge.GetEphemeralPublicKeyBytes());
+        cbor.WriteByteString(challenge.GetSecondaryDigestBytes());
+        cbor.WriteByteString(challenge.GetAdditionalAuthenticatedDataBytes());
+        cbor.WriteByteString(challenge.GetSignatureBytes());
+        cbor.WriteEndArray();
     }
 
 
@@ -341,39 +443,57 @@ public static class SecdsaCborLayout
     private static bool DecodeChallenge(ReadOnlySpan<byte> encoded, BaseMemoryPool pool, out TransferableChallenge? value)
     {
         value = null;
-        ReadOnlySpan<byte> rest = encoded;
-        if(!SecdsaCbor.TryOpenStructure(ref rest, ChallengeElements, ChallengeKind)
-            || !SecdsaCbor.TryReadTextString(ref rest, MaxProfileIdBytes, out string profile)
-            || !SecdsaCbor.TryReadByteString(ref rest, PointSizeBytes, out ReadOnlySpan<byte> ephemeral)
-            || !HasFinitePointShape(ephemeral)
-            || !SecdsaCbor.TryReadByteString(ref rest, DigestSizeBytes, out ReadOnlySpan<byte> secondary)
-            || !SecdsaCbor.TryReadByteString(ref rest, out ReadOnlySpan<byte> aad)
-            || !SecdsaCbor.TryReadByteString(ref rest, out ReadOnlySpan<byte> signature)
-            || !rest.IsEmpty
-            || signature.IsEmpty
-            || signature.Length > TransferableProofAlgorithm.MaxSignatureSizeBytes)
+        using IMemoryOwner<byte> input = SecdsaCbor.Rent(encoded, pool);
+        try
+        {
+            CborReader reader = SecdsaCbor.CreateReader(input.Memory[..encoded.Length]);
+            if(!SecdsaCbor.TryOpenStructure(reader, ChallengeElements, ChallengeKind)
+                || !SecdsaCbor.TryReadTextString(reader, MaxProfileIdBytes, out string profile)
+                || !SecdsaCbor.TryReadByteString(reader, PointSizeBytes, out ReadOnlySpan<byte> ephemeral)
+                || !HasFinitePointShape(ephemeral)
+                || !SecdsaCbor.TryReadByteString(reader, DigestSizeBytes, out ReadOnlySpan<byte> secondary)
+                || !SecdsaCbor.TryReadByteString(reader, out ReadOnlySpan<byte> aad)
+                || !SecdsaCbor.TryReadByteString(reader, out ReadOnlySpan<byte> signature)
+                || !SecdsaCbor.TryCloseStructure(reader, encoded.Length)
+                || signature.IsEmpty
+                || signature.Length > TransferableProofAlgorithm.MaxSignatureSizeBytes)
+            {
+                return false;
+            }
+
+            using G1Point point = G1Point.FromCanonical(ephemeral, CurveParameterSet.P256, pool);
+            using ProofDigest digest = ProofDigest.FromCanonical(secondary, ProofDigestKind.Secondary, pool);
+            using AdditionalData data = AdditionalData.FromCanonical(aad, AdditionalDataRole.Authenticated, pool);
+            value = TransferableChallenge.FromParts(point, digest, data, signature, new SecdsaLayoutProfileId(profile), pool);
+            using LayoutWriter canonical = new(pool);
+            EncodeChallenge(value, canonical);
+            if(!CryptographicOperations.FixedTimeEquals(canonical.WrittenBytes, encoded))
+            {
+                value.Dispose();
+                value = null;
+
+                return false;
+            }
+
+            return true;
+        }
+        catch(Exception exception) when(SecdsaCbor.IsMalformation(exception))
         {
             return false;
         }
-
-        using G1Point point = G1Point.FromCanonical(ephemeral, CurveParameterSet.P256, pool);
-        using ProofDigest digest = ProofDigest.FromCanonical(secondary, ProofDigestKind.Secondary, pool);
-        using AdditionalData data = AdditionalData.FromCanonical(aad, AdditionalDataRole.Authenticated, pool);
-        value = TransferableChallenge.FromParts(point, digest, data, signature, new SecdsaLayoutProfileId(profile), pool);
-
-        return true;
     }
 
 
     /// <summary>Encodes <c>response</c>.</summary>
     private static void EncodeResponse(TransferableResponse response, LayoutWriter writer)
     {
-        Span<byte> id = stackalloc byte[MaxProfileIdBytes];
-        SecdsaCbor.WriteArrayHead(writer, ResponseElements);
-        SecdsaCbor.WriteUnsigned(writer, ResponseKind);
-        SecdsaCbor.WriteTextString(writer, ProfileIdBytes(response.Profile, id));
-        SecdsaCbor.WriteByteString(writer, response.GetPrimaryDigestBytes());
-        SecdsaCbor.WriteByteString(writer, response.GetSignatureBytes());
+        CborWriter cbor = SecdsaCbor.CreateWriter(writer);
+        cbor.WriteStartArray(ResponseElements);
+        cbor.WriteUInt64(ResponseKind);
+        cbor.WriteTextString(CheckedProfileId(response.Profile));
+        cbor.WriteByteString(response.GetPrimaryDigestBytes());
+        cbor.WriteByteString(response.GetSignatureBytes());
+        cbor.WriteEndArray();
     }
 
 
@@ -381,74 +501,82 @@ public static class SecdsaCborLayout
     private static bool DecodeResponse(ReadOnlySpan<byte> encoded, BaseMemoryPool pool, out TransferableResponse? value)
     {
         value = null;
-        ReadOnlySpan<byte> rest = encoded;
-        if(!SecdsaCbor.TryOpenStructure(ref rest, ResponseElements, ResponseKind)
-            || !SecdsaCbor.TryReadTextString(ref rest, MaxProfileIdBytes, out string profile)
-            || !SecdsaCbor.TryReadByteString(ref rest, DigestSizeBytes, out ReadOnlySpan<byte> primary)
-            || !SecdsaCbor.TryReadByteString(ref rest, out ReadOnlySpan<byte> signature)
-            || !rest.IsEmpty
-            || signature.IsEmpty
-            || signature.Length > TransferableProofAlgorithm.MaxSignatureSizeBytes)
+        using IMemoryOwner<byte> input = SecdsaCbor.Rent(encoded, pool);
+        try
+        {
+            CborReader reader = SecdsaCbor.CreateReader(input.Memory[..encoded.Length]);
+            if(!SecdsaCbor.TryOpenStructure(reader, ResponseElements, ResponseKind)
+                || !SecdsaCbor.TryReadTextString(reader, MaxProfileIdBytes, out string profile)
+                || !SecdsaCbor.TryReadByteString(reader, DigestSizeBytes, out ReadOnlySpan<byte> primary)
+                || !SecdsaCbor.TryReadByteString(reader, out ReadOnlySpan<byte> signature)
+                || !SecdsaCbor.TryCloseStructure(reader, encoded.Length)
+                || signature.IsEmpty
+                || signature.Length > TransferableProofAlgorithm.MaxSignatureSizeBytes)
+            {
+                return false;
+            }
+
+            using ProofDigest digest = ProofDigest.FromCanonical(primary, ProofDigestKind.Primary, pool);
+            value = TransferableResponse.FromParts(digest, signature, new SecdsaLayoutProfileId(profile), pool);
+            using LayoutWriter canonical = new(pool);
+            EncodeResponse(value, canonical);
+            if(!CryptographicOperations.FixedTimeEquals(canonical.WrittenBytes, encoded))
+            {
+                value.Dispose();
+                value = null;
+
+                return false;
+            }
+
+            return true;
+        }
+        catch(Exception exception) when(SecdsaCbor.IsMalformation(exception))
         {
             return false;
         }
-
-        using ProofDigest digest = ProofDigest.FromCanonical(primary, ProofDigestKind.Primary, pool);
-        value = TransferableResponse.FromParts(digest, signature, new SecdsaLayoutProfileId(profile), pool);
-
-        return true;
     }
 
 
-    /// <summary>Appends a point vector as an array of byte strings.</summary>
-    private static void WritePoints(LayoutWriter writer, P256PointVector vector)
+    /// <summary>Writes a point vector as an array of byte strings.</summary>
+    private static void WritePoints(CborWriter cbor, P256PointVector vector)
     {
-        SecdsaCbor.WriteArrayHead(writer, vector.Count);
+        cbor.WriteStartArray(vector.Count);
         for(int index = 0; index < vector.Count; index++)
         {
-            SecdsaCbor.WriteByteString(writer, vector.GetPointBytes(index));
+            cbor.WriteByteString(vector.GetPointBytes(index));
         }
+
+        cbor.WriteEndArray();
     }
 
 
-    /// <summary>Appends a scalar vector as an array of byte strings.</summary>
-    private static void WriteScalars(LayoutWriter writer, P256ScalarVector vector)
+    /// <summary>Writes a scalar vector as an array of byte strings.</summary>
+    private static void WriteScalars(CborWriter cbor, P256ScalarVector vector)
     {
-        SecdsaCbor.WriteArrayHead(writer, vector.Count);
+        cbor.WriteStartArray(vector.Count);
         for(int index = 0; index < vector.Count; index++)
         {
-            SecdsaCbor.WriteByteString(writer, vector.GetScalarBytes(index));
+            cbor.WriteByteString(vector.GetScalarBytes(index));
         }
+
+        cbor.WriteEndArray();
     }
 
 
-    /// <summary>Reads the head of a vector array and requires a non-empty count that the remaining input can hold.</summary>
-    private static bool TryReadVectorHead(ref ReadOnlySpan<byte> rest, int itemSize, out int count)
-    {
-        count = 0;
-        if(!SecdsaCbor.TryReadHead(ref rest, SecdsaCbor.ArrayMajor, out uint elements) || elements == 0 || elements > (uint)(rest.Length / itemSize))
-        {
-            return false;
-        }
-
-        count = (int)elements;
-
-        return true;
-    }
-
-
-    /// <summary>Reads equally sized byte strings into a contiguous buffer, checking every head and length.</summary>
-    private static bool TryCollect(ref ReadOnlySpan<byte> rest, int valueSize, Span<byte> destination)
+    /// <summary>Reads the byte strings of an open vector array into a contiguous buffer and closes the array.</summary>
+    private static bool TryCollect(CborReader reader, int valueSize, Span<byte> destination)
     {
         for(int offset = 0; offset < destination.Length; offset += valueSize)
         {
-            if(!SecdsaCbor.TryReadByteString(ref rest, valueSize, out ReadOnlySpan<byte> value))
+            if(!SecdsaCbor.TryReadByteString(reader, valueSize, out ReadOnlySpan<byte> value))
             {
                 return false;
             }
 
             value.CopyTo(destination[offset..]);
         }
+
+        reader.ReadEndArray();
 
         return true;
     }
@@ -469,8 +597,8 @@ public static class SecdsaCborLayout
     }
 
 
-    /// <summary>Encodes a profile identifier as UTF-8 into the buffer, requiring one to <see cref="MaxProfileIdBytes"/> bytes.</summary>
-    private static ReadOnlySpan<byte> ProfileIdBytes(SecdsaLayoutProfileId profile, Span<byte> buffer)
+    /// <summary>Returns the identifier text after requiring one to <see cref="MaxProfileIdBytes"/> UTF-8 bytes.</summary>
+    private static string CheckedProfileId(SecdsaLayoutProfileId profile)
     {
         int length = Encoding.UTF8.GetByteCount(profile.Identifier);
         if(length == 0 || length > MaxProfileIdBytes)
@@ -478,8 +606,6 @@ public static class SecdsaCborLayout
             throw new ArgumentException($"A profile identifier must be between 1 and {MaxProfileIdBytes} UTF-8 bytes.", nameof(profile));
         }
 
-        Encoding.UTF8.GetBytes(profile.Identifier, buffer);
-
-        return buffer[..length];
+        return profile.Identifier;
     }
 }

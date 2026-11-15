@@ -648,7 +648,8 @@
       "lumoin.veridical.secdsa": {
         "type": "Project",
         "dependencies": {
-          "Lumoin.Veridical.Core": "[0.0.0, )"
+          "Lumoin.Veridical.Core": "[0.0.0, )",
+          "Lumoin.Veritas.Cbor": "[0.0.1, )"
         }
       },
       "lumoin.veridical.tests": {

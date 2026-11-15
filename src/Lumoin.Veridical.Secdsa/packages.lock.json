@@ -2,6 +2,19 @@
   "version": 2,
   "dependencies": {
     "net11.0": {
+      "Lumoin.Veritas.Cbor": {
+        "type": "Direct",
+        "requested": "[0.0.1, )",
+        "resolved": "0.0.1",
+        "contentHash": "8GsdA6sh/k3TJ/4EMz4xoMi8iJ/RXtEOgn6hHk4lz5ddqy4WLdmrexPIC7hBXyUOQZr3wf8IPTcJyD1wWbOqaQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Cid": "0.0.1",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
       "Microsoft.CodeAnalysis.BannedApiAnalyzers": {
         "type": "Direct",
         "requested": "[5.6.0, )",
@@ -19,6 +32,37 @@
         "requested": "[4.1.13, )",
         "resolved": "4.1.13",
         "contentHash": "l9NiCqVmBBY06Lrxv61xWtiLvU1feto6j7QmMsaARBopO+QLTFDFLEIbYe8pYGjk1INJ2eWE/GGjToqQpokYAw=="
+      },
+      "Lumoin.Veritas.Cid": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "C2GHcW6XUevcayjLLTO2tk/HG0mgRXA2e43111/gr7ewTxM1W35ExIiFyUMMrqKNROpsHRT9h3dks/PWtjHqcw==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "Lumoin.Veritas.Core": "0.0.1",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
+      "Lumoin.Veritas.Core": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "xgxmAtomuQa5jPmJtKYEtvTGh39mMoksX2uN23U2JbqMmuGUdK1uVQY/PsisXt50iZ/cZs4CTouIgMNOO4EBLQ==",
+        "dependencies": {
+          "Lumoin.Base": "0.0.9",
+          "System.IO.Hashing": "10.0.11",
+          "System.Threading.RateLimiting": "10.0.11"
+        }
+      },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "OzKDcIRkeNJeC8qAsbn8yJXnfTLP1dtkWILe+T56Gf/z+IkAASi7sMqLqJQat08j5z/mRN5xVtoAwbkMNMoBUQ=="
+      },
+      "System.Threading.RateLimiting": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "7+n9cNFpC7VIJzBwSyxs6DHNGLP330dJVeeOSdIJt4TiwwazyEvvRuhWLORT41mRxQVGKhiFIZ+In4JKFWS9Ig=="
       },
       "lumoin.veridical.core": {
         "type": "Project",

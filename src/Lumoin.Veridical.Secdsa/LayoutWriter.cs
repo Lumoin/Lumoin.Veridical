@@ -126,9 +126,48 @@ public sealed class LayoutWriter: IDisposable
     }
 
 
+    /// <summary>
+    /// Returns writable memory of at least <paramref name="sizeHint"/> bytes after the written bytes, growing the
+    /// buffer when needed. The caller reports how much it filled with <see cref="Advance"/>.
+    /// </summary>
+    /// <param name="sizeHint">The number of bytes the caller intends to write; zero asks for any non-empty memory.</param>
+    /// <returns>The memory following the written bytes.</returns>
+    /// <exception cref="InvalidOperationException">When the structure would exceed <see cref="MaxLengthBytes"/>.</exception>
+    /// <exception cref="ObjectDisposedException">When the writer has been disposed.</exception>
+    internal Memory<byte> GetMemory(int sizeHint)
+    {
+        ObjectDisposedException.ThrowIf(Owner is null, this);
+        int count = Math.Max(sizeHint, 1);
+        Ensure(count);
+
+        return Owner.Memory.Slice(Length, Capacity - Length);
+    }
+
+
+    /// <summary>Marks <paramref name="count"/> bytes of the memory last returned by <see cref="GetMemory"/> as written.</summary>
+    /// <param name="count">The number of bytes written, not negative and within the memory returned.</param>
+    /// <exception cref="ArgumentOutOfRangeException">When <paramref name="count"/> is negative or exceeds the capacity.</exception>
+    internal void Advance(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, Capacity - Length);
+        Length += count;
+    }
+
+
     private Span<byte> Reserve(int count)
     {
         ObjectDisposedException.ThrowIf(Owner is null, this);
+        Ensure(count);
+        Span<byte> destination = Owner.Memory.Span.Slice(Length, count);
+        Length += count;
+
+        return destination;
+    }
+
+
+    private void Ensure(int count)
+    {
         if(count > MaxLengthBytes - Length)
         {
             throw new InvalidOperationException($"A layout structure must not exceed {MaxLengthBytes} bytes.");
@@ -139,16 +178,11 @@ public sealed class LayoutWriter: IDisposable
         {
             int grown = (int)Math.Min((long)MaxLengthBytes, Math.Max((long)required, (long)Capacity * 2));
             IMemoryOwner<byte> larger = Pool.Rent(grown);
-            Owner.Memory.Span[..Length].CopyTo(larger.Memory.Span);
+            Owner!.Memory.Span[..Length].CopyTo(larger.Memory.Span);
             Owner.Memory.Span.Clear();
             Owner.Dispose();
             Owner = larger;
             Capacity = grown;
         }
-
-        Span<byte> destination = Owner.Memory.Span.Slice(Length, count);
-        Length = required;
-
-        return destination;
     }
 }
