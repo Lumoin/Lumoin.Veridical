@@ -70,12 +70,12 @@ internal sealed class EcdhMacAlgorithmTests
             foreach((byte[] salt, byte[] sharedInfo) in ContextCombinations)
             {
                 byte[] splitMac = new byte[MacSize];
-                EcdhMacAlgorithm.SplitSign(
+                EcdhMacTypedCalls.SplitSign(
                     walletKeyShare, wscaKeyShare, baseKey, verifierEphemeralPublicKey,
                     salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, splitMac);
 
                 byte[] directMac = new byte[MacSize];
-                EcdhMacAlgorithm.Sign(
+                EcdhMacTypedCalls.Sign(
                     composedPrivateKey, verifierEphemeralPublicKey,
                     salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, directMac);
 
@@ -99,9 +99,9 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] sharedInfo = Encoding.ASCII.GetBytes("EMacKey");
 
         byte[] mac = new byte[MacSize];
-        EcdhMacAlgorithm.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac);
+        EcdhMacTypedCalls.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac);
 
-        bool accepted = EcdhMacAlgorithm.Verify(
+        bool accepted = EcdhMacTypedCalls.Verify(
             proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply);
 
         Assert.IsTrue(accepted, "Verify must accept a MAC produced by Sign, via Diffie-Hellman symmetry e*D = d*E.");
@@ -121,14 +121,14 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] sharedInfo = Encoding.ASCII.GetBytes("split-context");
 
         byte[] mac = new byte[MacSize];
-        EcdhMacAlgorithm.SplitSign(
+        EcdhMacTypedCalls.SplitSign(
             walletKeyShare, wscaKeyShare, baseKey, verifierEphemeralPublicKey,
             salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac);
 
         byte[] composedPrivateKey = ComposePrivateKey(walletKeyShare, wscaKeyShare, baseKey);
         byte[] composedPublicKey = DerivePublicPoint(composedPrivateKey);
 
-        bool accepted = EcdhMacAlgorithm.Verify(
+        bool accepted = EcdhMacTypedCalls.Verify(
             composedPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply);
 
         Assert.IsTrue(accepted, "SplitSign output must verify under the composed public key P = (zU*zW*bU mod n)*G.");
@@ -155,7 +155,7 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] expectedMac = HMACSHA256.HashData(macKeyBytes, message);
 
         byte[] actualMac = new byte[MacSize];
-        EcdhMacAlgorithm.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, actualMac);
+        EcdhMacTypedCalls.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, actualMac);
 
         Assert.IsTrue(
             actualMac.AsSpan().SequenceEqual(expectedMac),
@@ -184,7 +184,7 @@ internal sealed class EcdhMacAlgorithmTests
             byte[] expected = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, length, salt, sharedInfo);
 
             byte[] actual = new byte[length];
-            EcdhMacAlgorithm.DeriveMacKey(privateKey, peerPublicKey, salt, sharedInfo, Hkdf, G1ScalarMultiply, actual);
+            EcdhMacTypedCalls.DeriveMacKey(privateKey, peerPublicKey, salt, sharedInfo, Hkdf, G1ScalarMultiply, actual);
 
             Assert.IsTrue(
                 actual.AsSpan().SequenceEqual(expected),
@@ -192,7 +192,7 @@ internal sealed class EcdhMacAlgorithmTests
         }
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.DeriveMacKey(privateKey, peerPublicKey, salt, sharedInfo, Hkdf, G1ScalarMultiply, Array.Empty<byte>()),
+            () => EcdhMacTypedCalls.DeriveMacKey(privateKey, peerPublicKey, salt, sharedInfo, Hkdf, G1ScalarMultiply, Array.Empty<byte>()),
             "An empty MAC key destination (L = 0) must be rejected.");
     }
 
@@ -209,47 +209,47 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] sharedInfo = Encoding.ASCII.GetBytes("original-shared-info");
 
         byte[] mac = new byte[MacSize];
-        EcdhMacAlgorithm.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac);
+        EcdhMacTypedCalls.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac);
 
         Assert.IsTrue(
-            EcdhMacAlgorithm.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "The untampered MAC must verify.");
 
         byte[] tamperedMessage = (byte[])message.Clone();
         tamperedMessage[^1] ^= 0x01;
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, tamperedMessage, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, tamperedMessage, mac, Hkdf, Hmac, G1ScalarMultiply),
             "A flipped message byte must be rejected.");
 
         byte[] differentSharedInfo = Encoding.ASCII.GetBytes("different-shared-info");
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, differentSharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, differentSharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "A different sharedInfo must be rejected.");
 
         byte[] differentSalt = Encoding.ASCII.GetBytes("different-salt");
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(proverPublicKey, verifierEphemeralPrivateKey, differentSalt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(proverPublicKey, verifierEphemeralPrivateKey, differentSalt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "A different salt must be rejected.");
 
         byte[] tamperedMac = (byte[])mac.Clone();
         tamperedMac[^1] ^= 0x01;
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, tamperedMac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, tamperedMac, Hkdf, Hmac, G1ScalarMultiply),
             "A flipped MAC byte must be rejected.");
 
         byte[] truncatedMac = mac[..^1];
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, truncatedMac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, truncatedMac, Hkdf, Hmac, G1ScalarMultiply),
             "A truncated (31-byte) MAC must be rejected.");
 
         byte[] wrongProverPublicKey = DerivePublicPoint(DeriveScalar("ecdhmac-tamper-wrong-prover-private-key"));
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(wrongProverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(wrongProverPublicKey, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "A wrong prover public key (d'*G) must be rejected.");
 
         //A changed input on the signing side must change the produced MAC, not merely fail verification later.
         byte[] macWithDifferentSharedInfo = new byte[MacSize];
-        EcdhMacAlgorithm.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, differentSharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, macWithDifferentSharedInfo);
+        EcdhMacTypedCalls.Sign(proverPrivateKey, verifierEphemeralPublicKey, salt, differentSharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, macWithDifferentSharedInfo);
         Assert.IsFalse(
             mac.AsSpan().SequenceEqual(macWithDifferentSharedInfo),
             "A different sharedInfo must change the MAC produced by Sign.");
@@ -274,19 +274,19 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] infinityPoint = new byte[CompressedSize];
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.DeriveMacKey(privateKey, infinityPoint, salt, sharedInfo, Hkdf, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.DeriveMacKey(privateKey, infinityPoint, salt, sharedInfo, Hkdf, G1ScalarMultiply, mac),
             "DeriveMacKey must reject the encoded point at infinity.");
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.Sign(privateKey, infinityPoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.Sign(privateKey, infinityPoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "Sign must reject the encoded point at infinity for the verifier's ephemeral public key.");
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.SplitSign(walletKeyShare, wscaKeyShare, baseKey, infinityPoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.SplitSign(walletKeyShare, wscaKeyShare, baseKey, infinityPoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "SplitSign must reject the encoded point at infinity for the verifier's ephemeral public key.");
 
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(infinityPoint, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(infinityPoint, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "Verify must reject an infinity prover public key by returning false, not throwing.");
     }
 
@@ -319,21 +319,21 @@ internal sealed class EcdhMacAlgorithmTests
             "x = 1 must have no point on P-256: the reference decoder must reject it as a non-residue.");
 
         AssertThrowsArgumentOrInvalidOperation(
-            () => EcdhMacAlgorithm.DeriveMacKey(privateKey, offCurvePoint, salt, sharedInfo, Hkdf, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.DeriveMacKey(privateKey, offCurvePoint, salt, sharedInfo, Hkdf, G1ScalarMultiply, mac),
             "DeriveMacKey must reject an off-curve peer point.");
 
         AssertThrowsArgumentOrInvalidOperation(
-            () => EcdhMacAlgorithm.Sign(privateKey, offCurvePoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.Sign(privateKey, offCurvePoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "Sign must reject an off-curve verifier ephemeral public key.");
 
         AssertThrowsArgumentOrInvalidOperation(
-            () => EcdhMacAlgorithm.SplitSign(walletKeyShare, wscaKeyShare, baseKey, offCurvePoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.SplitSign(walletKeyShare, wscaKeyShare, baseKey, offCurvePoint, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "SplitSign must reject an off-curve verifier ephemeral public key.");
 
         //With the Decode assertion above pinning that this input IS off-curve, this pins Verify's contract for
         //it: rejected as false, never an escaping throw.
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(offCurvePoint, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(offCurvePoint, verifierEphemeralPrivateKey, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "Verify must reject an off-curve prover public key by returning false, not throwing.");
     }
 
@@ -352,7 +352,7 @@ internal sealed class EcdhMacAlgorithmTests
         //sharedInfo is the verifier's OWN protocol context: the injected Sha256Hkdf's info bound must surface as
         //a throw, never be swallowed into a false that is indistinguishable from a forged MAC.
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, oversizedSharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            () => EcdhMacTypedCalls.Verify(proverPublicKey, verifierEphemeralPrivateKey, salt, oversizedSharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "Verify must propagate the injected HKDF's rejection of an oversized sharedInfo, not return false.");
     }
 
@@ -371,29 +371,29 @@ internal sealed class EcdhMacAlgorithmTests
         byte[] mac = new byte[MacSize];
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.Sign(zeroScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.Sign(zeroScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "privateKey = 0 must be rejected.");
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.Sign(orderScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.Sign(orderScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "privateKey = n must be rejected.");
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.SplitSign(zeroScalar, validScalar, validScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.SplitSign(zeroScalar, validScalar, validScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "walletKeyShare = 0 must be rejected.");
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.SplitSign(validScalar, orderScalar, validScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.SplitSign(validScalar, orderScalar, validScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "wscaKeyShare = n must be rejected.");
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.SplitSign(validScalar, validScalar, zeroScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
+            () => EcdhMacTypedCalls.SplitSign(validScalar, validScalar, zeroScalar, verifierEphemeralPublicKey, salt, sharedInfo, message, Hkdf, Hmac, G1ScalarMultiply, mac),
             "baseKey = 0 must be rejected.");
 
         //verifierEphemeralPrivateKey is the verifier's OWN material (not adversarial prover-supplied content), so
         //an out-of-range value is a caller error: Verify throws rather than returning false.
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.Verify(proverPublicKey, zeroScalar, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            () => EcdhMacTypedCalls.Verify(proverPublicKey, zeroScalar, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "Verify must throw for an out-of-range (zero) verifierEphemeralPrivateKey.");
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.Verify(proverPublicKey, orderScalar, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            () => EcdhMacTypedCalls.Verify(proverPublicKey, orderScalar, salt, sharedInfo, message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "Verify must throw for verifierEphemeralPrivateKey = n.");
     }
 

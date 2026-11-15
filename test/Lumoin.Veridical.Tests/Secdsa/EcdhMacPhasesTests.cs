@@ -87,17 +87,17 @@ internal sealed class EcdhMacPhasesTests
         Hmac(macKey, Message, mac);
 
         Span<byte> softwareMac = stackalloc byte[MacSize];
-        EcdhMacAlgorithm.Sign(ProverKey, verifierPublicKey, Salt, SharedInfo, Message, Hkdf, Hmac, G1ScalarMultiply, softwareMac);
+        EcdhMacTypedCalls.Sign(ProverKey, verifierPublicKey, Salt, SharedInfo, Message, Hkdf, Hmac, G1ScalarMultiply, softwareMac);
         Assert.IsTrue(mac.SequenceEqual(softwareMac), "HMAC under the key holder's K must byte-match the all-software MAC.");
 
-        Assert.IsTrue(EcdhMacAlgorithm.VerifyMac(macKey, Message, mac, Hmac), "VerifyMac must accept the MAC under K.");
+        Assert.IsTrue(EcdhMacTypedCalls.VerifyMac(macKey, Message, mac, Hmac), "VerifyMac must accept the MAC under K.");
 
         Span<byte> tampered = stackalloc byte[MacSize];
         mac.CopyTo(tampered);
         tampered[^1] ^= 0x01;
-        Assert.IsFalse(EcdhMacAlgorithm.VerifyMac(macKey, Message, tampered, Hmac), "VerifyMac must reject a tampered MAC.");
-        Assert.IsFalse(EcdhMacAlgorithm.VerifyMac(macKey, Message, mac[..(MacSize - 1)], Hmac), "VerifyMac must reject a short MAC without throwing.");
-        Assert.IsFalse(EcdhMacAlgorithm.VerifyMac(macKey, SharedInfo, mac, Hmac), "VerifyMac must reject a different message.");
+        Assert.IsFalse(EcdhMacTypedCalls.VerifyMac(macKey, Message, tampered, Hmac), "VerifyMac must reject a tampered MAC.");
+        Assert.IsFalse(EcdhMacTypedCalls.VerifyMac(macKey, Message, mac[..(MacSize - 1)], Hmac), "VerifyMac must reject a short MAC without throwing.");
+        Assert.IsFalse(EcdhMacTypedCalls.VerifyMac(macKey, SharedInfo, mac, Hmac), "VerifyMac must reject a different message.");
     }
 
 
@@ -110,31 +110,31 @@ internal sealed class EcdhMacPhasesTests
         PublicPoint(VerifierKey, verifierPublicKey);
 
         Span<byte> mac = stackalloc byte[MacSize];
-        EcdhMacAlgorithm.Sign(ProverKey, verifierPublicKey, Salt, SharedInfo, Message, Hkdf, Hmac, G1ScalarMultiply, mac);
+        EcdhMacTypedCalls.Sign(ProverKey, verifierPublicKey, Salt, SharedInfo, Message, Hkdf, Hmac, G1ScalarMultiply, mac);
 
         //The verifier's key holder returns Z_AB = x(e * D) for the prover's public point D.
         Span<byte> verifierSharedSecret = stackalloc byte[ScalarSize];
         KeyHolderEcdh(VerifierKey, proverPublicKey, verifierSharedSecret);
         Assert.IsTrue(
-            EcdhMacAlgorithm.CompleteVerify(Salt, verifierSharedSecret, SharedInfo, Message, mac, Hkdf, Hmac),
+            EcdhMacTypedCalls.CompleteVerify(Salt, verifierSharedSecret, SharedInfo, Message, mac, Hkdf, Hmac),
             "CompleteVerify must accept the MAC under the verifier-side shared secret.");
 
         Span<byte> wrongSecret = stackalloc byte[ScalarSize];
         verifierSharedSecret.CopyTo(wrongSecret);
         wrongSecret[0] ^= 0x01;
         Assert.IsFalse(
-            EcdhMacAlgorithm.CompleteVerify(Salt, wrongSecret, SharedInfo, Message, mac, Hkdf, Hmac),
+            EcdhMacTypedCalls.CompleteVerify(Salt, wrongSecret, SharedInfo, Message, mac, Hkdf, Hmac),
             "CompleteVerify must reject a wrong Z_AB.");
 
         Assert.IsFalse(
-            EcdhMacAlgorithm.CompleteVerify(Salt, verifierSharedSecret, SharedInfo, Message, mac[..(MacSize - 1)], Hkdf, Hmac),
+            EcdhMacTypedCalls.CompleteVerify(Salt, verifierSharedSecret, SharedInfo, Message, mac[..(MacSize - 1)], Hkdf, Hmac),
             "CompleteVerify must reject a short MAC without throwing.");
         Assert.IsFalse(
-            EcdhMacAlgorithm.CompleteVerify(Salt, verifierSharedSecret, SharedInfo, SharedInfo, mac, Hkdf, Hmac),
+            EcdhMacTypedCalls.CompleteVerify(Salt, verifierSharedSecret, SharedInfo, SharedInfo, mac, Hkdf, Hmac),
             "CompleteVerify must reject a different message.");
 
         Assert.ThrowsExactly<ArgumentException>(
-            () => EcdhMacAlgorithm.CompleteVerify(Salt, Salt, SharedInfo, Message, Message, Hkdf, Hmac),
+            () => EcdhMacTypedCalls.CompleteVerify(Salt, Salt, SharedInfo, Message, Message, Hkdf, Hmac),
             "A shared secret that is not 32 bytes is a caller error.");
     }
 
@@ -162,24 +162,24 @@ internal sealed class EcdhMacPhasesTests
 
         //Wallet: validate E (step 1) and compute E' = zU * E (step 2).
         Span<byte> walletInput = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.PrepareKeyAgreement(verifierPublicKey, G1ScalarMultiply, walletInput);
+        EcdhMacTypedCalls.PrepareKeyAgreement(verifierPublicKey, G1ScalarMultiply, walletInput);
         Span<byte> walletBlinded = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.ApplyKeyShare(WalletShare, walletInput, G1ScalarMultiply, walletBlinded);
+        EcdhMacTypedCalls.ApplyKeyShare(WalletShare, walletInput, G1ScalarMultiply, walletBlinded);
 
         //WSCA: E'' = zW * E' (step 4), after validating what it received.
         Span<byte> wscaInput = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.PrepareKeyAgreement(walletBlinded, G1ScalarMultiply, wscaInput);
+        EcdhMacTypedCalls.PrepareKeyAgreement(walletBlinded, G1ScalarMultiply, wscaInput);
         Span<byte> wscaBlinded = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.ApplyKeyShare(WscaShare, wscaInput, G1ScalarMultiply, wscaBlinded);
+        EcdhMacTypedCalls.ApplyKeyShare(WscaShare, wscaInput, G1ScalarMultiply, wscaBlinded);
 
         //HSM: S_AB = bU * E'' and Z_AB (steps 6 and 7); the wallet completes with the MAC.
         Span<byte> sharedSecret = stackalloc byte[ScalarSize];
         KeyHolderEcdh(BaseKey, wscaBlinded, sharedSecret);
         Span<byte> phasedMac = stackalloc byte[MacSize];
-        EcdhMacAlgorithm.CompleteSign(Salt, sharedSecret, SharedInfo, Message, Hkdf, Hmac, phasedMac);
+        EcdhMacTypedCalls.CompleteSign(Salt, sharedSecret, SharedInfo, Message, Hkdf, Hmac, phasedMac);
 
         Span<byte> softwareMac = stackalloc byte[MacSize];
-        EcdhMacAlgorithm.SplitSign(
+        EcdhMacTypedCalls.SplitSign(
             WalletShare, WscaShare, BaseKey, verifierPublicKey, Salt, SharedInfo, Message,
             Hkdf, Hmac, G1ScalarMultiply, softwareMac);
 
@@ -196,9 +196,9 @@ internal sealed class EcdhMacPhasesTests
         Span<byte> verifierPublicKey = stackalloc byte[CompressedSize];
         PublicPoint(VerifierKey, verifierPublicKey);
         Span<byte> walletBlinded = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.ApplyKeyShare(WalletShare, verifierPublicKey, G1ScalarMultiply, walletBlinded);
+        EcdhMacTypedCalls.ApplyKeyShare(WalletShare, verifierPublicKey, G1ScalarMultiply, walletBlinded);
         Span<byte> wscaBlinded = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.ApplyKeyShare(WscaShare, walletBlinded, G1ScalarMultiply, wscaBlinded);
+        EcdhMacTypedCalls.ApplyKeyShare(WscaShare, walletBlinded, G1ScalarMultiply, wscaBlinded);
 
         Span<byte> sharedSecret = stackalloc byte[ScalarSize];
         KeyHolderEcdh(BaseKey, wscaBlinded, sharedSecret);
@@ -220,10 +220,10 @@ internal sealed class EcdhMacPhasesTests
         PublicPoint(composedKeyFinal, composedPublicKey);
 
         Assert.IsTrue(
-            EcdhMacAlgorithm.Verify(composedPublicKey, VerifierKey, NoBytes, SharedInfo, Message, mac, X963, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(composedPublicKey, VerifierKey, NoBytes, SharedInfo, Message, mac, X963, Hmac, G1ScalarMultiply),
             "A verifier binding the X9.63 derivation must accept the MAC under the HSM-derived key.");
         Assert.IsFalse(
-            EcdhMacAlgorithm.Verify(composedPublicKey, VerifierKey, NoBytes, SharedInfo, Message, mac, Hkdf, Hmac, G1ScalarMultiply),
+            EcdhMacTypedCalls.Verify(composedPublicKey, VerifierKey, NoBytes, SharedInfo, Message, mac, Hkdf, Hmac, G1ScalarMultiply),
             "A verifier binding HKDF must reject a MAC made under the X9.63-derived key.");
     }
 
@@ -276,7 +276,7 @@ internal sealed class EcdhMacPhasesTests
         PublicPoint(VerifierKey, verifierPublicKey);
 
         Span<byte> keyHolderInput = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.PrepareKeyAgreement(verifierPublicKey, G1ScalarMultiply, keyHolderInput);
+        EcdhMacTypedCalls.PrepareKeyAgreement(verifierPublicKey, G1ScalarMultiply, keyHolderInput);
         Assert.IsTrue(keyHolderInput.SequenceEqual(verifierPublicKey), "Prepare must return the validated canonical encoding of E.");
 
         //The key holder performs the raw ECDH and returns Z_AB; the private scalar never enters the library.
@@ -284,10 +284,10 @@ internal sealed class EcdhMacPhasesTests
         KeyHolderEcdh(ProverKey, keyHolderInput, sharedSecret);
 
         Span<byte> phasedMac = stackalloc byte[MacSize];
-        EcdhMacAlgorithm.CompleteSign(salt, sharedSecret, sharedInfo, Message, Hkdf, Hmac, phasedMac);
+        EcdhMacTypedCalls.CompleteSign(salt, sharedSecret, sharedInfo, Message, Hkdf, Hmac, phasedMac);
 
         Span<byte> softwareMac = stackalloc byte[MacSize];
-        EcdhMacAlgorithm.Sign(ProverKey, verifierPublicKey, salt, sharedInfo, Message, Hkdf, Hmac, G1ScalarMultiply, softwareMac);
+        EcdhMacTypedCalls.Sign(ProverKey, verifierPublicKey, salt, sharedInfo, Message, Hkdf, Hmac, G1ScalarMultiply, softwareMac);
 
         Assert.IsTrue(phasedMac.SequenceEqual(softwareMac), $"The phased MAC must byte-match the all-software MAC (salt {salt.Length}B, shared info {sharedInfo.Length}B).");
     }
@@ -351,13 +351,13 @@ internal sealed class EcdhMacPhasesTests
     private static void PrepareInto(byte[] point)
     {
         Span<byte> output = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.PrepareKeyAgreement(point, G1ScalarMultiply, output);
+        EcdhMacTypedCalls.PrepareKeyAgreement(point, G1ScalarMultiply, output);
     }
 
 
     private static void ApplyInto(byte[] share, byte[] point)
     {
         Span<byte> output = stackalloc byte[CompressedSize];
-        EcdhMacAlgorithm.ApplyKeyShare(share, point, G1ScalarMultiply, output);
+        EcdhMacTypedCalls.ApplyKeyShare(share, point, G1ScalarMultiply, output);
     }
 }

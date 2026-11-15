@@ -163,4 +163,51 @@ internal sealed class SecdsaProtocolValueTests
 
         return false;
     }
+
+
+    [TestMethod]
+    public void MacValuesValidateLengthsAndAllowEmptySaltAndSharedInfo()
+    {
+        using MacSalt salt = MacSalt.FromCanonical([], Pool);
+        using SharedInfo info = SharedInfo.FromCanonical([], Pool);
+        Span<byte> tagBytes = stackalloc byte[MacTag.SizeBytes];
+        using MacTag tag = MacTag.FromCanonical(tagBytes, Pool);
+        Span<byte> keyBytes = stackalloc byte[1];
+        using MacKey key = MacKey.FromCanonical(keyBytes, Pool);
+
+        Assert.AreNotEqual(salt.Tag, info.Tag, "A salt and shared info are different structures.");
+        Assert.AreNotEqual(tag.Tag, key.Tag, "A tag and a key are different structures.");
+        Assert.IsTrue(RejectsMacTag(tagBytes[..(MacTag.SizeBytes - 1)]));
+        Assert.IsTrue(RejectsMacKey(keyBytes[..0]));
+    }
+
+
+    private static bool RejectsMacTag(ReadOnlySpan<byte> value)
+    {
+        try
+        {
+            MacTag.FromCanonical(value, Pool).Dispose();
+        }
+        catch(ArgumentException)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+
+    private static bool RejectsMacKey(ReadOnlySpan<byte> value)
+    {
+        try
+        {
+            MacKey.FromCanonical(value, Pool).Dispose();
+        }
+        catch(ArgumentException)
+        {
+            return true;
+        }
+
+        return false;
+    }
 }

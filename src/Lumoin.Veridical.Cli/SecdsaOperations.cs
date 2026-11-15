@@ -359,21 +359,23 @@ internal static class SecdsaOperations
     public static string EcdhMacDeriveKey(string privateKeyHex, string peerPublicPointHex, string saltHex, string sharedInfoHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> privateKey = stackalloc byte[ScalarBytes];
-        Span<byte> macKey = stackalloc byte[EcdhMacAlgorithm.MacKeySizeBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> privateBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(privateKeyHex, privateKey, "private key");
-            EcdhMacAlgorithm.DeriveMacKey(
-                privateKey, HexInput.Decode(peerPublicPointHex, "peer public point"), HexInput.Decode(saltHex, "salt"), HexInput.Decode(sharedInfoHex, "shared info"),
-                composition.Hkdf, composition.G1ScalarMultiply, macKey);
+            HexInput.DecodeExact(privateKeyHex, privateBytes, "private key");
+            using PrivateScalar privateKey = PrivateScalar.FromCanonical(privateBytes, pool);
+            using G1Point peerPublicPoint = G1Point.FromCanonical(HexInput.Decode(peerPublicPointHex, "peer public point"), CurveParameterSet.P256, pool);
+            using MacSalt salt = MacSalt.FromCanonical(HexInput.Decode(saltHex, "salt"), pool);
+            using SharedInfo sharedInfo = SharedInfo.FromCanonical(HexInput.Decode(sharedInfoHex, "shared info"), pool);
+            using MacKey macKey = EcdhMacAlgorithm.DeriveMacKey(
+                privateKey, peerPublicPoint, salt, sharedInfo, composition.Hkdf, composition.G1ScalarMultiply, EcdhMacAlgorithm.MacKeySizeBytes, pool);
 
-            return Convert.ToHexStringLower(macKey);
+            return Convert.ToHexStringLower(macKey.AsReadOnlySpan());
         }
         finally
         {
-            privateKey.Clear();
-            macKey.Clear();
+            privateBytes.Clear();
         }
     }
 
@@ -388,21 +390,24 @@ internal static class SecdsaOperations
     public static string EcdhMacSign(string privateKeyHex, string verifierEphemeralPublicKeyHex, string saltHex, string sharedInfoHex, string messageHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> privateKey = stackalloc byte[ScalarBytes];
-        Span<byte> mac = stackalloc byte[EcdhMacAlgorithm.MacSizeBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> privateBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(privateKeyHex, privateKey, "private key");
-            EcdhMacAlgorithm.Sign(
-                privateKey, HexInput.Decode(verifierEphemeralPublicKeyHex, "verifier ephemeral public key"), HexInput.Decode(saltHex, "salt"),
-                HexInput.Decode(sharedInfoHex, "shared info"), HexInput.Decode(messageHex, "message"),
-                composition.Hkdf, composition.Hmac, composition.G1ScalarMultiply, mac);
+            HexInput.DecodeExact(privateKeyHex, privateBytes, "private key");
+            using PrivateScalar privateKey = PrivateScalar.FromCanonical(privateBytes, pool);
+            using G1Point verifierEphemeralPublicKey = G1Point.FromCanonical(HexInput.Decode(verifierEphemeralPublicKeyHex, "verifier ephemeral public key"), CurveParameterSet.P256, pool);
+            using MacSalt salt = MacSalt.FromCanonical(HexInput.Decode(saltHex, "salt"), pool);
+            using SharedInfo sharedInfo = SharedInfo.FromCanonical(HexInput.Decode(sharedInfoHex, "shared info"), pool);
+            using MacTag mac = EcdhMacAlgorithm.Sign(
+                privateKey, verifierEphemeralPublicKey, salt, sharedInfo, HexInput.Decode(messageHex, "message"),
+                composition.Hkdf, composition.Hmac, composition.G1ScalarMultiply, pool);
 
-            return Convert.ToHexStringLower(mac);
+            return Convert.ToHexStringLower(mac.AsReadOnlySpan());
         }
         finally
         {
-            privateKey.Clear();
+            privateBytes.Clear();
         }
     }
 
@@ -417,14 +422,19 @@ internal static class SecdsaOperations
     /// <returns>The verification outcome.</returns>
     public static VerificationResult EcdhMacVerify(string proverPublicKeyHex, string verifierEphemeralPrivateKeyHex, string saltHex, string sharedInfoHex, string messageHex, string macHex)
     {
-        Span<byte> privateKey = stackalloc byte[ScalarBytes];
+        Span<byte> privateBytes = stackalloc byte[ScalarBytes];
         try
         {
             using var composition = new SecdsaPlatformComposition();
-            HexInput.DecodeExact(verifierEphemeralPrivateKeyHex, privateKey, "verifier ephemeral private key");
+            BaseMemoryPool pool = BaseMemoryPool.Shared;
+            HexInput.DecodeExact(verifierEphemeralPrivateKeyHex, privateBytes, "verifier ephemeral private key");
+            using PrivateScalar privateKey = PrivateScalar.FromCanonical(privateBytes, pool);
+            using G1Point proverPublicKey = G1Point.FromCanonical(HexInput.Decode(proverPublicKeyHex, "prover public key"), CurveParameterSet.P256, pool);
+            using MacSalt salt = MacSalt.FromCanonical(HexInput.Decode(saltHex, "salt"), pool);
+            using SharedInfo sharedInfo = SharedInfo.FromCanonical(HexInput.Decode(sharedInfoHex, "shared info"), pool);
+            using MacTag mac = MacTag.FromCanonical(HexInput.Decode(macHex, "mac"), pool);
             bool valid = EcdhMacAlgorithm.Verify(
-                HexInput.Decode(proverPublicKeyHex, "prover public key"), privateKey, HexInput.Decode(saltHex, "salt"), HexInput.Decode(sharedInfoHex, "shared info"),
-                HexInput.Decode(messageHex, "message"), HexInput.Decode(macHex, "mac"),
+                proverPublicKey, privateKey, salt, sharedInfo, HexInput.Decode(messageHex, "message"), mac,
                 composition.Hkdf, composition.Hmac, composition.G1ScalarMultiply);
             string statement = $"an ECDH-MAC under prover public key {proverPublicKeyHex.Trim()}";
 
@@ -436,7 +446,7 @@ internal static class SecdsaOperations
         }
         finally
         {
-            privateKey.Clear();
+            privateBytes.Clear();
         }
     }
 
@@ -453,27 +463,32 @@ internal static class SecdsaOperations
     public static string EcdhMacSplitSign(string walletKeyShareHex, string wscaKeyShareHex, string baseKeyHex, string verifierEphemeralPublicKeyHex, string saltHex, string sharedInfoHex, string messageHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> walletShare = stackalloc byte[ScalarBytes];
-        Span<byte> wscaShare = stackalloc byte[ScalarBytes];
-        Span<byte> baseKey = stackalloc byte[ScalarBytes];
-        Span<byte> mac = stackalloc byte[EcdhMacAlgorithm.MacSizeBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> walletBytes = stackalloc byte[ScalarBytes];
+        Span<byte> wscaBytes = stackalloc byte[ScalarBytes];
+        Span<byte> baseBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(walletKeyShareHex, walletShare, "wallet key share");
-            HexInput.DecodeExact(wscaKeyShareHex, wscaShare, "WSCA key share");
-            HexInput.DecodeExact(baseKeyHex, baseKey, "base key");
-            EcdhMacAlgorithm.SplitSign(
-                walletShare, wscaShare, baseKey, HexInput.Decode(verifierEphemeralPublicKeyHex, "verifier ephemeral public key"), HexInput.Decode(saltHex, "salt"),
-                HexInput.Decode(sharedInfoHex, "shared info"), HexInput.Decode(messageHex, "message"),
-                composition.Hkdf, composition.Hmac, composition.G1ScalarMultiply, mac);
+            HexInput.DecodeExact(walletKeyShareHex, walletBytes, "wallet key share");
+            HexInput.DecodeExact(wscaKeyShareHex, wscaBytes, "WSCA key share");
+            HexInput.DecodeExact(baseKeyHex, baseBytes, "base key");
+            using PrivateScalar walletShare = PrivateScalar.FromCanonical(walletBytes, pool);
+            using PrivateScalar wscaShare = PrivateScalar.FromCanonical(wscaBytes, pool);
+            using PrivateScalar baseKey = PrivateScalar.FromCanonical(baseBytes, pool);
+            using G1Point verifierEphemeralPublicKey = G1Point.FromCanonical(HexInput.Decode(verifierEphemeralPublicKeyHex, "verifier ephemeral public key"), CurveParameterSet.P256, pool);
+            using MacSalt salt = MacSalt.FromCanonical(HexInput.Decode(saltHex, "salt"), pool);
+            using SharedInfo sharedInfo = SharedInfo.FromCanonical(HexInput.Decode(sharedInfoHex, "shared info"), pool);
+            using MacTag mac = EcdhMacAlgorithm.SplitSign(
+                walletShare, wscaShare, baseKey, verifierEphemeralPublicKey, salt, sharedInfo, HexInput.Decode(messageHex, "message"),
+                composition.Hkdf, composition.Hmac, composition.G1ScalarMultiply, pool);
 
-            return Convert.ToHexStringLower(mac);
+            return Convert.ToHexStringLower(mac.AsReadOnlySpan());
         }
         finally
         {
-            walletShare.Clear();
-            wscaShare.Clear();
-            baseKey.Clear();
+            walletBytes.Clear();
+            wscaBytes.Clear();
+            baseBytes.Clear();
         }
     }
 
@@ -557,12 +572,13 @@ internal static class SecdsaOperations
     public static string EcdhMacPrepare(string peerPublicKeyHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> keyHolderInput = stackalloc byte[PointBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
         try
         {
-            EcdhMacAlgorithm.PrepareKeyAgreement(HexInput.Decode(peerPublicKeyHex, "peer public key"), composition.G1ScalarMultiply, keyHolderInput);
+            using G1Point peerPublicPoint = G1Point.FromCanonical(HexInput.Decode(peerPublicKeyHex, "peer public key"), CurveParameterSet.P256, pool);
+            using G1Point keyHolderInput = EcdhMacAlgorithm.PrepareKeyAgreement(peerPublicPoint, composition.G1ScalarMultiply, pool);
 
-            return Convert.ToHexStringLower(keyHolderInput);
+            return Convert.ToHexStringLower(keyHolderInput.AsReadOnlySpan());
         }
         catch(InvalidOperationException error)
         {
@@ -579,14 +595,16 @@ internal static class SecdsaOperations
     public static string EcdhMacApplyKeyShare(string keyShareHex, string pointHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> keyShare = stackalloc byte[ScalarBytes];
-        Span<byte> product = stackalloc byte[PointBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> shareBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(keyShareHex, keyShare, "key share");
-            EcdhMacAlgorithm.ApplyKeyShare(keyShare, HexInput.Decode(pointHex, "point"), composition.G1ScalarMultiply, product);
+            HexInput.DecodeExact(keyShareHex, shareBytes, "key share");
+            using PrivateScalar keyShare = PrivateScalar.FromCanonical(shareBytes, pool);
+            using G1Point point = G1Point.FromCanonical(HexInput.Decode(pointHex, "point"), CurveParameterSet.P256, pool);
+            using G1Point product = EcdhMacAlgorithm.ApplyKeyShare(keyShare, point, composition.G1ScalarMultiply, pool);
 
-            return Convert.ToHexStringLower(product);
+            return Convert.ToHexStringLower(product.AsReadOnlySpan());
         }
         catch(InvalidOperationException error)
         {
@@ -594,8 +612,7 @@ internal static class SecdsaOperations
         }
         finally
         {
-            keyShare.Clear();
-            product.Clear();
+            shareBytes.Clear();
         }
     }
 
@@ -610,20 +627,22 @@ internal static class SecdsaOperations
     public static string EcdhMacCompleteSign(string sharedSecretHex, string saltHex, string sharedInfoHex, string messageHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> sharedSecret = stackalloc byte[EcdhMacAlgorithm.SharedSecretSizeBytes];
-        Span<byte> mac = stackalloc byte[EcdhMacAlgorithm.MacSizeBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> secretBytes = stackalloc byte[EcdhMacAlgorithm.SharedSecretSizeBytes];
         try
         {
-            HexInput.DecodeExact(sharedSecretHex, sharedSecret, "shared secret");
-            EcdhMacAlgorithm.CompleteSign(
-                HexInput.Decode(saltHex, "salt"), sharedSecret, HexInput.Decode(sharedInfoHex, "shared info"), HexInput.Decode(messageHex, "message"),
-                composition.Hkdf, composition.Hmac, mac);
+            HexInput.DecodeExact(sharedSecretHex, secretBytes, "shared secret");
+            using SharedSecret sharedSecret = SharedSecret.FromCanonical(secretBytes, pool);
+            using MacSalt salt = MacSalt.FromCanonical(HexInput.Decode(saltHex, "salt"), pool);
+            using SharedInfo sharedInfo = SharedInfo.FromCanonical(HexInput.Decode(sharedInfoHex, "shared info"), pool);
+            using MacTag mac = EcdhMacAlgorithm.CompleteSign(
+                salt, sharedSecret, sharedInfo, HexInput.Decode(messageHex, "message"), composition.Hkdf, composition.Hmac, pool);
 
-            return Convert.ToHexStringLower(mac);
+            return Convert.ToHexStringLower(mac.AsReadOnlySpan());
         }
         finally
         {
-            sharedSecret.Clear();
+            secretBytes.Clear();
         }
     }
 
@@ -638,14 +657,18 @@ internal static class SecdsaOperations
     public static VerificationResult EcdhMacCompleteVerify(string sharedSecretHex, string saltHex, string sharedInfoHex, string messageHex, string macHex)
     {
         const string statement = "an ECDH-MAC under the supplied shared secret";
-        Span<byte> sharedSecret = stackalloc byte[EcdhMacAlgorithm.SharedSecretSizeBytes];
+        Span<byte> secretBytes = stackalloc byte[EcdhMacAlgorithm.SharedSecretSizeBytes];
         try
         {
             using var composition = new SecdsaPlatformComposition();
-            HexInput.DecodeExact(sharedSecretHex, sharedSecret, "shared secret");
+            BaseMemoryPool pool = BaseMemoryPool.Shared;
+            HexInput.DecodeExact(sharedSecretHex, secretBytes, "shared secret");
+            using SharedSecret sharedSecret = SharedSecret.FromCanonical(secretBytes, pool);
+            using MacSalt salt = MacSalt.FromCanonical(HexInput.Decode(saltHex, "salt"), pool);
+            using SharedInfo sharedInfo = SharedInfo.FromCanonical(HexInput.Decode(sharedInfoHex, "shared info"), pool);
+            using MacTag mac = MacTag.FromCanonical(HexInput.Decode(macHex, "mac"), pool);
             bool valid = EcdhMacAlgorithm.CompleteVerify(
-                HexInput.Decode(saltHex, "salt"), sharedSecret, HexInput.Decode(sharedInfoHex, "shared info"), HexInput.Decode(messageHex, "message"),
-                HexInput.Decode(macHex, "mac"), composition.Hkdf, composition.Hmac);
+                salt, sharedSecret, sharedInfo, HexInput.Decode(messageHex, "message"), mac, composition.Hkdf, composition.Hmac);
 
             return valid ? VerificationResult.Valid(statement) : VerificationResult.Rejected(statement);
         }
@@ -655,7 +678,7 @@ internal static class SecdsaOperations
         }
         finally
         {
-            sharedSecret.Clear();
+            secretBytes.Clear();
         }
     }
 
@@ -668,22 +691,19 @@ internal static class SecdsaOperations
     public static VerificationResult EcdhMacVerifyMac(string macKeyHex, string messageHex, string macHex)
     {
         const string statement = "an ECDH-MAC under the supplied MAC key";
-        byte[] macKey = [];
         try
         {
             using var composition = new SecdsaPlatformComposition();
-            macKey = HexInput.Decode(macKeyHex, "MAC key");
-            bool valid = EcdhMacAlgorithm.VerifyMac(macKey, HexInput.Decode(messageHex, "message"), HexInput.Decode(macHex, "mac"), composition.Hmac);
+            BaseMemoryPool pool = BaseMemoryPool.Shared;
+            using MacKey macKey = MacKey.FromCanonical(HexInput.Decode(macKeyHex, "MAC key"), pool);
+            using MacTag mac = MacTag.FromCanonical(HexInput.Decode(macHex, "mac"), pool);
+            bool valid = EcdhMacAlgorithm.VerifyMac(macKey, HexInput.Decode(messageHex, "message"), mac, composition.Hmac);
 
             return valid ? VerificationResult.Valid(statement) : VerificationResult.Rejected(statement);
         }
         catch(ArgumentException error)
         {
             return VerificationResult.Malformed(error.Message);
-        }
-        finally
-        {
-            Array.Clear(macKey);
         }
     }
 

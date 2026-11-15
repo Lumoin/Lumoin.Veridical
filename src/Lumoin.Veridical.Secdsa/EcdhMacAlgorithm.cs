@@ -2,6 +2,7 @@ using Lumoin.Veridical.Core;
 using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Cryptography;
 using System;
+using System.Buffers;
 using System.Security.Cryptography;
 using static Lumoin.Veridical.Secdsa.P256PointValidation;
 using static Lumoin.Veridical.Secdsa.P256ScalarValidation;
@@ -96,6 +97,392 @@ public static class EcdhMacAlgorithm
 
 
     /// <summary>
+    /// SECDSA Algorithm 16 steps 1 to 4 for a key held in this process: derives the MAC key
+    /// <c>K = KDF(Z_AB, SharedInfo)</c> from the private key and the peer's public point, where <c>Z_AB</c> is the
+    /// x-coordinate of <c>privateKey·peerPublicPoint</c>.
+    /// </summary>
+    /// <param name="privateKey">The private scalar <c>d</c>; secret.</param>
+    /// <param name="peerPublicPoint">The counterparty's public point, which arrives from outside and is rejected when it is the point at infinity or off the curve.</param>
+    /// <param name="salt">The HKDF extraction salt.</param>
+    /// <param name="sharedInfo">The HKDF context information.</param>
+    /// <param name="keyDerivation">The key derivation that turns <c>Z_AB</c> and <c>SharedInfo</c> into <c>K</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="macKeySizeBytes">The length of the MAC key to derive, at least 1.</param>
+    /// <param name="pool">The pool the key is rented from.</param>
+    /// <returns>The MAC key, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When the point encodes infinity or <paramref name="macKeySizeBytes"/> is below 1.</exception>
+    /// <exception cref="InvalidOperationException">When the point is not on the curve.</exception>
+    public static MacKey DeriveMacKey(
+        PrivateScalar privateKey,
+        G1Point peerPublicPoint,
+        MacSalt salt,
+        SharedInfo sharedInfo,
+        EcdhMacKeyDerivationDelegate keyDerivation,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        int macKeySizeBytes,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(privateKey);
+        ArgumentNullException.ThrowIfNull(peerPublicPoint);
+        ArgumentNullException.ThrowIfNull(salt);
+        ArgumentNullException.ThrowIfNull(sharedInfo);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        return ProduceMacKey(
+            macKeySizeBytes, pool,
+            macKey => DeriveMacKeySpan(
+                privateKey.AsReadOnlySpan(), peerPublicPoint.AsReadOnlySpan(), salt.AsReadOnlySpan(), sharedInfo.AsReadOnlySpan(),
+                keyDerivation, g1ScalarMultiply, macKey));
+    }
+
+
+    /// <summary>
+    /// SECDSA Algorithm 16 (ECDH-MAC signature generation): authenticates <paramref name="message"/> to the holder of
+    /// <paramref name="verifierEphemeralPublicKey"/> by deriving the shared MAC key and computing <c>MAC = HMAC(K, M)</c>.
+    /// </summary>
+    /// <remarks>
+    /// The verifier's ephemeral key arrives from the counterparty, so a malformed value is a live protocol condition: per
+    /// Algorithm 16 step 1 the algorithm stops, and a caller in a presentation flow treats that throw as its rejection of
+    /// the verifier's request.
+    /// </remarks>
+    /// <param name="privateKey">The prover's private key <c>d</c>; secret.</param>
+    /// <param name="verifierEphemeralPublicKey">The verifier's ephemeral public key <c>E = e·G</c>.</param>
+    /// <param name="salt">The HKDF extraction salt.</param>
+    /// <param name="sharedInfo">The HKDF context information.</param>
+    /// <param name="message">The message <c>M</c> to authenticate; any length.</param>
+    /// <param name="keyDerivation">The key derivation that turns <c>Z_AB</c> and <c>SharedInfo</c> into <c>K</c>.</param>
+    /// <param name="hmac">The HMAC-SHA256 delegate.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="pool">The pool the tag is rented from.</param>
+    /// <returns>The MAC tag, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When the point encodes infinity.</exception>
+    /// <exception cref="InvalidOperationException">When the point is not on the curve.</exception>
+    public static MacTag Sign(
+        PrivateScalar privateKey,
+        G1Point verifierEphemeralPublicKey,
+        MacSalt salt,
+        SharedInfo sharedInfo,
+        ReadOnlySpan<byte> message,
+        EcdhMacKeyDerivationDelegate keyDerivation,
+        HmacSha256Delegate hmac,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(privateKey);
+        ArgumentNullException.ThrowIfNull(verifierEphemeralPublicKey);
+        ArgumentNullException.ThrowIfNull(salt);
+        ArgumentNullException.ThrowIfNull(sharedInfo);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        IMemoryOwner<byte> owner = pool.Rent(MacTag.SizeBytes);
+        try
+        {
+            SignSpan(
+                privateKey.AsReadOnlySpan(), verifierEphemeralPublicKey.AsReadOnlySpan(), salt.AsReadOnlySpan(), sharedInfo.AsReadOnlySpan(),
+                message, keyDerivation, hmac, g1ScalarMultiply, owner.Memory.Span[..MacTag.SizeBytes]);
+        }
+        catch
+        {
+            owner.Dispose();
+            throw;
+        }
+
+        return new MacTag(owner, MacTag.AlgebraicTag);
+    }
+
+
+    /// <summary>
+    /// SECDSA Algorithm 17 (ECDH-MAC verification) by the verifier that holds the ephemeral private key: derives the shared
+    /// MAC key from the prover's public key and checks the tag in constant time.
+    /// </summary>
+    /// <param name="proverPublicKey">The prover's public key.</param>
+    /// <param name="verifierEphemeralPrivateKey">The verifier's ephemeral private key <c>e</c>; secret.</param>
+    /// <param name="salt">The HKDF extraction salt.</param>
+    /// <param name="sharedInfo">The HKDF context information.</param>
+    /// <param name="message">The message that was authenticated.</param>
+    /// <param name="mac">The tag to check.</param>
+    /// <param name="keyDerivation">The key derivation.</param>
+    /// <param name="hmac">The HMAC-SHA256 delegate.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <returns><see langword="true"/> when the tag is valid.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static bool Verify(
+        G1Point proverPublicKey,
+        PrivateScalar verifierEphemeralPrivateKey,
+        MacSalt salt,
+        SharedInfo sharedInfo,
+        ReadOnlySpan<byte> message,
+        MacTag mac,
+        EcdhMacKeyDerivationDelegate keyDerivation,
+        HmacSha256Delegate hmac,
+        G1ScalarMultiplyDelegate g1ScalarMultiply)
+    {
+        ArgumentNullException.ThrowIfNull(proverPublicKey);
+        ArgumentNullException.ThrowIfNull(verifierEphemeralPrivateKey);
+        ArgumentNullException.ThrowIfNull(salt);
+        ArgumentNullException.ThrowIfNull(sharedInfo);
+        ArgumentNullException.ThrowIfNull(mac);
+
+        return VerifySpan(
+            proverPublicKey.AsReadOnlySpan(), verifierEphemeralPrivateKey.AsReadOnlySpan(), salt.AsReadOnlySpan(), sharedInfo.AsReadOnlySpan(),
+            message, mac.AsReadOnlySpan(), keyDerivation, hmac, g1ScalarMultiply);
+    }
+
+
+    /// <summary>
+    /// SECDSA Algorithm 11 with ECDH-MAC (the key-share signature): the wallet's share <c>zU</c>, the WSCA's share
+    /// <c>zW</c> and the base key <c>bU</c> produce the MAC under the verifier's ephemeral key without ever forming their
+    /// product, applying the shares one after the other.
+    /// </summary>
+    /// <param name="walletKeyShare">The wallet's key share <c>zU</c>; secret.</param>
+    /// <param name="wscaKeyShare">The WSCA's key share <c>zW</c>; secret.</param>
+    /// <param name="baseKey">The base key <c>bU</c>; secret.</param>
+    /// <param name="verifierEphemeralPublicKey">The verifier's ephemeral public key.</param>
+    /// <param name="salt">The HKDF extraction salt.</param>
+    /// <param name="sharedInfo">The HKDF context information.</param>
+    /// <param name="message">The message to authenticate.</param>
+    /// <param name="keyDerivation">The key derivation.</param>
+    /// <param name="hmac">The HMAC-SHA256 delegate.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="pool">The pool the tag is rented from.</param>
+    /// <returns>The MAC tag, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static MacTag SplitSign(
+        PrivateScalar walletKeyShare,
+        PrivateScalar wscaKeyShare,
+        PrivateScalar baseKey,
+        G1Point verifierEphemeralPublicKey,
+        MacSalt salt,
+        SharedInfo sharedInfo,
+        ReadOnlySpan<byte> message,
+        EcdhMacKeyDerivationDelegate keyDerivation,
+        HmacSha256Delegate hmac,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(walletKeyShare);
+        ArgumentNullException.ThrowIfNull(wscaKeyShare);
+        ArgumentNullException.ThrowIfNull(baseKey);
+        ArgumentNullException.ThrowIfNull(verifierEphemeralPublicKey);
+        ArgumentNullException.ThrowIfNull(salt);
+        ArgumentNullException.ThrowIfNull(sharedInfo);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        IMemoryOwner<byte> owner = pool.Rent(MacTag.SizeBytes);
+        try
+        {
+            SplitSignSpan(
+                walletKeyShare.AsReadOnlySpan(), wscaKeyShare.AsReadOnlySpan(), baseKey.AsReadOnlySpan(), verifierEphemeralPublicKey.AsReadOnlySpan(),
+                salt.AsReadOnlySpan(), sharedInfo.AsReadOnlySpan(), message, keyDerivation, hmac, g1ScalarMultiply, owner.Memory.Span[..MacTag.SizeBytes]);
+        }
+        catch
+        {
+            owner.Dispose();
+            throw;
+        }
+
+        return new MacTag(owner, MacTag.AlgebraicTag);
+    }
+
+
+    /// <summary>
+    /// Phase one of the key-holder split (Algorithm 16 step 1): validates the verifier's ephemeral public key and returns the
+    /// canonical point to send to the key holder's ECDH.
+    /// </summary>
+    /// <param name="peerPublicPoint">The verifier's ephemeral public key, which arrives from outside.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication, whose decode contract rejects off-curve points.</param>
+    /// <param name="pool">The pool the point is rented from.</param>
+    /// <returns>The validated, canonical point, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When the point encodes infinity or is not the canonical encoding of its point.</exception>
+    /// <exception cref="InvalidOperationException">When the point is not on the curve.</exception>
+    public static G1Point PrepareKeyAgreement(G1Point peerPublicPoint, G1ScalarMultiplyDelegate g1ScalarMultiply, BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(peerPublicPoint);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        Span<byte> validated = stackalloc byte[CompressedPointSizeBytes];
+        PrepareKeyAgreementSpan(peerPublicPoint.AsReadOnlySpan(), g1ScalarMultiply, validated);
+
+        return G1Point.FromCanonical(validated, CurveParameterSet.P256, pool);
+    }
+
+
+    /// <summary>
+    /// Multiplies a point by a key-share scalar: <c>E′ = zU·E</c> at the wallet and <c>E″ = zW·E′</c> at the WSCA are this
+    /// same primitive, each run by the party that holds the share. The point at infinity is rejected on input and on output.
+    /// </summary>
+    /// <param name="keyShare">The key-share scalar; secret and never leaves the party that holds it.</param>
+    /// <param name="point">The point to multiply, validated by <see cref="PrepareKeyAgreement"/> at the first party.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="pool">The pool the product is rented from.</param>
+    /// <returns>The share-blinded point, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When the point encodes infinity.</exception>
+    /// <exception cref="InvalidOperationException">When the point is not on the curve or the product is the point at infinity.</exception>
+    public static G1Point ApplyKeyShare(PrivateScalar keyShare, G1Point point, G1ScalarMultiplyDelegate g1ScalarMultiply, BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(keyShare);
+        ArgumentNullException.ThrowIfNull(point);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        Span<byte> product = stackalloc byte[CompressedPointSizeBytes];
+        ApplyKeyShareSpan(keyShare.AsReadOnlySpan(), point.AsReadOnlySpan(), g1ScalarMultiply, product);
+
+        return G1Point.FromCanonical(product, CurveParameterSet.P256, pool);
+    }
+
+
+    /// <summary>
+    /// Derives the MAC key from the shared secret an external key holder returned from its raw ECDH:
+    /// <c>K = KDF(Z_AB, SharedInfo)</c> with the caller's salt.
+    /// </summary>
+    /// <param name="salt">The HKDF extraction salt.</param>
+    /// <param name="sharedSecret">The shared secret <c>Z_AB</c>; secret.</param>
+    /// <param name="sharedInfo">The HKDF context information.</param>
+    /// <param name="keyDerivation">The key derivation.</param>
+    /// <param name="macKeySizeBytes">The length of the MAC key to derive, at least 1.</param>
+    /// <param name="pool">The pool the key is rented from.</param>
+    /// <returns>The MAC key, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="macKeySizeBytes"/> is below 1.</exception>
+    public static MacKey DeriveMacKeyFromSharedSecret(
+        MacSalt salt,
+        SharedSecret sharedSecret,
+        SharedInfo sharedInfo,
+        EcdhMacKeyDerivationDelegate keyDerivation,
+        int macKeySizeBytes,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(salt);
+        ArgumentNullException.ThrowIfNull(sharedSecret);
+        ArgumentNullException.ThrowIfNull(sharedInfo);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        return ProduceMacKey(
+            macKeySizeBytes, pool,
+            macKey => DeriveMacKeyFromSharedSecretSpan(salt.AsReadOnlySpan(), sharedSecret.AsReadOnlySpan(), sharedInfo.AsReadOnlySpan(), keyDerivation, macKey));
+    }
+
+
+    /// <summary>
+    /// Completes the ECDH-MAC signature from the key holder's shared secret: derives <c>K</c> and computes
+    /// <c>MAC = HMAC(K, M)</c>.
+    /// </summary>
+    /// <param name="salt">The HKDF extraction salt.</param>
+    /// <param name="sharedSecret">The shared secret <c>Z_AB</c>; secret.</param>
+    /// <param name="sharedInfo">The HKDF context information.</param>
+    /// <param name="message">The message to authenticate.</param>
+    /// <param name="keyDerivation">The key derivation.</param>
+    /// <param name="hmac">The HMAC-SHA256 delegate.</param>
+    /// <param name="pool">The pool the tag is rented from.</param>
+    /// <returns>The MAC tag, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static MacTag CompleteSign(
+        MacSalt salt,
+        SharedSecret sharedSecret,
+        SharedInfo sharedInfo,
+        ReadOnlySpan<byte> message,
+        EcdhMacKeyDerivationDelegate keyDerivation,
+        HmacSha256Delegate hmac,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(salt);
+        ArgumentNullException.ThrowIfNull(sharedSecret);
+        ArgumentNullException.ThrowIfNull(sharedInfo);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        IMemoryOwner<byte> owner = pool.Rent(MacTag.SizeBytes);
+        try
+        {
+            CompleteSignSpan(
+                salt.AsReadOnlySpan(), sharedSecret.AsReadOnlySpan(), sharedInfo.AsReadOnlySpan(), message, keyDerivation, hmac, owner.Memory.Span[..MacTag.SizeBytes]);
+        }
+        catch
+        {
+            owner.Dispose();
+            throw;
+        }
+
+        return new MacTag(owner, MacTag.AlgebraicTag);
+    }
+
+
+    /// <summary>
+    /// Completes the ECDH-MAC verification from the key holder's shared secret: derives <c>K</c> and checks the tag in
+    /// constant time.
+    /// </summary>
+    /// <param name="salt">The HKDF extraction salt.</param>
+    /// <param name="sharedSecret">The shared secret <c>Z_AB</c>; secret.</param>
+    /// <param name="sharedInfo">The HKDF context information.</param>
+    /// <param name="message">The message that was authenticated.</param>
+    /// <param name="mac">The tag to check.</param>
+    /// <param name="keyDerivation">The key derivation.</param>
+    /// <param name="hmac">The HMAC-SHA256 delegate.</param>
+    /// <returns><see langword="true"/> when the tag is valid.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static bool CompleteVerify(
+        MacSalt salt,
+        SharedSecret sharedSecret,
+        SharedInfo sharedInfo,
+        ReadOnlySpan<byte> message,
+        MacTag mac,
+        EcdhMacKeyDerivationDelegate keyDerivation,
+        HmacSha256Delegate hmac)
+    {
+        ArgumentNullException.ThrowIfNull(salt);
+        ArgumentNullException.ThrowIfNull(sharedSecret);
+        ArgumentNullException.ThrowIfNull(sharedInfo);
+        ArgumentNullException.ThrowIfNull(mac);
+
+        return CompleteVerifySpan(
+            salt.AsReadOnlySpan(), sharedSecret.AsReadOnlySpan(), sharedInfo.AsReadOnlySpan(), message, mac.AsReadOnlySpan(), keyDerivation, hmac);
+    }
+
+
+    /// <summary>Checks a MAC tag under a MAC key in constant time.</summary>
+    /// <param name="macKey">The MAC key; secret.</param>
+    /// <param name="message">The message that was authenticated.</param>
+    /// <param name="mac">The tag to check.</param>
+    /// <param name="hmac">The HMAC-SHA256 delegate.</param>
+    /// <returns><see langword="true"/> when the tag is valid.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static bool VerifyMac(MacKey macKey, ReadOnlySpan<byte> message, MacTag mac, HmacSha256Delegate hmac)
+    {
+        ArgumentNullException.ThrowIfNull(macKey);
+        ArgumentNullException.ThrowIfNull(mac);
+
+        return VerifyMacSpan(macKey.AsReadOnlySpan(), message, mac.AsReadOnlySpan(), hmac);
+    }
+
+
+    /// <summary>Rents a MAC key of the requested length, lets the derivation fill it, and wraps it; the buffer is cleared and returned on a throw.</summary>
+    private static MacKey ProduceMacKey(int sizeBytes, BaseMemoryPool pool, MacKeyFill fill)
+    {
+        if(sizeBytes < 1)
+        {
+            throw new ArgumentException("The MAC key must be at least 1 byte.", nameof(sizeBytes));
+        }
+
+        IMemoryOwner<byte> owner = pool.Rent(sizeBytes);
+        try
+        {
+            fill(owner.Memory.Span[..sizeBytes]);
+        }
+        catch
+        {
+            owner.Memory.Span.Clear();
+            owner.Dispose();
+            throw;
+        }
+
+        return new MacKey(owner, MacKey.AlgebraicTag);
+    }
+
+
+    /// <summary>
     /// Derives the ECDH-MAC key <c>K</c> from an elliptic-curve Diffie-Hellman exchange between
     /// <paramref name="privateKey"/> and <paramref name="peerPublicPoint"/> — Algorithm 16 steps 1–4 (equally,
     /// realized against the composed key at the HSM, Algorithm 12 steps 6–8): this is the software equivalent of
@@ -137,7 +524,7 @@ public static class EcdhMacAlgorithm
     /// Diffie-Hellman product is degenerate (the point at infinity; impossible for valid inputs since <c>n</c>
     /// is prime, but checked defensively).
     /// </exception>
-    public static void DeriveMacKey(
+    internal static void DeriveMacKeySpan(
         ReadOnlySpan<byte> privateKey,
         ReadOnlySpan<byte> peerPublicPoint,
         ReadOnlySpan<byte> salt,
@@ -163,7 +550,7 @@ public static class EcdhMacAlgorithm
             ComputeSharedDiffieHellmanPoint(privateKey, peerPublicPoint, g1ScalarMultiply, sharedPoint);
 
             //Z_AB = the shared point's x-coordinate; K = KDF(Z_AB, SharedInfo) with the caller's salt.
-            DeriveMacKeyFromSharedSecret(salt, sharedPoint[1..], sharedInfo, keyDerivation, macKey);
+            DeriveMacKeyFromSharedSecretSpan(salt, sharedPoint[1..], sharedInfo, keyDerivation, macKey);
         }
         finally
         {
@@ -201,7 +588,7 @@ public static class EcdhMacAlgorithm
     /// When <paramref name="verifierEphemeralPublicKey"/> is not on the curve, or the Diffie-Hellman product is
     /// degenerate (see <see cref="DeriveMacKey"/>).
     /// </exception>
-    public static void Sign(
+    internal static void SignSpan(
         ReadOnlySpan<byte> privateKey,
         ReadOnlySpan<byte> verifierEphemeralPublicKey,
         ReadOnlySpan<byte> salt,
@@ -224,7 +611,7 @@ public static class EcdhMacAlgorithm
         try
         {
             ComputeSharedDiffieHellmanPoint(privateKey, verifierEphemeralPublicKey, g1ScalarMultiply, sharedPoint);
-            CompleteSign(salt, sharedPoint[1..], sharedInfo, message, keyDerivation, hmac, mac);
+            CompleteSignSpan(salt, sharedPoint[1..], sharedInfo, message, keyDerivation, hmac, mac);
         }
         finally
         {
@@ -265,7 +652,7 @@ public static class EcdhMacAlgorithm
     /// or the injected <paramref name="keyDerivation"/> rejects the caller's <paramref name="salt"/> or
     /// <paramref name="sharedInfo"/> (an implementation-bounded length, for example).
     /// </exception>
-    public static bool Verify(
+    internal static bool VerifySpan(
         ReadOnlySpan<byte> proverPublicKey,
         ReadOnlySpan<byte> verifierEphemeralPrivateKey,
         ReadOnlySpan<byte> salt,
@@ -310,7 +697,7 @@ public static class EcdhMacAlgorithm
             }
 
             //Z_AB = the shared point's x-coordinate; K = KDF(Z_AB, SharedInfo); MAC' = HMAC(K, M).
-            return CompleteVerify(salt, sharedPoint[1..], sharedInfo, message, mac, keyDerivation, hmac);
+            return CompleteVerifySpan(salt, sharedPoint[1..], sharedInfo, message, mac, keyDerivation, hmac);
         }
         finally
         {
@@ -378,7 +765,7 @@ public static class EcdhMacAlgorithm
     /// Diffie-Hellman product is degenerate (the point at infinity; impossible for valid inputs, checked
     /// defensively).
     /// </exception>
-    public static void SplitSign(
+    internal static void SplitSignSpan(
         ReadOnlySpan<byte> walletKeyShare,
         ReadOnlySpan<byte> wscaKeyShare,
         ReadOnlySpan<byte> baseKey,
@@ -411,9 +798,9 @@ public static class EcdhMacAlgorithm
         try
         {
             //E' = zU·E (wallet), E'' = zW·E' (WSCA), then S_AB = bU·E'' (HSM), K, and the MAC.
-            ApplyKeyShare(walletKeyShare, verifierEphemeralPublicKey, g1ScalarMultiply, walletBlindedPoint);
-            ApplyKeyShare(wscaKeyShare, walletBlindedPoint, g1ScalarMultiply, wscaBlindedPoint);
-            Sign(baseKey, wscaBlindedPoint, salt, sharedInfo, message, keyDerivation, hmac, g1ScalarMultiply, mac);
+            ApplyKeyShareSpan(walletKeyShare, verifierEphemeralPublicKey, g1ScalarMultiply, walletBlindedPoint);
+            ApplyKeyShareSpan(wscaKeyShare, walletBlindedPoint, g1ScalarMultiply, wscaBlindedPoint);
+            SignSpan(baseKey, wscaBlindedPoint, salt, sharedInfo, message, keyDerivation, hmac, g1ScalarMultiply, mac);
         }
         finally
         {
@@ -454,7 +841,7 @@ public static class EcdhMacAlgorithm
     /// <exception cref="ArgumentNullException">When <paramref name="g1ScalarMultiply"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, <paramref name="peerPublicPoint"/> encodes the point at infinity, or it is not the canonical encoding of its point.</exception>
     /// <exception cref="InvalidOperationException">When <paramref name="peerPublicPoint"/> is not on the curve (the backend's decode contract).</exception>
-    public static void PrepareKeyAgreement(
+    internal static void PrepareKeyAgreementSpan(
         ReadOnlySpan<byte> peerPublicPoint,
         G1ScalarMultiplyDelegate g1ScalarMultiply,
         Span<byte> keyHolderInput)
@@ -491,7 +878,7 @@ public static class EcdhMacAlgorithm
     /// <exception cref="ArgumentNullException">When <paramref name="g1ScalarMultiply"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, <paramref name="keyShare"/> is outside <c>[1, n−1]</c>, or <paramref name="point"/> encodes the point at infinity.</exception>
     /// <exception cref="InvalidOperationException">When <paramref name="point"/> is not on the curve, or the product is the point at infinity.</exception>
-    public static void ApplyKeyShare(
+    internal static void ApplyKeyShareSpan(
         ReadOnlySpan<byte> keyShare,
         ReadOnlySpan<byte> point,
         G1ScalarMultiplyDelegate g1ScalarMultiply,
@@ -532,7 +919,7 @@ public static class EcdhMacAlgorithm
     /// <param name="macKey">Receives the derived MAC key <c>K</c>; at least 1 byte.</param>
     /// <exception cref="ArgumentNullException">When <paramref name="keyDerivation"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="sharedSecret"/> is not 32 bytes or <paramref name="macKey"/> is empty.</exception>
-    public static void DeriveMacKeyFromSharedSecret(
+    internal static void DeriveMacKeyFromSharedSecretSpan(
         ReadOnlySpan<byte> salt,
         ReadOnlySpan<byte> sharedSecret,
         ReadOnlySpan<byte> sharedInfo,
@@ -570,7 +957,7 @@ public static class EcdhMacAlgorithm
     /// <param name="mac">Receives the 32-byte MAC.</param>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length.</exception>
-    public static void CompleteSign(
+    internal static void CompleteSignSpan(
         ReadOnlySpan<byte> salt,
         ReadOnlySpan<byte> sharedSecret,
         ReadOnlySpan<byte> sharedInfo,
@@ -588,7 +975,7 @@ public static class EcdhMacAlgorithm
         Span<byte> macKey = stackalloc byte[MacKeySizeBytes];
         try
         {
-            DeriveMacKeyFromSharedSecret(salt, sharedSecret, sharedInfo, keyDerivation, macKey);
+            DeriveMacKeyFromSharedSecretSpan(salt, sharedSecret, sharedInfo, keyDerivation, macKey);
             hmac(macKey, message, mac);
         }
         finally
@@ -619,7 +1006,7 @@ public static class EcdhMacAlgorithm
     /// <returns><see langword="true"/> iff the MAC is valid.</returns>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="sharedSecret"/> is not 32 bytes.</exception>
-    public static bool CompleteVerify(
+    internal static bool CompleteVerifySpan(
         ReadOnlySpan<byte> salt,
         ReadOnlySpan<byte> sharedSecret,
         ReadOnlySpan<byte> sharedInfo,
@@ -640,9 +1027,9 @@ public static class EcdhMacAlgorithm
         Span<byte> macKey = stackalloc byte[MacKeySizeBytes];
         try
         {
-            DeriveMacKeyFromSharedSecret(salt, sharedSecret, sharedInfo, keyDerivation, macKey);
+            DeriveMacKeyFromSharedSecretSpan(salt, sharedSecret, sharedInfo, keyDerivation, macKey);
 
-            return VerifyMac(macKey, message, mac, hmac);
+            return VerifyMacSpan(macKey, message, mac, hmac);
         }
         finally
         {
@@ -668,7 +1055,7 @@ public static class EcdhMacAlgorithm
     /// <returns><see langword="true"/> iff the MAC is valid.</returns>
     /// <exception cref="ArgumentNullException">When <paramref name="hmac"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="macKey"/> is empty.</exception>
-    public static bool VerifyMac(
+    internal static bool VerifyMacSpan(
         ReadOnlySpan<byte> macKey,
         ReadOnlySpan<byte> message,
         ReadOnlySpan<byte> mac,
