@@ -636,6 +636,123 @@ internal sealed class McpServerToolTests
     /// whole connect-and-run sequence on a transient transport drop (the spawned server process exiting
     /// before it is ready); assertion failures and any other error propagate on the first occurrence.
     /// </summary>
+    [TestMethod]
+    public async Task McpEciesAndSignatureResultToolsRoundTripThroughFiles()
+    {
+        const string MessageHash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        const string PinScalar = "0000000000000000000000000000000000000000000000000000000000000007";
+        const string HardwareScalar = "000000000000000000000000000000000000000000000000000000000000000b";
+        const string Plaintext = "deadbeefcafe0123456789";
+        string pinPath = VeridicalCliTestHelpers.WriteTemporaryFile(PinScalar);
+        string hardwarePath = VeridicalCliTestHelpers.WriteTemporaryFile(HardwareScalar);
+        string plaintextPath = VeridicalCliTestHelpers.WriteTemporaryFile(Plaintext);
+        string decryptedPath = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.plain");
+        string agreedPath = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.z");
+        string phasedPath = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.phased");
+        try
+        {
+            await WithMcpClientAsync(async client =>
+            {
+                var tools = await client.ListToolsAsync(cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                var toolNames = tools.Select(tool => tool.Name).ToList();
+                foreach(string name in new[]
+                {
+                    McpToolNames.SecdsaResultProve, McpToolNames.SecdsaResultCheck, McpToolNames.SecdsaEciesEncrypt, McpToolNames.SecdsaEciesDecrypt,
+                    McpToolNames.SecdsaEciesPrepareDecryption, McpToolNames.SecdsaEciesAgree, McpToolNames.SecdsaEciesCompleteDecryption,
+                    McpToolNames.SecdsaProofChallenge, McpToolNames.SecdsaProofRespondPrepare, McpToolNames.SecdsaProofRespondComplete, McpToolNames.SecdsaProofVerify
+                })
+                {
+                    Assert.Contains(name, toolNames);
+                }
+
+                var publicKeyResult = await client.CallToolAsync(
+                    McpToolNames.SecdsaPublicKey,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["hardwareKeyFile"] = hardwarePath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string publicKey = TextOf(publicKeyResult).Trim();
+
+                //ECIES towards the composite key Y = (P*u)*G, decrypted with the composite scalar P*u = 77 held in a file.
+                string compositePath = VeridicalCliTestHelpers.WriteTemporaryFile(new string('0', 62) + "4d");
+                try
+                {
+                    var encrypt = await client.CallToolAsync(
+                        McpToolNames.SecdsaEciesEncrypt,
+                        new Dictionary<string, object?> { ["recipientPublicKey"] = publicKey, ["plaintextFile"] = plaintextPath, ["associatedData"] = "616263" },
+                        cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                    string ciphertext = TextOf(encrypt).Trim();
+                    Assert.DoesNotContain(Plaintext, ciphertext, StringComparison.Ordinal);
+
+                    var decrypt = await client.CallToolAsync(
+                        McpToolNames.SecdsaEciesDecrypt,
+                        new Dictionary<string, object?> { ["privateKeyFile"] = compositePath, ["ciphertext"] = ciphertext, ["outputFile"] = decryptedPath, ["associatedData"] = "616263" },
+                        cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                    Assert.DoesNotContain(Plaintext, TextOf(decrypt), StringComparison.Ordinal);
+                    Assert.AreEqual(Plaintext, (await File.ReadAllTextAsync(decryptedPath, TestContext.CancellationToken).ConfigureAwait(false)).Trim());
+
+                    var overwrite = await client.CallToolAsync(
+                        McpToolNames.SecdsaEciesDecrypt,
+                        new Dictionary<string, object?> { ["privateKeyFile"] = compositePath, ["ciphertext"] = ciphertext, ["outputFile"] = decryptedPath, ["associatedData"] = "616263" },
+                        cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                    Assert.StartsWith("Error:", TextOf(overwrite), StringComparison.Ordinal);
+
+                    var prepare = await client.CallToolAsync(
+                        McpToolNames.SecdsaEciesPrepareDecryption,
+                        new Dictionary<string, object?> { ["ciphertext"] = ciphertext },
+                        cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                    string ephemeral = TextOf(prepare).Trim();
+                    Assert.AreEqual(ciphertext[..66], ephemeral);
+
+                    await client.CallToolAsync(
+                        McpToolNames.SecdsaEciesAgree,
+                        new Dictionary<string, object?> { ["privateKeyFile"] = compositePath, ["point"] = ephemeral, ["outputFile"] = agreedPath },
+                        cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                    await client.CallToolAsync(
+                        McpToolNames.SecdsaEciesCompleteDecryption,
+                        new Dictionary<string, object?> { ["sharedSecretFile"] = agreedPath, ["ciphertext"] = ciphertext, ["outputFile"] = phasedPath, ["associatedData"] = "616263" },
+                        cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                    Assert.AreEqual(Plaintext, (await File.ReadAllTextAsync(phasedPath, TestContext.CancellationToken).ConfigureAwait(false)).Trim());
+                }
+                finally
+                {
+                    File.Delete(compositePath);
+                }
+
+                //Algorithm 41 through the tools: a split signature, its record, the check and an alarm on another message.
+                var signResult = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSign,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["hardwareKeyFile"] = hardwarePath, ["messageHash"] = MessageHash },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                var proveResult = await client.CallToolAsync(
+                    McpToolNames.SecdsaResultProve,
+                    new Dictionary<string, object?> { ["publicKey"] = publicKey, ["messageHash"] = MessageHash, ["signature"] = TextOf(signResult).Trim() },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string record = TextOf(proveResult).Trim();
+
+                var check = await client.CallToolAsync(
+                    McpToolNames.SecdsaResultCheck,
+                    new Dictionary<string, object?> { ["publicKey"] = publicKey, ["messageHash"] = MessageHash, ["record"] = record },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID", TextOf(check), StringComparison.Ordinal);
+
+                var alarm = await client.CallToolAsync(
+                    McpToolNames.SecdsaResultCheck,
+                    new Dictionary<string, object?> { ["publicKey"] = publicKey, ["messageHash"] = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", ["record"] = record },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("REJECTED", TextOf(alarm), StringComparison.Ordinal);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(pinPath);
+            File.Delete(hardwarePath);
+            File.Delete(plaintextPath);
+            File.Delete(decryptedPath);
+            File.Delete(agreedPath);
+            File.Delete(phasedPath);
+        }
+    }
+
+
     private async Task WithMcpClientAsync(Func<McpClient, Task> body)
     {
         string? executable = VeridicalCliTestHelpers.GetExecutablePath();

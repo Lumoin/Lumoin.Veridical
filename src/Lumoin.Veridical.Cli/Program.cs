@@ -90,6 +90,17 @@ internal static class Program
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacCompleteSignCommand());
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacCompleteVerifyCommand());
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacVerifyMacCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildResultProveCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildResultCheckCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEciesEncryptCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEciesDecryptCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEciesPrepareDecryptionCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEciesAgreeCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEciesCompleteDecryptionCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildProofChallengeCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildProofRespondPrepareCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildProofRespondCompleteCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildProofVerifyCommand());
         rootCommand.Subcommands.Add(AnalysisCliCommands.BuildBaseFoldLeakageCommand());
         rootCommand.Subcommands.Add(AnalysisCliCommands.BuildWelchTCommand());
         rootCommand.Subcommands.Add(AnalysisCliCommands.BuildKolmogorovSmirnovCommand());

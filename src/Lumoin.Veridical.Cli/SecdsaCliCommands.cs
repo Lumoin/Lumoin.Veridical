@@ -743,6 +743,390 @@ internal static class SecdsaCliCommands
     }
 
 
+    /// <summary>Builds <c>secdsa-result-prove</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildResultProveCommand()
+    {
+        Option<string> publicKey = Hex("--public-key", "The user public key Q_U, 33 bytes as hex.");
+        Option<string> messageHash = Hex("--message-hash", "The message hash, 32 bytes as hex.");
+        Option<string> signature = Hex("--signature", "The signature r || s, 64 bytes as hex.");
+
+        Command command = new("secdsa-result-prove", "Signature-result conformity, prover side: proves that a signature result is consistent with the user key and prints the record (R, G'', Q_U'', proof) as hex.")
+        {
+            publicKey,
+            messageHash,
+            signature
+        };
+
+        command.SetAction(parseResult => Produce(() => SecdsaProofOperations.ResultProve(
+            parseResult.GetValue(publicKey) ?? string.Empty,
+            parseResult.GetValue(messageHash) ?? string.Empty,
+            parseResult.GetValue(signature) ?? string.Empty)));
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-result-check</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildResultCheckCommand()
+    {
+        Option<string> publicKey = Hex("--public-key", "The user public key Q_U, 33 bytes as hex.");
+        Option<string> messageHash = Hex("--message-hash", "The message hash, 32 bytes as hex.");
+        Option<string> record = Hex("--record", "The record produced by secdsa-result-prove, as hex.");
+
+        Command command = new("secdsa-result-check", "Signature-result conformity, verifier side: checks the proof and the nonce-point equation of a record (exit non-zero on a compromise alarm).")
+        {
+            publicKey,
+            messageHash,
+            record
+        };
+
+        command.SetAction(parseResult => Report(() => SecdsaProofOperations.ResultCheck(
+            parseResult.GetValue(publicKey) ?? string.Empty,
+            parseResult.GetValue(messageHash) ?? string.Empty,
+            parseResult.GetValue(record) ?? string.Empty)));
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecies-encrypt</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEciesEncryptCommand()
+    {
+        Option<string> recipientPublicKey = Hex("--recipient-public-key", "The recipient public key, 33 bytes as hex.");
+        Option<string> plaintextFile = SecretFile("--plaintext-file", "the plaintext (hex)");
+        Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data as hex; omit for none.");
+
+        Command command = new("secdsa-ecies-encrypt", "ECIES encryption (X9.63 over SHA-256, AES-256-GCM, 96-bit IV, 128-bit tag): prints the ciphertext E || T || C as hex. The plaintext is read only from its file and is never echoed.")
+        {
+            recipientPublicKey,
+            plaintextFile,
+            associatedData
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, plaintextFile, "plaintext", out string plaintext))
+            {
+                return 1;
+            }
+
+            return Produce(() => SecdsaProofOperations.EciesEncrypt(
+                parseResult.GetValue(recipientPublicKey) ?? string.Empty, plaintext, parseResult.GetValue(associatedData) ?? string.Empty));
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecies-decrypt</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEciesDecryptCommand()
+    {
+        Option<string> privateKeyFile = SecretFile("--private-key-file", "the recipient private scalar (hex)");
+        Option<string> ciphertext = Hex("--ciphertext", "The ciphertext E || T || C as hex.");
+        Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data as hex; omit for none.");
+        Option<string> output = PlaintextOutput();
+
+        Command command = new("secdsa-ecies-decrypt", "ECIES decryption with the private key in this process: writes the plaintext (hex) to --output only if the tag verifies; exits non-zero and writes nothing otherwise. The key is read only from its file and is never echoed.")
+        {
+            privateKeyFile,
+            ciphertext,
+            associatedData,
+            output
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, privateKeyFile, "private key", out string privateKey))
+            {
+                return 1;
+            }
+
+            return ProduceToSecretFile(
+                () => SecdsaProofOperations.EciesDecrypt(privateKey, parseResult.GetValue(ciphertext) ?? string.Empty, parseResult.GetValue(associatedData) ?? string.Empty),
+                parseResult.GetValue(output) ?? string.Empty,
+                "plaintext file");
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecies-prepare-decryption</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEciesPrepareDecryptionCommand()
+    {
+        Option<string> ciphertext = Hex("--ciphertext", "The ciphertext E || T || C as hex.");
+
+        Command command = new("secdsa-ecies-prepare-decryption", "ECIES decryption, prepare phase: validates the ephemeral public key E of a ciphertext (not infinity, on the curve, canonical) and prints it (hex) to send to the key holder's ECDH.")
+        {
+            ciphertext
+        };
+
+        command.SetAction(parseResult => Produce(() => SecdsaProofOperations.EciesPrepareDecryption(parseResult.GetValue(ciphertext) ?? string.Empty)));
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecies-agree</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEciesAgreeCommand()
+    {
+        Option<string> privateKeyFile = SecretFile("--private-key-file", "the private scalar (hex)");
+        Option<string> point = Hex("--point", "The compressed point to agree with, such as the ephemeral public key, as hex.");
+        Option<string> output = new("--output") { Description = "Path the shared secret Z_AB (hex) is written to. The file must not exist and is readable by its owner only; Z_AB is never printed.", Required = true };
+
+        Command command = new("secdsa-ecies-agree", "The key holder's raw agreement in software: writes Z_AB = x(d*E) (hex) to --output. The key is read only from its file and is never echoed.")
+        {
+            privateKeyFile,
+            point,
+            output
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, privateKeyFile, "private key", out string privateKey))
+            {
+                return 1;
+            }
+
+            return ProduceToSecretFile(
+                () => SecdsaProofOperations.EciesAgree(privateKey, parseResult.GetValue(point) ?? string.Empty),
+                parseResult.GetValue(output) ?? string.Empty,
+                "shared secret file");
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecies-complete-decryption</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEciesCompleteDecryptionCommand()
+    {
+        Option<string> sharedSecretFile = SecretFile("--shared-secret-file", "the shared secret Z_AB the key holder returned (hex, 32 bytes)");
+        Option<string> ciphertext = Hex("--ciphertext", "The ciphertext E || T || C as hex.");
+        Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data as hex; omit for none.");
+        Option<string> output = PlaintextOutput();
+
+        Command command = new("secdsa-ecies-complete-decryption", "ECIES decryption, complete phase: derives the key from the key holder's shared secret and writes the plaintext (hex) to --output only if the tag verifies. The shared secret is read only from its file and is never echoed.")
+        {
+            sharedSecretFile,
+            ciphertext,
+            associatedData,
+            output
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, sharedSecretFile, "shared secret", out string sharedSecret))
+            {
+                return 1;
+            }
+
+            return ProduceToSecretFile(
+                () => SecdsaProofOperations.EciesCompleteDecryption(sharedSecret, parseResult.GetValue(ciphertext) ?? string.Empty, parseResult.GetValue(associatedData) ?? string.Empty),
+                parseResult.GetValue(output) ?? string.Empty,
+                "plaintext file");
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-proof-challenge</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildProofChallengeCommand()
+    {
+        Option<string> signingKeyFile = SecretFile("--signing-key-file", "the challenger's signing scalar (hex)");
+        Option<string> generators = Hex("--generators", "The concatenated compressed generators G_0..G_n as hex.");
+        Option<string> publicKeys = Hex("--public-keys", "The concatenated compressed public keys D_0..D_n as hex, pairwise with the generators.");
+        Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data as hex; omit for none.");
+        Option<string> secretDataFile = new("--additional-secret-data-file") { Description = "Path to a file holding the additional secret data (hex), or - for standard input; omit for none." };
+
+        Command command = new("secdsa-proof-challenge", "Transferable proof, challenge generation (Algorithm 22): prints a JSON object with the signed challenge and the ECIES ciphertext (hex). The key and the additional secret data are read only from files and are never echoed.")
+        {
+            signingKeyFile,
+            generators,
+            publicKeys,
+            associatedData,
+            secretDataFile
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, signingKeyFile, "signing key", out string signingKey) || !ReadOptionalSecret(parseResult, secretDataFile, "additional secret data", out string secretData))
+            {
+                return 1;
+            }
+
+            return Produce(() => SecdsaProofOperations.ProofChallenge(
+                signingKey,
+                parseResult.GetValue(generators) ?? string.Empty,
+                parseResult.GetValue(publicKeys) ?? string.Empty,
+                parseResult.GetValue(associatedData) ?? string.Empty,
+                secretData));
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-proof-respond-prepare</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildProofRespondPrepareCommand()
+    {
+        Option<string> challenge = Hex("--challenge", "The challenge as hex.");
+        Option<string> generators = Hex("--generators", "The concatenated compressed generators as hex.");
+        Option<string> publicKeys = Hex("--public-keys", "The concatenated compressed public keys as hex.");
+        Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data the prover expects, as hex; omit for none.");
+        Option<string> challengerPublicKey = Hex("--challenger-public-key", "The challenger's public key S, 33 bytes as hex.");
+
+        Command command = new("secdsa-proof-respond-prepare", "Transferable proof, response prepare phase (Algorithm 23 steps 1 to 4): verifies the challenge for the statement and prints the validated ephemeral public key E (hex) to send to the key holder's ECDH.")
+        {
+            challenge,
+            generators,
+            publicKeys,
+            associatedData,
+            challengerPublicKey
+        };
+
+        command.SetAction(parseResult => Produce(() => SecdsaProofOperations.ProofRespondPrepare(
+            parseResult.GetValue(challenge) ?? string.Empty,
+            parseResult.GetValue(generators) ?? string.Empty,
+            parseResult.GetValue(publicKeys) ?? string.Empty,
+            parseResult.GetValue(associatedData) ?? string.Empty,
+            parseResult.GetValue(challengerPublicKey) ?? string.Empty)));
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-proof-respond-complete</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildProofRespondCompleteCommand()
+    {
+        Option<string> sharedSecretFile = SecretFile("--shared-secret-file", "the shared secret Z_AB the key holder returned (hex, 32 bytes)");
+        Option<string> challenge = Hex("--challenge", "The challenge as hex.");
+        Option<string> ciphertext = Hex("--ciphertext", "The ECIES ciphertext E || T || C as hex.");
+        Option<string> generators = Hex("--generators", "The concatenated compressed generators as hex.");
+        Option<string> publicKeys = Hex("--public-keys", "The concatenated compressed public keys as hex.");
+        Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data the prover expects, as hex; omit for none.");
+        Option<string> signingKeyFile = SecretFile("--signing-key-file", "the prover's record signing scalar (hex)");
+        Option<string> secretDataOutput = new("--additional-secret-data-output") { Description = "Path the recovered additional secret data (hex) is written to. The file must not exist and is readable by its owner only; the data is never printed." };
+
+        Command command = new("secdsa-proof-respond-complete", "Transferable proof, response complete phase (Algorithm 23 steps 6 to 15): decrypts the seed with the key holder's shared secret, repeats the decryption under the key from the public keys (step 11), and prints the signed response (hex). The additional secret data goes to --additional-secret-data-output. Exits non-zero and prints nothing if any check fails.")
+        {
+            sharedSecretFile,
+            challenge,
+            ciphertext,
+            generators,
+            publicKeys,
+            associatedData,
+            signingKeyFile,
+            secretDataOutput
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, sharedSecretFile, "shared secret", out string sharedSecret) || !ReadSecret(parseResult, signingKeyFile, "signing key", out string signingKey))
+            {
+                return 1;
+            }
+
+            ProofResponseResult result;
+            try
+            {
+                result = SecdsaProofOperations.ProofRespondComplete(
+                    sharedSecret,
+                    parseResult.GetValue(challenge) ?? string.Empty,
+                    parseResult.GetValue(ciphertext) ?? string.Empty,
+                    parseResult.GetValue(generators) ?? string.Empty,
+                    parseResult.GetValue(publicKeys) ?? string.Empty,
+                    parseResult.GetValue(associatedData) ?? string.Empty,
+                    signingKey);
+            }
+            catch(ArgumentException error)
+            {
+                Console.Error.WriteLine($"Error: {error.Message}");
+
+                return 1;
+            }
+
+            string outputPath = parseResult.GetValue(secretDataOutput) ?? string.Empty;
+            if(outputPath.Length > 0 && !CliFiles.TryWriteSecret(outputPath, result.AdditionalSecretData, "additional secret data file", out string failure))
+            {
+                Console.Error.WriteLine($"Error: {failure}");
+
+                return 1;
+            }
+
+            Console.WriteLine(result.Response);
+
+            return 0;
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-proof-verify</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildProofVerifyCommand()
+    {
+        Option<string> challenge = Hex("--challenge", "The challenge as hex.");
+        Option<string> response = Hex("--response", "The response as hex.");
+        Option<string> generators = Hex("--generators", "The concatenated compressed generators as hex.");
+        Option<string> publicKeys = Hex("--public-keys", "The concatenated compressed public keys as hex.");
+        Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data as hex; omit for none.");
+        Option<string> challengerPublicKey = Hex("--challenger-public-key", "The challenger's public key S, 33 bytes as hex.");
+        Option<string> proverPublicKey = Hex("--prover-public-key", "The prover's record public key V, 33 bytes as hex.");
+
+        Command command = new("secdsa-proof-verify", "Transferable proof, verification by a third party (Algorithm 24): checks the profile, the statement, both signatures and H2 = H(H1) (exit non-zero when the proof is rejected).")
+        {
+            challenge,
+            response,
+            generators,
+            publicKeys,
+            associatedData,
+            challengerPublicKey,
+            proverPublicKey
+        };
+
+        command.SetAction(parseResult => Report(() => SecdsaProofOperations.ProofVerify(
+            parseResult.GetValue(challenge) ?? string.Empty,
+            parseResult.GetValue(response) ?? string.Empty,
+            parseResult.GetValue(generators) ?? string.Empty,
+            parseResult.GetValue(publicKeys) ?? string.Empty,
+            parseResult.GetValue(associatedData) ?? string.Empty,
+            parseResult.GetValue(challengerPublicKey) ?? string.Empty,
+            parseResult.GetValue(proverPublicKey) ?? string.Empty)));
+
+        return command;
+    }
+
+
+    private static Option<string> PlaintextOutput() => new("--output") { Description = "Path the plaintext (hex) is written to. The file must not exist and is readable by its owner only; the plaintext is never printed.", Required = true };
+
+
+    private static bool ReadOptionalSecret(ParseResult parseResult, Option<string> option, string what, out string secret)
+    {
+        string path = parseResult.GetValue(option) ?? string.Empty;
+        if(path.Length == 0)
+        {
+            secret = string.Empty;
+
+            return true;
+        }
+
+        return ReadSecret(parseResult, option, what, out secret);
+    }
+
+
     private static int ProduceToSecretFile(Func<string> operation, string outputPath, string what)
     {
         string secret;

@@ -509,6 +509,162 @@ internal sealed class VeridicalMcpServer
     }
 
 
+    [McpServerTool(Name = McpToolNames.SecdsaResultProve), Description("Signature-result conformity, prover side: proves that a signature result is consistent with the user key and returns the record (R, G'', Q_U'', proof) as hex, or an error message.")]
+    public static string SecdsaResultProve(
+        [Description("The user public key Q_U, 33 bytes as hex.")] string publicKey,
+        [Description("The message hash, 32 bytes as hex.")] string messageHash,
+        [Description("The signature r || s, 64 bytes as hex.")] string signature)
+    {
+        return Produced(() => SecdsaProofOperations.ResultProve(publicKey, messageHash, signature));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaResultCheck), Description("Signature-result conformity, verifier side: checks the proof and the nonce-point equation of a record and returns a one-line report; any alarm is reported as a rejection.")]
+    public static string SecdsaResultCheck(
+        [Description("The user public key Q_U, 33 bytes as hex.")] string publicKey,
+        [Description("The message hash, 32 bytes as hex.")] string messageHash,
+        [Description("The record produced by SecdsaResultProve, as hex.")] string record)
+    {
+        return SecdsaProofOperations.ResultCheck(publicKey, messageHash, record).ToReport();
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEciesEncrypt), Description("ECIES encryption (X9.63 over SHA-256, AES-256-GCM, 96-bit IV, 128-bit tag) towards a recipient public key; returns the ciphertext E || T || C as hex. The plaintext is read from a file and never passes through the conversation.")]
+    public static string SecdsaEciesEncrypt(
+        [Description("The recipient public key, 33 bytes as hex.")] string recipientPublicKey,
+        [Description("Path to the file holding the plaintext (hex).")] string plaintextFile,
+        [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "")
+    {
+        return WithSecrets([plaintextFile], secrets => SecdsaProofOperations.EciesEncrypt(recipientPublicKey, secrets[0], associatedData));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEciesDecrypt), Description("ECIES decryption with the private key in this process. The key is read from a file; the plaintext is written to the named file, which must not exist, only if the tag verifies, and is never returned.")]
+    public static string SecdsaEciesDecrypt(
+        [Description("Path to the file holding the recipient private scalar (hex).")] string privateKeyFile,
+        [Description("The ciphertext E || T || C as hex.")] string ciphertext,
+        [Description("Path the plaintext (hex) is written to; the file must not exist.")] string outputFile,
+        [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "")
+    {
+        return WithSecretsToFile([privateKeyFile], outputFile, "plaintext file", secrets => SecdsaProofOperations.EciesDecrypt(secrets[0], ciphertext, associatedData));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEciesPrepareDecryption), Description("ECIES decryption, prepare phase: validates the ephemeral public key E of a ciphertext (not infinity, on the curve, canonical) and returns it (hex) to send to the key holder's ECDH, or an error message.")]
+    public static string SecdsaEciesPrepareDecryption(
+        [Description("The ciphertext E || T || C as hex.")] string ciphertext)
+    {
+        return Produced(() => SecdsaProofOperations.EciesPrepareDecryption(ciphertext));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEciesAgree), Description("The key holder's raw agreement in software: computes Z_AB = x(d*E). The private scalar is read from a file; the shared secret is written to the named file, which must not exist, and is never returned.")]
+    public static string SecdsaEciesAgree(
+        [Description("Path to the file holding the private scalar (hex).")] string privateKeyFile,
+        [Description("The compressed point to agree with, such as the ephemeral public key, as hex.")] string point,
+        [Description("Path the shared secret (hex) is written to; the file must not exist.")] string outputFile)
+    {
+        return WithSecretsToFile([privateKeyFile], outputFile, "shared secret file", secrets => SecdsaProofOperations.EciesAgree(secrets[0], point));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEciesCompleteDecryption), Description("ECIES decryption, complete phase: derives the key from the key holder's shared secret and writes the plaintext to the named file, which must not exist, only if the tag verifies; it is never returned. The shared secret is read from a file.")]
+    public static string SecdsaEciesCompleteDecryption(
+        [Description("Path to the file holding the shared secret Z_AB (hex, 32 bytes).")] string sharedSecretFile,
+        [Description("The ciphertext E || T || C as hex.")] string ciphertext,
+        [Description("Path the plaintext (hex) is written to; the file must not exist.")] string outputFile,
+        [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "")
+    {
+        return WithSecretsToFile([sharedSecretFile], outputFile, "plaintext file", secrets => SecdsaProofOperations.EciesCompleteDecryption(secrets[0], ciphertext, associatedData));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaProofChallenge), Description("Transferable proof, challenge generation (Algorithm 22): returns a JSON object with the signed challenge and the ECIES ciphertext (hex). The signing key and the optional additional secret data are read from files and never pass through the conversation.")]
+    public static string SecdsaProofChallenge(
+        [Description("Path to the file holding the challenger's signing scalar (hex).")] string signingKeyFile,
+        [Description("The concatenated compressed generators G_0..G_n as hex.")] string generators,
+        [Description("The concatenated compressed public keys D_0..D_n as hex, pairwise with the generators.")] string publicKeys,
+        [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "",
+        [Description("Path to the file holding the additional secret data (hex); empty for none.")] string additionalSecretDataFile = "")
+    {
+        string secretData = string.Empty;
+        if(additionalSecretDataFile.Length > 0)
+        {
+            if(!CliFiles.TryRead(additionalSecretDataFile, "additional secret data", out string content, out string failure))
+            {
+                return $"Error: {failure}";
+            }
+
+            secretData = content.Trim();
+        }
+
+        return WithSecrets([signingKeyFile], secrets => SecdsaProofOperations.ProofChallenge(secrets[0], generators, publicKeys, associatedData, secretData));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaProofRespondPrepare), Description("Transferable proof, response prepare phase (Algorithm 23 steps 1 to 4): verifies the challenge for the statement and returns the validated ephemeral public key E (hex) to send to the key holder's ECDH, or an error message.")]
+    public static string SecdsaProofRespondPrepare(
+        [Description("The challenge as hex.")] string challenge,
+        [Description("The concatenated compressed generators as hex.")] string generators,
+        [Description("The concatenated compressed public keys as hex.")] string publicKeys,
+        [Description("The challenger's public key S, 33 bytes as hex.")] string challengerPublicKey,
+        [Description("The additional authenticated data the prover expects, as hex; empty for none.")] string associatedData = "")
+    {
+        return Produced(() => SecdsaProofOperations.ProofRespondPrepare(challenge, generators, publicKeys, associatedData, challengerPublicKey));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaProofRespondComplete), Description("Transferable proof, response complete phase (Algorithm 23 steps 6 to 15): decrypts the seed with the key holder's shared secret, repeats the decryption under the key from the public keys (step 11) and returns the signed response (hex); the additional secret data is written to the named file, which must not exist. The shared secret and the signing key are read from files. Any failed check returns an error and no response.")]
+    public static string SecdsaProofRespondComplete(
+        [Description("Path to the file holding the shared secret Z_AB (hex, 32 bytes).")] string sharedSecretFile,
+        [Description("The challenge as hex.")] string challenge,
+        [Description("The ECIES ciphertext E || T || C as hex.")] string ciphertext,
+        [Description("The concatenated compressed generators as hex.")] string generators,
+        [Description("The concatenated compressed public keys as hex.")] string publicKeys,
+        [Description("Path to the file holding the prover's record signing scalar (hex).")] string signingKeyFile,
+        [Description("Path the recovered additional secret data (hex) is written to; the file must not exist; empty to discard it.")] string additionalSecretDataOutputFile = "",
+        [Description("The additional authenticated data the prover expects, as hex; empty for none.")] string associatedData = "")
+    {
+        if(!CliFiles.TryRead(sharedSecretFile, "shared secret", out string sharedSecret, out string readFailure)
+            || !CliFiles.TryRead(signingKeyFile, "signing key", out string signingKey, out readFailure))
+        {
+            return $"Error: {readFailure}";
+        }
+
+        ProofResponseResult result;
+        try
+        {
+            result = SecdsaProofOperations.ProofRespondComplete(sharedSecret.Trim(), challenge, ciphertext, generators, publicKeys, associatedData, signingKey.Trim());
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+
+        if(additionalSecretDataOutputFile.Length > 0
+            && !CliFiles.TryWriteSecret(additionalSecretDataOutputFile, result.AdditionalSecretData, "additional secret data file", out string writeFailure))
+        {
+            return $"Error: {writeFailure}";
+        }
+
+        return result.Response;
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaProofVerify), Description("Transferable proof, verification by a third party (Algorithm 24): checks the profile, the statement, both signatures and H2 = H(H1), and returns a one-line report, or the reason the proof is rejected.")]
+    public static string SecdsaProofVerify(
+        [Description("The challenge as hex.")] string challenge,
+        [Description("The response as hex.")] string response,
+        [Description("The concatenated compressed generators as hex.")] string generators,
+        [Description("The concatenated compressed public keys as hex.")] string publicKeys,
+        [Description("The challenger's public key S, 33 bytes as hex.")] string challengerPublicKey,
+        [Description("The prover's record public key V, 33 bytes as hex.")] string proverPublicKey,
+        [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "")
+    {
+        return SecdsaProofOperations.ProofVerify(challenge, response, generators, publicKeys, associatedData, challengerPublicKey, proverPublicKey).ToReport();
+    }
+
+
     //Reads each secret file, runs the operation, and writes its result to a new file that must not exist,
     //returning a confirmation, or the error message; the result is never returned.
     private static string WithSecretsToFile(string[] files, string outputFile, string what, Func<string[], string> operation)

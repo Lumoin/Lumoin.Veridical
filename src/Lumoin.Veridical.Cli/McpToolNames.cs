@@ -109,6 +109,39 @@ internal static class McpToolNames
     /// <summary>The SecdsaEcdhMacVerifyMac tool.</summary>
     public const string SecdsaEcdhMacVerifyMac = "SecdsaEcdhMacVerifyMac";
 
+    /// <summary>The SecdsaResultProve tool.</summary>
+    public const string SecdsaResultProve = "SecdsaResultProve";
+
+    /// <summary>The SecdsaResultCheck tool.</summary>
+    public const string SecdsaResultCheck = "SecdsaResultCheck";
+
+    /// <summary>The SecdsaEciesEncrypt tool.</summary>
+    public const string SecdsaEciesEncrypt = "SecdsaEciesEncrypt";
+
+    /// <summary>The SecdsaEciesDecrypt tool.</summary>
+    public const string SecdsaEciesDecrypt = "SecdsaEciesDecrypt";
+
+    /// <summary>The SecdsaEciesPrepareDecryption tool.</summary>
+    public const string SecdsaEciesPrepareDecryption = "SecdsaEciesPrepareDecryption";
+
+    /// <summary>The SecdsaEciesAgree tool.</summary>
+    public const string SecdsaEciesAgree = "SecdsaEciesAgree";
+
+    /// <summary>The SecdsaEciesCompleteDecryption tool.</summary>
+    public const string SecdsaEciesCompleteDecryption = "SecdsaEciesCompleteDecryption";
+
+    /// <summary>The SecdsaProofChallenge tool.</summary>
+    public const string SecdsaProofChallenge = "SecdsaProofChallenge";
+
+    /// <summary>The SecdsaProofRespondPrepare tool.</summary>
+    public const string SecdsaProofRespondPrepare = "SecdsaProofRespondPrepare";
+
+    /// <summary>The SecdsaProofRespondComplete tool.</summary>
+    public const string SecdsaProofRespondComplete = "SecdsaProofRespondComplete";
+
+    /// <summary>The SecdsaProofVerify tool.</summary>
+    public const string SecdsaProofVerify = "SecdsaProofVerify";
+
     /// <summary>The AnalysisBaseFoldLeakage tool.</summary>
     public const string AnalysisBaseFoldLeakage = "AnalysisBaseFoldLeakage";
 
@@ -158,6 +191,17 @@ internal static class McpToolNames
         SecdsaEcdhMacCompleteSign,
         SecdsaEcdhMacCompleteVerify,
         SecdsaEcdhMacVerifyMac,
+        SecdsaResultProve,
+        SecdsaResultCheck,
+        SecdsaEciesEncrypt,
+        SecdsaEciesDecrypt,
+        SecdsaEciesPrepareDecryption,
+        SecdsaEciesAgree,
+        SecdsaEciesCompleteDecryption,
+        SecdsaProofChallenge,
+        SecdsaProofRespondPrepare,
+        SecdsaProofRespondComplete,
+        SecdsaProofVerify,
         AnalysisBaseFoldLeakage,
         AnalysisWelchT,
         AnalysisKolmogorovSmirnov,
