@@ -249,8 +249,9 @@ public static class TransferableProofAlgorithm
     /// decrypts <c>Seed ‖ ASD</c> and finishes the response with <see cref="TryFinishResponse"/>.
     /// </summary>
     /// <remarks>
-    /// The caller has run <see cref="TryPrepareResponse"/>, which verifies the challenge signature; this method does
-    /// not repeat step 4. Any failure returns <see langword="false"/> with no response and no additional secret data.
+    /// The challenge signature <c>Sig</c> is verified first (step 4), so no decryption result is used and no response
+    /// is signed for an unsigned or foreign challenge. Any failure returns <see langword="false"/> with no response and
+    /// no additional secret data.
     /// </remarks>
     /// <param name="sharedSecret">The shared secret <c>Z_AB</c> from <c>d·E</c> that the key holder returned; secret.</param>
     /// <param name="challenge">The challenge.</param>
@@ -258,6 +259,7 @@ public static class TransferableProofAlgorithm
     /// <param name="statement">The prover's statement.</param>
     /// <param name="profile">The layout profile.</param>
     /// <param name="parameters">The ECIES parameter set.</param>
+    /// <param name="challengeVerify">Verifies <c>Sig</c> under the public key <c>S</c> of party <c>T</c>.</param>
     /// <param name="seedKeyDerivation">The derivation <c>K(Seed, D, |q| + 8)</c>.</param>
     /// <param name="eciesKeyDerivation">The ECIES key derivation.</param>
     /// <param name="aeadDecrypt">The ECIES authenticated decryption.</param>
@@ -277,6 +279,7 @@ public static class TransferableProofAlgorithm
         ProofStatement statement,
         SecdsaLayoutProfile profile,
         EciesParameterSet parameters,
+        StructureVerifyDelegate challengeVerify,
         SeedKeyDerivationDelegate seedKeyDerivation,
         EciesKeyDerivationDelegate eciesKeyDerivation,
         AeadDecryptDelegate aeadDecrypt,
@@ -288,10 +291,19 @@ public static class TransferableProofAlgorithm
         out TransferableResponse? response,
         out AdditionalData? additionalSecretData)
     {
+        ArgumentNullException.ThrowIfNull(challenge);
         ArgumentNullException.ThrowIfNull(statement);
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(challengeVerify);
+        ArgumentNullException.ThrowIfNull(pool);
 
         response = null;
         additionalSecretData = null;
+        if(!MatchesStatement(challenge, statement, profile) || !VerifyChallengeSignature(challenge, statement, profile, challengeVerify, pool))
+        {
+            return false;
+        }
+
         if(!EciesAlgorithm.TryCompleteDecryption(
             sharedSecret, ciphertext, statement.AdditionalAuthenticatedData, parameters, eciesKeyDerivation, aeadDecrypt, pool, out EciesPlaintext? decrypted))
         {
@@ -300,7 +312,7 @@ public static class TransferableProofAlgorithm
 
         using(decrypted)
         {
-            return TryFinishResponse(
+            return FinishVerified(
                 decrypted!, challenge, ciphertext, statement, profile, parameters, seedKeyDerivation, eciesKeyDerivation, aeadDecrypt,
                 responseSign, hash, g1ScalarMultiply, g1Add, pool, out response, out additionalSecretData);
         }
@@ -317,6 +329,8 @@ public static class TransferableProofAlgorithm
     /// This is the entry point for a key holder that performs the whole decryption, <c>CKM_ECDH1_DERIVE</c> and the
     /// authenticated decryption, inside the HSM. Step 11 needs the ciphertext and does not need the HSM, because it
     /// decrypts under the key derived from the public side of the statement; it is mandatory here as on every path.
+    /// The challenge signature <c>Sig</c> is verified before the plaintext is used, so an unsigned or foreign
+    /// challenge yields no response and no additional secret data.
     /// </remarks>
     /// <param name="decrypted">The plaintext <c>Seed ‖ ASD</c> of step 7; secret.</param>
     /// <param name="challenge">The challenge.</param>
@@ -324,6 +338,7 @@ public static class TransferableProofAlgorithm
     /// <param name="statement">The prover's statement.</param>
     /// <param name="profile">The layout profile.</param>
     /// <param name="parameters">The ECIES parameter set.</param>
+    /// <param name="challengeVerify">Verifies <c>Sig</c> under the public key <c>S</c> of party <c>T</c>.</param>
     /// <param name="seedKeyDerivation">The derivation <c>K(Seed, D, |q| + 8)</c>.</param>
     /// <param name="eciesKeyDerivation">The ECIES key derivation.</param>
     /// <param name="aeadDecrypt">The ECIES authenticated decryption.</param>
@@ -338,6 +353,46 @@ public static class TransferableProofAlgorithm
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">When the signature delegate reports an unusable length or a statement point is off the curve.</exception>
     public static bool TryFinishResponse(
+        EciesPlaintext decrypted,
+        TransferableChallenge challenge,
+        EciesCiphertext ciphertext,
+        ProofStatement statement,
+        SecdsaLayoutProfile profile,
+        EciesParameterSet parameters,
+        StructureVerifyDelegate challengeVerify,
+        SeedKeyDerivationDelegate seedKeyDerivation,
+        EciesKeyDerivationDelegate eciesKeyDerivation,
+        AeadDecryptDelegate aeadDecrypt,
+        StructureSignDelegate responseSign,
+        FiatShamirHashDelegate hash,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        G1AddDelegate g1Add,
+        BaseMemoryPool pool,
+        out TransferableResponse? response,
+        out AdditionalData? additionalSecretData)
+    {
+        ArgumentNullException.ThrowIfNull(decrypted);
+        ArgumentNullException.ThrowIfNull(challenge);
+        ArgumentNullException.ThrowIfNull(statement);
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(challengeVerify);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        response = null;
+        additionalSecretData = null;
+        if(!MatchesStatement(challenge, statement, profile) || !VerifyChallengeSignature(challenge, statement, profile, challengeVerify, pool))
+        {
+            return false;
+        }
+
+        return FinishVerified(
+            decrypted, challenge, ciphertext, statement, profile, parameters, seedKeyDerivation, eciesKeyDerivation, aeadDecrypt,
+            responseSign, hash, g1ScalarMultiply, g1Add, pool, out response, out additionalSecretData);
+    }
+
+
+    /// <summary>Steps 8 to 15 for a challenge whose signature the caller has already verified.</summary>
+    private static bool FinishVerified(
         EciesPlaintext decrypted,
         TransferableChallenge challenge,
         EciesCiphertext ciphertext,
@@ -525,7 +580,7 @@ public static class TransferableProofAlgorithm
             using SharedSecret sharedSecret = EciesAlgorithm.AgreeSharedSecret(privateKey, ephemeralPublicKey!, g1ScalarMultiply, pool);
 
             return TryCompleteResponse(
-                sharedSecret, challenge, ciphertext, statement, profile, parameters, seedKeyDerivation, eciesKeyDerivation, aeadDecrypt,
+                sharedSecret, challenge, ciphertext, statement, profile, parameters, challengeVerify, seedKeyDerivation, eciesKeyDerivation, aeadDecrypt,
                 responseSign, hash, g1ScalarMultiply, g1Add, pool, out response, out additionalSecretData);
         }
     }

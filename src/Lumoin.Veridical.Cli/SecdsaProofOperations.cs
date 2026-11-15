@@ -300,6 +300,7 @@ internal static class SecdsaProofOperations
     /// <param name="publicKeysHex">The concatenated compressed public keys as hex.</param>
     /// <param name="associatedDataHex">The additional authenticated data the prover expects, as hex; may be empty.</param>
     /// <param name="signingKeyHex">The prover's record signing scalar as hex (secret).</param>
+    /// <param name="challengerPublicKeyHex">The challenger's public key S, 33 bytes as hex, under which the challenge signature is verified.</param>
     /// <returns>The response and the additional secret data.</returns>
     /// <exception cref="ArgumentException">An input is invalid or a check of the response fails; no response is produced.</exception>
     public static ProofResponseResult ProofRespondComplete(
@@ -309,7 +310,8 @@ internal static class SecdsaProofOperations
         string generatorsHex,
         string publicKeysHex,
         string associatedDataHex,
-        string signingKeyHex)
+        string signingKeyHex,
+        string challengerPublicKeyHex)
     {
         using var composition = new SecdsaPlatformComposition();
         BaseMemoryPool pool = BaseMemoryPool.Shared;
@@ -319,12 +321,14 @@ internal static class SecdsaProofOperations
             return Guard(() =>
             {
                 RequireScalarSize(signingKey, "signing key");
+                byte[] challengerPublicKey = HexInput.Decode(challengerPublicKeyHex, "challenger public key");
                 using SharedSecret sharedSecret = SharedSecret.FromCanonical(HexInput.Decode(sharedSecretHex, "shared secret"), pool);
                 using StatementScope statement = new(generatorsHex, publicKeysHex, associatedDataHex, pool);
                 using TransferableChallenge challenge = DecodeChallenge(challengeHex, pool);
                 using EciesCiphertext ciphertext = DecodeCiphertext(ciphertextHex, pool);
                 if(!TransferableProofAlgorithm.TryCompleteResponse(
-                    sharedSecret, challenge, ciphertext, statement.Statement, Profile, Parameters, composition.SeedKeyDerivation,
+                    sharedSecret, challenge, ciphertext, statement.Statement, Profile, Parameters,
+                    (structure, signature) => composition.VerifyStructure(challengerPublicKey, structure, signature), composition.SeedKeyDerivation,
                     composition.CreateEciesKeyDerivation(pool), composition.AesGcmDecrypt,
                     (structure, signature) => composition.SignStructure(signingKey, structure, signature),
                     composition.Hash, composition.G1ScalarMultiply, composition.G1Add, pool,

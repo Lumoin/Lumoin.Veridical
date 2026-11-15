@@ -175,6 +175,46 @@ internal sealed class TransferableProofTests
 
 
     [TestMethod]
+    public void TamperedChallengeSignatureReleasesNoResponseAndNoSecretDataFromAnyEntryPoint()
+    {
+        using TransferableFixture fixture = TransferableFixture.Create("tp unsigned challenge");
+        using IssuedChallenge issued = fixture.Issue();
+        Span<byte> signature = stackalloc byte[issued.Challenge.GetSignatureBytes().Length];
+        issued.Challenge.GetSignatureBytes().CopyTo(signature);
+        signature[0] ^= 0x01;
+        using TransferableChallenge tampered = fixture.Rebuild(
+            issued.Challenge, issued.Challenge.GetEphemeralPublicKeyBytes(), issued.Challenge.GetSecondaryDigestBytes(),
+            issued.Challenge.GetAdditionalAuthenticatedDataBytes(), signature);
+        using IssuedChallenge unsigned = new(tampered, issued.Ciphertext, ownsParts: false);
+
+        //The software path.
+        Assert.IsFalse(fixture.Responds(unsigned));
+
+        //The phased path, with the correct shared secret from the key holder.
+        using G1Point ephemeral = tampered.GetEphemeralPublicKey(fixture.Pool);
+        using SharedSecret sharedSecret = EciesAlgorithm.AgreeSharedSecret(fixture.PrivateKey.Memory.Span, ephemeral, G1ScalarMultiply, fixture.Pool);
+        Assert.IsFalse(CompleteFrom(fixture, sharedSecret, unsigned, out TransferableResponse? phased, out AdditionalData? phasedData));
+        Assert.IsNull(phased);
+        Assert.IsNull(phasedData);
+        phased?.Dispose();
+        phasedData?.Dispose();
+
+        //The HSM-full-decrypt path, with the correct plaintext.
+        Assert.IsTrue(EciesAlgorithm.TryDecrypt(
+            fixture.PrivateKey.Memory.Span, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
+            TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, fixture.Pool, out EciesPlaintext? decrypted));
+        using(decrypted)
+        {
+            Assert.IsFalse(FinishFrom(fixture, decrypted!, tampered, issued.Ciphertext, out TransferableResponse? finished, out AdditionalData? finishedData));
+            Assert.IsNull(finished);
+            Assert.IsNull(finishedData);
+            finished?.Dispose();
+            finishedData?.Dispose();
+        }
+    }
+
+
+    [TestMethod]
     public void ChallengeSignedByAnotherPartyIsRejected()
     {
         using TransferableFixture fixture = TransferableFixture.Create("tp other challenger");
@@ -237,7 +277,7 @@ internal sealed class TransferableProofTests
             TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, fixture.Pool, out EciesPlaintext? decrypted));
         using(decrypted)
         {
-            Assert.IsFalse(FinishFrom(fixture, decrypted!, other, issued.Ciphertext, out TransferableResponse? response, out AdditionalData? data));
+            Assert.IsFalse(FinishFrom(fixture, decrypted!, other, issued.Ciphertext, out TransferableResponse? response, out AdditionalData? data, AcceptAnySignature));
             Assert.IsNull(response);
             Assert.IsNull(data);
             response?.Dispose();
@@ -263,7 +303,7 @@ internal sealed class TransferableProofTests
             TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, fixture.Pool, out EciesPlaintext? decrypted));
         using(decrypted)
         {
-            Assert.IsFalse(FinishFrom(fixture, decrypted!, other, issued.Ciphertext, out TransferableResponse? response, out AdditionalData? data));
+            Assert.IsFalse(FinishFrom(fixture, decrypted!, other, issued.Ciphertext, out TransferableResponse? response, out AdditionalData? data, AcceptAnySignature));
             Assert.IsNull(response);
             Assert.IsNull(data);
             response?.Dispose();
@@ -567,6 +607,13 @@ internal sealed class TransferableProofTests
     }
 
 
+    //Accepts every signature, so a test of a later step is not decided by the signature check of step 4.
+    private static bool AcceptAnySignature(ReadOnlySpan<byte> structure, ReadOnlySpan<byte> signature)
+    {
+        return true;
+    }
+
+
     private static bool Prepares(TransferableFixture fixture, TransferableChallenge challenge)
     {
         bool prepared = TransferableProofAlgorithm.TryPrepareResponse(
@@ -586,7 +633,7 @@ internal sealed class TransferableProofTests
     {
         return TransferableProofAlgorithm.TryCompleteResponse(
             sharedSecret, issued.Challenge, issued.Ciphertext, fixture.Statement, fixture.Shipped, TransferableFixture.Parameters,
-            TransferableFixture.SeedKeyDerivation, fixture.EciesKdf, TestPlatformCrypto.AesGcmDecrypt, fixture.Prover.Sign,
+            fixture.Challenger.Verify, TransferableFixture.SeedKeyDerivation, fixture.EciesKdf, TestPlatformCrypto.AesGcmDecrypt, fixture.Prover.Sign,
             Hash, G1ScalarMultiply, G1Add, fixture.Pool, out response, out secretData);
     }
 
@@ -597,11 +644,12 @@ internal sealed class TransferableProofTests
         TransferableChallenge challenge,
         EciesCiphertext ciphertext,
         out TransferableResponse? response,
-        out AdditionalData? secretData)
+        out AdditionalData? secretData,
+        StructureVerifyDelegate? challengeVerify = null)
     {
         return TransferableProofAlgorithm.TryFinishResponse(
             decrypted, challenge, ciphertext, fixture.Statement, fixture.Shipped, TransferableFixture.Parameters,
-            TransferableFixture.SeedKeyDerivation, fixture.EciesKdf, TestPlatformCrypto.AesGcmDecrypt, fixture.Prover.Sign,
+            challengeVerify ?? fixture.Challenger.Verify, TransferableFixture.SeedKeyDerivation, fixture.EciesKdf, TestPlatformCrypto.AesGcmDecrypt, fixture.Prover.Sign,
             Hash, G1ScalarMultiply, G1Add, fixture.Pool, out response, out secretData);
     }
 

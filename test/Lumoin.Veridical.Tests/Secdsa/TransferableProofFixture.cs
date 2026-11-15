@@ -60,17 +60,24 @@ internal sealed class IssuedChallenge: IDisposable
     public EciesCiphertext Ciphertext { get; }
 
 
-    public IssuedChallenge(TransferableChallenge challenge, EciesCiphertext ciphertext)
+    private bool OwnsParts { get; }
+
+
+    public IssuedChallenge(TransferableChallenge challenge, EciesCiphertext ciphertext, bool ownsParts = true)
     {
         Challenge = challenge;
         Ciphertext = ciphertext;
+        OwnsParts = ownsParts;
     }
 
 
     public void Dispose()
     {
-        Challenge.Dispose();
-        Ciphertext.Dispose();
+        if(OwnsParts)
+        {
+            Challenge.Dispose();
+            Ciphertext.Dispose();
+        }
     }
 }
 

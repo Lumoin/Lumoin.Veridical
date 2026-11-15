@@ -614,7 +614,7 @@ internal sealed class VeridicalMcpServer
     }
 
 
-    [McpServerTool(Name = McpToolNames.SecdsaProofRespondComplete), Description("Transferable proof, response complete phase (Algorithm 23 steps 6 to 15): decrypts the seed with the key holder's shared secret, repeats the decryption under the key from the public keys (step 11) and returns the signed response (hex); the additional secret data is written to the named file, which must not exist. The shared secret and the signing key are read from files. Any failed check returns an error and no response.")]
+    [McpServerTool(Name = McpToolNames.SecdsaProofRespondComplete), Description("Transferable proof, response complete phase (Algorithm 23 steps 4 and 6 to 15): verifies the challenge signature, decrypts the seed with the key holder's shared secret, repeats the decryption under the key from the public keys (step 11) and returns the signed response (hex); the additional secret data is written to the named file, which must not exist. The shared secret and the signing key are read from files. Any failed check returns an error and no response.")]
     public static string SecdsaProofRespondComplete(
         [Description("Path to the file holding the shared secret Z_AB (hex, 32 bytes).")] string sharedSecretFile,
         [Description("The challenge as hex.")] string challenge,
@@ -622,6 +622,7 @@ internal sealed class VeridicalMcpServer
         [Description("The concatenated compressed generators as hex.")] string generators,
         [Description("The concatenated compressed public keys as hex.")] string publicKeys,
         [Description("Path to the file holding the prover's record signing scalar (hex).")] string signingKeyFile,
+        [Description("The challenger's public key S, 33 bytes as hex, under which the challenge signature is verified.")] string challengerPublicKey,
         [Description("Path the recovered additional secret data (hex) is written to; the file must not exist; empty to discard it.")] string additionalSecretDataOutputFile = "",
         [Description("The additional authenticated data the prover expects, as hex; empty for none.")] string associatedData = "")
     {
@@ -634,7 +635,7 @@ internal sealed class VeridicalMcpServer
         ProofResponseResult result;
         try
         {
-            result = SecdsaProofOperations.ProofRespondComplete(sharedSecret.Trim(), challenge, ciphertext, generators, publicKeys, associatedData, signingKey.Trim());
+            result = SecdsaProofOperations.ProofRespondComplete(sharedSecret.Trim(), challenge, ciphertext, generators, publicKeys, associatedData, signingKey.Trim(), challengerPublicKey);
         }
         catch(ArgumentException error)
         {

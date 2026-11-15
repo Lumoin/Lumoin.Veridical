@@ -202,14 +202,15 @@ internal sealed class SecdsaProofCliTests
             //A wrong shared secret yields no response.
             CliResult wrongSecret = await RunAsync(
                 executable, "secdsa-proof-respond-complete", "--shared-secret-file", wrongAgreedPath, "--challenge", challenge, "--ciphertext", ciphertext,
-                "--generators", generators, "--public-keys", publicKeys, "--aad", AssociatedData, "--signing-key-file", proverKeyPath).ConfigureAwait(false);
+                "--generators", generators, "--public-keys", publicKeys, "--aad", AssociatedData, "--signing-key-file", proverKeyPath,
+                "--challenger-public-key", challengerPublic).ConfigureAwait(false);
             Assert.AreEqual(1, wrongSecret.ExitCode);
             Assert.AreEqual(string.Empty, wrongSecret.Stdout.Trim());
 
             CliResult respond = await RunAsync(
                 executable, "secdsa-proof-respond-complete", "--shared-secret-file", agreedPath, "--challenge", challenge, "--ciphertext", ciphertext,
                 "--generators", generators, "--public-keys", publicKeys, "--aad", AssociatedData, "--signing-key-file", proverKeyPath,
-                "--additional-secret-data-output", recoveredPath).ConfigureAwait(false);
+                "--challenger-public-key", challengerPublic, "--additional-secret-data-output", recoveredPath).ConfigureAwait(false);
             Assert.AreEqual(0, respond.ExitCode, respond.Stderr);
             string response = respond.Stdout.Trim();
             Assert.AreEqual(AdditionalSecret, (await File.ReadAllTextAsync(recoveredPath, TestContext.CancellationToken).ConfigureAwait(false)).Trim());
@@ -281,7 +282,8 @@ internal sealed class SecdsaProofCliTests
 
             CliResult respond = await RunAsync(
                 executable, "secdsa-proof-respond-complete", "--shared-secret-file", agreedPath, "--challenge", challenge, "--ciphertext", ciphertext,
-                "--generators", generators, "--public-keys", publicKeys, "--signing-key-file", proverKeyPath).ConfigureAwait(false);
+                "--generators", generators, "--public-keys", publicKeys, "--signing-key-file", proverKeyPath,
+                "--challenger-public-key", challengerPublic).ConfigureAwait(false);
             Assert.AreEqual(1, respond.ExitCode);
             Assert.AreEqual(string.Empty, respond.Stdout.Trim());
         }

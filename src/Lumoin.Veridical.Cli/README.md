@@ -78,8 +78,8 @@ veridical secdsa-proof-challenge --signing-key-file <path> --generators <hex> --
                                Transferable proof, challenge: print JSON with the signed challenge and the ECIES ciphertext.
 veridical secdsa-proof-respond-prepare --challenge <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex>
                                Transferable proof, response prepare: verify the challenge and print E for the key holder.
-veridical secdsa-proof-respond-complete --shared-secret-file <path> --challenge <hex> --ciphertext <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --signing-key-file <path> [--additional-secret-data-output <path>]
-                               Transferable proof, response complete: print the signed response; no output if any check fails.
+veridical secdsa-proof-respond-complete --shared-secret-file <path> --challenge <hex> --ciphertext <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --signing-key-file <path> --challenger-public-key <hex> [--additional-secret-data-output <path>]
+                               Transferable proof, response complete: verify the challenge signature, then print the signed response; no output if any check fails.
 veridical secdsa-proof-verify --challenge <hex> --response <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex> --prover-public-key <hex>
                                Transferable proof, verification by a third party; exit non-zero when rejected.
 veridical analysis-basefold-leakage [--variables n] [--samples n] [--significance p] [--hiding]

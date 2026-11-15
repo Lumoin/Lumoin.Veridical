@@ -1017,9 +1017,10 @@ internal static class SecdsaCliCommands
         Option<string> publicKeys = Hex("--public-keys", "The concatenated compressed public keys as hex.");
         Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data the prover expects, as hex; omit for none.");
         Option<string> signingKeyFile = SecretFile("--signing-key-file", "the prover's record signing scalar (hex)");
+        Option<string> challengerPublicKey = Hex("--challenger-public-key", "The challenger's public key S, 33 bytes as hex, under which the challenge signature is verified.");
         Option<string> secretDataOutput = new("--additional-secret-data-output") { Description = "Path the recovered additional secret data (hex) is written to. The file must not exist and is readable by its owner only; the data is never printed." };
 
-        Command command = new("secdsa-proof-respond-complete", "Transferable proof, response complete phase (Algorithm 23 steps 6 to 15): decrypts the seed with the key holder's shared secret, repeats the decryption under the key from the public keys (step 11), and prints the signed response (hex). The additional secret data goes to --additional-secret-data-output. Exits non-zero and prints nothing if any check fails.")
+        Command command = new("secdsa-proof-respond-complete", "Transferable proof, response complete phase (Algorithm 23 steps 4 and 6 to 15): verifies the challenge signature, decrypts the seed with the key holder's shared secret, repeats the decryption under the key from the public keys (step 11), and prints the signed response (hex). The additional secret data goes to --additional-secret-data-output. Exits non-zero and prints nothing if any check fails.")
         {
             sharedSecretFile,
             challenge,
@@ -1028,6 +1029,7 @@ internal static class SecdsaCliCommands
             publicKeys,
             associatedData,
             signingKeyFile,
+            challengerPublicKey,
             secretDataOutput
         };
 
@@ -1048,7 +1050,8 @@ internal static class SecdsaCliCommands
                     parseResult.GetValue(generators) ?? string.Empty,
                     parseResult.GetValue(publicKeys) ?? string.Empty,
                     parseResult.GetValue(associatedData) ?? string.Empty,
-                    signingKey);
+                    signingKey,
+                    parseResult.GetValue(challengerPublicKey) ?? string.Empty);
             }
             catch(ArgumentException error)
             {
