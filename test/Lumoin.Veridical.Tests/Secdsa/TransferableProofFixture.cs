@@ -120,6 +120,8 @@ internal sealed class TransferableFixture: IDisposable
 
     public IMemoryOwner<byte> PrivateKey { get; }
 
+    public PrivateScalar PrivateScalarKey { get; }
+
     public P256PointVector Generators { get; }
 
     public P256PointVector PublicKeys { get; }
@@ -145,6 +147,7 @@ internal sealed class TransferableFixture: IDisposable
     {
         PrivateKey = Pool.Rent(ScalarSize);
         DeriveScalar(System.Text.Encoding.UTF8.GetBytes(label + " d"), PrivateKey.Memory.Span);
+        PrivateScalarKey = PrivateScalar.FromCanonical(PrivateKey.Memory.Span, Pool);
 
         Span<byte> generators = stackalloc byte[GeneratorCount * PointSize];
         Span<byte> publicKeys = stackalloc byte[GeneratorCount * PointSize];
@@ -211,7 +214,7 @@ internal sealed class TransferableFixture: IDisposable
         EciesCiphertext? ciphertext = null,
         ProofStatement? statement = null)
     {
-        ReadOnlySpan<byte> key = privateKey.IsEmpty ? PrivateKey.Memory.Span : privateKey;
+        using PrivateScalar key = PrivateScalar.FromCanonical(privateKey.IsEmpty ? PrivateKey.Memory.Span : privateKey, Pool);
         TransferableResponse? response = null;
         AdditionalData? secretData = null;
         try
@@ -293,6 +296,7 @@ internal sealed class TransferableFixture: IDisposable
 
     public void Dispose()
     {
+        PrivateScalarKey.Dispose();
         PrivateKey.Memory.Span.Clear();
         PrivateKey.Dispose();
         Seed.Dispose();

@@ -170,17 +170,18 @@ internal static class SecdsaProofOperations
         return Guard(() =>
         {
             using G1Point point = G1Point.FromCanonical(HexInput.Decode(pointHex, "point"), CurveParameterSet.P256, pool);
-            Span<byte> privateKey = stackalloc byte[ScalarBytes];
+            Span<byte> privateBytes = stackalloc byte[ScalarBytes];
             try
             {
-                HexInput.DecodeExact(privateKeyHex, privateKey, "private key");
+                HexInput.DecodeExact(privateKeyHex, privateBytes, "private key");
+                using PrivateScalar privateKey = PrivateScalar.FromCanonical(privateBytes, pool);
                 using SharedSecret secret = EciesAlgorithm.AgreeSharedSecret(privateKey, point, composition.G1ScalarMultiply, pool);
 
                 return Convert.ToHexStringLower(secret.AsReadOnlySpan());
             }
             finally
             {
-                privateKey.Clear();
+                privateBytes.Clear();
             }
         });
     }
@@ -401,10 +402,11 @@ internal static class SecdsaProofOperations
 
     private static string DecryptWith(SecdsaPlatformComposition composition, string privateKeyHex, string ciphertextHex, string associatedDataHex, BaseMemoryPool pool)
     {
-        Span<byte> privateKey = stackalloc byte[ScalarBytes];
+        Span<byte> privateBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(privateKeyHex, privateKey, "private key");
+            HexInput.DecodeExact(privateKeyHex, privateBytes, "private key");
+            using PrivateScalar privateKey = PrivateScalar.FromCanonical(privateBytes, pool);
             using EciesCiphertext ciphertext = DecodeCiphertext(ciphertextHex, pool);
             using AdditionalData associatedData = AdditionalData.FromCanonical(HexInput.Decode(associatedDataHex, "associated data"), AdditionalDataRole.Authenticated, pool);
             if(!EciesAlgorithm.TryDecrypt(
@@ -421,7 +423,7 @@ internal static class SecdsaProofOperations
         }
         finally
         {
-            privateKey.Clear();
+            privateBytes.Clear();
         }
     }
 

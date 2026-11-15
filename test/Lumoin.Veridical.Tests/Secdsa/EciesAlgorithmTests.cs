@@ -89,7 +89,7 @@ internal sealed class EciesAlgorithmTests
         try
         {
             Assert.IsTrue(EciesAlgorithm.TryDecrypt(
-                recipient.PrivateKey, ciphertext, associatedData, Parameters, kdf, TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, pool, out software));
+                recipient.Scalar, ciphertext, associatedData, Parameters, kdf, TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, pool, out software));
 
             //Phase one: the library validates E and hands the canonical point to the key holder.
             using G1Point keyHolderInput = EciesAlgorithm.PrepareDecryption(ciphertext, G1ScalarMultiply, pool);
@@ -362,7 +362,7 @@ internal sealed class EciesAlgorithmTests
         try
         {
             Assert.IsTrue(EciesAlgorithm.TryDecrypt(
-                recipient.PrivateKey, ciphertext, associatedData, parameters, kdf, TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, pool, out recovered));
+                recipient.Scalar, ciphertext, associatedData, parameters, kdf, TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, pool, out recovered));
             Assert.IsNotNull(recovered);
             Assert.IsTrue(recovered.GetBytes().SequenceEqual(plaintext));
         }
@@ -389,7 +389,7 @@ internal sealed class EciesAlgorithmTests
         try
         {
             bool succeeded = EciesAlgorithm.TryDecrypt(
-                recipient.PrivateKey, ciphertext, associatedData, parameters, kdf, TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, pool, out plaintext);
+                recipient.Scalar, ciphertext, associatedData, parameters, kdf, TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, pool, out plaintext);
             Assert.AreEqual(succeeded, plaintext is not null);
 
             return succeeded;
@@ -461,13 +461,16 @@ internal sealed class EciesAlgorithmTests
     {
         private IMemoryOwner<byte> Material { get; }
 
-        private Recipient(IMemoryOwner<byte> material, G1Point publicKey)
+        private Recipient(IMemoryOwner<byte> material, PrivateScalar scalar, G1Point publicKey)
         {
             Material = material;
+            Scalar = scalar;
             PublicKey = publicKey;
         }
 
         public ReadOnlySpan<byte> PrivateKey => Material.Memory.Span;
+
+        public PrivateScalar Scalar { get; }
 
         public G1Point PublicKey { get; }
 
@@ -485,7 +488,7 @@ internal sealed class EciesAlgorithmTests
             Span<byte> publicKey = stackalloc byte[PointSize];
             PublicPoint(material.Memory.Span, publicKey);
 
-            return new Recipient(material, G1Point.FromCanonical(publicKey, CurveParameterSet.P256, pool));
+            return new Recipient(material, PrivateScalar.FromCanonical(material.Memory.Span, pool), G1Point.FromCanonical(publicKey, CurveParameterSet.P256, pool));
         }
 
 
@@ -508,7 +511,7 @@ internal sealed class EciesAlgorithmTests
 
         public SharedSecret KeyHolderAgree(G1Point ephemeralPublicKey, BaseMemoryPool pool)
         {
-            return EciesAlgorithm.AgreeSharedSecret(PrivateKey, ephemeralPublicKey, G1ScalarMultiply, pool);
+            return EciesAlgorithm.AgreeSharedSecret(Scalar, ephemeralPublicKey, G1ScalarMultiply, pool);
         }
 
 
@@ -516,6 +519,7 @@ internal sealed class EciesAlgorithmTests
         {
             Material.Memory.Span.Clear();
             Material.Dispose();
+            Scalar.Dispose();
             PublicKey.Dispose();
         }
     }

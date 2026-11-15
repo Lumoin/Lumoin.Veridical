@@ -526,7 +526,7 @@ public static class TransferableProofAlgorithm
     /// <c>S = d·E</c> and <see cref="TryCompleteResponse"/> with the private key in this process. The result is
     /// byte-identical to the one the phased path gives with a key holder that returns <c>Z_AB</c>.
     /// </summary>
-    /// <param name="privateKey">The prover's private scalar <c>d = d₀</c>, 32-byte big-endian, in <c>[1, q − 1]</c>; secret.</param>
+    /// <param name="privateKey">The prover's private scalar <c>d = d₀</c>, in <c>[1, q − 1]</c> by construction; secret.</param>
     /// <param name="challenge">The challenge.</param>
     /// <param name="ciphertext">The ECIES ciphertext that accompanies the challenge.</param>
     /// <param name="statement">The prover's statement.</param>
@@ -545,9 +545,8 @@ public static class TransferableProofAlgorithm
     /// <param name="additionalSecretData">Receives the additional secret data, owned by the caller, only when the function returns <see langword="true"/>.</param>
     /// <returns><see langword="true"/> when the response was formed.</returns>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="privateKey"/> is out of range.</exception>
     public static bool TryRespond(
-        ReadOnlySpan<byte> privateKey,
+        PrivateScalar privateKey,
         TransferableChallenge challenge,
         EciesCiphertext ciphertext,
         ProofStatement statement,
@@ -565,8 +564,7 @@ public static class TransferableProofAlgorithm
         out TransferableResponse? response,
         out AdditionalData? additionalSecretData)
     {
-        RequireLength(privateKey, ScalarSizeBytes, nameof(privateKey));
-        RequireScalarInRange(privateKey, nameof(privateKey));
+        ArgumentNullException.ThrowIfNull(privateKey);
 
         response = null;
         additionalSecretData = null;

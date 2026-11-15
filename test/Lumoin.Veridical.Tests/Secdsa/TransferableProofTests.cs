@@ -68,7 +68,7 @@ internal sealed class TransferableProofTests
         {
             //The key holder only agrees on d·E and returns Z_AB.
             using SharedSecret sharedSecret = EciesAlgorithm.AgreeSharedSecret(
-                fixture.PrivateKey.Memory.Span, toKeyHolder!, G1ScalarMultiply, fixture.Pool);
+                fixture.PrivateScalarKey, toKeyHolder!, G1ScalarMultiply, fixture.Pool);
 
             Assert.IsTrue(CompleteFrom(fixture, sharedSecret, issued, out TransferableResponse? phased, out AdditionalData? phasedData));
             using(phased)
@@ -90,7 +90,7 @@ internal sealed class TransferableProofTests
         Assert.IsNotNull(software);
 
         Assert.IsTrue(EciesAlgorithm.TryDecrypt(
-            fixture.PrivateKey.Memory.Span, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
+            fixture.PrivateScalarKey, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
             TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, fixture.Pool, out EciesPlaintext? decrypted));
         using(decrypted)
         {
@@ -192,7 +192,7 @@ internal sealed class TransferableProofTests
 
         //The phased path, with the correct shared secret from the key holder.
         using G1Point ephemeral = tampered.GetEphemeralPublicKey(fixture.Pool);
-        using SharedSecret sharedSecret = EciesAlgorithm.AgreeSharedSecret(fixture.PrivateKey.Memory.Span, ephemeral, G1ScalarMultiply, fixture.Pool);
+        using SharedSecret sharedSecret = EciesAlgorithm.AgreeSharedSecret(fixture.PrivateScalarKey, ephemeral, G1ScalarMultiply, fixture.Pool);
         Assert.IsFalse(CompleteFrom(fixture, sharedSecret, unsigned, out TransferableResponse? phased, out AdditionalData? phasedData));
         Assert.IsNull(phased);
         Assert.IsNull(phasedData);
@@ -201,7 +201,7 @@ internal sealed class TransferableProofTests
 
         //The HSM-full-decrypt path, with the correct plaintext.
         Assert.IsTrue(EciesAlgorithm.TryDecrypt(
-            fixture.PrivateKey.Memory.Span, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
+            fixture.PrivateScalarKey, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
             TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, fixture.Pool, out EciesPlaintext? decrypted));
         using(decrypted)
         {
@@ -273,7 +273,7 @@ internal sealed class TransferableProofTests
             issued.Challenge.GetAdditionalAuthenticatedDataBytes(), issued.Challenge.GetSignatureBytes());
 
         Assert.IsTrue(EciesAlgorithm.TryDecrypt(
-            fixture.PrivateKey.Memory.Span, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
+            fixture.PrivateScalarKey, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
             TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, fixture.Pool, out EciesPlaintext? decrypted));
         using(decrypted)
         {
@@ -299,7 +299,7 @@ internal sealed class TransferableProofTests
             issued.Challenge.GetAdditionalAuthenticatedDataBytes(), issued.Challenge.GetSignatureBytes());
 
         Assert.IsTrue(EciesAlgorithm.TryDecrypt(
-            fixture.PrivateKey.Memory.Span, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
+            fixture.PrivateScalarKey, issued.Ciphertext, fixture.AuthenticatedData, TransferableFixture.Parameters, fixture.EciesKdf,
             TestPlatformCrypto.AesGcmDecrypt, G1ScalarMultiply, fixture.Pool, out EciesPlaintext? decrypted));
         using(decrypted)
         {
@@ -325,7 +325,7 @@ internal sealed class TransferableProofTests
 
         //The forged ciphertext: same E, plaintext Seed || ASD, key derived from d·E.
         using SharedSecret forgedSecret = EciesAlgorithm.AgreeSharedSecret(
-            fixture.PrivateKey.Memory.Span, honest.Challenge.GetEphemeralPublicKey(fixture.Pool), G1ScalarMultiply, fixture.Pool);
+            fixture.PrivateScalarKey, honest.Challenge.GetEphemeralPublicKey(fixture.Pool), G1ScalarMultiply, fixture.Pool);
         using EciesPlaintext payload = PayloadOf(fixture);
         using EciesCiphertext forged = EciesAlgorithm.Seal(
             honest.Challenge.GetEphemeralPublicKeyBytes(), forgedSecret, payload, fixture.AuthenticatedData, TransferableFixture.Parameters,
@@ -348,7 +348,7 @@ internal sealed class TransferableProofTests
         using TransferableFixture fixture = TransferableFixture.Create("tp step 11 control");
         using IssuedChallenge honest = fixture.Issue();
         using SharedSecret secret = EciesAlgorithm.AgreeSharedSecret(
-            fixture.PrivateKey.Memory.Span, honest.Challenge.GetEphemeralPublicKey(fixture.Pool), G1ScalarMultiply, fixture.Pool);
+            fixture.PrivateScalarKey, honest.Challenge.GetEphemeralPublicKey(fixture.Pool), G1ScalarMultiply, fixture.Pool);
         using EciesPlaintext payload = PayloadOf(fixture);
         using EciesCiphertext viaDe = EciesAlgorithm.Seal(
             honest.Challenge.GetEphemeralPublicKeyBytes(), secret, payload, fixture.AuthenticatedData, TransferableFixture.Parameters,

@@ -193,30 +193,29 @@ public static class EciesAlgorithm
     /// <paramref name="privateKey"/> is secret and stays with its holder. The peer point is validated here, so a
     /// caller that has not run <see cref="PrepareDecryption"/> is still safe.
     /// </remarks>
-    /// <param name="privateKey">The private scalar, 32-byte big-endian, in <c>[1, n−1]</c>.</param>
+    /// <param name="privateKey">The private scalar, in <c>[1, n−1]</c> by construction.</param>
     /// <param name="peerPoint">The peer's point, such as the ephemeral public key <c>E</c>.</param>
     /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
     /// <param name="pool">The pool the shared secret is rented from.</param>
     /// <returns>The shared secret <c>Z_AB</c>, owned by the caller.</returns>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="privateKey"/> is out of range or <paramref name="peerPoint"/> is not a canonical finite point.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="peerPoint"/> is not a canonical finite point.</exception>
     /// <exception cref="InvalidOperationException">When <paramref name="peerPoint"/> is not on the curve or the shared point is the point at infinity.</exception>
     public static SharedSecret AgreeSharedSecret(
-        ReadOnlySpan<byte> privateKey,
+        PrivateScalar privateKey,
         G1Point peerPoint,
         G1ScalarMultiplyDelegate g1ScalarMultiply,
         BaseMemoryPool pool)
     {
+        ArgumentNullException.ThrowIfNull(privateKey);
         ArgumentNullException.ThrowIfNull(peerPoint);
         ArgumentNullException.ThrowIfNull(g1ScalarMultiply);
         ArgumentNullException.ThrowIfNull(pool);
-        RequireLength(privateKey, ScalarSizeBytes, nameof(privateKey));
-        RequireScalarInRange(privateKey, nameof(privateKey));
 
         Span<byte> peer = stackalloc byte[CompressedPointSizeBytes];
         ValidateCanonical(peerPoint.AsReadOnlySpan(), g1ScalarMultiply, peer, nameof(peerPoint));
 
-        return ComputeSharedSecret(privateKey, peer, g1ScalarMultiply, pool);
+        return ComputeSharedSecret(privateKey.AsReadOnlySpan(), peer, g1ScalarMultiply, pool);
     }
 
 
@@ -425,9 +424,9 @@ public static class EciesAlgorithm
     /// </summary>
     /// <remarks>
     /// A ciphertext whose ephemeral key is malformed, off the curve or at infinity comes from the counterparty and
-    /// returns <see langword="false"/>; a private key out of range is the caller's and throws.
+    /// returns <see langword="false"/>; a null private key is the caller's and throws.
     /// </remarks>
-    /// <param name="privateKey">The recipient's private scalar <c>d</c>, 32-byte big-endian, in <c>[1, n−1]</c>; secret.</param>
+    /// <param name="privateKey">The recipient's private scalar <c>d</c>, in <c>[1, n−1]</c> by construction; secret.</param>
     /// <param name="ciphertext">The ciphertext <c>(E, C, T)</c>.</param>
     /// <param name="associatedData">The additional authenticated data <c>A</c>.</param>
     /// <param name="parameters">The ECIES parameter set.</param>
@@ -438,9 +437,9 @@ public static class EciesAlgorithm
     /// <param name="plaintext">Receives the plaintext, owned by the caller, only when the function returns <see langword="true"/>; otherwise <see langword="null"/>.</param>
     /// <returns><see langword="true"/> when the tag verified and the plaintext was released.</returns>
     /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When <paramref name="privateKey"/> is out of range or <paramref name="parameters"/> is invalid.</exception>
+    /// <exception cref="ArgumentException">When <paramref name="parameters"/> is invalid.</exception>
     public static bool TryDecrypt(
-        ReadOnlySpan<byte> privateKey,
+        PrivateScalar privateKey,
         EciesCiphertext ciphertext,
         AdditionalData associatedData,
         EciesParameterSet parameters,
@@ -450,10 +449,9 @@ public static class EciesAlgorithm
         BaseMemoryPool pool,
         out EciesPlaintext? plaintext)
     {
+        ArgumentNullException.ThrowIfNull(privateKey);
         ArgumentNullException.ThrowIfNull(ciphertext);
         ArgumentNullException.ThrowIfNull(g1ScalarMultiply);
-        RequireLength(privateKey, ScalarSizeBytes, nameof(privateKey));
-        RequireScalarInRange(privateKey, nameof(privateKey));
 
         plaintext = null;
         G1Point ephemeralPublicKey;
