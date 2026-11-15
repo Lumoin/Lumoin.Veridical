@@ -100,7 +100,7 @@ public static class DlEqualityNizk
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, the concatenations disagree, the transcript exceeds the cap, or <c>d</c> is outside <c>[1, n−1]</c>.</exception>
     /// <exception cref="InvalidOperationException">When the nonce yields a degenerate proof (retry; probability ~<c>1/n</c>).</exception>
-    public static void Prove(
+    internal static void ProveSpan(
         ReadOnlySpan<byte> witness,
         ReadOnlySpan<byte> generatorsConcat,
         ReadOnlySpan<byte> publicKeysConcat,
@@ -216,6 +216,86 @@ public static class DlEqualityNizk
 
 
     /// <summary>
+    /// Proves statement (9), that every public key <c>D_i</c> is the same private key <c>d</c> times its generator
+    /// <c>G_i</c>, and returns the proof as a pool-backed <see cref="DlEqualityProof"/> (Verheul Algorithm 20).
+    /// </summary>
+    /// <param name="witness">The shared private key <c>d</c>; secret.</param>
+    /// <param name="generators">The generators <c>G_0, …, G_n</c>.</param>
+    /// <param name="publicKeys">The public keys <c>D_0, …, D_n</c>, pairwise with the generators; <c>D_i = d·G_i</c>.</param>
+    /// <param name="challengeN">The context binding <c>N</c>, which may be empty.</param>
+    /// <param name="nonceSource">The nonce source for the commitment nonce <c>k</c>.</param>
+    /// <param name="hash">The Fiat–Shamir hash.</param>
+    /// <param name="scalarMultiply">Scalar multiplication mod <c>n</c>.</param>
+    /// <param name="scalarAdd">Scalar addition mod <c>n</c>.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="pool">The pool the proof is rented from.</param>
+    /// <returns>The proof, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">When the vectors disagree in length or the transcript exceeds the cap.</exception>
+    /// <exception cref="InvalidOperationException">When the nonce yields a degenerate proof (retry; probability about <c>1/n</c>).</exception>
+    public static DlEqualityProof Prove(
+        PrivateScalar witness,
+        P256PointVector generators,
+        P256PointVector publicKeys,
+        AdditionalData challengeN,
+        SecdsaNonceSource nonceSource,
+        FiatShamirHashDelegate hash,
+        ScalarMultiplyDelegate scalarMultiply,
+        ScalarAddDelegate scalarAdd,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(witness);
+        ArgumentNullException.ThrowIfNull(generators);
+        ArgumentNullException.ThrowIfNull(publicKeys);
+        ArgumentNullException.ThrowIfNull(challengeN);
+
+        return ProveToProof(
+            witness.AsReadOnlySpan(), generators.AsReadOnlySpan(), publicKeys.AsReadOnlySpan(), challengeN.AsReadOnlySpan(),
+            nonceSource, hash, scalarMultiply, scalarAdd, scalarReduce, g1ScalarMultiply, pool);
+    }
+
+
+    /// <summary>
+    /// Verifies a DL-equality proof for statement (9) over the given <c>(G_i, D_i)</c> pairs (Verheul Algorithm 21).
+    /// Adversarial values reject and do not throw.
+    /// </summary>
+    /// <param name="generators">The generators <c>G_0, …, G_n</c>.</param>
+    /// <param name="publicKeys">The public keys <c>D_0, …, D_n</c>.</param>
+    /// <param name="challengeN">The context binding <c>N</c> the proof was bound to, which may be empty.</param>
+    /// <param name="proof">The proof <c>(r, s)</c>.</param>
+    /// <param name="hash">The Fiat–Shamir hash.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="g1Add">G1 addition.</param>
+    /// <param name="g1Negate">G1 negation.</param>
+    /// <returns><see langword="true"/> when the proof is valid.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static bool Verify(
+        P256PointVector generators,
+        P256PointVector publicKeys,
+        AdditionalData challengeN,
+        DlEqualityProof proof,
+        FiatShamirHashDelegate hash,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        G1AddDelegate g1Add,
+        G1NegateDelegate g1Negate)
+    {
+        ArgumentNullException.ThrowIfNull(generators);
+        ArgumentNullException.ThrowIfNull(publicKeys);
+        ArgumentNullException.ThrowIfNull(challengeN);
+        ArgumentNullException.ThrowIfNull(proof);
+
+        return VerifySpan(
+            generators.AsReadOnlySpan(), publicKeys.AsReadOnlySpan(), challengeN.AsReadOnlySpan(), proof.GetRBytes(), proof.GetSBytes(),
+            hash, scalarReduce, g1ScalarMultiply, g1Add, g1Negate);
+    }
+
+
+    /// <summary>
     /// Proves statement (9) and returns the proof as a pool-backed <see cref="DlEqualityProof"/>.
     /// </summary>
     /// <param name="witness">The shared private key <c>d</c>, 32-byte big-endian, in <c>[1, n−1]</c>.</param>
@@ -233,7 +313,7 @@ public static class DlEqualityNizk
     /// <exception cref="ArgumentNullException">When a delegate or <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, the concatenations disagree, the transcript exceeds the cap, or <c>d</c> is outside <c>[1, n−1]</c>.</exception>
     /// <exception cref="InvalidOperationException">When the nonce yields a degenerate proof (retry; probability ~<c>1/n</c>).</exception>
-    public static DlEqualityProof Prove(
+    internal static DlEqualityProof ProveToProof(
         ReadOnlySpan<byte> witness,
         ReadOnlySpan<byte> generatorsConcat,
         ReadOnlySpan<byte> publicKeysConcat,
@@ -252,7 +332,7 @@ public static class DlEqualityNizk
         try
         {
             Span<byte> proof = owner.Memory.Span[..DlEqualityProof.SizeBytes];
-            Prove(
+            ProveSpan(
                 witness, generatorsConcat, publicKeysConcat, challengeN, nonceSource, hash,
                 scalarMultiply, scalarAdd, scalarReduce, g1ScalarMultiply,
                 proof.Slice(DlEqualityProof.ROffset, DlEqualityProof.RSizeBytes),
@@ -285,7 +365,7 @@ public static class DlEqualityNizk
     /// <returns><see langword="true"/> iff the proof is valid.</returns>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When <paramref name="r"/>/<paramref name="s"/> has the wrong length or the concatenations disagree.</exception>
-    public static bool Verify(
+    internal static bool VerifySpan(
         ReadOnlySpan<byte> generatorsConcat,
         ReadOnlySpan<byte> publicKeysConcat,
         ReadOnlySpan<byte> challengeN,

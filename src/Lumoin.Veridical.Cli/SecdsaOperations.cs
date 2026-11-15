@@ -184,20 +184,25 @@ internal static class SecdsaOperations
     public static string DlEqualityProve(string witnessHex, string generatorsHex, string publicKeysHex, string challengeHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> witness = stackalloc byte[ScalarBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> witnessBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(witnessHex, witness, "witness");
+            HexInput.DecodeExact(witnessHex, witnessBytes, "witness");
+            using PrivateScalar witness = PrivateScalar.FromCanonical(witnessBytes, pool);
+            using P256PointVector generators = P256PointVector.FromCanonical(HexInput.Decode(generatorsHex, "generators"), pool);
+            using P256PointVector publicKeys = P256PointVector.FromCanonical(HexInput.Decode(publicKeysHex, "public keys"), pool);
+            using AdditionalData challenge = AdditionalData.FromCanonical(HexInput.Decode(challengeHex, "challenge"), AdditionalDataRole.Authenticated, pool);
             using DlEqualityProof proof = DlEqualityNizk.Prove(
-                witness, HexInput.Decode(generatorsHex, "generators"), HexInput.Decode(publicKeysHex, "public keys"), HexInput.Decode(challengeHex, "challenge"),
+                witness, generators, publicKeys, challenge,
                 composition.NonceSource, composition.Hash, composition.ScalarMultiply, composition.ScalarAdd, composition.ScalarReduce, composition.G1ScalarMultiply,
-                BaseMemoryPool.Shared);
+                pool);
 
             return Convert.ToHexStringLower(proof.AsReadOnlySpan());
         }
         finally
         {
-            witness.Clear();
+            witnessBytes.Clear();
         }
     }
 
@@ -213,15 +218,13 @@ internal static class SecdsaOperations
         try
         {
             using var composition = new SecdsaPlatformComposition();
-            byte[] proof = HexInput.Decode(proofHex, "proof");
-            if(proof.Length != DlEqualityProof.SizeBytes)
-            {
-                throw new ArgumentException($"The proof is r || s, {DlEqualityProof.SizeBytes} bytes; received {proof.Length.ToString(CultureInfo.InvariantCulture)}.", nameof(proofHex));
-            }
-
+            BaseMemoryPool pool = BaseMemoryPool.Shared;
+            using DlEqualityProof proof = DlEqualityProof.FromCanonical(RequireProof(proofHex), pool);
+            using P256PointVector generators = P256PointVector.FromCanonical(HexInput.Decode(generatorsHex, "generators"), pool);
+            using P256PointVector publicKeys = P256PointVector.FromCanonical(HexInput.Decode(publicKeysHex, "public keys"), pool);
+            using AdditionalData challenge = AdditionalData.FromCanonical(HexInput.Decode(challengeHex, "challenge"), AdditionalDataRole.Authenticated, pool);
             bool valid = DlEqualityNizk.Verify(
-                HexInput.Decode(generatorsHex, "generators"), HexInput.Decode(publicKeysHex, "public keys"), HexInput.Decode(challengeHex, "challenge"),
-                proof.AsSpan(0, ScalarBytes), proof.AsSpan(ScalarBytes, ScalarBytes),
+                generators, publicKeys, challenge, proof,
                 composition.Hash, composition.ScalarReduce, composition.G1ScalarMultiply, composition.G1Add, composition.G1Negate);
             string statement = "that every generator/public-key pair shares one private key";
 
@@ -244,20 +247,26 @@ internal static class SecdsaOperations
     public static string BlindingRelationProve(string gHex, string gDoublePrimeHex, string yPrimeHex, string yDoublePrimeHex, string blindingWitnessHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> witness = stackalloc byte[ScalarBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> witnessBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(blindingWitnessHex, witness, "blinding witness");
+            HexInput.DecodeExact(blindingWitnessHex, witnessBytes, "blinding witness");
+            using PrivateScalar witness = PrivateScalar.FromCanonical(witnessBytes, pool);
+            using G1Point g = G1Point.FromCanonical(HexInput.Decode(gHex, "G"), CurveParameterSet.P256, pool);
+            using G1Point gDoublePrime = G1Point.FromCanonical(HexInput.Decode(gDoublePrimeHex, "G''"), CurveParameterSet.P256, pool);
+            using G1Point yPrime = G1Point.FromCanonical(HexInput.Decode(yPrimeHex, "Y'"), CurveParameterSet.P256, pool);
+            using G1Point yDoublePrime = G1Point.FromCanonical(HexInput.Decode(yDoublePrimeHex, "Y''"), CurveParameterSet.P256, pool);
             using DlEqualityProof proof = SecdsaEvidence.ProveBlindingRelation(
-                HexInput.Decode(gHex, "G"), HexInput.Decode(gDoublePrimeHex, "G''"), HexInput.Decode(yPrimeHex, "Y'"), HexInput.Decode(yDoublePrimeHex, "Y''"),
+                g, gDoublePrime, yPrime, yDoublePrime,
                 witness, composition.NonceSource, composition.Hash, composition.ScalarMultiply, composition.ScalarAdd, composition.ScalarReduce, composition.G1ScalarMultiply,
-                BaseMemoryPool.Shared);
+                pool);
 
             return Convert.ToHexStringLower(proof.AsReadOnlySpan());
         }
         finally
         {
-            witness.Clear();
+            witnessBytes.Clear();
         }
     }
 
@@ -274,10 +283,14 @@ internal static class SecdsaOperations
         try
         {
             using var composition = new SecdsaPlatformComposition();
-            byte[] proof = RequireProof(proofHex);
+            BaseMemoryPool pool = BaseMemoryPool.Shared;
+            using DlEqualityProof proof = DlEqualityProof.FromCanonical(RequireProof(proofHex), pool);
+            using G1Point g = G1Point.FromCanonical(HexInput.Decode(gHex, "G"), CurveParameterSet.P256, pool);
+            using G1Point gDoublePrime = G1Point.FromCanonical(HexInput.Decode(gDoublePrimeHex, "G''"), CurveParameterSet.P256, pool);
+            using G1Point yPrime = G1Point.FromCanonical(HexInput.Decode(yPrimeHex, "Y'"), CurveParameterSet.P256, pool);
+            using G1Point yDoublePrime = G1Point.FromCanonical(HexInput.Decode(yDoublePrimeHex, "Y''"), CurveParameterSet.P256, pool);
             bool valid = SecdsaEvidence.VerifyBlindingRelation(
-                HexInput.Decode(gHex, "G"), HexInput.Decode(gDoublePrimeHex, "G''"), HexInput.Decode(yPrimeHex, "Y'"), HexInput.Decode(yDoublePrimeHex, "Y''"),
-                proof.AsSpan(0, ScalarBytes), proof.AsSpan(ScalarBytes, ScalarBytes),
+                g, gDoublePrime, yPrime, yDoublePrime, proof,
                 composition.Hash, composition.ScalarReduce, composition.G1ScalarMultiply, composition.G1Add, composition.G1Negate);
             string statement = "the blinding relation ZKP[(G,G''),(Y',Y'')]";
 
@@ -301,21 +314,27 @@ internal static class SecdsaOperations
     public static string ControlRelationProve(string hHex, string wHex, string hPrimeHex, string wPrimeHex, string controlWitnessHex, string recordContextHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> witness = stackalloc byte[ScalarBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> witnessBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(controlWitnessHex, witness, "control witness");
+            HexInput.DecodeExact(controlWitnessHex, witnessBytes, "control witness");
+            using PrivateScalar witness = PrivateScalar.FromCanonical(witnessBytes, pool);
+            using G1Point h = G1Point.FromCanonical(HexInput.Decode(hHex, "H"), CurveParameterSet.P256, pool);
+            using G1Point w = G1Point.FromCanonical(HexInput.Decode(wHex, "W"), CurveParameterSet.P256, pool);
+            using G1Point hPrime = G1Point.FromCanonical(HexInput.Decode(hPrimeHex, "H'"), CurveParameterSet.P256, pool);
+            using G1Point wPrime = G1Point.FromCanonical(HexInput.Decode(wPrimeHex, "W'"), CurveParameterSet.P256, pool);
+            using AdditionalData recordContext = AdditionalData.FromCanonical(HexInput.Decode(recordContextHex, "record context"), AdditionalDataRole.Authenticated, pool);
             using DlEqualityProof proof = SecdsaEvidence.ProveControlRelation(
-                HexInput.Decode(hHex, "H"), HexInput.Decode(wHex, "W"), HexInput.Decode(hPrimeHex, "H'"), HexInput.Decode(wPrimeHex, "W'"),
-                witness, HexInput.Decode(recordContextHex, "record context"),
+                h, w, hPrime, wPrime, witness, recordContext,
                 composition.NonceSource, composition.Hash, composition.ScalarMultiply, composition.ScalarAdd, composition.ScalarReduce, composition.G1ScalarMultiply,
-                BaseMemoryPool.Shared);
+                pool);
 
             return Convert.ToHexStringLower(proof.AsReadOnlySpan());
         }
         finally
         {
-            witness.Clear();
+            witnessBytes.Clear();
         }
     }
 
@@ -333,11 +352,15 @@ internal static class SecdsaOperations
         try
         {
             using var composition = new SecdsaPlatformComposition();
-            byte[] proof = RequireProof(proofHex);
+            BaseMemoryPool pool = BaseMemoryPool.Shared;
+            using DlEqualityProof proof = DlEqualityProof.FromCanonical(RequireProof(proofHex), pool);
+            using G1Point h = G1Point.FromCanonical(HexInput.Decode(hHex, "H"), CurveParameterSet.P256, pool);
+            using G1Point w = G1Point.FromCanonical(HexInput.Decode(wHex, "W"), CurveParameterSet.P256, pool);
+            using G1Point hPrime = G1Point.FromCanonical(HexInput.Decode(hPrimeHex, "H'"), CurveParameterSet.P256, pool);
+            using G1Point wPrime = G1Point.FromCanonical(HexInput.Decode(wPrimeHex, "W'"), CurveParameterSet.P256, pool);
+            using AdditionalData recordContext = AdditionalData.FromCanonical(HexInput.Decode(recordContextHex, "record context"), AdditionalDataRole.Authenticated, pool);
             bool valid = SecdsaEvidence.VerifyControlRelation(
-                HexInput.Decode(hHex, "H"), HexInput.Decode(wHex, "W"), HexInput.Decode(hPrimeHex, "H'"), HexInput.Decode(wPrimeHex, "W'"),
-                HexInput.Decode(recordContextHex, "record context"),
-                proof.AsSpan(0, ScalarBytes), proof.AsSpan(ScalarBytes, ScalarBytes),
+                h, w, hPrime, wPrime, recordContext, proof,
                 composition.Hash, composition.ScalarReduce, composition.G1ScalarMultiply, composition.G1Add, composition.G1Negate);
             string statement = "the control relation ZKP[(H,H'),(W,W'),H(T_I)]";
 

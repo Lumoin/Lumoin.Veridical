@@ -117,7 +117,7 @@ internal sealed class DlEqualityNizkTests
 
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
-        DlEqualityNizk.Prove(
+        DlEqualityNizk.ProveSpan(
             witness, generators, publicKeys, [], NonceSource, BigStubHash,
             ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, r, s);
 
@@ -130,10 +130,10 @@ internal sealed class DlEqualityNizkTests
         Assert.IsFalse(rReduced.AsSpan().SequenceEqual(r), "The raw r exceeds n, so reduction changes it — confirming full-width matters.");
 
         Assert.IsTrue(
-            DlEqualityNizk.Verify(generators, publicKeys, [], r, s, BigStubHash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            DlEqualityNizk.VerifySpan(generators, publicKeys, [], r, s, BigStubHash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "The full-width r must verify.");
         Assert.IsFalse(
-            DlEqualityNizk.Verify(generators, publicKeys, [], rReduced, s, BigStubHash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            DlEqualityNizk.VerifySpan(generators, publicKeys, [], rReduced, s, BigStubHash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "A mod-n-reduced r must NOT verify; the comparison is on the full-width value.");
     }
 
@@ -183,7 +183,7 @@ internal sealed class DlEqualityNizkTests
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
         Assert.ThrowsExactly<InvalidOperationException>(
-            () => DlEqualityNizk.Prove(
+            () => DlEqualityNizk.ProveSpan(
                 witness, generators, publicKeys, [], NonceSource, ZeroStubHash,
                 ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, r, s),
             "A Fiat–Shamir challenge of zero must throw.");
@@ -198,7 +198,7 @@ internal sealed class DlEqualityNizkTests
 
         using var pool = new BaseMemoryPool();
 
-        using(DlEqualityProof proof = DlEqualityNizk.Prove(
+        using(DlEqualityProof proof = DlEqualityNizk.ProveToProof(
             witness, generators, publicKeys, [], NonceSource, Hash,
             ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, pool))
         {
@@ -317,7 +317,7 @@ internal sealed class DlEqualityNizkTests
     {
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
-        DlEqualityNizk.Prove(
+        DlEqualityNizk.ProveSpan(
             witness, generators, publicKeys, challengeN, NonceSource, Hash,
             ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, r, s);
 
@@ -326,7 +326,7 @@ internal sealed class DlEqualityNizkTests
 
 
     private static bool Verify(byte[] generators, byte[] publicKeys, byte[] challengeN, byte[] r, byte[] s) =>
-        DlEqualityNizk.Verify(generators, publicKeys, challengeN, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate);
+        DlEqualityNizk.VerifySpan(generators, publicKeys, challengeN, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate);
 
 
     //Builds a two-pair statement (G_0 = G, G_1 = h·G) with both public keys D_i = witness·G_i.

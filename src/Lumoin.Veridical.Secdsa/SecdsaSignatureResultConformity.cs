@@ -134,7 +134,7 @@ public static class SecdsaSignatureResultConformity
             g1ScalarMultiply(generator, witness, blindedGenerator, Curve);
             g1ScalarMultiply(canonicalKey, witness, blindedKey, Curve);
 
-            using DlEqualityProof proof = SecdsaEvidence.ProveBlindingRelation(
+            using DlEqualityProof proof = SecdsaEvidence.ProveBlindingRelationSpan(
                 generator, blindedGenerator, canonicalKey, blindedKey, witness,
                 nonceSource, hash, scalarMultiply, scalarAdd, scalarReduce, g1ScalarMultiply, pool);
 
@@ -216,7 +216,7 @@ public static class SecdsaSignatureResultConformity
         //Step 2: Algorithm 21 on (G, Q_U) against (G'', Q_U'').
         Span<byte> generator = stackalloc byte[CompressedPointSizeBytes];
         WellKnownCurves.GetG1GeneratorCompressed(Curve).CopyTo(generator);
-        if(!SecdsaEvidence.VerifyBlindingRelation(
+        if(!SecdsaEvidence.VerifyBlindingRelationSpan(
             generator, record.GetBlindedGeneratorBytes(), userPublicKey, record.GetBlindedPublicKeyBytes(),
             record.GetProofRBytes(), record.GetProofSBytes(),
             hash, scalarReduce, g1ScalarMultiply, g1Add, g1Negate))

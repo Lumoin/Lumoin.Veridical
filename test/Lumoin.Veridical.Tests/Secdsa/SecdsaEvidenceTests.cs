@@ -44,7 +44,7 @@ internal sealed class SecdsaEvidenceTests
         byte[] yDoublePrime = ScalarMul(yPrime, blindingWitness);
 
         using var pool = new BaseMemoryPool();
-        using DlEqualityProof proof = SecdsaEvidence.ProveBlindingRelation(
+        using DlEqualityProof proof = SecdsaEvidence.ProveBlindingRelationSpan(
             g, gDoublePrime, yPrime, yDoublePrime, blindingWitness,
             NonceSource, Hash, ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, pool);
 
@@ -52,13 +52,13 @@ internal sealed class SecdsaEvidenceTests
         byte[] s = proof.GetSBytes().ToArray();
 
         Assert.IsTrue(
-            SecdsaEvidence.VerifyBlindingRelation(g, gDoublePrime, yPrime, yDoublePrime, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            SecdsaEvidence.VerifyBlindingRelationSpan(g, gDoublePrime, yPrime, yDoublePrime, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "The blind-signing relation proof must verify.");
 
         //A G'' that is not s^-1*G (a different blinding) must be rejected.
         byte[] wrongGDoublePrime = ScalarMul(g, DeriveScalar("wrong-blinding"));
         Assert.IsFalse(
-            SecdsaEvidence.VerifyBlindingRelation(g, wrongGDoublePrime, yPrime, yDoublePrime, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            SecdsaEvidence.VerifyBlindingRelationSpan(g, wrongGDoublePrime, yPrime, yDoublePrime, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "A mis-formed G'' must be rejected.");
     }
 
@@ -82,7 +82,7 @@ internal sealed class SecdsaEvidenceTests
         byte[] recordContext = TranscriptHash("transaction-record T_I for instruction #42");
 
         using var pool = new BaseMemoryPool();
-        using DlEqualityProof evidence = SecdsaEvidence.ProveControlRelation(
+        using DlEqualityProof evidence = SecdsaEvidence.ProveControlRelationSpan(
             h, w, hPrime, wPrime, blindingKey, recordContext,
             NonceSource, Hash, ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, pool);
 
@@ -90,19 +90,19 @@ internal sealed class SecdsaEvidenceTests
         byte[] s = evidence.GetSBytes().ToArray();
 
         Assert.IsTrue(
-            SecdsaEvidence.VerifyControlRelation(h, w, hPrime, wPrime, recordContext, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            SecdsaEvidence.VerifyControlRelationSpan(h, w, hPrime, wPrime, recordContext, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "A third party must accept the wallet-provider control evidence.");
 
         //A provider that applied a DIFFERENT key to W (forged W') cannot produce verifiable evidence against H'.
         byte[] forgedWPrime = ScalarMul(w, DeriveScalar("a-different-key"));
         Assert.IsFalse(
-            SecdsaEvidence.VerifyControlRelation(h, w, hPrime, forgedWPrime, recordContext, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            SecdsaEvidence.VerifyControlRelationSpan(h, w, hPrime, forgedWPrime, recordContext, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "Evidence over a W' formed with a different key must be rejected.");
 
         //The evidence is bound to its transaction-record context: a different record must not accept it.
         byte[] otherContext = TranscriptHash("transaction-record T_I for instruction #43");
         Assert.IsFalse(
-            SecdsaEvidence.VerifyControlRelation(h, w, hPrime, wPrime, otherContext, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            SecdsaEvidence.VerifyControlRelationSpan(h, w, hPrime, wPrime, otherContext, r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "Evidence must not verify against a different transaction-record context.");
     }
 
@@ -118,7 +118,7 @@ internal sealed class SecdsaEvidenceTests
         byte[] truncated = new byte[ScalarSize]; //32 bytes, not a 33-byte compressed point.
 
         Assert.IsFalse(
-            SecdsaEvidence.VerifyControlRelation(h, w, truncated, w, [], r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
+            SecdsaEvidence.VerifyControlRelationSpan(h, w, truncated, w, [], r, s, Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "A wrong-length point must be rejected without throwing.");
     }
 

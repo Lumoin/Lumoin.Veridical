@@ -65,7 +65,7 @@ public static class SecdsaEvidence
     /// <exception cref="ArgumentNullException">When a delegate or <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a point has the wrong length or the witness is outside <c>[1, n−1]</c>.</exception>
     /// <exception cref="InvalidOperationException">When the nonce yields a degenerate proof (retry; probability ~<c>1/n</c>).</exception>
-    public static DlEqualityProof ProveBlindingRelation(
+    internal static DlEqualityProof ProveBlindingRelationSpan(
         ReadOnlySpan<byte> g,
         ReadOnlySpan<byte> gDoublePrime,
         ReadOnlySpan<byte> yPrime,
@@ -84,7 +84,7 @@ public static class SecdsaEvidence
         AssemblePair(g, yPrime, generators);
         AssemblePair(gDoublePrime, yDoublePrime, publicKeys);
 
-        return DlEqualityNizk.Prove(
+        return DlEqualityNizk.ProveToProof(
             blindingWitness, generators, publicKeys, ReadOnlySpan<byte>.Empty,
             nonceSource, hash, scalarMultiply, scalarAdd, scalarReduce, g1ScalarMultiply, pool);
     }
@@ -107,7 +107,7 @@ public static class SecdsaEvidence
     /// <param name="g1Negate">G1 negation.</param>
     /// <returns><see langword="true"/> iff the relation proof is valid.</returns>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
-    public static bool VerifyBlindingRelation(
+    internal static bool VerifyBlindingRelationSpan(
         ReadOnlySpan<byte> g,
         ReadOnlySpan<byte> gDoublePrime,
         ReadOnlySpan<byte> yPrime,
@@ -125,7 +125,7 @@ public static class SecdsaEvidence
             return false;
         }
 
-        return DlEqualityNizk.Verify(
+        return DlEqualityNizk.VerifySpan(
             generators, publicKeys, ReadOnlySpan<byte>.Empty, r, s,
             hash, scalarReduce, g1ScalarMultiply, g1Add, g1Negate);
     }
@@ -154,7 +154,7 @@ public static class SecdsaEvidence
     /// <exception cref="ArgumentNullException">When a delegate or <paramref name="pool"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a point has the wrong length or the witness is outside <c>[1, n−1]</c>.</exception>
     /// <exception cref="InvalidOperationException">When the nonce yields a degenerate proof (retry; probability ~<c>1/n</c>).</exception>
-    public static DlEqualityProof ProveControlRelation(
+    internal static DlEqualityProof ProveControlRelationSpan(
         ReadOnlySpan<byte> h,
         ReadOnlySpan<byte> w,
         ReadOnlySpan<byte> hPrime,
@@ -174,7 +174,7 @@ public static class SecdsaEvidence
         AssemblePair(h, w, generators);
         AssemblePair(hPrime, wPrime, publicKeys);
 
-        return DlEqualityNizk.Prove(
+        return DlEqualityNizk.ProveToProof(
             controlWitness, generators, publicKeys, recordContext,
             nonceSource, hash, scalarMultiply, scalarAdd, scalarReduce, g1ScalarMultiply, pool);
     }
@@ -199,7 +199,7 @@ public static class SecdsaEvidence
     /// <param name="g1Negate">G1 negation.</param>
     /// <returns><see langword="true"/> iff the relation proof is valid.</returns>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
-    public static bool VerifyControlRelation(
+    internal static bool VerifyControlRelationSpan(
         ReadOnlySpan<byte> h,
         ReadOnlySpan<byte> w,
         ReadOnlySpan<byte> hPrime,
@@ -218,9 +218,185 @@ public static class SecdsaEvidence
             return false;
         }
 
-        return DlEqualityNizk.Verify(
+        return DlEqualityNizk.VerifySpan(
             generators, publicKeys, recordContext, r, s,
             hash, scalarReduce, g1ScalarMultiply, g1Add, g1Negate);
+    }
+
+
+    /// <summary>
+    /// Proves the blind-signing relation <c>ZKP[(G, G''), (Y', Y'')]</c> (Verheul Algorithm 4 step 9, which applies
+    /// Algorithm 20): that <c>Y'' = b·Y'</c> and <c>G'' = b·G</c> for the same blinding witness <c>b</c>.
+    /// </summary>
+    /// <param name="g">The standard base point <c>G</c>.</param>
+    /// <param name="gDoublePrime">The blinded component <c>G''</c>.</param>
+    /// <param name="yPrime">The internal-certificate point <c>Y'</c>.</param>
+    /// <param name="yDoublePrime">The blinded component <c>Y''</c>.</param>
+    /// <param name="blindingWitness">The blinding witness <c>b</c>; secret.</param>
+    /// <param name="nonceSource">The nonce source for the commitment nonce.</param>
+    /// <param name="hash">The Fiat–Shamir hash.</param>
+    /// <param name="scalarMultiply">Scalar multiplication mod <c>n</c>.</param>
+    /// <param name="scalarAdd">Scalar addition mod <c>n</c>.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="pool">The pool the proof is rented from.</param>
+    /// <returns>The proof of the blind-signing relation, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">When the nonce yields a degenerate proof (retry; probability about <c>1/n</c>).</exception>
+    public static DlEqualityProof ProveBlindingRelation(
+        G1Point g,
+        G1Point gDoublePrime,
+        G1Point yPrime,
+        G1Point yDoublePrime,
+        PrivateScalar blindingWitness,
+        SecdsaNonceSource nonceSource,
+        FiatShamirHashDelegate hash,
+        ScalarMultiplyDelegate scalarMultiply,
+        ScalarAddDelegate scalarAdd,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(g);
+        ArgumentNullException.ThrowIfNull(gDoublePrime);
+        ArgumentNullException.ThrowIfNull(yPrime);
+        ArgumentNullException.ThrowIfNull(yDoublePrime);
+        ArgumentNullException.ThrowIfNull(blindingWitness);
+
+        return ProveBlindingRelationSpan(
+            g.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(), yPrime.AsReadOnlySpan(), yDoublePrime.AsReadOnlySpan(), blindingWitness.AsReadOnlySpan(),
+            nonceSource, hash, scalarMultiply, scalarAdd, scalarReduce, g1ScalarMultiply, pool);
+    }
+
+
+    /// <summary>
+    /// Verifies the blind-signing relation proof produced by <see cref="ProveBlindingRelation"/> (Verheul Algorithm 4
+    /// step 10, which applies Algorithm 21). Adversarial values reject and do not throw.
+    /// </summary>
+    /// <param name="g">The standard base point <c>G</c>.</param>
+    /// <param name="gDoublePrime">The blinded component <c>G''</c>.</param>
+    /// <param name="yPrime">The internal-certificate point <c>Y'</c>.</param>
+    /// <param name="yDoublePrime">The blinded component <c>Y''</c>.</param>
+    /// <param name="proof">The proof <c>(r, s)</c>.</param>
+    /// <param name="hash">The Fiat–Shamir hash.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="g1Add">G1 addition.</param>
+    /// <param name="g1Negate">G1 negation.</param>
+    /// <returns><see langword="true"/> when the relation proof is valid.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static bool VerifyBlindingRelation(
+        G1Point g,
+        G1Point gDoublePrime,
+        G1Point yPrime,
+        G1Point yDoublePrime,
+        DlEqualityProof proof,
+        FiatShamirHashDelegate hash,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        G1AddDelegate g1Add,
+        G1NegateDelegate g1Negate)
+    {
+        ArgumentNullException.ThrowIfNull(g);
+        ArgumentNullException.ThrowIfNull(gDoublePrime);
+        ArgumentNullException.ThrowIfNull(yPrime);
+        ArgumentNullException.ThrowIfNull(yDoublePrime);
+        ArgumentNullException.ThrowIfNull(proof);
+
+        return VerifyBlindingRelationSpan(
+            g.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(), yPrime.AsReadOnlySpan(), yDoublePrime.AsReadOnlySpan(), proof.GetRBytes(), proof.GetSBytes(),
+            hash, scalarReduce, g1ScalarMultiply, g1Add, g1Negate);
+    }
+
+
+    /// <summary>
+    /// Proves the control relation <c>ZKP[(H, H'), (W, W'), H(T_I)]</c> (Verheul Equation (7), Algorithm 9 step 6): that
+    /// <c>H' = aU·H</c> and <c>W' = aU·W</c> for the same control witness, bound to the record context <c>T_I</c>.
+    /// </summary>
+    /// <param name="h">The point <c>H</c>.</param>
+    /// <param name="w">The point <c>W</c>.</param>
+    /// <param name="hPrime">The point <c>H'</c>.</param>
+    /// <param name="wPrime">The point <c>W'</c>.</param>
+    /// <param name="controlWitness">The control witness <c>aU</c>; secret.</param>
+    /// <param name="recordContext">The record context <c>T_I</c> the proof is bound to; may be empty.</param>
+    /// <param name="nonceSource">The nonce source for the commitment nonce.</param>
+    /// <param name="hash">The Fiat–Shamir hash.</param>
+    /// <param name="scalarMultiply">Scalar multiplication mod <c>n</c>.</param>
+    /// <param name="scalarAdd">Scalar addition mod <c>n</c>.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="pool">The pool the proof is rented from.</param>
+    /// <returns>The proof of the control relation, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">When the nonce yields a degenerate proof (retry; probability about <c>1/n</c>).</exception>
+    public static DlEqualityProof ProveControlRelation(
+        G1Point h,
+        G1Point w,
+        G1Point hPrime,
+        G1Point wPrime,
+        PrivateScalar controlWitness,
+        AdditionalData recordContext,
+        SecdsaNonceSource nonceSource,
+        FiatShamirHashDelegate hash,
+        ScalarMultiplyDelegate scalarMultiply,
+        ScalarAddDelegate scalarAdd,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(h);
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(hPrime);
+        ArgumentNullException.ThrowIfNull(wPrime);
+        ArgumentNullException.ThrowIfNull(controlWitness);
+        ArgumentNullException.ThrowIfNull(recordContext);
+
+        return ProveControlRelationSpan(
+            h.AsReadOnlySpan(), w.AsReadOnlySpan(), hPrime.AsReadOnlySpan(), wPrime.AsReadOnlySpan(), controlWitness.AsReadOnlySpan(), recordContext.AsReadOnlySpan(),
+            nonceSource, hash, scalarMultiply, scalarAdd, scalarReduce, g1ScalarMultiply, pool);
+    }
+
+
+    /// <summary>
+    /// Verifies the control relation proof produced by <see cref="ProveControlRelation"/>, bound to
+    /// <paramref name="recordContext"/> (Verheul Algorithm 10). Adversarial values reject and do not throw.
+    /// </summary>
+    /// <param name="h">The point <c>H</c>.</param>
+    /// <param name="w">The point <c>W</c>.</param>
+    /// <param name="hPrime">The point <c>H'</c>.</param>
+    /// <param name="wPrime">The point <c>W'</c>.</param>
+    /// <param name="recordContext">The record context <c>T_I</c> the proof was bound to; may be empty.</param>
+    /// <param name="proof">The proof <c>(r, s)</c>.</param>
+    /// <param name="hash">The Fiat–Shamir hash.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication.</param>
+    /// <param name="g1Add">G1 addition.</param>
+    /// <param name="g1Negate">G1 negation.</param>
+    /// <returns><see langword="true"/> when the relation proof is valid.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static bool VerifyControlRelation(
+        G1Point h,
+        G1Point w,
+        G1Point hPrime,
+        G1Point wPrime,
+        AdditionalData recordContext,
+        DlEqualityProof proof,
+        FiatShamirHashDelegate hash,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        G1AddDelegate g1Add,
+        G1NegateDelegate g1Negate)
+    {
+        ArgumentNullException.ThrowIfNull(h);
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(hPrime);
+        ArgumentNullException.ThrowIfNull(wPrime);
+        ArgumentNullException.ThrowIfNull(recordContext);
+        ArgumentNullException.ThrowIfNull(proof);
+
+        return VerifyControlRelationSpan(
+            h.AsReadOnlySpan(), w.AsReadOnlySpan(), hPrime.AsReadOnlySpan(), wPrime.AsReadOnlySpan(), recordContext.AsReadOnlySpan(),
+            proof.GetRBytes(), proof.GetSBytes(), hash, scalarReduce, g1ScalarMultiply, g1Add, g1Negate);
     }
 
 

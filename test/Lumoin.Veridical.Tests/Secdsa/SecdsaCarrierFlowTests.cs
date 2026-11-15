@@ -220,13 +220,13 @@ internal sealed class SecdsaCarrierFlowTests
         using G1Point gDoublePrime = Mul(generator, signatureInverse, pool);
         using G1Point yDoublePrime = Mul(blindSecdsaPublicKey, signatureInverse, pool);
 
-        using DlEqualityProof blindingProof = SecdsaEvidence.ProveBlindingRelation(
+        using DlEqualityProof blindingProof = SecdsaEvidence.ProveBlindingRelationSpan(
             generator.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(),
             blindSecdsaPublicKey.AsReadOnlySpan(), yDoublePrime.AsReadOnlySpan(),
             signatureInverse.AsReadOnlySpan(), NonceSource, Hash, ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, pool);
 
         Assert.IsTrue(
-            SecdsaEvidence.VerifyBlindingRelation(
+            SecdsaEvidence.VerifyBlindingRelationSpan(
                 generator.AsReadOnlySpan(), gDoublePrime.AsReadOnlySpan(),
                 blindSecdsaPublicKey.AsReadOnlySpan(), yDoublePrime.AsReadOnlySpan(),
                 blindingProof.GetRBytes(), blindingProof.GetSBytes(), Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
@@ -246,12 +246,12 @@ internal sealed class SecdsaCarrierFlowTests
 
         //Control evidence: H' = aU*H and W' = aU*W share aU, bound to N = H(T_I) (Equation 7, Algorithm 9 Step 6, Algorithm 10 Step 6).
         byte[] recordContext = Digest("transaction-record T_I for instruction #1");
-        using DlEqualityProof controlProof = SecdsaEvidence.ProveControlRelation(
+        using DlEqualityProof controlProof = SecdsaEvidence.ProveControlRelationSpan(
             walletBase.AsReadOnlySpan(), w.AsReadOnlySpan(), blindedWalletBase.AsReadOnlySpan(), wPrime.AsReadOnlySpan(),
             walletProviderKey.AsReadOnlySpan(), recordContext, NonceSource, Hash, ScalarMultiply, ScalarAdd, ScalarReduce, G1ScalarMultiply, pool);
 
         Assert.IsTrue(
-            SecdsaEvidence.VerifyControlRelation(
+            SecdsaEvidence.VerifyControlRelationSpan(
                 walletBase.AsReadOnlySpan(), w.AsReadOnlySpan(), blindedWalletBase.AsReadOnlySpan(), wPrime.AsReadOnlySpan(),
                 recordContext, controlProof.GetRBytes(), controlProof.GetSBytes(), Hash, ScalarReduce, G1ScalarMultiply, G1Add, G1Negate),
             "A third party must accept the wallet-provider control evidence bound to the transaction record.");
