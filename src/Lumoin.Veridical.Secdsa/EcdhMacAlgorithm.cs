@@ -3,6 +3,7 @@ using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Core.Cryptography;
 using System;
 using System.Security.Cryptography;
+using static Lumoin.Veridical.Secdsa.P256PointValidation;
 using static Lumoin.Veridical.Secdsa.P256ScalarValidation;
 
 namespace Lumoin.Veridical.Secdsa;
@@ -75,9 +76,6 @@ public static class EcdhMacAlgorithm
 
     /// <summary>The length of the shared secret <c>Z_AB</c>, the P-256 x-coordinate of the Diffie-Hellman point.</summary>
     public const int SharedSecretSizeBytes = WellKnownCurves.P256ScalarSizeBytes;
-
-    //The low byte of the scalar one, used to decode-validate a point by multiplying it by one.
-    private const byte ScalarOneLowByte = 0x01;
 
     /// <summary>The HMAC-SHA256 output length: <c>MAC = HMAC(K, M)</c> is always 32 bytes.</summary>
     public const int MacSizeBytes = 32;
@@ -462,20 +460,7 @@ public static class EcdhMacAlgorithm
         Span<byte> keyHolderInput)
     {
         ArgumentNullException.ThrowIfNull(g1ScalarMultiply);
-        RequireLength(peerPublicPoint, CompressedPointSizeBytes, nameof(peerPublicPoint));
-        RequireLength(keyHolderInput, CompressedPointSizeBytes, nameof(keyHolderInput));
-        RequireNotInfinity(peerPublicPoint, nameof(peerPublicPoint));
-
-        Span<byte> one = stackalloc byte[ScalarSizeBytes];
-        one[^1] = ScalarOneLowByte;
-        Span<byte> decoded = stackalloc byte[CompressedPointSizeBytes];
-        g1ScalarMultiply(peerPublicPoint, one, decoded, Curve);
-        if(decoded[0] == 0x00 || !CryptographicOperations.FixedTimeEquals(decoded, peerPublicPoint))
-        {
-            throw new ArgumentException("The point is not the canonical encoding of a finite point on the curve.", nameof(peerPublicPoint));
-        }
-
-        decoded.CopyTo(keyHolderInput);
+        ValidateCanonical(peerPublicPoint, g1ScalarMultiply, keyHolderInput, nameof(peerPublicPoint));
     }
 
 
@@ -710,21 +695,6 @@ public static class EcdhMacAlgorithm
         finally
         {
             computedMac.Clear();
-        }
-    }
-
-
-    /// <summary>
-    /// Realizes <c>E ∈ ⟨G⟩</c>: rejects the encoded point at infinity here, and relies on the injected
-    /// <see cref="G1ScalarMultiplyDelegate"/>'s SEC1-decode contract to reject a syntactically
-    /// well-formed but off-curve point (P-256's cofactor of 1 then makes on-curve-and-finite
-    /// equivalent to subgroup membership).
-    /// </summary>
-    private static void RequireNotInfinity(ReadOnlySpan<byte> compressedPoint, string name)
-    {
-        if(compressedPoint[0] == 0x00)
-        {
-            throw new ArgumentException("The point encodes the point at infinity, which is not a member of the prime-order subgroup <G>.", name);
         }
     }
 
