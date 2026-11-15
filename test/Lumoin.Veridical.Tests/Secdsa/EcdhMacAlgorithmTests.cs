@@ -31,7 +31,7 @@ internal sealed class EcdhMacAlgorithmTests
     private static ScalarMultiplyDelegate ScalarMultiply { get; } = P256BigIntegerScalarReference.GetMultiply();
     private static ScalarReduceDelegate ScalarReduce { get; } = P256BigIntegerScalarReference.GetReduce();
     private static G1ScalarMultiplyDelegate G1ScalarMultiply { get; } = P256BigIntegerG1Reference.GetScalarMultiply();
-    private static HkdfSha256Delegate Hkdf { get; } = Sha256Hkdf.DeriveKey;
+    private static EcdhMacKeyDerivationDelegate Hkdf { get; } = Sha256Hkdf.DeriveKey;
     private static HmacSha256Delegate Hmac { get; } = Sha256Hmac.Compute;
 
     private static BigInteger Order { get; } = WellKnownCurves.GetScalarFieldOrder(CurveParameterSet.P256);

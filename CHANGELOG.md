@@ -25,10 +25,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `LongfellowProverRandomness`: the prover's plain random bytes for one proof, single use, with a draw count. The prover does the field mapping and the below-prime rejection itself.
 - `LongfellowRandomnessChecks`: `IsBelowP256BaseFieldPrime`, `IsNotAllZero` and `ProducesDistinctNonZeroDraws`, for suppliers to test their own randomness.
 - `SecdsaAlgorithm.PrepareSplitSign` and `SecdsaAlgorithm.CompleteSplitSign`: split sign as two pure phases around an external key holder. Prepare returns the blinded representative `e' = P^-1 * e`; complete masks the key holder's `(r, s0)` and releases `s` only after the finished signature verifies under the composite public key, so a faulty or substituted key holder cannot make the caller emit a bad signature. The two-party key-share split is the same two phases applied once per party.
+- `EcdhMacAlgorithm.PrepareKeyAgreement`, `ApplyKeyShare`, `DeriveMacKeyFromSharedSecret`, `CompleteSign`, `CompleteVerify` and `VerifyMac`: ECDH-MAC and Split-ECDH-MAC as phases around a key holder that returns either the shared secret `Z_AB` or the derived key.
+- `EcdhMacKeyDerivationDelegate`: the key derivation that turns `Z_AB` and `SharedInfo` into the MAC key, chosen by the caller (HKDF-SHA256 for the paper's Algorithms 16 and 17, an X9.63 derivation for an HSM that applies `CKD_SHA256_KDF`).
 
 ### Changed
 
 - `SecdsaAlgorithm.SplitSign` verifies the finished signature before returning it, as every split-sign entry point now does. The software overloads take a `G1AddDelegate` and derive the composite public key themselves; the raw-signer overload takes the composite public key, a `G1ScalarMultiplyDelegate` and a `G1AddDelegate`, runs through `PrepareSplitSign` and `CompleteSplitSign`, and clears `r` and `s` when the key holder's answer is rejected.
+- `EcdhMacAlgorithm` takes an `EcdhMacKeyDerivationDelegate` where it took an `HkdfSha256Delegate`; `Sha256Hkdf.DeriveKey` converts to it directly. `Sign` and `SplitSign` run through the new phase members.
 - `LongfellowMdoc.Prove` and `LongfellowJwt.Prove` take a `LongfellowProverRandomness` after the suite.
 - `LongfellowEntropyDelegate` fills plain random bytes with no field constraint.
 

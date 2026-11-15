@@ -33,8 +33,8 @@ internal sealed class SecdsaPlatformComposition: IDisposable
     /// <summary>The SHA-256 Fiat-Shamir hash.</summary>
     public FiatShamirHashDelegate Hash { get; } = ComputeSha256;
 
-    /// <summary>HKDF-SHA-256.</summary>
-    public HkdfSha256Delegate Hkdf { get; } = Sha256Hkdf.DeriveKey;
+    /// <summary>HKDF-SHA-256 as the ECDH-MAC key derivation of Algorithms 16 and 17.</summary>
+    public EcdhMacKeyDerivationDelegate Hkdf { get; } = Sha256Hkdf.DeriveKey;
 
     /// <summary>HMAC-SHA-256.</summary>
     public HmacSha256Delegate Hmac { get; } = Sha256Hmac.Compute;
