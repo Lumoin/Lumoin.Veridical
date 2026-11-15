@@ -19,6 +19,8 @@ internal static class NodeCryptoProviders
     public static void Register()
     {
         TestPlatformCrypto.AesEncryptBlock = EncryptBlock;
+        TestPlatformCrypto.AesGcmEncrypt = EncryptGcm;
+        TestPlatformCrypto.AesGcmDecrypt = DecryptGcm;
         TestPlatformCrypto.GenerateP256Key = GenerateKey;
         TestPlatformCrypto.SignP256 = Sign;
         TestPlatformCrypto.VerifyP256 = Verify;
@@ -31,6 +33,40 @@ internal static class NodeCryptoProviders
     private static void EncryptBlock(ReadOnlySpan<byte> key, ReadOnlySpan<byte> input, Span<byte> output)
     {
         NodeCryptoInterop.AesEncryptBlock(key.ToArray(), input.ToArray()).CopyTo(output);
+    }
+
+
+    private static void EncryptGcm(
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> iv,
+        ReadOnlySpan<byte> plaintext,
+        ReadOnlySpan<byte> associatedData,
+        Span<byte> ciphertext,
+        Span<byte> tag)
+    {
+        byte[] sealedBytes = NodeCryptoInterop.AesGcmEncrypt(key.ToArray(), iv.ToArray(), plaintext.ToArray(), associatedData.ToArray(), tag.Length);
+        sealedBytes.AsSpan(0, plaintext.Length).CopyTo(ciphertext);
+        sealedBytes.AsSpan(plaintext.Length).CopyTo(tag);
+    }
+
+
+    private static bool DecryptGcm(
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> iv,
+        ReadOnlySpan<byte> ciphertext,
+        ReadOnlySpan<byte> tag,
+        ReadOnlySpan<byte> associatedData,
+        Span<byte> plaintext)
+    {
+        byte[] opened = NodeCryptoInterop.AesGcmDecrypt(key.ToArray(), iv.ToArray(), ciphertext.ToArray(), tag.ToArray(), associatedData.ToArray());
+        if(opened[^1] == 0)
+        {
+            return false;
+        }
+
+        opened.AsSpan(0, opened.Length - 1).CopyTo(plaintext);
+
+        return true;
     }
 
 

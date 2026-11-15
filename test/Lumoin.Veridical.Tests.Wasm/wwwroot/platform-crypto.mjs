@@ -2,7 +2,7 @@
 // has no implementation of AES, ECDSA, ECDH or X.509 parsing of its own, so the host registers
 // this module as the import 'platform-crypto' and the C# side calls these functions through
 // JSImport. Every function takes and returns Uint8Array values and is synchronous.
-import { createCipheriv, createECDH, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify, X509Certificate } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createECDH, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify, X509Certificate } from 'node:crypto';
 
 const componentSize = 32;
 const curveName = 'P-256';
@@ -54,6 +54,30 @@ export function aesEncryptBlock(key, input) {
     cipher.setAutoPadding(false);
 
     return new Uint8Array(Buffer.concat([cipher.update(input), cipher.final()]));
+}
+
+// Returns the ciphertext followed by the tag; the tag length is the one the caller asked for.
+export function aesGcmEncrypt(key, iv, plaintext, associatedData, tagLength) {
+    const cipher = createCipheriv(`aes-${key.length * 8}-gcm`, key, iv, { authTagLength: tagLength });
+    cipher.setAAD(associatedData);
+    const body = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    return new Uint8Array(Buffer.concat([body, cipher.getAuthTag()]));
+}
+
+// Returns the plaintext followed by one status byte: 1 when the tag authenticated, 0 when it did not,
+// so an authentication failure never crosses the interop boundary as an exception.
+export function aesGcmDecrypt(key, iv, ciphertext, tag, associatedData) {
+    try {
+        const decipher = createDecipheriv(`aes-${key.length * 8}-gcm`, key, iv, { authTagLength: tag.length });
+        decipher.setAAD(associatedData);
+        decipher.setAuthTag(tag);
+        const body = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+
+        return new Uint8Array(Buffer.concat([body, Uint8Array.of(1)]));
+    } catch (error) {
+        return Uint8Array.of(0);
+    }
 }
 
 // Returns d || x || y, each 32 bytes.

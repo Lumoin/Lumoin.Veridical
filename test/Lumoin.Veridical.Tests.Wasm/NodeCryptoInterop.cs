@@ -24,6 +24,28 @@ internal static partial class NodeCryptoInterop
     internal static partial byte[] AesEncryptBlock(byte[] key, byte[] input);
 
 
+    /// <summary>Encrypts with AES-GCM.</summary>
+    /// <param name="key">The 16, 24 or 32-byte key.</param>
+    /// <param name="iv">The initialisation vector.</param>
+    /// <param name="plaintext">The plaintext.</param>
+    /// <param name="associatedData">The additional authenticated data.</param>
+    /// <param name="tagLength">The tag length in bytes.</param>
+    /// <returns>The ciphertext followed by the authentication tag.</returns>
+    [JSImport("aesGcmEncrypt", ModuleName)]
+    internal static partial byte[] AesGcmEncrypt(byte[] key, byte[] iv, byte[] plaintext, byte[] associatedData, int tagLength);
+
+
+    /// <summary>Decrypts with AES-GCM.</summary>
+    /// <param name="key">The 16, 24 or 32-byte key.</param>
+    /// <param name="iv">The initialisation vector.</param>
+    /// <param name="ciphertext">The ciphertext.</param>
+    /// <param name="tag">The authentication tag.</param>
+    /// <param name="associatedData">The additional authenticated data.</param>
+    /// <returns>The plaintext followed by one status byte, 1 when the tag authenticated and 0 when it did not; in the failure case the array is the status byte alone.</returns>
+    [JSImport("aesGcmDecrypt", ModuleName)]
+    internal static partial byte[] AesGcmDecrypt(byte[] key, byte[] iv, byte[] ciphertext, byte[] tag, byte[] associatedData);
+
+
     /// <summary>Generates a P-256 key pair.</summary>
     /// <returns>The private scalar, the x-coordinate and the y-coordinate, 32 bytes each, concatenated.</returns>
     [JSImport("p256Generate", ModuleName)]
