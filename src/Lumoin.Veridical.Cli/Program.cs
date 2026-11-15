@@ -83,6 +83,13 @@ internal static class Program
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacSignCommand());
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacVerifyCommand());
         rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacSplitSignCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildSplitSignPrepareCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildSplitSignCompleteCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacPrepareCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacApplyKeyShareCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacCompleteSignCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacCompleteVerifyCommand());
+        rootCommand.Subcommands.Add(SecdsaCliCommands.BuildEcdhMacVerifyMacCommand());
         rootCommand.Subcommands.Add(AnalysisCliCommands.BuildBaseFoldLeakageCommand());
         rootCommand.Subcommands.Add(AnalysisCliCommands.BuildWelchTCommand());
         rootCommand.Subcommands.Add(AnalysisCliCommands.BuildKolmogorovSmirnovCommand());

@@ -394,6 +394,162 @@ internal sealed class McpServerToolTests
 
 
     /// <summary>
+    /// Runs the phased SECDSA split sign and the phased ECDH-MAC through the MCP tools with the key holder simulated
+    /// by a file hand-off: the blinded representative is written to a file and never returned, the key holder's raw
+    /// signature comes back as a file, and a tampered answer, a wrong shared secret and an off-curve point are
+    /// reported as failures.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("McpClient")]
+    [Timeout(McpHangGuardMilliseconds, CooperativeCancellation = true)]
+    public async Task McpSecdsaPhaseToolsHandOffToASimulatedKeyHolderThroughFiles()
+    {
+        const string MessageHash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        const string PinScalar = "0000000000000000000000000000000000000000000000000000000000000007";
+        const string HardwareScalar = "000000000000000000000000000000000000000000000000000000000000000b";
+        const string VerifierScalar = "0000000000000000000000000000000000000000000000000000000000000013";
+        const string UnitScalar = "0000000000000000000000000000000000000000000000000000000000000001";
+        const string MacMessage = "6d657373616765";
+        string pinPath = VeridicalCliTestHelpers.WriteTemporaryFile(PinScalar);
+        string hardwarePath = VeridicalCliTestHelpers.WriteTemporaryFile(HardwareScalar);
+        string verifierPath = VeridicalCliTestHelpers.WriteTemporaryFile(VerifierScalar);
+        string unitPath = VeridicalCliTestHelpers.WriteTemporaryFile(UnitScalar);
+        string blindedPath = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.blinded");
+        string rawPath = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.raw");
+        string secretPath = Path.Combine(Path.GetTempPath(), $"veridical-test-{Guid.NewGuid():N}.secret");
+        try
+        {
+            await WithMcpClientAsync(async client =>
+            {
+                var tools = await client.ListToolsAsync(cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                var toolNames = tools.Select(tool => tool.Name).ToList();
+                Assert.Contains(McpToolNames.SecdsaSplitSignPrepare, toolNames);
+                Assert.Contains(McpToolNames.SecdsaSplitSignComplete, toolNames);
+                Assert.Contains(McpToolNames.SecdsaEcdhMacPrepare, toolNames);
+                Assert.Contains(McpToolNames.SecdsaEcdhMacApplyKeyShare, toolNames);
+                Assert.Contains(McpToolNames.SecdsaEcdhMacCompleteSign, toolNames);
+                Assert.Contains(McpToolNames.SecdsaEcdhMacCompleteVerify, toolNames);
+                Assert.Contains(McpToolNames.SecdsaEcdhMacVerifyMac, toolNames);
+
+                var publicKeyResult = await client.CallToolAsync(
+                    McpToolNames.SecdsaPublicKey,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["hardwareKeyFile"] = hardwarePath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string publicKey = TextOf(publicKeyResult).Trim();
+
+                var prepare = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSignPrepare,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["messageHash"] = MessageHash, ["outputFile"] = blindedPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string blinded = (await File.ReadAllTextAsync(blindedPath, TestContext.CancellationToken).ConfigureAwait(false)).Trim();
+                Assert.AreEqual(64, blinded.Length);
+                Assert.DoesNotContain(blinded, TextOf(prepare), StringComparison.Ordinal);
+
+                var overwrite = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSignPrepare,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["messageHash"] = MessageHash, ["outputFile"] = blindedPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Error:", TextOf(overwrite), StringComparison.Ordinal);
+
+                //The key holder: with PIN key 1 the split signer is the raw signer over e'.
+                var keyHolder = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSign,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = unitPath, ["hardwareKeyFile"] = hardwarePath, ["messageHash"] = blinded },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string rawSignature = TextOf(keyHolder).Trim();
+                await File.WriteAllTextAsync(rawPath, rawSignature, TestContext.CancellationToken).ConfigureAwait(false);
+
+                var complete = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSignComplete,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["messageHash"] = MessageHash, ["publicKey"] = publicKey, ["rawSignatureFile"] = rawPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string signature = TextOf(complete).Trim();
+                Assert.AreEqual(128, signature.Length);
+
+                var valid = await client.CallToolAsync(
+                    McpToolNames.SecdsaVerify,
+                    new Dictionary<string, object?> { ["publicKey"] = publicKey, ["messageHash"] = MessageHash, ["signature"] = signature },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID", TextOf(valid), StringComparison.Ordinal);
+
+                await File.WriteAllTextAsync(rawPath, rawSignature[..^1] + (rawSignature[^1] == '0' ? "1" : "0"), TestContext.CancellationToken).ConfigureAwait(false);
+                var tampered = await client.CallToolAsync(
+                    McpToolNames.SecdsaSplitSignComplete,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["messageHash"] = MessageHash, ["publicKey"] = publicKey, ["rawSignatureFile"] = rawPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Error:", TextOf(tampered), StringComparison.Ordinal);
+
+                var verifierPublic = await client.CallToolAsync(
+                    McpToolNames.SecdsaPublicKey,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = unitPath, ["hardwareKeyFile"] = verifierPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string verifierPoint = TextOf(verifierPublic).Trim();
+
+                var ecdhPrepare = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacPrepare,
+                    new Dictionary<string, object?> { ["peerPublicKey"] = verifierPoint },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(verifierPoint, TextOf(ecdhPrepare).Trim());
+
+                var offCurve = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacPrepare,
+                    new Dictionary<string, object?> { ["peerPublicKey"] = "02" + new string('0', 62) + "01" },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("Error:", TextOf(offCurve), StringComparison.Ordinal);
+
+                //The key holder's raw ECDH: Z_AB is the x-coordinate of (d*e)*G, here from the PIN scalar and the verifier scalar.
+                var sharedPoint = await client.CallToolAsync(
+                    McpToolNames.SecdsaPublicKey,
+                    new Dictionary<string, object?> { ["pinKeyFile"] = pinPath, ["hardwareKeyFile"] = verifierPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string sharedSecret = TextOf(sharedPoint).Trim()[2..];
+                await File.WriteAllTextAsync(secretPath, sharedSecret, TestContext.CancellationToken).ConfigureAwait(false);
+
+                var mac = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacCompleteSign,
+                    new Dictionary<string, object?> { ["sharedSecretFile"] = secretPath, ["message"] = MacMessage },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                string macHex = TextOf(mac).Trim();
+
+                var direct = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacSign,
+                    new Dictionary<string, object?> { ["privateKeyFile"] = pinPath, ["verifierEphemeralPublicKey"] = verifierPoint, ["message"] = MacMessage },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(TextOf(direct).Trim(), macHex);
+
+                var macValid = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacCompleteVerify,
+                    new Dictionary<string, object?> { ["sharedSecretFile"] = secretPath, ["mac"] = macHex, ["message"] = MacMessage },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("VALID", TextOf(macValid), StringComparison.Ordinal);
+
+                var macWrong = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacCompleteVerify,
+                    new Dictionary<string, object?> { ["sharedSecretFile"] = secretPath, ["mac"] = macHex, ["message"] = "00" },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith("REJECTED", TextOf(macWrong), StringComparison.Ordinal);
+
+                var share = await client.CallToolAsync(
+                    McpToolNames.SecdsaEcdhMacApplyKeyShare,
+                    new Dictionary<string, object?> { ["keyShareFile"] = pinPath, ["point"] = verifierPoint },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(sharedSecret, TextOf(share).Trim()[2..]);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(pinPath);
+            File.Delete(hardwarePath);
+            File.Delete(verifierPath);
+            File.Delete(unitPath);
+            File.Delete(blindedPath);
+            File.Delete(rawPath);
+            File.Delete(secretPath);
+        }
+    }
+
+
+    /// <summary>
     /// Runs the Analysis tools through the MCP server: the statistical tests over small sample sets, the leakage
     /// experiment at small scale, and an invalid significance level reported as an error message.
     /// </summary>

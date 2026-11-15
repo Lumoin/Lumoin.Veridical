@@ -527,6 +527,247 @@ internal static class SecdsaCliCommands
     }
 
 
+    /// <summary>Builds <c>secdsa-split-sign-prepare</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildSplitSignPrepareCommand()
+    {
+        Option<string> pinKeyFile = SecretFile("--pin-key-file", "the PIN-key scalar P (hex)");
+        Option<string> messageHash = Hex("--message-hash", "The message hash e = H(M), 32 bytes as hex.");
+        Option<string> output = new("--output") { Description = "Path the blinded representative e' (hex) is written to, for the key holder's raw ECDSA sign. The file must not exist and is readable by its owner only; e' is never printed, because e' together with the message hash reveals P.", Required = true };
+
+        Command command = new("secdsa-split-sign-prepare", "SECDSA split sign, prepare phase: writes the blinded representative e' = P^-1 * e to --output; the key holder raw-ECDSA-signs e' under its key and returns (r, s0). The PIN key is read only from its file and is never echoed.")
+        {
+            pinKeyFile,
+            messageHash,
+            output
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, pinKeyFile, "pin key", out string pinKey))
+            {
+                return 1;
+            }
+
+            return ProduceToSecretFile(
+                () => SecdsaOperations.SplitSignPrepare(pinKey, parseResult.GetValue(messageHash) ?? string.Empty),
+                parseResult.GetValue(output) ?? string.Empty,
+                "blinded representative file");
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-split-sign-complete</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildSplitSignCompleteCommand()
+    {
+        Option<string> pinKeyFile = SecretFile("--pin-key-file", "the PIN-key scalar P (hex)");
+        Option<string> messageHash = Hex("--message-hash", "The message hash e = H(M) given to the prepare phase, 32 bytes as hex.");
+        Option<string> publicKey = Hex("--public-key", "The composite compressed public key Y = (P*u)*G, 33 bytes as hex.");
+        Option<string> rawSignatureFile = SecretFile("--raw-signature-file", "the key holder's raw signature r || s0 (hex, 64 bytes)");
+
+        Command command = new("secdsa-split-sign-complete", "SECDSA split sign, complete phase: masks the key holder's raw signature r || s0 with the PIN key and prints the ECDSA signature r || s (hex) only if it verifies under the public key; exits non-zero and prints nothing otherwise. The PIN key and s0 are read only from their files and are never echoed.")
+        {
+            pinKeyFile,
+            messageHash,
+            publicKey,
+            rawSignatureFile
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, pinKeyFile, "pin key", out string pinKey) || !ReadSecret(parseResult, rawSignatureFile, "raw signature", out string rawSignature))
+            {
+                return 1;
+            }
+
+            return Produce(() => SecdsaOperations.SplitSignComplete(
+                pinKey,
+                parseResult.GetValue(messageHash) ?? string.Empty,
+                parseResult.GetValue(publicKey) ?? string.Empty,
+                rawSignature));
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecdh-mac-prepare</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEcdhMacPrepareCommand()
+    {
+        Option<string> peerPublicKey = Hex("--peer-public-key", "The verifier's ephemeral compressed public key as hex.");
+
+        Command command = new("secdsa-ecdh-mac-prepare", "ECDH-MAC prepare phase: validates the verifier's ephemeral public key (length, not infinity, on the curve) and prints the canonical point (hex) to send to the key holder's ECDH.")
+        {
+            peerPublicKey
+        };
+
+        command.SetAction(parseResult => Produce(() => SecdsaOperations.EcdhMacPrepare(parseResult.GetValue(peerPublicKey) ?? string.Empty)));
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecdh-mac-apply-key-share</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEcdhMacApplyKeyShareCommand()
+    {
+        Option<string> keyShareFile = SecretFile("--key-share-file", "the key-share scalar (hex)");
+        Option<string> point = Hex("--point", "The compressed point to multiply as hex: the verifier's ephemeral key for the wallet, the wallet's output for the WSCA.");
+
+        Command command = new("secdsa-ecdh-mac-apply-key-share", "Split ECDH-MAC, wallet and WSCA step: multiplies a point by the party's key share (E' = zU*E, E'' = zW*E') and prints the compressed product (hex). The key share is read only from its file and is never echoed.")
+        {
+            keyShareFile,
+            point
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, keyShareFile, "key share", out string keyShare))
+            {
+                return 1;
+            }
+
+            return Produce(() => SecdsaOperations.EcdhMacApplyKeyShare(keyShare, parseResult.GetValue(point) ?? string.Empty));
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecdh-mac-complete-sign</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEcdhMacCompleteSignCommand()
+    {
+        Option<string> sharedSecretFile = SecretFile("--shared-secret-file", "the shared secret Z_AB the key holder's ECDH returned (hex, 32 bytes)");
+        Option<string> salt = OptionalHex("--salt", "The HKDF salt as hex; omit for an empty salt.");
+        Option<string> sharedInfo = OptionalHex("--shared-info", "The HKDF info as hex; omit for empty info.");
+        Option<string> message = OptionalHex("--message", "The message as hex; omit for an empty message.");
+
+        Command command = new("secdsa-ecdh-mac-complete-sign", "ECDH-MAC complete phase for signing: derives K = HKDF(Z_AB, SharedInfo) from the key holder's shared secret and prints the MAC (hex). The shared secret is read only from its file and is never echoed.")
+        {
+            sharedSecretFile,
+            salt,
+            sharedInfo,
+            message
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, sharedSecretFile, "shared secret", out string sharedSecret))
+            {
+                return 1;
+            }
+
+            return Produce(() => SecdsaOperations.EcdhMacCompleteSign(
+                sharedSecret,
+                parseResult.GetValue(salt) ?? string.Empty,
+                parseResult.GetValue(sharedInfo) ?? string.Empty,
+                parseResult.GetValue(message) ?? string.Empty));
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecdh-mac-complete-verify</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEcdhMacCompleteVerifyCommand()
+    {
+        Option<string> sharedSecretFile = SecretFile("--shared-secret-file", "the shared secret Z_AB the verifier's key holder returned (hex, 32 bytes)");
+        Option<string> salt = OptionalHex("--salt", "The HKDF salt as hex; omit for an empty salt.");
+        Option<string> sharedInfo = OptionalHex("--shared-info", "The HKDF info as hex; omit for empty info.");
+        Option<string> message = OptionalHex("--message", "The message as hex; omit for an empty message.");
+        Option<string> mac = Hex("--mac", "The MAC, 32 bytes as hex.");
+
+        Command command = new("secdsa-ecdh-mac-complete-verify", "ECDH-MAC complete phase for verification: derives K from the verifier's key holder's shared secret and compares the MAC in constant time (exit non-zero when it does not verify). The shared secret is read only from its file and is never echoed.")
+        {
+            sharedSecretFile,
+            salt,
+            sharedInfo,
+            message,
+            mac
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, sharedSecretFile, "shared secret", out string sharedSecret))
+            {
+                return 1;
+            }
+
+            return Report(() => SecdsaOperations.EcdhMacCompleteVerify(
+                sharedSecret,
+                parseResult.GetValue(salt) ?? string.Empty,
+                parseResult.GetValue(sharedInfo) ?? string.Empty,
+                parseResult.GetValue(message) ?? string.Empty,
+                parseResult.GetValue(mac) ?? string.Empty));
+        });
+
+        return command;
+    }
+
+
+    /// <summary>Builds <c>secdsa-ecdh-mac-verify-mac</c>.</summary>
+    /// <returns>The command.</returns>
+    public static Command BuildEcdhMacVerifyMacCommand()
+    {
+        Option<string> macKeyFile = SecretFile("--mac-key-file", "the MAC key K the key holder derived (hex)");
+        Option<string> message = OptionalHex("--message", "The message as hex; omit for an empty message.");
+        Option<string> mac = Hex("--mac", "The MAC, 32 bytes as hex.");
+
+        Command command = new("secdsa-ecdh-mac-verify-mac", "Verify an ECDH-MAC under a MAC key the key holder derived itself, comparing in constant time (exit non-zero when it does not verify). The key is read only from its file and is never echoed.")
+        {
+            macKeyFile,
+            message,
+            mac
+        };
+
+        command.SetAction(parseResult =>
+        {
+            if(!ReadSecret(parseResult, macKeyFile, "MAC key", out string macKey))
+            {
+                return 1;
+            }
+
+            return Report(() => SecdsaOperations.EcdhMacVerifyMac(
+                macKey,
+                parseResult.GetValue(message) ?? string.Empty,
+                parseResult.GetValue(mac) ?? string.Empty));
+        });
+
+        return command;
+    }
+
+
+    private static int ProduceToSecretFile(Func<string> operation, string outputPath, string what)
+    {
+        string secret;
+        try
+        {
+            secret = operation();
+        }
+        catch(ArgumentException error)
+        {
+            Console.Error.WriteLine($"Error: {error.Message}");
+
+            return 1;
+        }
+
+        if(!CliFiles.TryWriteSecret(outputPath, secret, what, out string failure))
+        {
+            Console.Error.WriteLine($"Error: {failure}");
+
+            return 1;
+        }
+
+        return 0;
+    }
+
+
     private static Option<string> Hex(string name, string description) => new(name) { Description = description, Required = true };
 
 

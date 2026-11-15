@@ -428,6 +428,121 @@ internal sealed class VeridicalMcpServer
     }
 
 
+    [McpServerTool(Name = McpToolNames.SecdsaSplitSignPrepare), Description("SECDSA split sign, prepare phase: computes the blinded representative e' = P^-1 * e for the key holder's raw ECDSA sign and writes it to the named file, which must not exist; it is never returned, because e' together with the message hash reveals the PIN key. The PIN key is read from a file and never passes through the conversation.")]
+    public static string SecdsaSplitSignPrepare(
+        [Description("Path to the file holding the PIN-key scalar P (hex).")] string pinKeyFile,
+        [Description("The message hash e = H(M), 32 bytes as hex.")] string messageHash,
+        [Description("Path the blinded representative e' (hex) is written to; the file must not exist.")] string outputFile)
+    {
+        return WithSecretsToFile([pinKeyFile], outputFile, "blinded representative file", secrets => SecdsaOperations.SplitSignPrepare(secrets[0], messageHash));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaSplitSignComplete), Description("SECDSA split sign, complete phase: masks the key holder's raw signature r || s0 with the PIN key and returns the ECDSA signature r || s (hex) only if it verifies under the composite public key; otherwise returns an error and no signature. The PIN key and s0 are read from files and never pass through the conversation.")]
+    public static string SecdsaSplitSignComplete(
+        [Description("Path to the file holding the PIN-key scalar P (hex).")] string pinKeyFile,
+        [Description("The message hash e = H(M) given to the prepare phase, 32 bytes as hex.")] string messageHash,
+        [Description("The composite compressed public key Y = (P*u)*G, 33 bytes as hex.")] string publicKey,
+        [Description("Path to the file holding the key holder's raw signature r || s0 (hex, 64 bytes).")] string rawSignatureFile)
+    {
+        return WithSecrets([pinKeyFile, rawSignatureFile], secrets => SecdsaOperations.SplitSignComplete(secrets[0], messageHash, publicKey, secrets[1]));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEcdhMacPrepare), Description("ECDH-MAC prepare phase: validates the verifier's ephemeral public key (length, not infinity, on the curve) and returns the canonical compressed point (hex) to send to the key holder's ECDH, or an error message.")]
+    public static string SecdsaEcdhMacPrepare(
+        [Description("The verifier's ephemeral compressed public key as hex.")] string peerPublicKey)
+    {
+        return Produced(() => SecdsaOperations.EcdhMacPrepare(peerPublicKey));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEcdhMacApplyKeyShare), Description("Split ECDH-MAC, wallet and WSCA step: multiplies a compressed point by the party's key share (E' = zU*E at the wallet, E'' = zW*E' at the WSCA) and returns the product (hex). The key share is read from a file and never passes through the conversation.")]
+    public static string SecdsaEcdhMacApplyKeyShare(
+        [Description("Path to the file holding the key-share scalar (hex).")] string keyShareFile,
+        [Description("The compressed point to multiply as hex.")] string point)
+    {
+        return WithSecrets([keyShareFile], secrets => SecdsaOperations.EcdhMacApplyKeyShare(secrets[0], point));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEcdhMacCompleteSign), Description("ECDH-MAC complete phase for signing: derives K = HKDF(Z_AB, SharedInfo) from the shared secret the key holder's ECDH returned and returns the MAC (hex). The shared secret is read from a file and never passes through the conversation.")]
+    public static string SecdsaEcdhMacCompleteSign(
+        [Description("Path to the file holding the shared secret Z_AB (hex, 32 bytes).")] string sharedSecretFile,
+        [Description("The HKDF salt as hex; empty for an empty salt.")] string salt = "",
+        [Description("The HKDF info as hex; empty for empty info.")] string sharedInfo = "",
+        [Description("The message as hex; empty for an empty message.")] string message = "")
+    {
+        return WithSecrets([sharedSecretFile], secrets => SecdsaOperations.EcdhMacCompleteSign(secrets[0], salt, sharedInfo, message));
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEcdhMacCompleteVerify), Description("ECDH-MAC complete phase for verification: derives K from the shared secret the verifier's key holder returned and compares the MAC in constant time; returns a one-line report, or the reason it does not verify. The shared secret is read from a file.")]
+    public static string SecdsaEcdhMacCompleteVerify(
+        [Description("Path to the file holding the shared secret Z_AB (hex, 32 bytes).")] string sharedSecretFile,
+        [Description("The MAC, 32 bytes as hex.")] string mac,
+        [Description("The HKDF salt as hex; empty for an empty salt.")] string salt = "",
+        [Description("The HKDF info as hex; empty for empty info.")] string sharedInfo = "",
+        [Description("The message as hex; empty for an empty message.")] string message = "")
+    {
+        if(!CliFiles.TryRead(sharedSecretFile, "shared secret", out string sharedSecret, out string failure))
+        {
+            return $"Error: {failure}";
+        }
+
+        return SecdsaOperations.EcdhMacCompleteVerify(sharedSecret.Trim(), salt, sharedInfo, message, mac).ToReport();
+    }
+
+
+    [McpServerTool(Name = McpToolNames.SecdsaEcdhMacVerifyMac), Description("Verify an ECDH-MAC under a MAC key the key holder derived itself, comparing in constant time; returns a one-line report, or the reason it does not verify. The MAC key is read from a file.")]
+    public static string SecdsaEcdhMacVerifyMac(
+        [Description("Path to the file holding the MAC key K (hex).")] string macKeyFile,
+        [Description("The MAC, 32 bytes as hex.")] string mac,
+        [Description("The message as hex; empty for an empty message.")] string message = "")
+    {
+        if(!CliFiles.TryRead(macKeyFile, "MAC key", out string macKey, out string failure))
+        {
+            return $"Error: {failure}";
+        }
+
+        return SecdsaOperations.EcdhMacVerifyMac(macKey.Trim(), message, mac).ToReport();
+    }
+
+
+    //Reads each secret file, runs the operation, and writes its result to a new file that must not exist,
+    //returning a confirmation, or the error message; the result is never returned.
+    private static string WithSecretsToFile(string[] files, string outputFile, string what, Func<string[], string> operation)
+    {
+        var secrets = new string[files.Length];
+        for(int i = 0; i < files.Length; i++)
+        {
+            if(!CliFiles.TryRead(files[i], "secret", out string content, out string failure))
+            {
+                return $"Error: {failure}";
+            }
+
+            secrets[i] = content.Trim();
+        }
+
+        string result;
+        try
+        {
+            result = operation(secrets);
+        }
+        catch(ArgumentException error)
+        {
+            return $"Error: {error.Message}";
+        }
+
+        if(!CliFiles.TryWriteSecret(outputFile, result, what, out string writeFailure))
+        {
+            return $"Error: {writeFailure}";
+        }
+
+        return $"Wrote the {what} to {outputFile}.";
+    }
+
+
     //Reads each secret file, runs the operation over the trimmed contents and returns its result, or the
     //error message when a file cannot be read or an input is invalid.
     private static string WithSecrets(string[] files, Func<string[], string> operation)

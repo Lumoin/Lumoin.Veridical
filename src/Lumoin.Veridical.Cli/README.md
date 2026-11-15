@@ -48,6 +48,18 @@ veridical secdsa-control-prove / secdsa-control-verify
                                Prove and verify the control evidence relation bound to a record context.
 veridical secdsa-ecdh-mac-derive-key / -sign / -verify / -split-sign
                                ECDH-MAC: derive the MAC key to a file, sign, verify, and sign from three key shares.
+veridical secdsa-split-sign-prepare --pin-key-file <path> --message-hash <hex> --output <path>
+                               Split sign, prepare: write the blinded representative e' to a new file for the key holder's raw ECDSA sign.
+veridical secdsa-split-sign-complete --pin-key-file <path> --message-hash <hex> --public-key <hex> --raw-signature-file <path>
+                               Split sign, complete: mask the key holder's r || s0 and print r || s only if it verifies under the public key.
+veridical secdsa-ecdh-mac-prepare --peer-public-key <hex>
+                               ECDH-MAC, prepare: validate the verifier's ephemeral point and print it for the key holder.
+veridical secdsa-ecdh-mac-apply-key-share --key-share-file <path> --point <hex>
+                               Split ECDH-MAC wallet or WSCA step: multiply a point by a key share.
+veridical secdsa-ecdh-mac-complete-sign / -complete-verify --shared-secret-file <path> ...
+                               ECDH-MAC, complete: derive the key from the key holder's shared secret and MAC or verify.
+veridical secdsa-ecdh-mac-verify-mac --mac-key-file <path> --message <hex> --mac <hex>
+                               Verify an ECDH-MAC under a key the key holder derived itself.
 veridical analysis-basefold-leakage [--variables n] [--samples n] [--significance p] [--hiding]
                                Run the BaseFold leakage experiments against the plain or hiding commitment provider.
 veridical analysis-welch-t <first> <second> [--significance p]
@@ -177,9 +189,25 @@ control evidence relations, and ECDH-MAC key derivation, signing, verification a
 Points, hashes, challenges and proofs are hex. Every secret scalar (key shares, witnesses, ephemeral
 private keys) is read only from a file named by a `--...-file` option, never from an argument, and
 is never echoed; `secdsa-ecdh-mac-derive-key` writes the derived MAC key to the file named by
-`--output`, created exclusively. Signing is deterministic (RFC 6979 nonces). The library exposes the
-split signature as a single synchronous operation and does not expose separate prepare and
-complete phases for an external HSM or KMS, so the commands do not either.
+`--output`, created exclusively. Signing is deterministic (RFC 6979 nonces).
+
+The phase commands let the key that does the raw work live outside the process, in an HSM, a TPM or
+a KMS, with the caller moving the data between the steps (a file, a pipe, another machine). For
+split signing, `secdsa-split-sign-prepare` writes the blinded representative `e'` to a new file;
+the key holder raw-ECDSA-signs it; `secdsa-split-sign-complete` reads the key holder's `r || s0`
+from a file, masks it, and prints the signature only if it verifies under the supplied composite
+public key, so a faulty or substituted key holder yields an error and no signature. `e'` and `s0`
+are kept out of standard output and read only from files, because either one next to the public
+message hash or the finished signature reveals the PIN key. The two-party key-share split runs the
+same two commands once per party. For ECDH-MAC, `secdsa-ecdh-mac-prepare` validates the verifier's
+ephemeral point, the key holder returns the 32-byte shared secret `Z_AB` (or the derived key), and
+`secdsa-ecdh-mac-complete-sign` or `-complete-verify` derives `K` with HKDF-SHA-256 and MACs or
+compares in constant time; `secdsa-ecdh-mac-verify-mac` verifies under a key the key holder derived
+itself, and `secdsa-ecdh-mac-apply-key-share` is the wallet and WSCA step of the split form. The
+commands derive the key with HKDF-SHA-256 as the paper's ECDH-MAC algorithms specify; a MAC under a
+key an HSM derived with another function (the X9.63 derivation a PKCS#11 `CKD_SHA256_KDF` applies)
+verifies only through `secdsa-ecdh-mac-verify-mac` with that key, because the verifier must use the
+same derivation.
 
 ## Analysis
 

@@ -19,6 +19,8 @@ internal sealed class SecdsaOperationsTests
 
     private const int MacHexLength = 64;
 
+    private const int PointBytes = 33;
+
     //SHA-256 of "abc", a fixed 32-byte message hash.
     private const string MessageHash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -227,6 +229,125 @@ internal sealed class SecdsaOperationsTests
 
         Assert.AreEqual(VerificationStatus.Malformed, result.Status);
     }
+
+
+    [TestMethod]
+    public void PhasedSplitSignWithASimulatedKeyHolderEqualsSplitSign()
+    {
+        string publicKey = SecdsaOperations.DerivePublicKey(Scalar(PinKey), Scalar(HardwareKey));
+
+        string blinded = SecdsaOperations.SplitSignPrepare(Scalar(PinKey), MessageHash);
+        Assert.AreEqual(ScalarHexLength, blinded.Length);
+
+        //With the PIN key 1 the split signer is the raw signer: (r, s0) = raw ECDSA of e' under the hardware key.
+        string rawSignature = SecdsaOperations.SplitSign(Scalar(1), Scalar(HardwareKey), blinded);
+        string phased = SecdsaOperations.SplitSignComplete(Scalar(PinKey), MessageHash, publicKey, rawSignature);
+
+        Assert.AreEqual(SecdsaOperations.SplitSign(Scalar(PinKey), Scalar(HardwareKey), MessageHash), phased);
+        Assert.AreEqual(VerificationStatus.Valid, SecdsaOperations.Verify(publicKey, MessageHash, phased).Status);
+    }
+
+
+    [TestMethod]
+    public void SplitSignCompleteRejectsATamperedAnswerAWrongKeyAndAWrongMessage()
+    {
+        string publicKey = SecdsaOperations.DerivePublicKey(Scalar(PinKey), Scalar(HardwareKey));
+        string otherPublicKey = SecdsaOperations.DerivePublicKey(Scalar(WalletShare), Scalar(HardwareKey));
+        string blinded = SecdsaOperations.SplitSignPrepare(Scalar(PinKey), MessageHash);
+        string rawSignature = SecdsaOperations.SplitSign(Scalar(1), Scalar(HardwareKey), blinded);
+
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.SplitSignComplete(Scalar(PinKey), MessageHash, publicKey, FlipLastDigit(rawSignature)));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.SplitSignComplete(Scalar(PinKey), MessageHash, otherPublicKey, rawSignature));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.SplitSignComplete(Scalar(PinKey), AnotherMessageHash, publicKey, rawSignature));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.SplitSignComplete(Scalar(PinKey), MessageHash, publicKey, new string('0', SignatureHexLength)));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.SplitSignComplete(Scalar(0), MessageHash, publicKey, rawSignature));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.SplitSignPrepare(Scalar(0), MessageHash));
+    }
+
+
+    [TestMethod]
+    public void TwoPartySplitSignIsTheSamePhasesAppliedOncePerParty()
+    {
+        //Algorithm 11: the wallet blinds with its share, the WSCA blinds the result with its share, the base key
+        //raw-signs, and the shares mask in the opposite order, each against its own public key.
+        string finalPublicKey = SecdsaOperations.DerivePublicKey(Scalar(WalletShare * WscaShare), Scalar(BaseKey));
+        string intermediatePublicKey = SecdsaOperations.DerivePublicKey(Scalar(WscaShare), Scalar(BaseKey));
+
+        string walletBlinded = SecdsaOperations.SplitSignPrepare(Scalar(WalletShare), MessageHash);
+        string wscaBlinded = SecdsaOperations.SplitSignPrepare(Scalar(WscaShare), walletBlinded);
+        string hsmSignature = SecdsaOperations.SplitSign(Scalar(1), Scalar(BaseKey), wscaBlinded);
+        string wscaSignature = SecdsaOperations.SplitSignComplete(Scalar(WscaShare), walletBlinded, intermediatePublicKey, hsmSignature);
+        string walletSignature = SecdsaOperations.SplitSignComplete(Scalar(WalletShare), MessageHash, finalPublicKey, wscaSignature);
+
+        Assert.AreEqual(SecdsaOperations.SplitSign(Scalar(WalletShare * WscaShare), Scalar(BaseKey), MessageHash), walletSignature);
+        Assert.AreEqual(VerificationStatus.Valid, SecdsaOperations.Verify(finalPublicKey, MessageHash, walletSignature).Status);
+    }
+
+
+    [TestMethod]
+    public void EcdhMacPhasesWithASimulatedKeyHolderEqualTheAllSoftwarePaths()
+    {
+        string verifierPublicKey = SecdsaOperations.DerivePublicKey(Scalar(1), Scalar(VerifierEphemeralKey));
+
+        string keyHolderInput = SecdsaOperations.EcdhMacPrepare(verifierPublicKey);
+        Assert.AreEqual(verifierPublicKey, keyHolderInput);
+
+        //The key holder's raw ECDH: Z_AB is the x-coordinate of the shared point (d*e)*G.
+        string proverSharedSecret = SharedSecret(PinKey, VerifierEphemeralKey);
+        string mac = SecdsaOperations.EcdhMacCompleteSign(proverSharedSecret, Salt, SharedInfo, Message);
+        Assert.AreEqual(SecdsaOperations.EcdhMacSign(Scalar(PinKey), verifierPublicKey, Salt, SharedInfo, Message), mac);
+
+        //The verifier's key holder reaches the same Z_AB from the other side.
+        string verifierSharedSecret = SharedSecret(VerifierEphemeralKey, PinKey);
+        Assert.AreEqual(proverSharedSecret, verifierSharedSecret);
+        Assert.AreEqual(VerificationStatus.Valid, SecdsaOperations.EcdhMacCompleteVerify(verifierSharedSecret, Salt, SharedInfo, Message, mac).Status);
+        Assert.AreEqual(VerificationStatus.Rejected, SecdsaOperations.EcdhMacCompleteVerify(verifierSharedSecret, Salt, SharedInfo, SharedInfo, mac).Status);
+        Assert.AreEqual(VerificationStatus.Rejected, SecdsaOperations.EcdhMacCompleteVerify(FlipLastDigit(verifierSharedSecret), Salt, SharedInfo, Message, mac).Status);
+        Assert.AreEqual(VerificationStatus.Malformed, SecdsaOperations.EcdhMacCompleteVerify(Salt, Salt, SharedInfo, Message, mac).Status);
+
+        //A key holder that derives K itself: the library step is the constant-time MAC check.
+        string macKey = SecdsaOperations.EcdhMacDeriveKey(Scalar(PinKey), verifierPublicKey, Salt, SharedInfo);
+        Assert.AreEqual(VerificationStatus.Valid, SecdsaOperations.EcdhMacVerifyMac(macKey, Message, mac).Status);
+        Assert.AreEqual(VerificationStatus.Rejected, SecdsaOperations.EcdhMacVerifyMac(macKey, Message, FlipLastDigit(mac)).Status);
+        Assert.AreEqual(VerificationStatus.Malformed, SecdsaOperations.EcdhMacVerifyMac("zz", Message, mac).Status);
+    }
+
+
+    [TestMethod]
+    public void EcdhMacPrepareRejectsInfinityOffCurveAndMalformedPoints()
+    {
+        string infinity = new('0', 2 * PointBytes);
+        string offCurve = "02" + new string('0', 62) + "01";
+
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.EcdhMacPrepare(infinity));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.EcdhMacPrepare(offCurve));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.EcdhMacPrepare("0200"));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.EcdhMacPrepare("zz"));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.EcdhMacApplyKeyShare(Scalar(0), SecdsaOperations.DerivePublicKey(Scalar(1), Scalar(1))));
+        Assert.ThrowsExactly<ArgumentException>(() => SecdsaOperations.EcdhMacApplyKeyShare(Scalar(WalletShare), offCurve));
+    }
+
+
+    [TestMethod]
+    public void ThreePartyEcdhMacPhasesEqualEcdhMacSplitSign()
+    {
+        string verifierPublicKey = SecdsaOperations.DerivePublicKey(Scalar(1), Scalar(VerifierEphemeralKey));
+
+        string walletPoint = SecdsaOperations.EcdhMacApplyKeyShare(Scalar(WalletShare), SecdsaOperations.EcdhMacPrepare(verifierPublicKey));
+        string wscaPoint = SecdsaOperations.EcdhMacApplyKeyShare(Scalar(WscaShare), SecdsaOperations.EcdhMacPrepare(walletPoint));
+        string hsmPoint = SecdsaOperations.EcdhMacApplyKeyShare(Scalar(BaseKey), wscaPoint);
+        string sharedSecret = hsmPoint[2..];
+
+        string phased = SecdsaOperations.EcdhMacCompleteSign(sharedSecret, Salt, SharedInfo, Message);
+
+        Assert.AreEqual(SecdsaOperations.EcdhMacSplitSign(Scalar(WalletShare), Scalar(WscaShare), Scalar(BaseKey), verifierPublicKey, Salt, SharedInfo, Message), phased);
+    }
+
+
+    //The shared secret Z_AB of a raw ECDH between a private scalar and the public point of another: the
+    //x-coordinate of (a*b)*G.
+    private static string SharedSecret(ulong first, ulong second) =>
+        SecdsaOperations.DerivePublicKey(Scalar(first), Scalar(second))[2..];
 
 
     private static (string Generators, string PublicKeys) DlStatement()

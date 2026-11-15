@@ -88,6 +88,27 @@ internal static class McpToolNames
     /// <summary>The SecdsaEcdhMacSplitSign tool.</summary>
     public const string SecdsaEcdhMacSplitSign = "SecdsaEcdhMacSplitSign";
 
+    /// <summary>The SecdsaSplitSignPrepare tool.</summary>
+    public const string SecdsaSplitSignPrepare = "SecdsaSplitSignPrepare";
+
+    /// <summary>The SecdsaSplitSignComplete tool.</summary>
+    public const string SecdsaSplitSignComplete = "SecdsaSplitSignComplete";
+
+    /// <summary>The SecdsaEcdhMacPrepare tool.</summary>
+    public const string SecdsaEcdhMacPrepare = "SecdsaEcdhMacPrepare";
+
+    /// <summary>The SecdsaEcdhMacApplyKeyShare tool.</summary>
+    public const string SecdsaEcdhMacApplyKeyShare = "SecdsaEcdhMacApplyKeyShare";
+
+    /// <summary>The SecdsaEcdhMacCompleteSign tool.</summary>
+    public const string SecdsaEcdhMacCompleteSign = "SecdsaEcdhMacCompleteSign";
+
+    /// <summary>The SecdsaEcdhMacCompleteVerify tool.</summary>
+    public const string SecdsaEcdhMacCompleteVerify = "SecdsaEcdhMacCompleteVerify";
+
+    /// <summary>The SecdsaEcdhMacVerifyMac tool.</summary>
+    public const string SecdsaEcdhMacVerifyMac = "SecdsaEcdhMacVerifyMac";
+
     /// <summary>The AnalysisBaseFoldLeakage tool.</summary>
     public const string AnalysisBaseFoldLeakage = "AnalysisBaseFoldLeakage";
 
@@ -130,6 +151,13 @@ internal static class McpToolNames
         SecdsaEcdhMacSign,
         SecdsaEcdhMacVerify,
         SecdsaEcdhMacSplitSign,
+        SecdsaSplitSignPrepare,
+        SecdsaSplitSignComplete,
+        SecdsaEcdhMacPrepare,
+        SecdsaEcdhMacApplyKeyShare,
+        SecdsaEcdhMacCompleteSign,
+        SecdsaEcdhMacCompleteVerify,
+        SecdsaEcdhMacVerifyMac,
         AnalysisBaseFoldLeakage,
         AnalysisWelchT,
         AnalysisKolmogorovSmirnov,

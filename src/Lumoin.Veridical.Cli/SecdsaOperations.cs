@@ -473,6 +473,216 @@ internal static class SecdsaOperations
     }
 
 
+    /// <summary>
+    /// SECDSA split sign, prepare phase (Algorithm 2 step 3): computes the blinded representative
+    /// <c>e' = P⁻¹·e</c> that is sent to the key holder's raw ECDSA sign.
+    /// </summary>
+    /// <param name="pinKeyHex">The PIN-key scalar as hex (secret).</param>
+    /// <param name="messageHashHex">The message hash as hex.</param>
+    /// <returns>The blinded representative as hex; sensitive, because <c>e'</c> together with <c>e</c> reveals <c>P</c>.</returns>
+    /// <exception cref="ArgumentException">An input is invalid.</exception>
+    public static string SplitSignPrepare(string pinKeyHex, string messageHashHex)
+    {
+        using var composition = new SecdsaPlatformComposition();
+        Span<byte> pinKey = stackalloc byte[ScalarBytes];
+        Span<byte> blinded = stackalloc byte[ScalarBytes];
+        try
+        {
+            HexInput.DecodeExact(pinKeyHex, pinKey, "pin key");
+            SecdsaAlgorithm.PrepareSplitSign(
+                pinKey, HexInput.Decode(messageHashHex, "message hash"),
+                composition.ScalarMultiply, composition.ScalarInvert, composition.ScalarReduce, blinded);
+
+            return Convert.ToHexStringLower(blinded);
+        }
+        finally
+        {
+            pinKey.Clear();
+            blinded.Clear();
+        }
+    }
+
+
+    /// <summary>
+    /// SECDSA split sign, complete phase (Algorithm 2 step 8): masks the key holder's raw signature
+    /// <c>(r, s₀)</c> with the PIN key and releases the signature only if it verifies under the public key.
+    /// </summary>
+    /// <param name="pinKeyHex">The PIN-key scalar as hex (secret).</param>
+    /// <param name="messageHashHex">The message hash as hex.</param>
+    /// <param name="publicKeyHex">The composite public key as hex.</param>
+    /// <param name="rawSignatureHex">The key holder's raw signature <c>r || s₀</c> as hex (<c>s₀</c> is secret).</param>
+    /// <returns>The signature <c>r || s</c> as hex.</returns>
+    /// <exception cref="ArgumentException">An input is invalid, or the key holder's answer is rejected.</exception>
+    public static string SplitSignComplete(string pinKeyHex, string messageHashHex, string publicKeyHex, string rawSignatureHex)
+    {
+        using var composition = new SecdsaPlatformComposition();
+        Span<byte> pinKey = stackalloc byte[ScalarBytes];
+        Span<byte> rawSignature = stackalloc byte[2 * ScalarBytes];
+        Span<byte> signature = stackalloc byte[2 * ScalarBytes];
+        try
+        {
+            HexInput.DecodeExact(pinKeyHex, pinKey, "pin key");
+            HexInput.DecodeExact(rawSignatureHex, rawSignature, "raw signature");
+            SecdsaAlgorithm.CompleteSplitSign(
+                pinKey, HexInput.Decode(messageHashHex, "message hash"), HexInput.Decode(publicKeyHex, "public key"),
+                rawSignature[..ScalarBytes], rawSignature[ScalarBytes..],
+                composition.ScalarMultiply, composition.ScalarInvert, composition.ScalarReduce, composition.G1ScalarMultiply, composition.G1Add,
+                signature[ScalarBytes..]);
+            rawSignature[..ScalarBytes].CopyTo(signature);
+
+            return Convert.ToHexStringLower(signature);
+        }
+        catch(InvalidOperationException error)
+        {
+            throw new ArgumentException(error.Message, nameof(rawSignatureHex), error);
+        }
+        finally
+        {
+            pinKey.Clear();
+            rawSignature.Clear();
+            signature.Clear();
+        }
+    }
+
+
+    /// <summary>ECDH-MAC prepare phase (Algorithm 16 step 1): validates the verifier's ephemeral public key and returns the canonical point to send to the key holder.</summary>
+    /// <param name="peerPublicKeyHex">The verifier's ephemeral compressed public key as hex.</param>
+    /// <returns>The validated compressed point as hex.</returns>
+    /// <exception cref="ArgumentException">The point is malformed, the point at infinity, or not on the curve.</exception>
+    public static string EcdhMacPrepare(string peerPublicKeyHex)
+    {
+        using var composition = new SecdsaPlatformComposition();
+        Span<byte> keyHolderInput = stackalloc byte[PointBytes];
+        try
+        {
+            EcdhMacAlgorithm.PrepareKeyAgreement(HexInput.Decode(peerPublicKeyHex, "peer public key"), composition.G1ScalarMultiply, keyHolderInput);
+
+            return Convert.ToHexStringLower(keyHolderInput);
+        }
+        catch(InvalidOperationException error)
+        {
+            throw new ArgumentException(error.Message, nameof(peerPublicKeyHex), error);
+        }
+    }
+
+
+    /// <summary>Multiplies a point by a key share, the wallet and WSCA steps of the split ECDH-MAC (Algorithm 12 steps 2 and 4).</summary>
+    /// <param name="keyShareHex">The key-share scalar as hex (secret).</param>
+    /// <param name="pointHex">The compressed point as hex.</param>
+    /// <returns>The product as a compressed point in hex.</returns>
+    /// <exception cref="ArgumentException">An input is invalid, or the point is not on the curve.</exception>
+    public static string EcdhMacApplyKeyShare(string keyShareHex, string pointHex)
+    {
+        using var composition = new SecdsaPlatformComposition();
+        Span<byte> keyShare = stackalloc byte[ScalarBytes];
+        Span<byte> product = stackalloc byte[PointBytes];
+        try
+        {
+            HexInput.DecodeExact(keyShareHex, keyShare, "key share");
+            EcdhMacAlgorithm.ApplyKeyShare(keyShare, HexInput.Decode(pointHex, "point"), composition.G1ScalarMultiply, product);
+
+            return Convert.ToHexStringLower(product);
+        }
+        catch(InvalidOperationException error)
+        {
+            throw new ArgumentException(error.Message, nameof(pointHex), error);
+        }
+        finally
+        {
+            keyShare.Clear();
+            product.Clear();
+        }
+    }
+
+
+    /// <summary>ECDH-MAC complete phase for signing (Algorithm 16 steps 4 and 5): derives the key from the key holder's shared secret and computes the MAC.</summary>
+    /// <param name="sharedSecretHex">The 32-byte shared secret <c>Z_AB</c> as hex (secret).</param>
+    /// <param name="saltHex">The HKDF salt as hex.</param>
+    /// <param name="sharedInfoHex">The HKDF info as hex.</param>
+    /// <param name="messageHex">The message as hex.</param>
+    /// <returns>The MAC as hex.</returns>
+    /// <exception cref="ArgumentException">An input is invalid.</exception>
+    public static string EcdhMacCompleteSign(string sharedSecretHex, string saltHex, string sharedInfoHex, string messageHex)
+    {
+        using var composition = new SecdsaPlatformComposition();
+        Span<byte> sharedSecret = stackalloc byte[EcdhMacAlgorithm.SharedSecretSizeBytes];
+        Span<byte> mac = stackalloc byte[EcdhMacAlgorithm.MacSizeBytes];
+        try
+        {
+            HexInput.DecodeExact(sharedSecretHex, sharedSecret, "shared secret");
+            EcdhMacAlgorithm.CompleteSign(
+                HexInput.Decode(saltHex, "salt"), sharedSecret, HexInput.Decode(sharedInfoHex, "shared info"), HexInput.Decode(messageHex, "message"),
+                composition.Hkdf, composition.Hmac, mac);
+
+            return Convert.ToHexStringLower(mac);
+        }
+        finally
+        {
+            sharedSecret.Clear();
+        }
+    }
+
+
+    /// <summary>ECDH-MAC complete phase for verification (Algorithm 17 steps 3 to 5): derives the key from the verifier's key holder's shared secret and compares the MAC in constant time.</summary>
+    /// <param name="sharedSecretHex">The 32-byte shared secret <c>Z_AB</c> as hex (secret).</param>
+    /// <param name="saltHex">The HKDF salt as hex.</param>
+    /// <param name="sharedInfoHex">The HKDF info as hex.</param>
+    /// <param name="messageHex">The message as hex.</param>
+    /// <param name="macHex">The MAC as hex.</param>
+    /// <returns>The verification outcome.</returns>
+    public static VerificationResult EcdhMacCompleteVerify(string sharedSecretHex, string saltHex, string sharedInfoHex, string messageHex, string macHex)
+    {
+        const string statement = "an ECDH-MAC under the supplied shared secret";
+        Span<byte> sharedSecret = stackalloc byte[EcdhMacAlgorithm.SharedSecretSizeBytes];
+        try
+        {
+            using var composition = new SecdsaPlatformComposition();
+            HexInput.DecodeExact(sharedSecretHex, sharedSecret, "shared secret");
+            bool valid = EcdhMacAlgorithm.CompleteVerify(
+                HexInput.Decode(saltHex, "salt"), sharedSecret, HexInput.Decode(sharedInfoHex, "shared info"), HexInput.Decode(messageHex, "message"),
+                HexInput.Decode(macHex, "mac"), composition.Hkdf, composition.Hmac);
+
+            return valid ? VerificationResult.Valid(statement) : VerificationResult.Rejected(statement);
+        }
+        catch(ArgumentException error)
+        {
+            return VerificationResult.Malformed(error.Message);
+        }
+        finally
+        {
+            sharedSecret.Clear();
+        }
+    }
+
+
+    /// <summary>Verifies an ECDH-MAC under a MAC key the key holder derived itself, comparing in constant time.</summary>
+    /// <param name="macKeyHex">The MAC key as hex (secret).</param>
+    /// <param name="messageHex">The message as hex.</param>
+    /// <param name="macHex">The MAC as hex.</param>
+    /// <returns>The verification outcome.</returns>
+    public static VerificationResult EcdhMacVerifyMac(string macKeyHex, string messageHex, string macHex)
+    {
+        const string statement = "an ECDH-MAC under the supplied MAC key";
+        byte[] macKey = [];
+        try
+        {
+            using var composition = new SecdsaPlatformComposition();
+            macKey = HexInput.Decode(macKeyHex, "MAC key");
+            bool valid = EcdhMacAlgorithm.VerifyMac(macKey, HexInput.Decode(messageHex, "message"), HexInput.Decode(macHex, "mac"), composition.Hmac);
+
+            return valid ? VerificationResult.Valid(statement) : VerificationResult.Rejected(statement);
+        }
+        catch(ArgumentException error)
+        {
+            return VerificationResult.Malformed(error.Message);
+        }
+        finally
+        {
+            Array.Clear(macKey);
+        }
+    }
+
+
     private static byte[] RequireProof(string proofHex)
     {
         byte[] proof = HexInput.Decode(proofHex, "proof");
