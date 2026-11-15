@@ -60,6 +60,28 @@ veridical secdsa-ecdh-mac-complete-sign / -complete-verify --shared-secret-file 
                                ECDH-MAC, complete: derive the key from the key holder's shared secret and MAC or verify.
 veridical secdsa-ecdh-mac-verify-mac --mac-key-file <path> --message <hex> --mac <hex>
                                Verify an ECDH-MAC under a key the key holder derived itself.
+veridical secdsa-result-prove --public-key <hex> --message-hash <hex> --signature <hex>
+                               Signature-result conformity, prover side: print the record (R, G'', Q_U'', proof).
+veridical secdsa-result-check --public-key <hex> --message-hash <hex> --record <hex>
+                               Signature-result conformity, verifier side; exit non-zero on a compromise alarm.
+veridical secdsa-ecies-encrypt --recipient-public-key <hex> --plaintext-file <path> [--aad <hex>]
+                               ECIES encryption (X9.63 over SHA-256, AES-256-GCM); print E || T || C.
+veridical secdsa-ecies-decrypt --private-key-file <path> --ciphertext <hex> [--aad <hex>] --output <path>
+                               ECIES decryption; the plaintext goes to a new file, only if the tag verifies.
+veridical secdsa-ecies-prepare-decryption --ciphertext <hex>
+                               ECIES decryption, prepare: validate E and print it for the key holder.
+veridical secdsa-ecies-agree --private-key-file <path> --point <hex> --output <path>
+                               The key holder's raw agreement Z_AB in software; Z_AB goes to a new file.
+veridical secdsa-ecies-complete-decryption --shared-secret-file <path> --ciphertext <hex> [--aad <hex>] --output <path>
+                               ECIES decryption, complete: derive the key from Z_AB and decrypt into a new file.
+veridical secdsa-proof-challenge --signing-key-file <path> --generators <hex> --public-keys <hex> [--aad <hex>] [--additional-secret-data-file <path>]
+                               Transferable proof, challenge: print JSON with the signed challenge and the ECIES ciphertext.
+veridical secdsa-proof-respond-prepare --challenge <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex>
+                               Transferable proof, response prepare: verify the challenge and print E for the key holder.
+veridical secdsa-proof-respond-complete --shared-secret-file <path> --challenge <hex> --ciphertext <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --signing-key-file <path> [--additional-secret-data-output <path>]
+                               Transferable proof, response complete: print the signed response; no output if any check fails.
+veridical secdsa-proof-verify --challenge <hex> --response <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex> --prover-public-key <hex>
+                               Transferable proof, verification by a third party; exit non-zero when rejected.
 veridical analysis-basefold-leakage [--variables n] [--samples n] [--significance p] [--hiding]
                                Run the BaseFold leakage experiments against the plain or hiding commitment provider.
 veridical analysis-welch-t <first> <second> [--significance p]
@@ -208,6 +230,20 @@ commands derive the key with HKDF-SHA-256 as the paper's ECDH-MAC algorithms spe
 key an HSM derived with another function (the X9.63 derivation a PKCS#11 `CKD_SHA256_KDF` applies)
 verifies only through `secdsa-ecdh-mac-verify-mac` with that key, because the verifier must use the
 same derivation.
+
+The signature-result, ECIES and transferable-proof commands cover Annex F Algorithm 41 and Annex A.4
+and A.5 (Algorithms 18, 19 and 22 to 24). `secdsa-result-prove` and `secdsa-result-check` prove and
+check that a signature result is consistent with the user key; a compromise alarm exits non-zero.
+`secdsa-ecies-*` encrypts with X9.63 over SHA-256 and the platform's AES-256-GCM (96-bit IV, 128-bit
+tag); the ciphertext is `E || T || C` in hex, plaintexts and shared secrets move only through files, and
+a failed tag writes no file. The decrypt phases mirror the key holder hand-off: `prepare-decryption`
+validates `E`, `agree` computes `Z_AB` in software for tests, and `complete-decryption` finishes from a
+shared secret an HSM returned. The `secdsa-proof-*` commands issue a challenge with the seed encrypted
+towards `E`, answer it in two phases around the key holder (step 11, the repeated decryption, is part
+of `respond-complete`), and verify it as a third party. Both signatures are ECDSA over P-256 with
+SHA-256 and the layout is the library's provisional length-prefixed profile; neither is an
+interoperability format. The seed derivation is HKDF-SHA-256 with the derivation byte array as its info
+string, which bounds the additional authenticated data to what one HKDF info accepts.
 
 ## Analysis
 
