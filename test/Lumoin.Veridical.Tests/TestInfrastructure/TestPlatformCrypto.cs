@@ -1,4 +1,5 @@
 using Lumoin.Veridical.Longfellow;
+using Lumoin.Veridical.Secdsa;
 using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -101,7 +102,7 @@ internal delegate bool PlatformCertificatePublicKeyDelegate(ReadOnlySpan<byte> c
 
 /// <summary>
 /// The platform cryptography the tests use as an independent oracle or as a signing and key
-/// generation source: single-block AES, P-256 ECDSA, P-256 ECDH and the public key of an X.509
+/// generation source: single-block AES, AES-GCM, P-256 ECDSA, P-256 ECDH and the public key of an X.509
 /// certificate. Each operation is a named delegate behind a settable static getter. The defaults
 /// call the .NET cryptography classes; the browser-wasm runtime has no implementation of them, so
 /// its host replaces the providers at startup with ones backed by the JavaScript environment
@@ -111,6 +112,12 @@ internal static class TestPlatformCrypto
 {
     /// <summary>Encrypts one block in ECB mode with no padding; the key length selects AES-128, AES-192 or AES-256.</summary>
     public static LongfellowBlockCipherDelegate AesEncryptBlock { get; set; } = NativeAesEncryptBlock;
+
+    /// <summary>Encrypts with AES-GCM, writing the ciphertext and the authentication tag; the key length selects AES-128, AES-192 or AES-256 and the tag length is that of the tag span.</summary>
+    public static AeadEncryptDelegate AesGcmEncrypt { get; set; } = NativeAesGcmEncrypt;
+
+    /// <summary>Decrypts with AES-GCM and reports a tag failure as <see langword="false"/> with no plaintext.</summary>
+    public static AeadDecryptDelegate AesGcmDecrypt { get; set; } = NativeAesGcmDecrypt;
 
     /// <summary>Generates a P-256 key pair.</summary>
     public static PlatformP256GenerateDelegate GenerateP256Key { get; set; } = NativeGenerateP256Key;
@@ -136,6 +143,41 @@ internal static class TestPlatformCrypto
         using Aes aes = Aes.Create();
         aes.SetKey(key);
         aes.EncryptEcb(input, output, PaddingMode.None);
+    }
+
+
+    private static void NativeAesGcmEncrypt(
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> iv,
+        ReadOnlySpan<byte> plaintext,
+        ReadOnlySpan<byte> associatedData,
+        Span<byte> ciphertext,
+        Span<byte> tag)
+    {
+        using AesGcm aes = new(key, tag.Length);
+        aes.Encrypt(iv, plaintext, ciphertext, tag, associatedData);
+    }
+
+
+    private static bool NativeAesGcmDecrypt(
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> iv,
+        ReadOnlySpan<byte> ciphertext,
+        ReadOnlySpan<byte> tag,
+        ReadOnlySpan<byte> associatedData,
+        Span<byte> plaintext)
+    {
+        using AesGcm aes = new(key, tag.Length);
+        try
+        {
+            aes.Decrypt(iv, ciphertext, tag, plaintext, associatedData);
+
+            return true;
+        }
+        catch(AuthenticationTagMismatchException)
+        {
+            return false;
+        }
     }
 
 
