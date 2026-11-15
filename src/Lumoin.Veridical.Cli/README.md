@@ -74,13 +74,13 @@ veridical secdsa-ecies-agree --private-key-file <path> --point <hex> --output <p
                                The key holder's raw agreement Z_AB in software; Z_AB goes to a new file.
 veridical secdsa-ecies-complete-decryption --shared-secret-file <path> --ciphertext <hex> [--aad <hex>] --output <path>
                                ECIES decryption, complete: derive the key from Z_AB and decrypt into a new file.
-veridical secdsa-proof-challenge --signing-key-file <path> --generators <hex> --public-keys <hex> [--aad <hex>] [--additional-secret-data-file <path>]
+veridical secdsa-proof-challenge --signing-key-file <path> --generators <hex> --public-keys <hex> [--aad <hex>] [--additional-secret-data-file <path>] [--layout provisional|der|cbor]
                                Transferable proof, challenge: print JSON with the signed challenge and the ECIES ciphertext.
-veridical secdsa-proof-respond-prepare --challenge <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex>
+veridical secdsa-proof-respond-prepare --challenge <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex> [--layout provisional|der|cbor]
                                Transferable proof, response prepare: verify the challenge and print E for the key holder.
-veridical secdsa-proof-respond-complete --shared-secret-file <path> --challenge <hex> --ciphertext <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --signing-key-file <path> --challenger-public-key <hex> [--additional-secret-data-output <path>]
+veridical secdsa-proof-respond-complete --shared-secret-file <path> --challenge <hex> --ciphertext <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --signing-key-file <path> --challenger-public-key <hex> [--layout provisional|der|cbor] [--additional-secret-data-output <path>]
                                Transferable proof, response complete: verify the challenge signature, then print the signed response; no output if any check fails.
-veridical secdsa-proof-verify --challenge <hex> --response <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex> --prover-public-key <hex>
+veridical secdsa-proof-verify --challenge <hex> --response <hex> --generators <hex> --public-keys <hex> [--aad <hex>] --challenger-public-key <hex> --prover-public-key <hex> [--layout provisional|der|cbor]
                                Transferable proof, verification by a third party; exit non-zero when rejected.
 veridical analysis-basefold-leakage [--variables n] [--samples n] [--significance p] [--hiding]
                                Run the BaseFold leakage experiments against the plain or hiding commitment provider.
@@ -241,8 +241,10 @@ validates `E`, `agree` computes `Z_AB` in software for tests, and `complete-decr
 shared secret an HSM returned. The `secdsa-proof-*` commands issue a challenge with the seed encrypted
 towards `E`, answer it in two phases around the key holder (step 11, the repeated decryption, is part
 of `respond-complete`), and verify it as a third party. Both signatures are ECDSA over P-256 with
-SHA-256 and the layout is the library's provisional length-prefixed profile; neither is an
-interoperability format. The seed derivation is HKDF-SHA-256 with the derivation byte array as its info
+SHA-256 and the layout is the one `--layout` names: the library's provisional length-prefixed profile
+(the default), ASN.1 DER or deterministic CBOR. A challenge, ciphertext and response formed under one
+layout are rejected under another, and none of the three is an interoperability format: the paper
+defines no byte layout, so the DER and CBOR structure definitions are the library's own. The seed derivation is HKDF-SHA-256 with the derivation byte array as its info
 string, which bounds the additional authenticated data to what one HKDF info accepts.
 
 ## Analysis

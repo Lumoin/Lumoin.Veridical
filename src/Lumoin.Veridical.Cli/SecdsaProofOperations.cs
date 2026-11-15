@@ -10,13 +10,13 @@ using System.Text.Json.Serialization;
 namespace Lumoin.Veridical.Cli;
 
 /// <summary>The JSON a <c>secdsa-proof-challenge</c> prints: the public challenge and the public ECIES ciphertext, both hex.</summary>
-/// <param name="Challenge">The challenge <c>Chal(AAD)</c> in the provisional layout, as hex.</param>
-/// <param name="Ciphertext">The ECIES ciphertext <c>E || T || C</c> as hex.</param>
+/// <param name="Challenge">The challenge <c>Chal(AAD)</c> in the requested layout, as hex.</param>
+/// <param name="Ciphertext">The ECIES ciphertext in the requested layout, as hex; in the provisional layout it is <c>E || T || C</c>.</param>
 internal sealed record ProofChallengeOutput(string Challenge, string Ciphertext);
 
 
 /// <summary>The result of the response completion: the public response and the secret additional data the prover recovered.</summary>
-/// <param name="Response">The response <c>Resp</c> in the provisional layout, as hex.</param>
+/// <param name="Response">The response <c>Resp</c> in the requested layout, as hex.</param>
 /// <param name="AdditionalSecretData">The additional secret data <c>ASD</c> as hex; secret, so the callers write it to a file and never print it.</param>
 internal sealed record ProofResponseResult(string Response, string AdditionalSecretData);
 
@@ -33,7 +33,7 @@ internal sealed partial class SecdsaProofJsonContext: JsonSerializerContext
 /// The operations behind the Algorithm 41, ECIES and transferable-proof subcommands and their MCP tools. Points,
 /// hashes, signatures, records, challenges, responses and ciphertexts are hex; secret scalars, shared secrets,
 /// plaintexts and additional secret data arrive as hex the caller read from a file and are cleared after use.
-/// The transferable proof uses the library's provisional layout profile, ECDSA over P-256 with SHA-256 for both
+/// The transferable proof uses the layout profile the caller names (the provisional length-prefixed layout, ASN.1 DER or deterministic CBOR; the default is the provisional one), ECDSA over P-256 with SHA-256 for both
 /// signatures, HKDF-SHA-256 for the seeded keys, and X9.63 over SHA-256 with AES-256-GCM for ECIES; none of these
 /// is an interoperability format.
 /// </summary>
@@ -43,7 +43,35 @@ internal static class SecdsaProofOperations
 
     private static EciesParameterSet Parameters { get; } = EciesParameterSet.X963Sha256Aes256Gcm;
 
-    private static SecdsaLayoutProfile Profile { get; } = SecdsaProvisionalLayout.Profile;
+    private static SecdsaLayoutProfile ProvisionalProfile { get; } = SecdsaProvisionalLayout.Profile;
+
+    /// <summary>The name of the provisional length-prefixed layout, the default of every transferable-proof command.</summary>
+    public const string ProvisionalLayoutName = "provisional";
+
+    /// <summary>The name of the ASN.1 DER layout.</summary>
+    public const string DerLayoutName = "der";
+
+    /// <summary>The name of the deterministic CBOR layout.</summary>
+    public const string CborLayoutName = "cbor";
+
+    /// <summary>The layout names the transferable-proof commands accept.</summary>
+    public static string[] LayoutNames { get; } = [ProvisionalLayoutName, DerLayoutName, CborLayoutName];
+
+
+    /// <summary>Resolves a layout name to the shipped profile it names.</summary>
+    /// <param name="layout">One of <see cref="LayoutNames"/>.</param>
+    /// <returns>The profile.</returns>
+    /// <exception cref="ArgumentException">The name is not one of the shipped layouts.</exception>
+    public static SecdsaLayoutProfile ResolveLayout(string layout)
+    {
+        return layout switch
+        {
+            ProvisionalLayoutName => SecdsaProvisionalLayout.Profile,
+            DerLayoutName => SecdsaDerLayout.Profile,
+            CborLayoutName => SecdsaCborLayout.Profile,
+            _ => throw new ArgumentException($"The layout must be one of {string.Join(", ", LayoutNames)}; it was '{layout}'.", nameof(layout))
+        };
+    }
 
 
     /// <summary>Algorithm 41, prover side: proves that a signature result is consistent with the user key.</summary>
@@ -150,7 +178,7 @@ internal static class SecdsaProofOperations
 
         return Guard(() =>
         {
-            using EciesCiphertext ciphertext = DecodeCiphertext(ciphertextHex, pool);
+            using EciesCiphertext ciphertext = DecodeCiphertext(ProvisionalProfile, ciphertextHex, pool);
             using G1Point point = EciesAlgorithm.PrepareDecryption(ciphertext, composition.G1ScalarMultiply, pool);
 
             return Convert.ToHexStringLower(point.AsReadOnlySpan());
@@ -201,7 +229,7 @@ internal static class SecdsaProofOperations
         return Guard(() =>
         {
             using SharedSecret sharedSecret = SharedSecret.FromCanonical(HexInput.Decode(sharedSecretHex, "shared secret"), pool);
-            using EciesCiphertext ciphertext = DecodeCiphertext(ciphertextHex, pool);
+            using EciesCiphertext ciphertext = DecodeCiphertext(ProvisionalProfile, ciphertextHex, pool);
             using AdditionalData associatedData = AdditionalData.FromCanonical(HexInput.Decode(associatedDataHex, "associated data"), AdditionalDataRole.Authenticated, pool);
             if(!EciesAlgorithm.TryCompleteDecryption(
                 sharedSecret, ciphertext, associatedData, Parameters, composition.CreateEciesKeyDerivation(pool), composition.AesGcmDecrypt, pool, out EciesPlaintext? plaintext))
@@ -223,9 +251,11 @@ internal static class SecdsaProofOperations
     /// <param name="publicKeysHex">The concatenated compressed public keys as hex, pairwise with the generators.</param>
     /// <param name="associatedDataHex">The additional authenticated data as hex; may be empty.</param>
     /// <param name="additionalSecretDataHex">The additional secret data as hex (secret); may be empty.</param>
+    /// <param name="layout">The layout of the signed structures and of the printed challenge and ciphertext: <c>provisional</c>, <c>der</c> or <c>cbor</c>.</param>
     /// <returns>The challenge and the ciphertext as a JSON object.</returns>
-    public static string ProofChallenge(string signingKeyHex, string generatorsHex, string publicKeysHex, string associatedDataHex, string additionalSecretDataHex)
+    public static string ProofChallenge(string signingKeyHex, string generatorsHex, string publicKeysHex, string associatedDataHex, string additionalSecretDataHex, string layout)
     {
+        SecdsaLayoutProfile profile = ResolveLayout(layout);
         using var composition = new SecdsaPlatformComposition();
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         byte[] signingKey = HexInput.Decode(signingKeyHex, "signing key");
@@ -238,14 +268,14 @@ internal static class SecdsaProofOperations
                 using AdditionalData additionalSecretData = AdditionalData.FromCanonical(HexInput.Decode(additionalSecretDataHex, "additional secret data"), AdditionalDataRole.Secret, pool);
                 using ProofSeed seed = ProofSeed.Generate(composition.Entropy, pool);
                 using TransferableChallenge challenge = TransferableProofAlgorithm.Issue(
-                    statement.Statement, additionalSecretData, seed, Profile, Parameters, composition.SeedKeyDerivation,
+                    statement.Statement, additionalSecretData, seed, profile, Parameters, composition.SeedKeyDerivation,
                     composition.CreateEciesKeyDerivation(pool), composition.AesGcmEncrypt,
                     (structure, signature) => composition.SignStructure(signingKey, structure, signature),
                     composition.Hash, composition.G1ScalarMultiply, composition.G1Add, pool, out EciesCiphertext ciphertext);
                 using(ciphertext)
                 using(LayoutWriter encoded = new(pool))
                 {
-                    Profile.EncodeChallenge(challenge, encoded);
+                    profile.EncodeChallenge(challenge, encoded);
 
                     return JsonSerializer.Serialize(
                         new ProofChallengeOutput(Convert.ToHexStringLower(encoded.WrittenBytes), Convert.ToHexStringLower(ciphertext.AsReadOnlySpan())),
@@ -266,10 +296,12 @@ internal static class SecdsaProofOperations
     /// <param name="publicKeysHex">The concatenated compressed public keys as hex.</param>
     /// <param name="associatedDataHex">The additional authenticated data the prover expects, as hex; may be empty.</param>
     /// <param name="challengerPublicKeyHex">The challenger's public key <c>S</c> as hex.</param>
+    /// <param name="layout">The layout the challenge was formed under: <c>provisional</c>, <c>der</c> or <c>cbor</c>.</param>
     /// <returns>The validated ephemeral public key as hex.</returns>
     /// <exception cref="ArgumentException">An input is invalid or the challenge is rejected.</exception>
-    public static string ProofRespondPrepare(string challengeHex, string generatorsHex, string publicKeysHex, string associatedDataHex, string challengerPublicKeyHex)
+    public static string ProofRespondPrepare(string challengeHex, string generatorsHex, string publicKeysHex, string associatedDataHex, string challengerPublicKeyHex, string layout)
     {
+        SecdsaLayoutProfile profile = ResolveLayout(layout);
         using var composition = new SecdsaPlatformComposition();
         BaseMemoryPool pool = BaseMemoryPool.Shared;
 
@@ -277,9 +309,9 @@ internal static class SecdsaProofOperations
         {
             byte[] challengerPublicKey = HexInput.Decode(challengerPublicKeyHex, "challenger public key");
             using StatementScope statement = new(generatorsHex, publicKeysHex, associatedDataHex, pool);
-            using TransferableChallenge challenge = DecodeChallenge(challengeHex, pool);
+            using TransferableChallenge challenge = DecodeChallenge(profile, challengeHex, pool);
             if(!TransferableProofAlgorithm.TryPrepareResponse(
-                challenge, statement.Statement, Profile, (structure, signature) => composition.VerifyStructure(challengerPublicKey, structure, signature),
+                challenge, statement.Statement, profile, (structure, signature) => composition.VerifyStructure(challengerPublicKey, structure, signature),
                 composition.G1ScalarMultiply, pool, out G1Point? ephemeralPublicKey))
             {
                 throw new ArgumentException("The challenge was rejected: its profile, additional data, signature or ephemeral public key is not valid for this statement.");
@@ -302,6 +334,7 @@ internal static class SecdsaProofOperations
     /// <param name="associatedDataHex">The additional authenticated data the prover expects, as hex; may be empty.</param>
     /// <param name="signingKeyHex">The prover's record signing scalar as hex (secret).</param>
     /// <param name="challengerPublicKeyHex">The challenger's public key S, 33 bytes as hex, under which the challenge signature is verified.</param>
+    /// <param name="layout">The layout the challenge and the ciphertext were formed under, and the response is encoded in: <c>provisional</c>, <c>der</c> or <c>cbor</c>.</param>
     /// <returns>The response and the additional secret data.</returns>
     /// <exception cref="ArgumentException">An input is invalid or a check of the response fails; no response is produced.</exception>
     public static ProofResponseResult ProofRespondComplete(
@@ -312,8 +345,10 @@ internal static class SecdsaProofOperations
         string publicKeysHex,
         string associatedDataHex,
         string signingKeyHex,
-        string challengerPublicKeyHex)
+        string challengerPublicKeyHex,
+        string layout)
     {
+        SecdsaLayoutProfile profile = ResolveLayout(layout);
         using var composition = new SecdsaPlatformComposition();
         BaseMemoryPool pool = BaseMemoryPool.Shared;
         byte[] signingKey = HexInput.Decode(signingKeyHex, "signing key");
@@ -325,10 +360,10 @@ internal static class SecdsaProofOperations
                 byte[] challengerPublicKey = HexInput.Decode(challengerPublicKeyHex, "challenger public key");
                 using SharedSecret sharedSecret = SharedSecret.FromCanonical(HexInput.Decode(sharedSecretHex, "shared secret"), pool);
                 using StatementScope statement = new(generatorsHex, publicKeysHex, associatedDataHex, pool);
-                using TransferableChallenge challenge = DecodeChallenge(challengeHex, pool);
-                using EciesCiphertext ciphertext = DecodeCiphertext(ciphertextHex, pool);
+                using TransferableChallenge challenge = DecodeChallenge(profile, challengeHex, pool);
+                using EciesCiphertext ciphertext = DecodeCiphertext(ProvisionalProfile, ciphertextHex, pool);
                 if(!TransferableProofAlgorithm.TryCompleteResponse(
-                    sharedSecret, challenge, ciphertext, statement.Statement, Profile, Parameters,
+                    sharedSecret, challenge, ciphertext, statement.Statement, profile, Parameters,
                     (structure, signature) => composition.VerifyStructure(challengerPublicKey, structure, signature), composition.SeedKeyDerivation,
                     composition.CreateEciesKeyDerivation(pool), composition.AesGcmDecrypt,
                     (structure, signature) => composition.SignStructure(signingKey, structure, signature),
@@ -342,7 +377,7 @@ internal static class SecdsaProofOperations
                 using(additionalSecretData)
                 using(LayoutWriter encoded = new(pool))
                 {
-                    Profile.EncodeResponse(response!, encoded);
+                    profile.EncodeResponse(response!, encoded);
 
                     return new ProofResponseResult(Convert.ToHexStringLower(encoded.WrittenBytes), Convert.ToHexStringLower(additionalSecretData!.GetBytes()));
                 }
@@ -363,6 +398,7 @@ internal static class SecdsaProofOperations
     /// <param name="associatedDataHex">The additional authenticated data as hex; may be empty.</param>
     /// <param name="challengerPublicKeyHex">The challenger's public key <c>S</c> as hex.</param>
     /// <param name="proverPublicKeyHex">The prover's record public key <c>V</c> as hex.</param>
+    /// <param name="layout">The layout the proof was formed under: <c>provisional</c>, <c>der</c> or <c>cbor</c>.</param>
     /// <returns>The verification outcome.</returns>
     public static VerificationResult ProofVerify(
         string challengeHex,
@@ -371,19 +407,21 @@ internal static class SecdsaProofOperations
         string publicKeysHex,
         string associatedDataHex,
         string challengerPublicKeyHex,
-        string proverPublicKeyHex)
+        string proverPublicKeyHex,
+        string layout)
     {
         try
         {
+            SecdsaLayoutProfile profile = ResolveLayout(layout);
             using var composition = new SecdsaPlatformComposition();
             BaseMemoryPool pool = BaseMemoryPool.Shared;
             byte[] challengerPublicKey = HexInput.Decode(challengerPublicKeyHex, "challenger public key");
             byte[] proverPublicKey = HexInput.Decode(proverPublicKeyHex, "prover public key");
             using StatementScope statement = new(generatorsHex, publicKeysHex, associatedDataHex, pool);
-            using TransferableChallenge challenge = DecodeChallenge(challengeHex, pool);
-            using TransferableResponse response = DecodeResponse(responseHex, pool);
+            using TransferableChallenge challenge = DecodeChallenge(profile, challengeHex, pool);
+            using TransferableResponse response = DecodeResponse(profile, responseHex, pool);
             TransferableProofVerdict verdict = TransferableProofAlgorithm.Verify(
-                challenge, response, statement.Statement, Profile,
+                challenge, response, statement.Statement, profile,
                 (structure, signature) => composition.VerifyStructure(challengerPublicKey, structure, signature),
                 (structure, signature) => composition.VerifyStructure(proverPublicKey, structure, signature),
                 composition.Hash, pool);
@@ -407,7 +445,7 @@ internal static class SecdsaProofOperations
         {
             HexInput.DecodeExact(privateKeyHex, privateBytes, "private key");
             using PrivateScalar privateKey = PrivateScalar.FromCanonical(privateBytes, pool);
-            using EciesCiphertext ciphertext = DecodeCiphertext(ciphertextHex, pool);
+            using EciesCiphertext ciphertext = DecodeCiphertext(ProvisionalProfile, ciphertextHex, pool);
             using AdditionalData associatedData = AdditionalData.FromCanonical(HexInput.Decode(associatedDataHex, "associated data"), AdditionalDataRole.Authenticated, pool);
             if(!EciesAlgorithm.TryDecrypt(
                 privateKey, ciphertext, associatedData, Parameters, composition.CreateEciesKeyDerivation(pool), composition.AesGcmDecrypt,
@@ -428,33 +466,33 @@ internal static class SecdsaProofOperations
     }
 
 
-    private static EciesCiphertext DecodeCiphertext(string ciphertextHex, BaseMemoryPool pool)
+    private static EciesCiphertext DecodeCiphertext(SecdsaLayoutProfile profile, string ciphertextHex, BaseMemoryPool pool)
     {
-        if(!Profile.DecodeCiphertext(HexInput.Decode(ciphertextHex, "ciphertext"), Parameters, pool, out EciesCiphertext? ciphertext))
+        if(!profile.DecodeCiphertext(HexInput.Decode(ciphertextHex, "ciphertext"), Parameters, pool, out EciesCiphertext? ciphertext))
         {
-            throw new ArgumentException("The ciphertext is not a well-formed E || T || C.");
+            throw new ArgumentException("The ciphertext is not a well-formed ciphertext of the layout.");
         }
 
         return ciphertext!;
     }
 
 
-    private static TransferableChallenge DecodeChallenge(string challengeHex, BaseMemoryPool pool)
+    private static TransferableChallenge DecodeChallenge(SecdsaLayoutProfile profile, string challengeHex, BaseMemoryPool pool)
     {
-        if(!Profile.DecodeChallenge(HexInput.Decode(challengeHex, "challenge"), pool, out TransferableChallenge? challenge))
+        if(!profile.DecodeChallenge(HexInput.Decode(challengeHex, "challenge"), pool, out TransferableChallenge? challenge))
         {
-            throw new ArgumentException("The challenge is not a well-formed challenge of the provisional layout.");
+            throw new ArgumentException("The challenge is not a well-formed challenge of the layout.");
         }
 
         return challenge!;
     }
 
 
-    private static TransferableResponse DecodeResponse(string responseHex, BaseMemoryPool pool)
+    private static TransferableResponse DecodeResponse(SecdsaLayoutProfile profile, string responseHex, BaseMemoryPool pool)
     {
-        if(!Profile.DecodeResponse(HexInput.Decode(responseHex, "response"), pool, out TransferableResponse? response))
+        if(!profile.DecodeResponse(HexInput.Decode(responseHex, "response"), pool, out TransferableResponse? response))
         {
-            throw new ArgumentException("The response is not a well-formed response of the provisional layout.");
+            throw new ArgumentException("The response is not a well-formed response of the layout.");
         }
 
         return response!;

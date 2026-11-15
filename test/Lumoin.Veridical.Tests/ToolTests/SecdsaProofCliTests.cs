@@ -251,6 +251,112 @@ internal sealed class SecdsaProofCliTests
 
 
     [TestMethod]
+    public async Task TransferableProofRoundTripsUnderTheDerAndCborLayoutsAndRejectsAnotherLayout()
+    {
+        string executable = RequireExecutable();
+        await AssertLayoutRoundTripAsync(executable, "der", "cbor").ConfigureAwait(false);
+        await AssertLayoutRoundTripAsync(executable, "cbor", "der").ConfigureAwait(false);
+    }
+
+
+    [TestMethod]
+    public async Task TransferableProofRejectsAnUnknownLayoutName()
+    {
+        string executable = RequireExecutable();
+        string challengerKeyPath = VeridicalCliTestHelpers.WriteTemporaryFile(Scalar(ChallengerSigningKey));
+        try
+        {
+            string generator = await PublicKeyAsync(executable, 1, 1).ConfigureAwait(false);
+            CliResult result = await RunAsync(
+                executable, "secdsa-proof-challenge", "--signing-key-file", challengerKeyPath, "--generators", generator, "--public-keys", generator,
+                "--layout", "xml").ConfigureAwait(false);
+            Assert.AreNotEqual(0, result.ExitCode);
+        }
+        finally
+        {
+            File.Delete(challengerKeyPath);
+        }
+    }
+
+
+    private async Task AssertLayoutRoundTripAsync(string executable, string layout, string otherLayout)
+    {
+        string witnessPath = VeridicalCliTestHelpers.WriteTemporaryFile(Scalar(ProverWitness));
+        string challengerKeyPath = VeridicalCliTestHelpers.WriteTemporaryFile(Scalar(ChallengerSigningKey));
+        string proverKeyPath = VeridicalCliTestHelpers.WriteTemporaryFile(Scalar(ProverSigningKey));
+        string secretDataPath = VeridicalCliTestHelpers.WriteTemporaryFile(AdditionalSecret);
+        string agreedPath = TemporaryOutputPath("z");
+        string recoveredPath = TemporaryOutputPath("asd");
+        try
+        {
+            string generators = await PublicKeyAsync(executable, 1, 1).ConfigureAwait(false) + await PublicKeyAsync(executable, 1, SecondGeneratorScalar).ConfigureAwait(false);
+            string publicKeys = await PublicKeyAsync(executable, ProverWitness, 1).ConfigureAwait(false) + await PublicKeyAsync(executable, ProverWitness, SecondGeneratorScalar).ConfigureAwait(false);
+            string challengerPublic = await PublicKeyAsync(executable, 1, ChallengerSigningKey).ConfigureAwait(false);
+            string proverPublic = await PublicKeyAsync(executable, 1, ProverSigningKey).ConfigureAwait(false);
+
+            CliResult challengeResult = await RunAsync(
+                executable, "secdsa-proof-challenge", "--signing-key-file", challengerKeyPath, "--generators", generators, "--public-keys", publicKeys,
+                "--aad", AssociatedData, "--additional-secret-data-file", secretDataPath, "--layout", layout).ConfigureAwait(false);
+            Assert.AreEqual(0, challengeResult.ExitCode, challengeResult.Stderr);
+            using JsonDocument document = JsonDocument.Parse(challengeResult.Stdout);
+            string challenge = document.RootElement.GetProperty("challenge").GetString() ?? string.Empty;
+            string ciphertext = document.RootElement.GetProperty("ciphertext").GetString() ?? string.Empty;
+
+            CliResult prepare = await RunAsync(
+                executable, "secdsa-proof-respond-prepare", "--challenge", challenge, "--generators", generators, "--public-keys", publicKeys,
+                "--aad", AssociatedData, "--challenger-public-key", challengerPublic, "--layout", layout).ConfigureAwait(false);
+            Assert.AreEqual(0, prepare.ExitCode, prepare.Stderr);
+
+            //A challenge formed under one layout is not a well-formed value of the default layout or of the other one.
+            CliResult defaultLayout = await RunAsync(
+                executable, "secdsa-proof-respond-prepare", "--challenge", challenge, "--generators", generators, "--public-keys", publicKeys,
+                "--aad", AssociatedData, "--challenger-public-key", challengerPublic).ConfigureAwait(false);
+            Assert.AreEqual(1, defaultLayout.ExitCode);
+            CliResult foreignLayout = await RunAsync(
+                executable, "secdsa-proof-respond-prepare", "--challenge", challenge, "--generators", generators, "--public-keys", publicKeys,
+                "--aad", AssociatedData, "--challenger-public-key", challengerPublic, "--layout", otherLayout).ConfigureAwait(false);
+            Assert.AreEqual(1, foreignLayout.ExitCode);
+
+            CliResult agree = await RunAsync(executable, "secdsa-ecies-agree", "--private-key-file", witnessPath, "--point", prepare.Stdout.Trim(), "--output", agreedPath).ConfigureAwait(false);
+            Assert.AreEqual(0, agree.ExitCode, agree.Stderr);
+
+            CliResult respond = await RunAsync(
+                executable, "secdsa-proof-respond-complete", "--shared-secret-file", agreedPath, "--challenge", challenge, "--ciphertext", ciphertext,
+                "--generators", generators, "--public-keys", publicKeys, "--aad", AssociatedData, "--signing-key-file", proverKeyPath,
+                "--challenger-public-key", challengerPublic, "--layout", layout, "--additional-secret-data-output", recoveredPath).ConfigureAwait(false);
+            Assert.AreEqual(0, respond.ExitCode, respond.Stderr);
+            string response = respond.Stdout.Trim();
+            Assert.AreEqual(AdditionalSecret, (await File.ReadAllTextAsync(recoveredPath, TestContext.CancellationToken).ConfigureAwait(false)).Trim());
+
+            CliResult verify = await RunAsync(
+                executable, "secdsa-proof-verify", "--challenge", challenge, "--response", response, "--generators", generators, "--public-keys", publicKeys,
+                "--aad", AssociatedData, "--challenger-public-key", challengerPublic, "--prover-public-key", proverPublic, "--layout", layout).ConfigureAwait(false);
+            Assert.AreEqual(0, verify.ExitCode, verify.Stdout);
+            Assert.Contains("VALID", verify.Stdout, StringComparison.Ordinal);
+
+            CliResult wrongLayout = await RunAsync(
+                executable, "secdsa-proof-verify", "--challenge", challenge, "--response", response, "--generators", generators, "--public-keys", publicKeys,
+                "--aad", AssociatedData, "--challenger-public-key", challengerPublic, "--prover-public-key", proverPublic, "--layout", otherLayout).ConfigureAwait(false);
+            Assert.AreEqual(1, wrongLayout.ExitCode);
+
+            CliResult tamperedResponse = await RunAsync(
+                executable, "secdsa-proof-verify", "--challenge", challenge, "--response", Flip(response), "--generators", generators, "--public-keys", publicKeys,
+                "--aad", AssociatedData, "--challenger-public-key", challengerPublic, "--prover-public-key", proverPublic, "--layout", layout).ConfigureAwait(false);
+            Assert.AreEqual(1, tamperedResponse.ExitCode);
+        }
+        finally
+        {
+            File.Delete(witnessPath);
+            File.Delete(challengerKeyPath);
+            File.Delete(proverKeyPath);
+            File.Delete(secretDataPath);
+            File.Delete(agreedPath);
+            File.Delete(recoveredPath);
+        }
+    }
+
+
+    [TestMethod]
     public async Task TransferableProofChallengeOnAStatementThatDoesNotHoldIsNeverAnsweredByTheRespondPhases()
     {
         string executable = RequireExecutable();

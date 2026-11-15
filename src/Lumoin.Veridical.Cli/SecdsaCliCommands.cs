@@ -947,6 +947,7 @@ internal static class SecdsaCliCommands
         Option<string> publicKeys = Hex("--public-keys", "The concatenated compressed public keys D_0..D_n as hex, pairwise with the generators.");
         Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data as hex; omit for none.");
         Option<string> secretDataFile = new("--additional-secret-data-file") { Description = "Path to a file holding the additional secret data (hex), or - for standard input; omit for none." };
+        Option<string> layout = Layout();
 
         Command command = new("secdsa-proof-challenge", "Transferable proof, challenge generation (Algorithm 22): prints a JSON object with the signed challenge and the ECIES ciphertext (hex). The key and the additional secret data are read only from files and are never echoed.")
         {
@@ -954,7 +955,8 @@ internal static class SecdsaCliCommands
             generators,
             publicKeys,
             associatedData,
-            secretDataFile
+            secretDataFile,
+            layout
         };
 
         command.SetAction(parseResult =>
@@ -969,7 +971,8 @@ internal static class SecdsaCliCommands
                 parseResult.GetValue(generators) ?? string.Empty,
                 parseResult.GetValue(publicKeys) ?? string.Empty,
                 parseResult.GetValue(associatedData) ?? string.Empty,
-                secretData));
+                secretData,
+                parseResult.GetValue(layout) ?? SecdsaProofOperations.ProvisionalLayoutName));
         });
 
         return command;
@@ -985,6 +988,7 @@ internal static class SecdsaCliCommands
         Option<string> publicKeys = Hex("--public-keys", "The concatenated compressed public keys as hex.");
         Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data the prover expects, as hex; omit for none.");
         Option<string> challengerPublicKey = Hex("--challenger-public-key", "The challenger's public key S, 33 bytes as hex.");
+        Option<string> layout = Layout();
 
         Command command = new("secdsa-proof-respond-prepare", "Transferable proof, response prepare phase (Algorithm 23 steps 1 to 4): verifies the challenge for the statement and prints the validated ephemeral public key E (hex) to send to the key holder's ECDH.")
         {
@@ -992,7 +996,8 @@ internal static class SecdsaCliCommands
             generators,
             publicKeys,
             associatedData,
-            challengerPublicKey
+            challengerPublicKey,
+            layout
         };
 
         command.SetAction(parseResult => Produce(() => SecdsaProofOperations.ProofRespondPrepare(
@@ -1000,7 +1005,8 @@ internal static class SecdsaCliCommands
             parseResult.GetValue(generators) ?? string.Empty,
             parseResult.GetValue(publicKeys) ?? string.Empty,
             parseResult.GetValue(associatedData) ?? string.Empty,
-            parseResult.GetValue(challengerPublicKey) ?? string.Empty)));
+            parseResult.GetValue(challengerPublicKey) ?? string.Empty,
+            parseResult.GetValue(layout) ?? SecdsaProofOperations.ProvisionalLayoutName)));
 
         return command;
     }
@@ -1018,6 +1024,7 @@ internal static class SecdsaCliCommands
         Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data the prover expects, as hex; omit for none.");
         Option<string> signingKeyFile = SecretFile("--signing-key-file", "the prover's record signing scalar (hex)");
         Option<string> challengerPublicKey = Hex("--challenger-public-key", "The challenger's public key S, 33 bytes as hex, under which the challenge signature is verified.");
+        Option<string> layout = Layout();
         Option<string> secretDataOutput = new("--additional-secret-data-output") { Description = "Path the recovered additional secret data (hex) is written to. The file must not exist and is readable by its owner only; the data is never printed." };
 
         Command command = new("secdsa-proof-respond-complete", "Transferable proof, response complete phase (Algorithm 23 steps 4 and 6 to 15): verifies the challenge signature, decrypts the seed with the key holder's shared secret, repeats the decryption under the key from the public keys (step 11), and prints the signed response (hex). The additional secret data goes to --additional-secret-data-output. Exits non-zero and prints nothing if any check fails.")
@@ -1030,6 +1037,7 @@ internal static class SecdsaCliCommands
             associatedData,
             signingKeyFile,
             challengerPublicKey,
+            layout,
             secretDataOutput
         };
 
@@ -1051,7 +1059,8 @@ internal static class SecdsaCliCommands
                     parseResult.GetValue(publicKeys) ?? string.Empty,
                     parseResult.GetValue(associatedData) ?? string.Empty,
                     signingKey,
-                    parseResult.GetValue(challengerPublicKey) ?? string.Empty);
+                    parseResult.GetValue(challengerPublicKey) ?? string.Empty,
+                    parseResult.GetValue(layout) ?? SecdsaProofOperations.ProvisionalLayoutName);
             }
             catch(ArgumentException error)
             {
@@ -1088,6 +1097,7 @@ internal static class SecdsaCliCommands
         Option<string> associatedData = OptionalHex("--aad", "The additional authenticated data as hex; omit for none.");
         Option<string> challengerPublicKey = Hex("--challenger-public-key", "The challenger's public key S, 33 bytes as hex.");
         Option<string> proverPublicKey = Hex("--prover-public-key", "The prover's record public key V, 33 bytes as hex.");
+        Option<string> layout = Layout();
 
         Command command = new("secdsa-proof-verify", "Transferable proof, verification by a third party (Algorithm 24): checks the profile, the statement, both signatures and H2 = H(H1) (exit non-zero when the proof is rejected).")
         {
@@ -1097,7 +1107,8 @@ internal static class SecdsaCliCommands
             publicKeys,
             associatedData,
             challengerPublicKey,
-            proverPublicKey
+            proverPublicKey,
+            layout
         };
 
         command.SetAction(parseResult => Report(() => SecdsaProofOperations.ProofVerify(
@@ -1107,10 +1118,18 @@ internal static class SecdsaCliCommands
             parseResult.GetValue(publicKeys) ?? string.Empty,
             parseResult.GetValue(associatedData) ?? string.Empty,
             parseResult.GetValue(challengerPublicKey) ?? string.Empty,
-            parseResult.GetValue(proverPublicKey) ?? string.Empty)));
+            parseResult.GetValue(proverPublicKey) ?? string.Empty,
+            parseResult.GetValue(layout) ?? SecdsaProofOperations.ProvisionalLayoutName)));
 
         return command;
     }
+
+
+    private static Option<string> Layout() => new Option<string>("--layout")
+    {
+        Description = "The byte layout of the signed structures and of the challenge, ciphertext and response: provisional (length-prefixed binary), der (ASN.1 DER) or cbor (deterministic CBOR). A value formed under one layout is rejected under another.",
+        DefaultValueFactory = _ => SecdsaProofOperations.ProvisionalLayoutName
+    }.AcceptOnlyFromAmong(SecdsaProofOperations.LayoutNames);
 
 
     private static Option<string> PlaintextOutput() => new("--output") { Description = "Path the plaintext (hex) is written to. The file must not exist and is readable by its owner only; the plaintext is never printed.", Required = true };

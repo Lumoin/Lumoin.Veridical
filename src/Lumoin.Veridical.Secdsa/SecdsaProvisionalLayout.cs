@@ -9,7 +9,7 @@ using static Lumoin.Veridical.Secdsa.P256PointValidation;
 namespace Lumoin.Veridical.Secdsa;
 
 /// <summary>
-/// The one <see cref="SecdsaLayoutProfile"/> this library ships: a length-prefixed binary layout with fixed-width
+/// A <see cref="SecdsaLayoutProfile"/> this library ships, next to <see cref="SecdsaDerLayout"/> and <see cref="SecdsaCborLayout"/>: a length-prefixed binary layout with fixed-width
 /// big-endian integers, SEC1 compressed points and fixed-width scalars.
 /// </summary>
 /// <remarks>

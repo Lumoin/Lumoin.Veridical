@@ -585,7 +585,8 @@ internal sealed class VeridicalMcpServer
         [Description("The concatenated compressed generators G_0..G_n as hex.")] string generators,
         [Description("The concatenated compressed public keys D_0..D_n as hex, pairwise with the generators.")] string publicKeys,
         [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "",
-        [Description("Path to the file holding the additional secret data (hex); empty for none.")] string additionalSecretDataFile = "")
+        [Description("Path to the file holding the additional secret data (hex); empty for none.")] string additionalSecretDataFile = "",
+        [Description("The byte layout of the signed structures and of the challenge, ciphertext and response: provisional, der or cbor; a value formed under one layout is rejected under another.")] string layout = SecdsaProofOperations.ProvisionalLayoutName)
     {
         string secretData = string.Empty;
         if(additionalSecretDataFile.Length > 0)
@@ -598,7 +599,7 @@ internal sealed class VeridicalMcpServer
             secretData = content.Trim();
         }
 
-        return WithSecrets([signingKeyFile], secrets => SecdsaProofOperations.ProofChallenge(secrets[0], generators, publicKeys, associatedData, secretData));
+        return WithSecrets([signingKeyFile], secrets => SecdsaProofOperations.ProofChallenge(secrets[0], generators, publicKeys, associatedData, secretData, layout));
     }
 
 
@@ -608,9 +609,10 @@ internal sealed class VeridicalMcpServer
         [Description("The concatenated compressed generators as hex.")] string generators,
         [Description("The concatenated compressed public keys as hex.")] string publicKeys,
         [Description("The challenger's public key S, 33 bytes as hex.")] string challengerPublicKey,
-        [Description("The additional authenticated data the prover expects, as hex; empty for none.")] string associatedData = "")
+        [Description("The additional authenticated data the prover expects, as hex; empty for none.")] string associatedData = "",
+        [Description("The byte layout of the signed structures and of the challenge, ciphertext and response: provisional, der or cbor; a value formed under one layout is rejected under another.")] string layout = SecdsaProofOperations.ProvisionalLayoutName)
     {
-        return Produced(() => SecdsaProofOperations.ProofRespondPrepare(challenge, generators, publicKeys, associatedData, challengerPublicKey));
+        return Produced(() => SecdsaProofOperations.ProofRespondPrepare(challenge, generators, publicKeys, associatedData, challengerPublicKey, layout));
     }
 
 
@@ -624,7 +626,8 @@ internal sealed class VeridicalMcpServer
         [Description("Path to the file holding the prover's record signing scalar (hex).")] string signingKeyFile,
         [Description("The challenger's public key S, 33 bytes as hex, under which the challenge signature is verified.")] string challengerPublicKey,
         [Description("Path the recovered additional secret data (hex) is written to; the file must not exist; empty to discard it.")] string additionalSecretDataOutputFile = "",
-        [Description("The additional authenticated data the prover expects, as hex; empty for none.")] string associatedData = "")
+        [Description("The additional authenticated data the prover expects, as hex; empty for none.")] string associatedData = "",
+        [Description("The byte layout of the signed structures and of the challenge, ciphertext and response: provisional, der or cbor; a value formed under one layout is rejected under another.")] string layout = SecdsaProofOperations.ProvisionalLayoutName)
     {
         if(!CliFiles.TryRead(sharedSecretFile, "shared secret", out string sharedSecret, out string readFailure)
             || !CliFiles.TryRead(signingKeyFile, "signing key", out string signingKey, out readFailure))
@@ -635,7 +638,7 @@ internal sealed class VeridicalMcpServer
         ProofResponseResult result;
         try
         {
-            result = SecdsaProofOperations.ProofRespondComplete(sharedSecret.Trim(), challenge, ciphertext, generators, publicKeys, associatedData, signingKey.Trim(), challengerPublicKey);
+            result = SecdsaProofOperations.ProofRespondComplete(sharedSecret.Trim(), challenge, ciphertext, generators, publicKeys, associatedData, signingKey.Trim(), challengerPublicKey, layout);
         }
         catch(ArgumentException error)
         {
@@ -660,9 +663,10 @@ internal sealed class VeridicalMcpServer
         [Description("The concatenated compressed public keys as hex.")] string publicKeys,
         [Description("The challenger's public key S, 33 bytes as hex.")] string challengerPublicKey,
         [Description("The prover's record public key V, 33 bytes as hex.")] string proverPublicKey,
-        [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "")
+        [Description("The additional authenticated data as hex; empty for none.")] string associatedData = "",
+        [Description("The byte layout of the signed structures and of the challenge, ciphertext and response: provisional, der or cbor; a value formed under one layout is rejected under another.")] string layout = SecdsaProofOperations.ProvisionalLayoutName)
     {
-        return SecdsaProofOperations.ProofVerify(challenge, response, generators, publicKeys, associatedData, challengerPublicKey, proverPublicKey).ToReport();
+        return SecdsaProofOperations.ProofVerify(challenge, response, generators, publicKeys, associatedData, challengerPublicKey, proverPublicKey, layout).ToReport();
     }
 
 
