@@ -62,7 +62,7 @@ internal sealed class SecdsaPhasedSplitSignTests
         SecdsaAlgorithm.DeriveSplitPublicKey(PinKey, HardwareKey, ScalarMultiply, G1ScalarMultiply, publicKey);
 
         Span<byte> blinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
+        SecdsaTypedCalls.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
 
         //The key holder is outside the library: it sees only e' and answers (r, s0).
         Span<byte> keyHolderR = stackalloc byte[ScalarSize];
@@ -70,13 +70,13 @@ internal sealed class SecdsaPhasedSplitSignTests
         KeyHolderRawSign(HardwareKey, blinded, keyHolderR, keyHolderS0);
 
         Span<byte> phasedS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.CompleteSplitSign(
+        SecdsaTypedCalls.CompleteSplitSign(
             PinKey, MessageHash, publicKey, keyHolderR, keyHolderS0,
             ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, phasedS);
 
         Span<byte> softwareR = stackalloc byte[ScalarSize];
         Span<byte> softwareS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             PinKey, HardwareKey, MessageHash, Rfc6979NonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             softwareR, softwareS);
@@ -96,14 +96,14 @@ internal sealed class SecdsaPhasedSplitSignTests
 
         Span<byte> seamR = stackalloc byte[ScalarSize];
         Span<byte> seamS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             PinKey, MessageHash, publicKey, hardwareLike,
             ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             seamR, seamS);
 
         Span<byte> softwareR = stackalloc byte[ScalarSize];
         Span<byte> softwareS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             PinKey, HardwareKey, MessageHash, Rfc6979NonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             softwareR, softwareS);
@@ -118,7 +118,7 @@ internal sealed class SecdsaPhasedSplitSignTests
     {
         //e' = P^-1 * e, so P * e' = e (mod n): the independent check of the prepare output.
         Span<byte> blinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
+        SecdsaTypedCalls.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
 
         Span<byte> unblinded = stackalloc byte[ScalarSize];
         ScalarMultiply(PinKey, blinded, unblinded, CurveParameterSet.P256);
@@ -135,7 +135,7 @@ internal sealed class SecdsaPhasedSplitSignTests
         Span<byte> publicKey = stackalloc byte[CompressedSize];
         SecdsaAlgorithm.DeriveSplitPublicKey(PinKey, HardwareKey, ScalarMultiply, G1ScalarMultiply, publicKey);
         Span<byte> blinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
+        SecdsaTypedCalls.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
         Span<byte> r = stackalloc byte[ScalarSize];
         Span<byte> s0 = stackalloc byte[ScalarSize];
         KeyHolderRawSign(HardwareKey, blinded, r, s0);
@@ -158,7 +158,7 @@ internal sealed class SecdsaPhasedSplitSignTests
         Span<byte> publicKey = stackalloc byte[CompressedSize];
         SecdsaAlgorithm.DeriveSplitPublicKey(PinKey, HardwareKey, ScalarMultiply, G1ScalarMultiply, publicKey);
         Span<byte> blinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
+        SecdsaTypedCalls.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
         Span<byte> r = stackalloc byte[ScalarSize];
         Span<byte> s0 = stackalloc byte[ScalarSize];
         KeyHolderRawSign(HardwareKey, blinded, r, s0);
@@ -179,7 +179,7 @@ internal sealed class SecdsaPhasedSplitSignTests
         Span<byte> otherPublicKey = stackalloc byte[CompressedSize];
         SecdsaAlgorithm.DeriveSplitPublicKey(WalletShare, HardwareKey, ScalarMultiply, G1ScalarMultiply, otherPublicKey);
         Span<byte> blinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
+        SecdsaTypedCalls.PrepareSplitSign(PinKey, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
         Span<byte> r = stackalloc byte[ScalarSize];
         Span<byte> s0 = stackalloc byte[ScalarSize];
         KeyHolderRawSign(HardwareKey, blinded, r, s0);
@@ -213,7 +213,7 @@ internal sealed class SecdsaPhasedSplitSignTests
         bool rejected = false;
         try
         {
-            SecdsaAlgorithm.SplitSign(
+            SecdsaTypedCalls.SplitSign(
                 PinKey, MessageHash, publicKey, faulty,
                 ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
                 outR, outS);
@@ -258,26 +258,26 @@ internal sealed class SecdsaPhasedSplitSignTests
         SecdsaAlgorithm.DeriveSplitPublicKey(WscaShare, BaseKey, ScalarMultiply, G1ScalarMultiply, intermediatePublicKey);
 
         Span<byte> walletBlinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(WalletShare, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, walletBlinded);
+        SecdsaTypedCalls.PrepareSplitSign(WalletShare, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, walletBlinded);
         Span<byte> wscaBlinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(WscaShare, walletBlinded, ScalarMultiply, ScalarInvert, ScalarReduce, wscaBlinded);
+        SecdsaTypedCalls.PrepareSplitSign(WscaShare, walletBlinded, ScalarMultiply, ScalarInvert, ScalarReduce, wscaBlinded);
 
         Span<byte> r = stackalloc byte[ScalarSize];
         Span<byte> hsmS = stackalloc byte[ScalarSize];
         KeyHolderRawSign(BaseKey, wscaBlinded, r, hsmS);
 
         Span<byte> wscaS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.CompleteSplitSign(
+        SecdsaTypedCalls.CompleteSplitSign(
             WscaShare, walletBlinded, intermediatePublicKey, r, hsmS,
             ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, wscaS);
         Span<byte> walletS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.CompleteSplitSign(
+        SecdsaTypedCalls.CompleteSplitSign(
             WalletShare, MessageHash, finalPublicKey, r, wscaS,
             ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, walletS);
 
         Span<byte> softwareR = stackalloc byte[ScalarSize];
         Span<byte> softwareS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             composedPin, BaseKey, MessageHash, Rfc6979NonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             softwareR, softwareS);
@@ -297,9 +297,9 @@ internal sealed class SecdsaPhasedSplitSignTests
         SecdsaAlgorithm.DeriveSplitPublicKey(WscaShare, BaseKey, ScalarMultiply, G1ScalarMultiply, intermediatePublicKey);
 
         Span<byte> walletBlinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(WalletShare, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, walletBlinded);
+        SecdsaTypedCalls.PrepareSplitSign(WalletShare, MessageHash, ScalarMultiply, ScalarInvert, ScalarReduce, walletBlinded);
         Span<byte> wscaBlinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(WscaShare, walletBlinded, ScalarMultiply, ScalarInvert, ScalarReduce, wscaBlinded);
+        SecdsaTypedCalls.PrepareSplitSign(WscaShare, walletBlinded, ScalarMultiply, ScalarInvert, ScalarReduce, wscaBlinded);
         Span<byte> r = stackalloc byte[ScalarSize];
         Span<byte> hsmS = stackalloc byte[ScalarSize];
         KeyHolderRawSign(BaseKey, wscaBlinded, r, hsmS);
@@ -328,7 +328,7 @@ internal sealed class SecdsaPhasedSplitSignTests
     private static void PrepareInto(ReadOnlySpan<byte> pinKey, ReadOnlySpan<byte> messageHash)
     {
         Span<byte> blinded = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.PrepareSplitSign(pinKey, messageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
+        SecdsaTypedCalls.PrepareSplitSign(pinKey, messageHash, ScalarMultiply, ScalarInvert, ScalarReduce, blinded);
     }
 
 
@@ -345,11 +345,11 @@ internal sealed class SecdsaPhasedSplitSignTests
         bool rejected = false;
         try
         {
-            SecdsaAlgorithm.CompleteSplitSign(
+            SecdsaTypedCalls.CompleteSplitSign(
                 pinKey, messageHash, publicKey, r, s0,
                 ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, s);
         }
-        catch(InvalidOperationException)
+        catch(Exception error) when(error is InvalidOperationException or ArgumentException)
         {
             rejected = true;
         }

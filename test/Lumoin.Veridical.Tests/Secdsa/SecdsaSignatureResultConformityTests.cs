@@ -268,7 +268,7 @@ internal sealed class SecdsaSignatureResultConformityTests
             Span<byte> userPublicKey = material.Memory.Span.Slice(DigestSize, PointSize);
             SecdsaTestSupport.MessageHash("transfer 100 EUR to the payee"u8, messageHash);
 
-            SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
+            SecdsaSignature signature = SecdsaTypedCalls.SplitSign(
                 pin, hardware, messageHash, NonceSource,
                 ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, pool);
             SecdsaAlgorithm.DeriveSplitPublicKey(pin, hardware, ScalarMultiply, G1ScalarMultiply, userPublicKey);

@@ -193,7 +193,7 @@ public static class SecdsaAlgorithm
     /// <param name="blindedHash">Receives the 32-byte blinded representative <c>e'</c>.</param>
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, or <c>P</c> is outside <c>[1, n−1]</c>.</exception>
-    public static void PrepareSplitSign(
+    internal static void PrepareSplitSignSpan(
         ReadOnlySpan<byte> pinKey,
         ReadOnlySpan<byte> messageHash,
         ScalarMultiplyDelegate scalarMultiply,
@@ -277,7 +277,7 @@ public static class SecdsaAlgorithm
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, or <c>P</c> is outside <c>[1, n−1]</c>.</exception>
     /// <exception cref="InvalidOperationException">When <c>r</c> or <c>s₀</c> is zero or outside <c>[1, n−1]</c>, or the finished signature does not verify under <paramref name="publicKeyCompressed"/>.</exception>
-    public static void CompleteSplitSign(
+    internal static void CompleteSplitSignSpan(
         ReadOnlySpan<byte> pinKey,
         ReadOnlySpan<byte> messageHash,
         ReadOnlySpan<byte> publicKeyCompressed,
@@ -378,7 +378,7 @@ public static class SecdsaAlgorithm
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, or <c>P</c>/<c>u</c> is outside <c>[1, n−1]</c>.</exception>
     /// <exception cref="InvalidOperationException">When the nonce yields a degenerate raw signature (retry; probability ~<c>1/n</c>), or the finished signature fails verification.</exception>
-    public static void SplitSign(
+    internal static void SplitSignSpan(
         ReadOnlySpan<byte> pinKey,
         ReadOnlySpan<byte> hardwareKey,
         ReadOnlySpan<byte> messageHash,
@@ -419,7 +419,7 @@ public static class SecdsaAlgorithm
         try
         {
             DeriveSplitPublicKey(pinKey, hardwareKey, scalarMultiply, g1ScalarMultiply, publicKey);
-            PrepareSplitSign(pinKey, messageHash, scalarMultiply, scalarInvert, scalarReduce, blindedHash);
+            PrepareSplitSignSpan(pinKey, messageHash, scalarMultiply, scalarInvert, scalarReduce, blindedHash);
 
             //Nonce over (u, e') — the exact (key, message) the raw signature consumes.
             nonceSource(Curve, hardwareKey, blindedHash, nonce);
@@ -427,7 +427,7 @@ public static class SecdsaAlgorithm
             //Raw ECDSA-sign e' under u with k → (r, s₀). r is final; s₀ feeds the mask.
             Sign(hardwareKey, blindedHash, nonce, scalarMultiply, scalarAdd, scalarInvert, scalarReduce, g1ScalarMultiply, r, rawS);
 
-            CompleteSplitSign(pinKey, messageHash, publicKey, r, rawS, scalarMultiply, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add, s);
+            CompleteSplitSignSpan(pinKey, messageHash, publicKey, r, rawS, scalarMultiply, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add, s);
         }
         finally
         {
@@ -467,7 +467,7 @@ public static class SecdsaAlgorithm
     /// <exception cref="ArgumentNullException">When a delegate is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">When a span has the wrong length, or <c>P</c> is outside <c>[1, n−1]</c>.</exception>
     /// <exception cref="InvalidOperationException">When the raw signature is degenerate or the finished signature does not verify under <paramref name="publicKeyCompressed"/>.</exception>
-    public static void SplitSign(
+    internal static void SplitSignRawSpan(
         ReadOnlySpan<byte> pinKey,
         ReadOnlySpan<byte> messageHash,
         ReadOnlySpan<byte> publicKeyCompressed,
@@ -491,12 +491,12 @@ public static class SecdsaAlgorithm
         bool released = false;
         try
         {
-            PrepareSplitSign(pinKey, messageHash, scalarMultiply, scalarInvert, scalarReduce, blindedHash);
+            PrepareSplitSignSpan(pinKey, messageHash, scalarMultiply, scalarInvert, scalarReduce, blindedHash);
 
             //Hardware/software raw-ECDSA-signs e' under u → (r, s₀); u never crosses into this package.
             rawSign(blindedHash, r, rawS);
 
-            CompleteSplitSign(pinKey, messageHash, publicKeyCompressed, r, rawS, scalarMultiply, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add, s);
+            CompleteSplitSignSpan(pinKey, messageHash, publicKeyCompressed, r, rawS, scalarMultiply, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add, s);
             released = true;
         }
         finally
@@ -513,11 +513,156 @@ public static class SecdsaAlgorithm
 
 
     /// <summary>
-    /// SECDSA Algorithm 2 (split sign) returning a pool-backed <see cref="SecdsaSignature"/>.
+    /// SECDSA Algorithm 2 (split sign), phase one, run by the party that holds the PIN-key
+    /// <paramref name="pinKey"/>: computes the blinded representative <c>e' = P⁻¹·e mod n</c> (Algorithm 2 step 3), the
+    /// value the key holder raw-ECDSA-signs.
     /// </summary>
-    /// <param name="pinKey">The PIN-key scalar <c>P</c>, 32-byte big-endian, in <c>[1, n−1]</c>.</param>
-    /// <param name="hardwareKey">The hardware-key scalar <c>u</c>, 32-byte big-endian, in <c>[1, n−1]</c>.</param>
-    /// <param name="messageHash">The hash <c>e = H(M)</c>, 32-byte big-endian.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>What crosses the boundary.</b> The returned <see cref="BlindedHash"/> is the only output and the only thing the
+    /// key holder (a TPM, a PKCS#11 token, a cloud KMS, or another party) needs; it is sent to a raw <c>CKM_ECDSA</c>-style
+    /// sign under the hardware key <c>u</c>. Because <c>P</c> is uniform and secret, <c>e'</c> on its own is a uniformly
+    /// random scalar and reveals neither <c>P</c> nor <c>e</c> (Verheul, Proposition 3.2).
+    /// </para>
+    /// <para>
+    /// <b>What must never be paired.</b> The message hash <c>e</c> is usually public, and <c>e' = P⁻¹·e</c>, so anyone who
+    /// sees both <c>e</c> and <c>e'</c> computes <c>P = e·e'⁻¹</c>. The key holder is therefore given only <c>e'</c>, never
+    /// <c>e</c> or the message, and <c>e'</c> travels over a channel that an observer of <c>e</c> cannot also read. The same
+    /// holds for the key holder's answer, see <see cref="CompleteSplitSign"/>.
+    /// </para>
+    /// <para>
+    /// <b>Algorithm 11 (key shares).</b> The two-party split of Algorithm 11 is this phase applied once per party: the
+    /// wallet runs it with <c>zU</c> on <c>e</c> (step 2), the WSCA runs it with <c>zW</c> on the wallet's output (step 4,
+    /// the output carried as a <see cref="MessageHash"/>), and the HSM raw-signs the result (step 6). The phase is a pure
+    /// function of its inputs and keeps no state.
+    /// </para>
+    /// </remarks>
+    /// <param name="pinKey">The PIN-key scalar <c>P</c>; secret.</param>
+    /// <param name="messageHash">The hash <c>e = H(M)</c>.</param>
+    /// <param name="scalarMultiply">Scalar multiplication mod <c>n</c>.</param>
+    /// <param name="scalarInvert">Scalar inversion mod <c>n</c>.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="pool">The pool the result is rented from.</param>
+    /// <returns>The blinded representative <c>e'</c>, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    public static BlindedHash PrepareSplitSign(
+        PinKey pinKey,
+        MessageHash messageHash,
+        ScalarMultiplyDelegate scalarMultiply,
+        ScalarInvertDelegate scalarInvert,
+        ScalarReduceDelegate scalarReduce,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(pinKey);
+        ArgumentNullException.ThrowIfNull(messageHash);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        Span<byte> blinded = stackalloc byte[ScalarSizeBytes];
+        try
+        {
+            PrepareSplitSignSpan(pinKey.AsReadOnlySpan(), messageHash.AsReadOnlySpan(), scalarMultiply, scalarInvert, scalarReduce, blinded);
+
+            return BlindedHash.FromCanonical(blinded, pool);
+        }
+        finally
+        {
+            blinded.Clear();
+        }
+    }
+
+
+    /// <summary>
+    /// SECDSA Algorithm 2 (split sign), phase two, run by the party that holds the PIN-key
+    /// <paramref name="pinKey"/>: masks the key holder's raw signature <c>(r, s₀)</c> as <c>s = P·s₀ mod n</c> (Algorithm 2
+    /// step 8) and releases the signature only after the finished ECDSA signature <c>(r, s)</c> verifies on
+    /// <paramref name="messageHash"/> under the composite public key <paramref name="publicKey"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Verify-before-release.</b> The key holder is outside this party's trust boundary and may be faulty, substituted
+    /// or malicious. Completion therefore runs the ordinary ECDSA verification of <c>(r, s)</c> against <c>e</c> and
+    /// <c>Y</c>, which also authenticates that <c>(r, s₀)</c> came from a signer holding <c>u</c> with
+    /// <c>Y = (P·u)·G</c>. The public key is a required parameter and the check is not optional. <c>Y</c> is public; the
+    /// caller obtains it from a source it trusts, for example <see cref="DeriveSplitPublicKey"/> at enrolment.
+    /// </para>
+    /// <para>
+    /// <b>Secret and exposed.</b> <c>s₀</c> is secret in the same way <c>e'</c> is: the released <c>s = P·s₀</c> is public,
+    /// so anyone who also sees <c>s₀</c> computes <c>P = s·s₀⁻¹</c>. The <see cref="RawSignature"/> is therefore never
+    /// published or logged. A rejected completion releases nothing.
+    /// </para>
+    /// <para>
+    /// <b>Algorithm 11 (key shares).</b> The completion mirrors the preparation order: the WSCA masks with <c>zW</c>
+    /// against the intermediate public key <c>zW·BU</c> and the intermediate hash <c>e'</c>, then the wallet masks with
+    /// <c>zU</c> against the final key and <c>e</c>.
+    /// </para>
+    /// </remarks>
+    /// <param name="pinKey">The PIN-key scalar <c>P</c>; secret.</param>
+    /// <param name="messageHash">The hash <c>e = H(M)</c> that was passed to <see cref="PrepareSplitSign"/>.</param>
+    /// <param name="publicKey">The composite public key <c>Y = (P·u)·G</c>.</param>
+    /// <param name="rawSignature">The key holder's raw signature <c>(r, s₀)</c>.</param>
+    /// <param name="scalarMultiply">Scalar multiplication mod <c>n</c>.</param>
+    /// <param name="scalarInvert">Scalar inversion mod <c>n</c>.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication (for the verification).</param>
+    /// <param name="g1Add">G1 addition (for the verification).</param>
+    /// <param name="pool">The pool the signature is rented from.</param>
+    /// <returns>The signature <c>(r, s)</c>, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">When the masked component is zero or the finished signature does not verify under <paramref name="publicKey"/>.</exception>
+    public static SecdsaSignature CompleteSplitSign(
+        PinKey pinKey,
+        MessageHash messageHash,
+        G1Point publicKey,
+        RawSignature rawSignature,
+        ScalarMultiplyDelegate scalarMultiply,
+        ScalarInvertDelegate scalarInvert,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        G1AddDelegate g1Add,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(pinKey);
+        ArgumentNullException.ThrowIfNull(messageHash);
+        ArgumentNullException.ThrowIfNull(publicKey);
+        ArgumentNullException.ThrowIfNull(rawSignature);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        return Produce(
+            pool,
+            (r, s) =>
+            {
+                r.Clear();
+                rawSignature.GetRBytes().CopyTo(r);
+                CompleteSplitSignSpan(
+                    pinKey.AsReadOnlySpan(), messageHash.AsReadOnlySpan(), publicKey.AsReadOnlySpan(), rawSignature.GetRBytes(), rawSignature.GetRawSBytes(),
+                    scalarMultiply, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add, s);
+            });
+    }
+
+
+    /// <summary>
+    /// SECDSA Algorithm 2 (split sign): produces a standard ECDSA <c>(r, s)</c> on <paramref name="messageHash"/> under the
+    /// composite key <c>d = P·u</c> from the PIN-key <paramref name="pinKey"/> and the hardware key
+    /// <paramref name="hardwareKey"/>, with the nonce drawn through <paramref name="nonceSource"/> over <c>(u, e')</c>.
+    /// <c>P·u</c> is never formed for signing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This runs <see cref="PrepareSplitSign"/>, the raw signature under <c>u</c> (<see cref="Sign"/>), and
+    /// <see cref="CompleteSplitSign"/> back to back, so it is one implementation with the phased path. It also verifies
+    /// before release: the public key <c>Y = (P·u)·G</c> is derived with <see cref="DeriveSplitPublicKey"/> and the
+    /// finished signature is checked against it, which catches a computational fault in the in-process arithmetic.
+    /// </para>
+    /// <para>
+    /// This also realizes Verheul's Algorithm 11, which equals Algorithm 2 with <c>P = zU·zW</c> as the PIN-key and the base
+    /// key <c>bU</c> as the hardware key. A caller that holds both shares supplies their product as
+    /// <paramref name="pinKey"/>; a caller that keeps the shares apart runs <see cref="PrepareSplitSign"/> and
+    /// <see cref="CompleteSplitSign"/> once per party.
+    /// </para>
+    /// </remarks>
+    /// <param name="pinKey">The PIN-key scalar <c>P</c>; secret.</param>
+    /// <param name="hardwareKey">The hardware-key scalar <c>u</c>; secret.</param>
+    /// <param name="messageHash">The hash <c>e = H(M)</c>.</param>
     /// <param name="nonceSource">The nonce source, invoked as <c>(P256, u, e')</c>; production binds RFC 6979.</param>
     /// <param name="scalarMultiply">Scalar multiplication mod <c>n</c>.</param>
     /// <param name="scalarAdd">Scalar addition mod <c>n</c>.</param>
@@ -525,15 +670,14 @@ public static class SecdsaAlgorithm
     /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
     /// <param name="g1ScalarMultiply">G1 scalar multiplication (for <c>k·G</c> and the verification).</param>
     /// <param name="g1Add">G1 addition (for the verification).</param>
-    /// <param name="pool">The pool to rent the 64-byte signature buffer from.</param>
-    /// <returns>A signature wrapping a pool-rented <c>r || s</c> buffer.</returns>
-    /// <exception cref="ArgumentNullException">When a delegate or <paramref name="pool"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">When a span has the wrong length, or <c>P</c>/<c>u</c> is outside <c>[1, n−1]</c>.</exception>
-    /// <exception cref="InvalidOperationException">When the nonce yields a degenerate raw signature (retry; probability ~<c>1/n</c>).</exception>
+    /// <param name="pool">The pool the signature is rented from.</param>
+    /// <returns>The signature <c>(r, s)</c>, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">When the nonce yields a degenerate raw signature (retry; probability ~<c>1/n</c>), or the finished signature fails verification.</exception>
     public static SecdsaSignature SplitSign(
-        ReadOnlySpan<byte> pinKey,
-        ReadOnlySpan<byte> hardwareKey,
-        ReadOnlySpan<byte> messageHash,
+        PinKey pinKey,
+        PrivateScalar hardwareKey,
+        MessageHash messageHash,
         SecdsaNonceSource nonceSource,
         ScalarMultiplyDelegate scalarMultiply,
         ScalarAddDelegate scalarAdd,
@@ -543,20 +687,81 @@ public static class SecdsaAlgorithm
         G1AddDelegate g1Add,
         BaseMemoryPool pool)
     {
+        ArgumentNullException.ThrowIfNull(pinKey);
+        ArgumentNullException.ThrowIfNull(hardwareKey);
+        ArgumentNullException.ThrowIfNull(messageHash);
         ArgumentNullException.ThrowIfNull(pool);
 
+        return Produce(
+            pool,
+            (r, s) => SplitSignSpan(
+                pinKey.AsReadOnlySpan(), hardwareKey.AsReadOnlySpan(), messageHash.AsReadOnlySpan(), nonceSource,
+                scalarMultiply, scalarAdd, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add, r, s));
+    }
+
+
+    /// <summary>
+    /// SECDSA Algorithm 2 (split sign) over a hardware raw-sign seam: this party computes the blind <c>e' = P⁻¹·e</c> and the
+    /// mask <c>s = P·s₀</c> and delegates the raw ECDSA signature of <c>e'</c> to <paramref name="rawSign"/>, a TPM or
+    /// PKCS#11 call or <see cref="SecdsaSoftwareRawSigner"/>, so the hardware key <c>u</c> is never seen by this package.
+    /// </summary>
+    /// <remarks>
+    /// This is <see cref="PrepareSplitSign"/>, the synchronous <paramref name="rawSign"/> call, and
+    /// <see cref="CompleteSplitSign"/> in sequence; a key holder that cannot be called synchronously uses the two phases
+    /// directly. The composite public key is required and the result is verified against it before release.
+    /// </remarks>
+    /// <param name="pinKey">The PIN-key scalar <c>P</c>; secret.</param>
+    /// <param name="messageHash">The hash <c>e = H(M)</c>.</param>
+    /// <param name="publicKey">The composite public key <c>Y = (P·u)·G</c>.</param>
+    /// <param name="rawSign">The hardware or software raw signer: signs <c>e'</c> under <c>u</c> and yields <c>(r, s₀)</c>.</param>
+    /// <param name="scalarMultiply">Scalar multiplication mod <c>n</c>.</param>
+    /// <param name="scalarInvert">Scalar inversion mod <c>n</c>.</param>
+    /// <param name="scalarReduce">Reduction mod <c>n</c>.</param>
+    /// <param name="g1ScalarMultiply">G1 scalar multiplication (for the verification).</param>
+    /// <param name="g1Add">G1 addition (for the verification).</param>
+    /// <param name="pool">The pool the signature is rented from.</param>
+    /// <returns>The signature <c>(r, s)</c>, owned by the caller.</returns>
+    /// <exception cref="ArgumentNullException">When an argument is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">When the raw signature is degenerate or the finished signature does not verify under <paramref name="publicKey"/>.</exception>
+    public static SecdsaSignature SplitSign(
+        PinKey pinKey,
+        MessageHash messageHash,
+        G1Point publicKey,
+        SecdsaRawEcdsaSign rawSign,
+        ScalarMultiplyDelegate scalarMultiply,
+        ScalarInvertDelegate scalarInvert,
+        ScalarReduceDelegate scalarReduce,
+        G1ScalarMultiplyDelegate g1ScalarMultiply,
+        G1AddDelegate g1Add,
+        BaseMemoryPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(pinKey);
+        ArgumentNullException.ThrowIfNull(messageHash);
+        ArgumentNullException.ThrowIfNull(publicKey);
+        ArgumentNullException.ThrowIfNull(pool);
+
+        return Produce(
+            pool,
+            (r, s) => SplitSignRawSpan(
+                pinKey.AsReadOnlySpan(), messageHash.AsReadOnlySpan(), publicKey.AsReadOnlySpan(), rawSign,
+                scalarMultiply, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add, r, s));
+    }
+
+
+    /// <summary>Rents the 64-byte signature buffer, lets the operation fill the two components, and wraps it; the buffer is returned on a throw.</summary>
+    private static SecdsaSignature Produce(BaseMemoryPool pool, SecdsaSignatureFill fill)
+    {
         IMemoryOwner<byte> owner = pool.Rent(SecdsaSignature.SizeBytes);
         try
         {
             Span<byte> signature = owner.Memory.Span[..SecdsaSignature.SizeBytes];
-            SplitSign(
-                pinKey, hardwareKey, messageHash, nonceSource,
-                scalarMultiply, scalarAdd, scalarInvert, scalarReduce, g1ScalarMultiply, g1Add,
+            fill(
                 signature.Slice(SecdsaSignature.ROffset, SecdsaSignature.RSizeBytes),
                 signature.Slice(SecdsaSignature.SOffset, SecdsaSignature.SSizeBytes));
         }
         catch
         {
+            owner.Memory.Span.Clear();
             owner.Dispose();
             throw;
         }

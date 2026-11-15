@@ -22,7 +22,7 @@ namespace Lumoin.Veridical.Secdsa;
 /// signature under <c>P·u</c> over <c>e</c> only after the output mask <c>s = P·s₀</c>. A deterministic nonce
 /// over <c>(u, e')</c> is therefore correct and reproducible, but it is a different <c>k</c> than a direct
 /// ECDSA signer under <c>P·u</c> over <c>e</c> would pick; the two signatures are both valid yet not
-/// byte-identical (see <see cref="SecdsaAlgorithm.SplitSign(System.ReadOnlySpan{byte}, System.ReadOnlySpan{byte}, System.ReadOnlySpan{byte}, SecdsaNonceSource, Lumoin.Veridical.Core.Algebraic.ScalarMultiplyDelegate, Lumoin.Veridical.Core.Algebraic.ScalarAddDelegate, Lumoin.Veridical.Core.Algebraic.ScalarInvertDelegate, Lumoin.Veridical.Core.Algebraic.ScalarReduceDelegate, Lumoin.Veridical.Core.Algebraic.G1ScalarMultiplyDelegate, Lumoin.Veridical.Core.Algebraic.G1AddDelegate, System.Span{byte}, System.Span{byte})"/>).
+/// byte-identical (see <c>SecdsaAlgorithm.SplitSign</c>).
 /// </para>
 /// </remarks>
 public delegate void SecdsaNonceSource(

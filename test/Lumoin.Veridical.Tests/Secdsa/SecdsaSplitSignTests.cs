@@ -100,7 +100,7 @@ internal sealed class SecdsaSplitSignTests
 
         Span<byte> splitR = stackalloc byte[ScalarSize];
         Span<byte> splitS = stackalloc byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             pinKey, hardwareKey, messageHash, fixedNonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             splitR, splitS);
@@ -254,7 +254,7 @@ internal sealed class SecdsaSplitSignTests
         using var pool = new BaseMemoryPool();
 
         byte[] signatureBytes;
-        using(SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
+        using(SecdsaSignature signature = SecdsaTypedCalls.SplitSign(
             pinKey, hardwareKey, messageHash, Rfc6979NonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, pool))
         {
@@ -284,7 +284,7 @@ internal sealed class SecdsaSplitSignTests
             hardwareKey, Rfc6979NonceSource, ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply);
         byte[] seamR = new byte[ScalarSize];
         byte[] seamS = new byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(pinKey, messageHash, DerivePublicKey(pinKey, hardwareKey), rawSign, ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, seamR, seamS);
+        SecdsaTypedCalls.SplitSign(pinKey, messageHash, DerivePublicKey(pinKey, hardwareKey), rawSign, ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, seamR, seamS);
 
         Assert.IsTrue(inlineR.AsSpan().SequenceEqual(seamR), "Seam r must equal the inline path r.");
         Assert.IsTrue(inlineS.AsSpan().SequenceEqual(seamS), "Seam s must equal the inline path s.");
@@ -311,7 +311,7 @@ internal sealed class SecdsaSplitSignTests
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
         byte[] publicKey = DerivePublicKey(pinKey, hardwareKey);
-        SecdsaAlgorithm.SplitSign(pinKey, messageHash, publicKey, hardwareLike, ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, r, s);
+        SecdsaTypedCalls.SplitSign(pinKey, messageHash, publicKey, hardwareLike, ScalarMultiply, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, r, s);
 
         Assert.IsTrue(VerifyWithDotNet(publicKey, messageHash, r, s), "The hardware-seam split signature must verify under the platform ECDSA verifier.");
         Assert.IsTrue(P256EcdsaReference.Verify(publicKey, messageHash, r, s), "...and under the reference verifier.");
@@ -333,7 +333,7 @@ internal sealed class SecdsaSplitSignTests
 
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             pinKey, hardwareKey, messageHash, fixedNonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             r, s);
@@ -376,7 +376,7 @@ internal sealed class SecdsaSplitSignTests
     {
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             pinKey, hardwareKey, messageHash, Rfc6979NonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             r, s);
@@ -389,7 +389,7 @@ internal sealed class SecdsaSplitSignTests
     {
         byte[] r = new byte[ScalarSize];
         byte[] s = new byte[ScalarSize];
-        SecdsaAlgorithm.SplitSign(
+        SecdsaTypedCalls.SplitSign(
             pinKey, hardwareKey, messageHash, Rfc6979NonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add,
             r, s);

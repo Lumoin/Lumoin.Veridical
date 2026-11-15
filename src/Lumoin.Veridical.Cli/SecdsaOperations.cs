@@ -1,4 +1,6 @@
 using Lumoin.Base;
+using Lumoin.Veridical.Core;
+using Lumoin.Veridical.Core.Algebraic;
 using Lumoin.Veridical.Secdsa;
 using System;
 using System.Buffers;
@@ -28,17 +30,20 @@ internal static class SecdsaOperations
     public static string SplitSign(string pinKeyHex, string hardwareKeyHex, string messageHashHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> pinKey = stackalloc byte[ScalarBytes];
-        Span<byte> hardwareKey = stackalloc byte[ScalarBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> pinBytes = stackalloc byte[ScalarBytes];
+        Span<byte> hardwareBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(pinKeyHex, pinKey, "pin key");
-            HexInput.DecodeExact(hardwareKeyHex, hardwareKey, "hardware key");
-            byte[] messageHash = HexInput.Decode(messageHashHex, "message hash");
+            HexInput.DecodeExact(pinKeyHex, pinBytes, "pin key");
+            HexInput.DecodeExact(hardwareKeyHex, hardwareBytes, "hardware key");
+            using PinKey pinKey = PinKey.FromCanonical(pinBytes, pool);
+            using PrivateScalar hardwareKey = PrivateScalar.FromCanonical(hardwareBytes, pool);
+            using MessageHash messageHash = MessageHash.FromCanonical(HexInput.Decode(messageHashHex, "message hash"), pool);
             using SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
                 pinKey, hardwareKey, messageHash, composition.NonceSource,
                 composition.ScalarMultiply, composition.ScalarAdd, composition.ScalarInvert, composition.ScalarReduce,
-                composition.G1ScalarMultiply, composition.G1Add, BaseMemoryPool.Shared);
+                composition.G1ScalarMultiply, composition.G1Add, pool);
 
             return Convert.ToHexStringLower(signature.AsReadOnlySpan());
         }
@@ -48,8 +53,8 @@ internal static class SecdsaOperations
         }
         finally
         {
-            pinKey.Clear();
-            hardwareKey.Clear();
+            pinBytes.Clear();
+            hardwareBytes.Clear();
         }
     }
 
@@ -484,21 +489,21 @@ internal static class SecdsaOperations
     public static string SplitSignPrepare(string pinKeyHex, string messageHashHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> pinKey = stackalloc byte[ScalarBytes];
-        Span<byte> blinded = stackalloc byte[ScalarBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> pinBytes = stackalloc byte[ScalarBytes];
         try
         {
-            HexInput.DecodeExact(pinKeyHex, pinKey, "pin key");
-            SecdsaAlgorithm.PrepareSplitSign(
-                pinKey, HexInput.Decode(messageHashHex, "message hash"),
-                composition.ScalarMultiply, composition.ScalarInvert, composition.ScalarReduce, blinded);
+            HexInput.DecodeExact(pinKeyHex, pinBytes, "pin key");
+            using PinKey pinKey = PinKey.FromCanonical(pinBytes, pool);
+            using MessageHash messageHash = MessageHash.FromCanonical(HexInput.Decode(messageHashHex, "message hash"), pool);
+            using BlindedHash blinded = SecdsaAlgorithm.PrepareSplitSign(
+                pinKey, messageHash, composition.ScalarMultiply, composition.ScalarInvert, composition.ScalarReduce, pool);
 
-            return Convert.ToHexStringLower(blinded);
+            return Convert.ToHexStringLower(blinded.AsReadOnlySpan());
         }
         finally
         {
-            pinKey.Clear();
-            blinded.Clear();
+            pinBytes.Clear();
         }
     }
 
@@ -516,21 +521,22 @@ internal static class SecdsaOperations
     public static string SplitSignComplete(string pinKeyHex, string messageHashHex, string publicKeyHex, string rawSignatureHex)
     {
         using var composition = new SecdsaPlatformComposition();
-        Span<byte> pinKey = stackalloc byte[ScalarBytes];
-        Span<byte> rawSignature = stackalloc byte[2 * ScalarBytes];
-        Span<byte> signature = stackalloc byte[2 * ScalarBytes];
+        BaseMemoryPool pool = BaseMemoryPool.Shared;
+        Span<byte> pinBytes = stackalloc byte[ScalarBytes];
+        Span<byte> rawBytes = stackalloc byte[2 * ScalarBytes];
         try
         {
-            HexInput.DecodeExact(pinKeyHex, pinKey, "pin key");
-            HexInput.DecodeExact(rawSignatureHex, rawSignature, "raw signature");
-            SecdsaAlgorithm.CompleteSplitSign(
-                pinKey, HexInput.Decode(messageHashHex, "message hash"), HexInput.Decode(publicKeyHex, "public key"),
-                rawSignature[..ScalarBytes], rawSignature[ScalarBytes..],
-                composition.ScalarMultiply, composition.ScalarInvert, composition.ScalarReduce, composition.G1ScalarMultiply, composition.G1Add,
-                signature[ScalarBytes..]);
-            rawSignature[..ScalarBytes].CopyTo(signature);
+            HexInput.DecodeExact(pinKeyHex, pinBytes, "pin key");
+            HexInput.DecodeExact(rawSignatureHex, rawBytes, "raw signature");
+            using PinKey pinKey = PinKey.FromCanonical(pinBytes, pool);
+            using MessageHash messageHash = MessageHash.FromCanonical(HexInput.Decode(messageHashHex, "message hash"), pool);
+            using G1Point publicKey = G1Point.FromCanonical(HexInput.Decode(publicKeyHex, "public key"), CurveParameterSet.P256, pool);
+            using RawSignature rawSignature = RawSignature.FromCanonical(rawBytes, pool);
+            using SecdsaSignature signature = SecdsaAlgorithm.CompleteSplitSign(
+                pinKey, messageHash, publicKey, rawSignature,
+                composition.ScalarMultiply, composition.ScalarInvert, composition.ScalarReduce, composition.G1ScalarMultiply, composition.G1Add, pool);
 
-            return Convert.ToHexStringLower(signature);
+            return Convert.ToHexStringLower(signature.AsReadOnlySpan());
         }
         catch(InvalidOperationException error)
         {
@@ -538,9 +544,8 @@ internal static class SecdsaOperations
         }
         finally
         {
-            pinKey.Clear();
-            rawSignature.Clear();
-            signature.Clear();
+            pinBytes.Clear();
+            rawBytes.Clear();
         }
     }
 

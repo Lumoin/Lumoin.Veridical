@@ -43,4 +43,31 @@ public readonly record struct SecdsaStructureKind(string Identifier)
 
     /// <summary>The response <c>(H1, SigP)</c> of a transferable proof.</summary>
     public static SecdsaStructureKind TransferableResponse { get; } = new("secdsa-transferable-response");
+
+    /// <summary>The PIN-key scalar <c>P</c> of split ECDSA.</summary>
+    public static SecdsaStructureKind PinKey { get; } = new("secdsa-pin-key");
+
+    /// <summary>A P-256 private scalar in <c>[1, n−1]</c>.</summary>
+    public static SecdsaStructureKind PrivateScalar { get; } = new("secdsa-private-scalar");
+
+    /// <summary>The message representative <c>e = H(M)</c>.</summary>
+    public static SecdsaStructureKind MessageHash { get; } = new("secdsa-message-hash");
+
+    /// <summary>The blinded representative <c>e' = P⁻¹·e</c>.</summary>
+    public static SecdsaStructureKind BlindedHash { get; } = new("secdsa-blinded-hash");
+
+    /// <summary>The key holder's raw signature <c>(r, s₀)</c>.</summary>
+    public static SecdsaStructureKind RawSignature { get; } = new("secdsa-raw-signature");
+
+    /// <summary>The key of an ECDH-MAC.</summary>
+    public static SecdsaStructureKind MacKey { get; } = new("secdsa-mac-key");
+
+    /// <summary>The tag of an ECDH-MAC.</summary>
+    public static SecdsaStructureKind MacTag { get; } = new("secdsa-mac-tag");
+
+    /// <summary>The shared info an ECDH-MAC key derivation binds.</summary>
+    public static SecdsaStructureKind SharedInfo { get; } = new("secdsa-shared-info");
+
+    /// <summary>The salt of an ECDH-MAC key derivation.</summary>
+    public static SecdsaStructureKind MacSalt { get; } = new("secdsa-mac-salt");
 }

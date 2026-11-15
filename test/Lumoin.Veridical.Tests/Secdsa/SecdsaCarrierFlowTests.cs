@@ -195,7 +195,7 @@ internal sealed class SecdsaCarrierFlowTests
 
         //Signing: the pool overload returns a tagged SecdsaSignature carrier (Algorithm 2).
         byte[] messageHash = Digest("present-pid-attributes SN=1");
-        using SecdsaSignature signature = SecdsaAlgorithm.SplitSign(
+        using SecdsaSignature signature = SecdsaTypedCalls.SplitSign(
             pinKey.AsReadOnlySpan(), hardwareKey.AsReadOnlySpan(), messageHash, NonceSource,
             ScalarMultiply, ScalarAdd, ScalarInvert, ScalarReduce, G1ScalarMultiply, G1Add, pool);
 
